@@ -5,6 +5,7 @@ import {
   create_characters,
   create_outline,
   draft_chapter,
+  validate_chapter,
   quality_pass,
   detect_foreshadowing,
   detect_hallucination,
@@ -25,6 +26,7 @@ export function buildNovelGraph() {
     create_characters,
     create_outline,
     draft_chapter,
+    validate_chapter,
     quality_pass,
     detect_foreshadowing,
     detect_hallucination,
@@ -39,7 +41,8 @@ export function buildNovelGraph() {
   b1.addEdge('create_characters', 'create_outline')
   b1.addEdge('create_outline', 'draft_chapter')
 
-  b1.addEdge('draft_chapter', 'quality_pass')
+  b1.addEdge('draft_chapter', 'validate_chapter')
+  b1.addEdge('validate_chapter', 'quality_pass')
   b1.addEdge('quality_pass', 'detect_foreshadowing')
   b1.addEdge('detect_foreshadowing', 'detect_hallucination')
   b1.addEdge('detect_hallucination', 'detect_consistency')

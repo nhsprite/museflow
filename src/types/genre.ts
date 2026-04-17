@@ -6,6 +6,8 @@ export interface GenreSkill {
   outlineTemplate: string
   chapterPromptSupplement: string
   tropes: string[]
+  chapterWordCountMin?: number
+  chapterWordCountMax?: number
 }
 
 export interface GenreRegistryEntry {

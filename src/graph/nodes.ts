@@ -13,6 +13,8 @@ import {
 } from '../agents/index.js'
 import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
+import { writeChapterContent, readChapterContent } from '../storage/filesystem/writer.js'
+import { getGenreSkill } from '../genres/registry.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -142,15 +144,18 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   const output = await agent.run(agentState)
 
+  const content = output.content ?? ''
+  await writeChapterContent(state.story.id, chapterIndex, content)
+
   const now = Date.now()
   const newChapter: ChapterMeta = {
     id: generateId(),
     storyId: state.story.id,
     number: chapterIndex,
-    title: output.content ? agent.extractTitle(output.content) : null,
+    title: null,
     outline: outlineItem?.description || null,
-    summary: output.content ? agent.extractSummary(output.content) : null,
-    foreshadows: output.content ? JSON.stringify(agent.extractForeshadows(output.content, chapterIndex)) : null,
+    summary: null,
+    foreshadows: null,
     status: 'drafting',
     createdAt: now,
     updatedAt: now,
@@ -160,6 +165,56 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   newChapters[chapterIndex] = newChapter
 
   return { chapters: newChapters }
+}
+
+function countChineseWords(text: string): number {
+  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
+  const englishWords = (text.match(/[a-zA-Z]+/g) ?? []).length
+  return chineseChars + englishWords
+}
+
+export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  const chapterIndex = state.currentChapterIndex
+  const content = await readChapterContent(state.story.id, chapterIndex)
+
+  if (content === null) {
+    return {
+      pendingIssues: [
+        ...state.pendingIssues,
+        {
+          id: generateId(),
+          type: 'word_count' as const,
+          severity: 'error' as const,
+          description: `第 ${chapterIndex + 1} 章正文文件未找到`,
+        },
+      ],
+    }
+  }
+
+  const wordCount = countChineseWords(content)
+  const genre = getGenreSkill(state.genre)
+  const min = genre?.chapterWordCountMin ?? 1500
+  const max = genre?.chapterWordCountMax ?? 8000
+
+  const newIssues = [...state.pendingIssues]
+
+  if (wordCount < min) {
+    newIssues.push({
+      id: generateId(),
+      type: 'word_count' as const,
+      severity: 'error',
+      description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 低于最低要求 ${min} 字`,
+    })
+  } else if (wordCount > max) {
+    newIssues.push({
+      id: generateId(),
+      type: 'word_count' as const,
+      severity: 'warning',
+      description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 超过建议上限 ${max} 字`,
+    })
+  }
+
+  return { pendingIssues: newIssues }
 }
 
 export async function quality_pass(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
