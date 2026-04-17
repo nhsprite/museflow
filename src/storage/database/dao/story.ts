@@ -1,10 +1,10 @@
-import { getDb, persistDb } from '../index.js'
+import { initDb, getDb, persistDb } from '../index.js'
 import type { Story, StoryCreateInput, StoryStatus } from '../../../types/story.js'
 import { generateId } from '../../../utils/id.js'
 import { getStoryOutputDir } from '../../../utils/paths.js'
 
-export function initStoryDb(): void {
-  getDb()
+export async function initStoryDb(): Promise<void> {
+  await initDb()
 }
 
 export function createStory(input: StoryCreateInput): Story {

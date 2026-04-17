@@ -36,7 +36,7 @@ export async function start(options: StartOptions): Promise<void> {
     process.exit(1)
   }
 
-  initStoryDb()
+  await initStoryDb()
 
   const story = createStory({
     idea,
