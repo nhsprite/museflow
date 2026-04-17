@@ -18,17 +18,18 @@
   "dependencies": {
     "@langchain/core": "^0.3.58",
     "@langchain/langgraph": "^0.4.8",
-    "sql.js": "^1.12.0",
     "commander": "^12.1.0",
     "p-limit": "^4.0.0",
+    "sql.js": "^1.12.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.9",
     "@types/node": "^22.10.2",
+    "@types/sql.js": "^1.4.9",
     "@typescript-eslint/eslint-plugin": "^8.19.1",
     "@typescript-eslint/parser": "^8.19.1",
     "eslint": "^9.17.0",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
