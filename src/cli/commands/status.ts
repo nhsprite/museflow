@@ -1,5 +1,6 @@
 import { getStory } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
+import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
 
 interface StatusOptions {
   storyId?: string
@@ -33,9 +34,10 @@ export async function status(options?: StatusOptions): Promise<void> {
   if (state) {
     const current = state.currentChapterIndex
     const total = state.totalChapters
+    const currentChapter = getCurrentChapterDisplayNumber(current, total)
     const progress = total > 0 ? Math.round((current / total) * 100) : 0
 
-    console.log(`章节进度: ${current}/${total} (${progress}%)`)
+    console.log(`章节进度: ${currentChapter}/${total} (${progress}%)`)
 
     const doneChapters = state.chapters.filter(c => c !== null).length
     console.log(`已完成章节: ${doneChapters}`)

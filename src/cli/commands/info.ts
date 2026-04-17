@@ -2,6 +2,7 @@ import { getStory } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { loadConfig } from '../../config/store.js'
+import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
 
 interface InfoOptions {
   storyId?: string
@@ -53,8 +54,10 @@ export async function info(options?: InfoOptions): Promise<void> {
   }
 
   if (state) {
+    const currentChapter = getCurrentChapterDisplayNumber(state.currentChapterIndex, state.totalChapters)
+
     console.log('生成状态:')
-    console.log(`  当前章节: ${state.currentChapterIndex}/${state.totalChapters}`)
+    console.log(`  当前章节: ${currentChapter}/${state.totalChapters}`)
     console.log(`  世界观: ${state.world ? '✓ 已构建' : '✗ 未构建'}`)
     console.log(`  人物: ${state.characters.length > 0 ? `✓ ${state.characters.length} 个` : '✗ 未创建'}`)
     console.log(`  大纲: ${state.outline.length > 0 ? `✓ ${state.outline.length} 章` : '✗ 未生成'}`)
