@@ -2,6 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
+import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 export class ChapterAgent extends BaseAgent {
   constructor() {
@@ -10,14 +11,15 @@ export class ChapterAgent extends BaseAgent {
   protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const chapterSupplement = genre?.chapterPromptSupplement ?? ''
-    const chapterIndex = state.chapterIndex ?? 1
+    const chapterIndex = state.chapterIndex ?? 0
+    const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
 
     const outline = state.outline || ''
-    const chapterInfo = this.extractChapterOutline(outline, chapterIndex)
+    const chapterInfo = this.extractChapterOutline(outline, displayChapterNumber)
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
-    const userContent = `请撰写第 ${chapterIndex} 章的正文内容。
+    const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
 本章大纲：
 ${chapterInfo.title}
@@ -41,7 +43,7 @@ ${chapterSupplement}
 4. 每章字数建议 2000-5000 字
 5. 以自然流畅的段落叙述为主
 
-请开始撰写第 ${chapterIndex} 章。`
+请开始撰写第 ${displayChapterNumber} 章。`
 
     return [
       this.systemMessage('你是一位专业的小说作家，擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进。'),
