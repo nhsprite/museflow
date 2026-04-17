@@ -4,6 +4,7 @@ export const STORY_STATUSES = [
   'outlining',
   'writing',
   'done',
+  'error',
 ] as const
 export type StoryStatus = (typeof STORY_STATUSES)[number]
 
