@@ -3,6 +3,9 @@ import type { ChapterOutline } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
 
 export class OutlineAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.5)
+  }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const outlineTemplate = genre?.outlineTemplate ??

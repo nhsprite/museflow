@@ -3,6 +3,9 @@ import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 
 export class HallucinationAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.3)
+  }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const userContent = `请检测以下章节内容是否存在与已建立的世界观或人物设定不一致的"幻觉"内容。
 

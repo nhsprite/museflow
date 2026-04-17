@@ -5,13 +5,15 @@ import type { GenreSkill } from '../types/genre.js'
 
 export abstract class BaseAgent {
   protected provider: ModelProvider
+  protected temperature: number
 
-  constructor(provider?: ModelProvider) {
+  constructor(provider?: ModelProvider, temperature: number = 0.7) {
     this.provider = provider ?? createProvider()
+    this.temperature = temperature
   }
 
   protected async chat(messages: Message[]): Promise<string> {
-    return this.provider.chat(messages)
+    return this.provider.chat(messages, this.temperature)
   }
 
   protected systemMessage(content: string): Message {

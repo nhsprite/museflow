@@ -3,6 +3,9 @@ import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 
 export class QualityAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.3)
+  }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const userContent = `请对以下章节进行质量评审。
 

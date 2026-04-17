@@ -3,6 +3,9 @@ import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 
 export class ConsistencyAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.3)
+  }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const userContent = `请检测以下章节内容的逻辑一致性问题。
 

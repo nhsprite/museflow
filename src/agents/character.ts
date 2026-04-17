@@ -3,6 +3,9 @@ import type { Character } from '../types/character.js'
 import { generateId } from '../utils/id.js'
 
 export class CharacterAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.7)
+  }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const userContent = `根据以下故事设定，创建主要人物角色。
 

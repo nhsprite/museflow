@@ -4,6 +4,9 @@ import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
 
 export class ChapterAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.8)
+  }
   protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const chapterSupplement = genre?.chapterPromptSupplement ?? ''

@@ -3,6 +3,9 @@ import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
 
 export class ForeshadowingAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.3)
+  }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const userContent = `请分析以下章节，提取可作为伏笔的元素。
 

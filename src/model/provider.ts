@@ -4,5 +4,5 @@ export interface Message {
 }
 
 export interface ModelProvider {
-  chat(messages: Message[]): Promise<string>
+  chat(messages: Message[], temperature?: number): Promise<string>
 }

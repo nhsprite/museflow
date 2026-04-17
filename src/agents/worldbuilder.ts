@@ -3,6 +3,9 @@ import type { WorldContent } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
 
 export class WorldbuilderAgent extends BaseAgent {
+  constructor() {
+    super(undefined, 0.7)
+  }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const worldbuildingPrompt = genre?.worldbuildingPrompt ??
