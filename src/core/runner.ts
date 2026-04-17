@@ -1,5 +1,4 @@
 import { buildNovelGraph } from '../graph/novel.graph.js'
-import { GraphState } from '../graph/state.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 
@@ -65,8 +64,7 @@ export async function continueStory(
     ) as ReducedGraphState
   }
 
-  const state = await graph.getState(config)
-  return state.values as unknown as ReducedGraphState
+  return await graph.invoke(null, config) as ReducedGraphState
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {
