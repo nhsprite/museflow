@@ -3,6 +3,7 @@ import { runStory } from '../../core/runner.js'
 import { initStoryDb } from '../../storage/database/dao/story.js'
 import { getGenreRegistry } from '../../genres/registry.js'
 import { updateStoryStatus } from '../../storage/database/dao/story.js'
+import { generateTitleOptions, selectTitleOption, type TitleOption } from './title-selector.js'
 
 interface StartOptions {
   idea: string
@@ -12,8 +13,10 @@ interface StartOptions {
   provider?: string
 }
 
+const MAX_REGENERATE_ATTEMPTS = 3
+
 export async function start(options: StartOptions): Promise<void> {
-  const { idea, chapters, genre, title, provider } = options
+  const { idea, chapters, genre, provider } = options
 
   console.log('[MuseFlow] 开始创建故事...')
   console.log(`  简介: ${idea}`)
@@ -35,15 +38,43 @@ export async function start(options: StartOptions): Promise<void> {
 
   await initStoryDb()
 
+  let selectedOption: TitleOption | null = null
+  let regenerateAttempts = 0
+
+  while (!selectedOption && regenerateAttempts < MAX_REGENERATE_ATTEMPTS) {
+    console.log('\n[MuseFlow] 正在生成书名和世界观方向选项...\n')
+
+    try {
+      const titleOptions = await generateTitleOptions(idea, genre, chapters)
+      selectedOption = await selectTitleOption(titleOptions)
+    } catch (err) {
+      if (err instanceof Error && err.message === 'REGENERATE') {
+        regenerateAttempts++
+        console.log(`\n[MuseFlow] 重新生成选项... (${regenerateAttempts}/${MAX_REGENERATE_ATTEMPTS})\n`)
+        continue
+      }
+      throw err
+    }
+  }
+
+  if (!selectedOption) {
+    console.warn('[MuseFlow] 警告: 达到最大重试次数，使用默认选项')
+    const titleOptions = await generateTitleOptions(idea, genre, chapters)
+    selectedOption = titleOptions[0]!
+  }
+
+  console.log(`\n[MuseFlow] 已选择：${selectedOption.title}\n`)
+
   const story = createStory({
     idea,
     genre,
     totalChapters: chapters,
     provider: provider || 'openai',
-    ...(title ? { title } : {}),
+    title: selectedOption.title,
+    worldDirection: selectedOption.worldDirection,
   })
 
-  console.log(`\n[MuseFlow] 故事已创建，ID: ${story.id}`)
+  console.log(`[MuseFlow] 故事已创建，ID: ${story.id}`)
   console.log('[MuseFlow] 开始生成世界观...\n')
 
   try {

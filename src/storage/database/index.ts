@@ -12,6 +12,11 @@ export interface StoryMeta {
   story: {
     id: string
     title: string
+    worldDirection?: {
+      cultivationSystem: string
+      coreConflict: string
+      worldFeatures: string[]
+    }
     idea: string
     genre: string
     totalChapters: number

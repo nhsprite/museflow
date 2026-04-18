@@ -1,4 +1,4 @@
-import type { Story, StoryCreateInput, StoryStatus } from '../../../types/story.js'
+import type { Story, StoryCreateInput, StoryStatus, WorldDirection } from '../../../types/story.js'
 import { generateId } from '../../../utils/id.js'
 import { getStoryOutputDir, getStoryOutputDirWithTitle } from '../../../utils/paths.js'
 import { renameSync, existsSync } from 'node:fs'
@@ -16,19 +16,25 @@ export function createStory(input: StoryCreateInput): Story {
 
   ensureStoryDir(id)
 
+  const storyMeta: StoryMeta['story'] = {
+    id,
+    title,
+    idea: input.idea,
+    genre: input.genre,
+    totalChapters: input.totalChapters,
+    status: 'init',
+    provider,
+    outputDir,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  if (input.worldDirection) {
+    storyMeta.worldDirection = input.worldDirection
+  }
+
   const meta: StoryMeta = {
-    story: {
-      id,
-      title,
-      idea: input.idea,
-      genre: input.genre,
-      totalChapters: input.totalChapters,
-      status: 'init',
-      provider,
-      outputDir,
-      createdAt: now,
-      updatedAt: now,
-    },
+    story: storyMeta,
     world: null,
     characters: [],
     outline: [],

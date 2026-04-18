@@ -1,3 +1,9 @@
+export interface WorldDirection {
+  cultivationSystem: string
+  coreConflict: string
+  worldFeatures: string[]
+}
+
 export const STORY_STATUSES = [
   'init',
   'worldbuilding',
@@ -11,6 +17,7 @@ export type StoryStatus = (typeof STORY_STATUSES)[number]
 export interface Story {
   id: string
   title: string
+  worldDirection?: WorldDirection
   idea: string
   genre: string
   totalChapters: number
@@ -23,6 +30,7 @@ export interface Story {
 
 export interface StoryCreateInput {
   title?: string
+  worldDirection?: WorldDirection
   idea: string
   genre: string
   totalChapters: number
