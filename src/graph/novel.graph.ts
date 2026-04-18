@@ -1,4 +1,5 @@
 import { StateGraph } from '@langchain/langgraph'
+import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import { GraphState } from './state.js'
 import {
   build_world,
@@ -72,5 +73,5 @@ export function buildNovelGraph() {
   b1.addEdge('finalize_story', END)
 
   const checkpointer = getCheckpointer()
-  return b1.compile({ checkpointer })
+  return b1.compile({ checkpointer: checkpointer as unknown as BaseCheckpointSaver<number> })
 }

@@ -1,22 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { rm } from 'node:fs/promises'
-import { initDb, closeDb } from '../../../src/storage/database/index.ts'
+import { join } from 'node:path'
 import { createStory } from '../../../src/storage/database/dao/story.ts'
 import { saveOutline, getOutline } from '../../../src/storage/database/dao/chapter.ts'
 
-const TEST_DB = '/tmp/museflow_chapter_test.sqlite'
-
 describe('chapter DAO outline persistence', () => {
   beforeEach(async () => {
-    await rm(TEST_DB, { force: true }).catch(() => {})
-    await initDb(TEST_DB)
+    await rm(join(process.cwd(), 'books', 'story_test1'), { force: true, recursive: true }).catch(() => {})
+    await rm(join(process.cwd(), 'books', 'story_test2'), { force: true, recursive: true }).catch(() => {})
+    await rm(join(process.cwd(), 'books', 'story_test3'), { force: true, recursive: true }).catch(() => {})
   })
 
-  afterEach(() => {
-    closeDb()
-  })
-
-  it('should persist outline to outline table via saveOutline', () => {
+  it('should persist outline via saveOutline', () => {
     const story = createStory({ idea: 'test', genre: 'xianxia', totalChapters: 3 })
     const chapters = [
       { number: 1, title: '第一章', description: '少年觉醒' },

@@ -1,109 +1,77 @@
-import { initDb, getDb, persistDb } from '../index.js'
 import type { Story, StoryCreateInput, StoryStatus } from '../../../types/story.js'
 import { generateId } from '../../../utils/id.js'
 import { getStoryOutputDir, getStoryOutputDirWithTitle } from '../../../utils/paths.js'
 import { renameSync, existsSync } from 'node:fs'
+import { ensureStoryDir, readMetaJsonSync, writeMetaJsonSync, type StoryMeta } from '../index.js'
 
 export async function initStoryDb(): Promise<void> {
-  await initDb()
 }
 
 export function createStory(input: StoryCreateInput): Story {
-  const db = getDb()
   const now = Date.now()
   const id = generateId('story')
   const title = input.title ?? ''
   const provider = input.provider ?? 'openai'
   const outputDir = getStoryOutputDir(id, title)
 
-  db.run(`
-    INSERT INTO story (id, title, idea, genre, total_chapters, status, provider, output_dir, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'init', ?, ?, ?, ?)
-  `, [id, title, input.idea, input.genre, input.totalChapters, provider, outputDir, now, now])
-  persistDb()
+  ensureStoryDir(id)
 
-  return {
-    id,
-    title,
-    idea: input.idea,
-    genre: input.genre,
-    totalChapters: input.totalChapters,
-    status: 'init',
-    provider,
-    outputDir,
-    createdAt: now,
-    updatedAt: now,
+  const meta: StoryMeta = {
+    story: {
+      id,
+      title,
+      idea: input.idea,
+      genre: input.genre,
+      totalChapters: input.totalChapters,
+      status: 'init',
+      provider,
+      outputDir,
+      createdAt: now,
+      updatedAt: now,
+    },
+    world: null,
+    characters: [],
+    outline: [],
+    chapters: [],
+    contextSnapshot: null,
   }
+
+  writeMetaJsonSync(id, meta)
+
+  return meta.story
 }
 
 export function getStory(id: string): Story | null {
-  const db = getDb()
-  const stmt = db.prepare('SELECT * FROM story WHERE id = ?')
-  stmt.bind([id])
-  if (!stmt.step()) {
-    stmt.free()
-    return null
-  }
-  const row = stmt.getAsObject() as unknown as StoryRow
-  stmt.free()
-  return rowToStory(row)
+  const meta = readMetaJsonSync(id)
+  return meta?.story ?? null
 }
 
 export function updateStoryStatus(id: string, status: StoryStatus): void {
-  const db = getDb()
-  db.run('UPDATE story SET status = ?, updated_at = ? WHERE id = ?', [status, Date.now(), id])
-  persistDb()
+  const meta = readMetaJsonSync(id)
+  if (!meta) return
+  meta.story.status = status
+  meta.story.updatedAt = Date.now()
+  writeMetaJsonSync(id, meta)
 }
 
 export function updateStoryTitle(id: string, title: string): void {
-  const db = getDb()
-  db.run('UPDATE story SET title = ?, updated_at = ? WHERE id = ?', [title, Date.now(), id])
-  persistDb()
+  const meta = readMetaJsonSync(id)
+  if (!meta) return
+  meta.story.title = title
+  meta.story.updatedAt = Date.now()
+  writeMetaJsonSync(id, meta)
 }
 
 export function renameStoryOutputDir(id: string, newOutputDir: string): void {
-  const db = getDb()
-  const stmt = db.prepare('SELECT output_dir FROM story WHERE id = ?')
-  stmt.bind([id])
-  if (!stmt.step()) {
-    stmt.free()
-    return
-  }
-  const oldOutputDir = stmt.getAsObject().output_dir as string
-  stmt.free()
+  const meta = readMetaJsonSync(id)
+  if (!meta) return
+  const oldOutputDir = meta.story.outputDir
 
   if (existsSync(oldOutputDir)) {
     renameSync(oldOutputDir, newOutputDir)
   }
 
-  db.run('UPDATE story SET output_dir = ?, updated_at = ? WHERE id = ?', [newOutputDir, Date.now(), id])
-  persistDb()
-}
-
-interface StoryRow {
-  id: string
-  title: string
-  idea: string
-  genre: string
-  total_chapters: number
-  status: string
-  provider: string
-  output_dir: string
-  created_at: number
-  updated_at: number
-}
-
-function rowToStory(row: StoryRow): Story {
-  return {
-    id: row.id,
-    title: row.title,
-    idea: row.idea,
-    genre: row.genre,
-    totalChapters: row.total_chapters,
-    status: row.status as StoryStatus,
-    provider: row.provider,
-    outputDir: row.output_dir,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
+  meta.story.outputDir = newOutputDir
+  meta.story.updatedAt = Date.now()
+  writeMetaJsonSync(id, meta)
 }

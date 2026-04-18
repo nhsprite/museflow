@@ -1,129 +1,117 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js'
-import { expandPath } from '../../utils/paths.js'
+import { getOutputsDir } from '../../utils/paths.js'
 import { logger } from '../../utils/logger.js'
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { join } from 'node:path'
 
-let _db: SqlJsDatabase | null = null
-let _dbPath: string = ''
+/**
+ * JSON-based per-story metadata storage.
+ * Each story's data lives at books/{storyId}/meta.json
+ */
 
-export async function initDb(dbPath?: string): Promise<SqlJsDatabase> {
-  if (_db) return _db
+export interface StoryMeta {
+  story: {
+    id: string
+    title: string
+    idea: string
+    genre: string
+    totalChapters: number
+    status: 'init' | 'worldbuilding' | 'outlining' | 'writing' | 'done' | 'error'
+    provider: string
+    outputDir: string
+    createdAt: number
+    updatedAt: number
+  }
+  world: {
+    id: string
+    storyId: string
+    content: string
+  } | null
+  characters: Array<{
+    id: string
+    storyId: string
+    name: string
+    description: string | null
+    dialogueStyle: string | null
+    createdAt: number
+  }>
+  outline: Array<{
+    number: number
+    title: string
+    description: string
+  }>
+  chapters: Array<{
+    id: string
+    storyId: string
+    number: number
+    title: string | null
+    outline: string | null
+    summary: string | null
+    foreshadows: string | null
+    status: 'outline' | 'drafting' | 'reviewing' | 'done' | 'error'
+    createdAt: number
+    updatedAt: number
+  }>
+  contextSnapshot: {
+    id: string
+    storyId: string
+    stateJson: string
+    createdAt: number
+  } | null
+}
 
-  const resolved = dbPath ?? expandPath('~/.museflow/museflow.sqlite')
-  _dbPath = resolved
-
-  const dir = dirname(resolved)
+export function ensureStoryDir(storyId: string): string {
+  const dir = join(getOutputsDir(), storyId)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
+    logger.debug(`Created story directory: ${dir}`)
   }
-
-  const SQL = await initSqlJs()
-
-  if (existsSync(resolved)) {
-    const buf = readFileSync(resolved)
-    _db = new SQL.Database(buf)
-    logger.debug(`SQLite loaded from: ${resolved}`)
-  } else {
-    _db = new SQL.Database()
-    logger.debug(`SQLite created (new): ${resolved}`)
-  }
-
-  runMigrations()
-  return _db
+  return dir
 }
 
-export function getDb(): SqlJsDatabase {
-  if (!_db) {
-    throw new Error('Database not initialized. Call initDb() first.')
-  }
-  return _db
+export function getStoryMetaPath(storyId: string): string {
+  return join(getOutputsDir(), storyId, 'meta.json')
 }
 
-export function closeDb(): void {
-  if (_db) {
-    persistDb()
-    _db.close()
-    _db = null
-    logger.debug('SQLite connection closed')
+export async function readMetaJson(storyId: string): Promise<StoryMeta | null> {
+  const path = getStoryMetaPath(storyId)
+  if (!existsSync(path)) return null
+  try {
+    const content = readFileSync(path, 'utf-8')
+    return JSON.parse(content) as StoryMeta
+  } catch (err) {
+    logger.error(`Failed to read meta.json for story ${storyId}: ${err}`)
+    return null
   }
 }
 
-export function persistDb(): void {
-  if (_db && _dbPath) {
-    const data = _db.export()
-    const buf = Buffer.from(data)
-    writeFileSync(_dbPath, buf)
-    logger.debug(`SQLite persisted to: ${_dbPath}`)
+export async function writeMetaJson(storyId: string, meta: StoryMeta): Promise<void> {
+  ensureStoryDir(storyId)
+  const path = getStoryMetaPath(storyId)
+  writeFileSync(path, JSON.stringify(meta, null, 2), 'utf-8')
+  logger.debug(`Saved meta.json for story ${storyId}`)
+}
+
+export function readMetaJsonSync(storyId: string): StoryMeta | null {
+  const path = getStoryMetaPath(storyId)
+  if (!existsSync(path)) return null
+  try {
+    const content = readFileSync(path, 'utf-8')
+    return JSON.parse(content) as StoryMeta
+  } catch (err) {
+    logger.error(`Failed to read meta.json for story ${storyId}: ${err}`)
+    return null
   }
 }
 
-export function runMigrations(): void {
-  const db = getDb()
-  db.run(`
-    CREATE TABLE IF NOT EXISTS story (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      idea TEXT NOT NULL,
-      genre TEXT NOT NULL DEFAULT 'default',
-      total_chapters INTEGER NOT NULL,
-      status TEXT NOT NULL DEFAULT 'init',
-      provider TEXT NOT NULL DEFAULT 'openai',
-      output_dir TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS world (
-      id TEXT PRIMARY KEY,
-      story_id TEXT NOT NULL UNIQUE,
-      content TEXT NOT NULL,
-      FOREIGN KEY (story_id) REFERENCES story(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS character_ (
-      id TEXT PRIMARY KEY,
-      story_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      dialogue_style TEXT,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (story_id) REFERENCES story(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS outline (
-      id TEXT PRIMARY KEY,
-      story_id TEXT NOT NULL,
-      chapter_number INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL,
-      FOREIGN KEY (story_id) REFERENCES story(id) ON DELETE CASCADE,
-      UNIQUE(story_id, chapter_number)
-    );
-
-    CREATE TABLE IF NOT EXISTS chapter (
-      id TEXT PRIMARY KEY,
-      story_id TEXT NOT NULL,
-      number INTEGER NOT NULL,
-      title TEXT,
-      outline TEXT,
-      summary TEXT,
-      foreshadows TEXT,
-      status TEXT NOT NULL DEFAULT 'outline',
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY (story_id) REFERENCES story(id) ON DELETE CASCADE,
-      UNIQUE(story_id, number)
-    );
-
-    CREATE TABLE IF NOT EXISTS context_snapshot (
-      id TEXT PRIMARY KEY,
-      story_id TEXT NOT NULL UNIQUE,
-      state_json TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (story_id) REFERENCES story(id) ON DELETE CASCADE
-    );
-  `)
-  persistDb()
-  logger.debug('Database migrations complete')
+export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
+  ensureStoryDir(storyId)
+  const path = getStoryMetaPath(storyId)
+  writeFileSync(path, JSON.stringify(meta, null, 2), 'utf-8')
+  logger.debug(`Saved meta.json for story ${storyId}`)
 }
+
+// Re-export types used by other modules
+export type { Story, StoryCreateInput, StoryStatus } from '../../types/story.js'
+export type { ChapterMeta, ChapterStatus } from '../../types/chapter.js'
+export type { Character, CharacterCreateInput } from '../../types/character.js'
+export type { WorldContent, ContextSnapshot } from '../../types/context.js'

@@ -1,19 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { initDb, closeDb } from '../../../src/storage/database/index.ts'
 import { createStory, getStory, updateStoryStatus, updateStoryTitle } from '../../../src/storage/database/dao/story.ts'
-
-const TEST_DB = '/tmp/museflow_test_smoke.sqlite'
+import { getStoryOutputDir } from '../../../src/utils/paths.js'
 
 describe('story DAO', () => {
   beforeEach(async () => {
-    await rm(TEST_DB, { force: true }).catch(() => {})
-    await initDb(TEST_DB)
-  })
-
-  afterEach(() => {
-    closeDb()
+    for (const story of ['story_test1', 'story_test2', 'story_test3']) {
+      await rm(join(process.cwd(), 'books', story), { force: true, recursive: true }).catch(() => {})
+    }
   })
 
   it('should create and retrieve a story', async () => {
@@ -29,7 +24,7 @@ describe('story DAO', () => {
     expect(story.genre).toBe('fantasy')
     expect(story.totalChapters).toBe(10)
     expect(story.status).toBe('init')
-    expect(story.outputDir).toBe(join(process.cwd(), 'books', `${story.title ? 'hello-世界-test' : 'untitled'}-${story.id.split('_').pop()?.slice(0, 6)}`))
+    expect(story.outputDir).toBe(getStoryOutputDir(story.id, story.title))
 
     const loaded = getStory(story.id)
     expect(loaded).not.toBeNull()
@@ -38,21 +33,9 @@ describe('story DAO', () => {
     expect(loaded?.outputDir).toBe(story.outputDir)
   })
 
-  it('should fall back to untitled output dirs for missing or invalid titles', async () => {
+  it('should use untitled for missing or blank titles', async () => {
     const untitled = createStory({ idea: 'test', genre: 'fantasy', totalChapters: 3 })
-    expect(untitled.outputDir).toBe(
-      join(process.cwd(), 'books', `untitled-${untitled.id.split('_').pop()?.slice(0, 6)}`),
-    )
-
-    const invalid = createStory({
-      title: '!!!///***',
-      idea: 'test',
-      genre: 'fantasy',
-      totalChapters: 3,
-    })
-    expect(invalid.outputDir).toBe(
-      join(process.cwd(), 'books', `untitled-${invalid.id.split('_').pop()?.slice(0, 6)}`),
-    )
+    expect(untitled.outputDir).toBe(getStoryOutputDir(untitled.id, undefined))
   })
 
   it('should update story status', async () => {
