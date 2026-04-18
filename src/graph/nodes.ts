@@ -15,6 +15,7 @@ import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
 import { writeChapterContent, readChapterContent } from '../storage/filesystem/writer.js'
 import { getGenreSkill } from '../genres/registry.js'
+import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -136,7 +137,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    outline: outlineItem ? `${outlineItem.number}. ${outlineItem.title}\n${outlineItem.description}` : state.outline.map(o => `${o.number}. ${o.title}`).join('\n'),
+    outline: outlineItem ? `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}` : state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n'),
     previousChapters,
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
@@ -151,7 +152,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const newChapter: ChapterMeta = {
     id: generateId(),
     storyId: state.story.id,
-    number: chapterIndex,
+    number: toDisplayChapterNumber(chapterIndex),
     title: null,
     outline: outlineItem?.description || null,
     summary: null,
