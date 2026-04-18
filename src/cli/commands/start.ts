@@ -8,7 +8,7 @@ interface StartOptions {
   idea: string
   chapters: number
   genre: string
-  title: string
+  title?: string
   provider?: string
 }
 
@@ -36,11 +36,11 @@ export async function start(options: StartOptions): Promise<void> {
   await initStoryDb()
 
   const story = createStory({
-    title,
     idea,
     genre,
     totalChapters: chapters,
     provider: provider || 'openai',
+    ...(title ? { title } : {}),
   })
 
   console.log(`\n[MuseFlow] 故事已创建，ID: ${story.id}`)

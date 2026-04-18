@@ -87,6 +87,9 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   const world = agent.processOutput(output, state.story.id)
 
   const title = agent.extractTitle(output)
+  if (!title) {
+    console.warn('[MuseFlow] 警告: 未能从世界观生成中提取书名，请检查 AI 输出')
+  }
   let newOutputDir = state.story.outputDir
   if (title) {
     updateStoryTitle(state.story.id, title)

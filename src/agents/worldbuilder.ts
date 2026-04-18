@@ -13,7 +13,7 @@ export class WorldbuilderAgent extends BaseAgent {
 故事简介：{idea}
 总章节数：{totalChapters}
 
-请以以下JSON格式返回：
+请以以下JSON格式返回（title 为必填字段，不可省略）：
 {
   "title": "书名",
   "world": "世界观详细设定内容"
