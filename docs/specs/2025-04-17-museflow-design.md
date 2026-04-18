@@ -50,64 +50,73 @@ CLI 工具（`museflow start --idea "..."`），本地运行，数据完全在�
 ## 4. 数据存储
 
 ### 4.1 双存储架构
-采用 **SQLite + 文件系统双存储**，职责分离：
+采用 **JSON 文件 + 文件系统双存储**，职责分离：
 
-**SQLite 数据库**（元数据）：
-- 故事信息（story table）
-- 人物设定（character table）
-- 世界观设定（world table）
-- 大纲（outline table）
-- 章节元数据（chapter table）
+**每故事一个 JSON 文件**（元数据）：
+- 路径：`books/{story_id}/meta.json`
+- 包含故事信息、人物设定、世界观设定、大纲、章节元数据
 
 **文件系统**（正文内容）：
 - 路径：`books/{story_id}/chapter_{n}.md`
 - 每章一个 `.md` 文件，包含完整正文
 
-### 4.2 数据库 Schema（概要）
-```sql
--- story: 故事主表
-CREATE TABLE story (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  idea TEXT NOT NULL,          -- 用户原始简介
-  total_chapters INTEGER NOT NULL,  -- 用户指定的章节总数
-  status TEXT NOT NULL,        -- 'init' | 'worldbuilding' | 'outlining' | 'writing' | 'done'
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
+### 4.2 JSON Schema（概要）
 
--- world: 世界观设定表
-CREATE TABLE world (
-  id TEXT PRIMARY KEY,
-  story_id TEXT NOT NULL UNIQUE,
-  content TEXT NOT NULL,       -- 世界观设定正文（Markdown）
-  FOREIGN KEY (story_id) REFERENCES story(id)
-);
+`books/{story_id}/meta.json` 结构：
 
--- character: 人物表
-CREATE TABLE character (
-  id TEXT PRIMARY KEY,
-  story_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT,
-  dialogue_style TEXT,
-  FOREIGN KEY (story_id) REFERENCES story(id)
-);
-
--- chapter: 章节元数据表
-CREATE TABLE chapter (
-  id TEXT PRIMARY KEY,
-  story_id TEXT NOT NULL,
-  number INTEGER NOT NULL,      -- 章节序号（1~total_chapters）
-  title TEXT,
-  outline TEXT,                 -- 本章大纲（大纲 Agent 生成）
-  summary TEXT,                 -- 章节核心内容摘要（检测后提取）
-  foreshadows TEXT,             -- 本章埋下的伏笔（JSON 数组）
-  status TEXT NOT NULL,         -- 'outline' | 'drafting' | 'reviewing' | 'done' | 'error'
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  FOREIGN KEY (story_id) REFERENCES story(id)
-);
+```json
+{
+  "story": {
+    "id": "story_xxxxx",
+    "title": "故事标题",
+    "idea": "用户原始简介",
+    "genre": "xianxia",
+    "totalChapters": 3,
+    "status": "worldbuilding",
+    "provider": "openai",
+    "outputDir": "books/xxx/story_xxxxx",
+    "createdAt": 1713000000000,
+    "updatedAt": 1713000000000
+  },
+  "world": {
+    "id": "world_xxxxx",
+    "storyId": "story_xxxxx",
+    "content": "世界观设定正文（Markdown）"
+  },
+  "characters": [
+    {
+      "id": "char_xxxxx",
+      "storyId": "story_xxxxx",
+      "name": "角色名",
+      "description": "角色描述",
+      "dialogueStyle": "对话风格",
+      "createdAt": 1713000000000
+    }
+  ],
+  "outline": [
+    { "number": 1, "title": "第一章标题", "description": "章节描述" }
+  ],
+  "chapters": [
+    {
+      "id": "ch_xxxxx",
+      "storyId": "story_xxxxx",
+      "number": 1,
+      "title": "第一章标题",
+      "outline": "本章大纲",
+      "summary": "章节摘要",
+      "foreshadows": "伏笔内容",
+      "status": "drafting",
+      "createdAt": 1713000000000,
+      "updatedAt": 1713000000000
+    }
+  ],
+  "contextSnapshot": {
+    "id": "snap_xxxxx",
+    "storyId": "story_xxxxx",
+    "stateJson": "{}",
+    "createdAt": 1713000000000
+  }
+}
 ```
 
 ---
@@ -235,23 +244,23 @@ function after_user_confirmation(state: GraphState):
 
 ### 5.6 CheckpointSaver（状态持久化）
 
-LangGraph 内置 SQLite CheckpointSaver：
+基于 JSON 文件的 CheckpointSaver：
 
 ```typescript
-import { SqliteSaver } from "@langgraph/langgraph-native/checkpoint-sqlite"
+import { JsonCheckpointer } from "../graph/checkpointer.js"
 
-const checkpointer = new SqliteSaver({
-  dbPath: "books/{story_id}/{story_id}.sqlite"
-})
+const checkpointer = new JsonCheckpointer()
 
 const graph = new StateGraph({ /* ... */ })
   .runnable(...)
   .compile({ checkpointer })
 ```
 
+checkpoint 存储在 `books/{story_id}/checkpoints/` 目录下，每个 checkpoint 一个 JSON 文件。
+
 **恢复流程**：
-1. CLI 启动时检测 `books/{story_id}/{story_id}.sqlite` 是否存在
-2. 存在则 `graph.getState({ config: { thread_id: story_id } })` 恢复状态
+1. CLI 启动时从 `books/{story_id}/checkpoints/` 目录读取最新 checkpoint
+2. 存在则 `graph.getTuple({ config: { thread_id: story_id } })` 恢复状态
 3. 从断点继续执行（用户执行 `museflow continue` 时自动触发）
 
 ### 5.7 8 类 Agent 在 LangGraph 中的角色
@@ -287,7 +296,7 @@ async function build_world(state: GraphState, config: LangGraphConfig) {
 
 | 能力 | LangGraph | 手工编排 |
 |---|---|---|
-| 状态持久化 | `SqliteSaver` 自动保存每个节点状态 | 手工双写 Context → SQLite |
+| 状态持久化 | `JsonCheckpointer` 自动保存每个节点状态 | 手工双写 Context → JSON |
 | 人机交互 | `interrupt()` 原生支持，自动暂停 | 手工 `readline` 判断 |
 | 条件分支 | `conditional_edges` 声明式 | `switch/if` 硬编码 |
 | 断点恢复 | `checkpointer.getState()` 一行 | 手工加载 DAO → 重建 Context |
@@ -300,17 +309,17 @@ async function build_world(state: GraphState, config: LangGraphConfig) {
 
 ### 6.1 LangGraph Checkpoint 替代手工双写
 
-状态持久化完全由 LangGraph 的 `SqliteSaver` 处理，无需手工双写：
+状态持久化完全由 LangGraph 的 `JsonCheckpointer` 处理，无需手工双写：
 
 - **生成时**：状态在内存的 `GraphState` 中流转
-- **每个节点执行后**：`SqliteSaver` 自动将状态写入 SQLite 文件
-- **CLI 重启后**：`checkpointer.getState({ thread_id })` 恢复完整状态
+- **每个节点执行后**：`JsonCheckpointer` 自动将 checkpoint 写入 JSON 文件
+- **CLI 重启后**：`checkpointer.getTuple({ configurable: { thread_id } })` 恢复完整状态
 
 ### 6.2 Checkpoint 文件路径
 
-`books/{story_id}/{story_id}.sqlite`
+`books/{story_id}/checkpoints/{checkpoint_id}.json`
 
-每创建一个新故事，对应一个独立的 Checkpoint SQLite 文件，重启后直接加载。
+每创建一个新故事，对应一个独立的 checkpoint 目录，重启后直接加载。
 
 ### 6.3 共享上下文内容（GraphState）
 
@@ -419,13 +428,13 @@ museflow/
 │   │   └── custom/               # 用户自定义 Skill（符号链接到 ~/.museflow/genres/）
 │   ├── storage/                   # 双存储
 │   │   ├── database/
-│   │   │   ├── index.ts           # SQLite 连接管理
-│   │   │   ├── schema.ts          # 建表 SQL
-│   │   │   └── dao/               # Data Access Object
+│   │   │   ├── index.ts           # JSON 存储 helpers
+│   │   │   └── dao/               # Data Access Object（读写 meta.json）
 │   │   │       ├── story.ts
 │   │   │       ├── chapter.ts
 │   │   │       ├── character.ts
-│   │   │       └── world.ts
+│   │   │       ├── world.ts
+│   │   │       └── context.ts
 │   │   └── filesystem/
 │   │       └── writer.ts          # 章节正文写入 .md 文件
 │   ├── model/                     # 模型抽象层
@@ -469,7 +478,7 @@ museflow/
 - [x] 重写策略：询问用户确认后再重写（已确认）→ **LangGraph interrupt() 原生支持**
 - [x] 输出格式：写作期间 .md，写完后可导出 EPUB 和 PDF（已确认）
 - [x] 支持题材类别（Genre Skill）：科幻、玄幻、仙侠、恐怖等各类小说类别（已确认）
-- [x] **LangGraph 架构**：使用 LangGraph 进行状态图编排，SqliteSaver 做断点恢复（已确认）
+- [x] **LangGraph 架构**：使用 LangGraph 进行状态图编排，JsonCheckpointer 做断点恢复（已确认）
 
 ## 11. 题材类别系统（Genre Skill）
 

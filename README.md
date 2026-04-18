@@ -10,7 +10,7 @@ MuseFlow 是一款本地运行的 CLI 工具，用户输入一句话故事简介
 - **8 类专业 Agent**：世界观、人物、大纲、章节、质量、伏笔检测、幻觉检测、逻辑一致性
 - **题材 Skill 系统**：内置玄幻、仙侠、科幻、恐怖等题材包，支持用户自定义 Skill
 - **本地优先**：所有数据存储在本地，模型可配置（OpenAI / MiniMax / 本地模型）
-- **双存储架构**：SQLite 元数据 + 文件系统正文，CLI 重启后完整恢复
+- **双存储架构**：JSON 元数据 + 文件系统正文，CLI 重启后完整恢复
 
 ## 快速开始
 
@@ -114,8 +114,9 @@ src/
 | 路径 | 内容 |
 |------|------|
 | `~/.museflow/config.json` | 用户配置（API key、provider 等） |
+| `./books/{story_id}/meta.json` | 故事元数据（JSON 文件） |
+| `./books/{story_id}/checkpoints/` | LangGraph checkpoint JSON 文件 |
 | `./books/{story_id}/chapter_{n}.md` | 各章正文 `.md` 文件 |
-| `./books/{story_id}/{story_id}.sqlite` | SQLite 断点恢复文件 |
 
 ## 常见问题
 
