@@ -12,26 +12,39 @@ export function getConfigDir(): string {
   return expandPath('~/.museflow')
 }
 
-export function getCheckpointsDir(): string {
-  return expandPath('~/.museflow/checkpoints')
-}
-
 export function getOutputsDir(): string {
-  return expandPath('~/.museflow/outputs')
+  return join(process.cwd(), 'books')
 }
 
-export function getStoryOutputDir(storyId: string): string {
-  return join(getOutputsDir(), storyId)
+export function getStoryOutputDir(storyId: string, title?: string): string {
+  return join(getOutputsDir(), `${normalizeStoryTitle(title)}-${getStoryShortId(storyId)}`)
 }
 
-export function getChapterFilePath(storyId: string, chapterNumber: number): string {
-  return join(getStoryOutputDir(storyId), `chapter_${chapterNumber}.md`)
+export function getChapterFilePath(outputDir: string, chapterNumber: number): string {
+  return join(outputDir, `chapter_${chapterNumber}.md`)
 }
 
 export function getConfigFilePath(): string {
   return join(getConfigDir(), 'config.json')
 }
 
-export function getCheckpointFilePath(storyId: string): string {
-  return join(getCheckpointsDir(), `${storyId}.sqlite`)
+export function getCheckpointFilePath(outputDir: string, storyId: string): string {
+  return join(outputDir, `${storyId}.sqlite`)
+}
+
+function getStoryShortId(storyId: string): string {
+  const suffix = storyId.split('_').pop() ?? storyId
+  return suffix.slice(0, 6).toLowerCase()
+}
+
+function normalizeStoryTitle(title?: string): string {
+  const normalized = title
+    ?.normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  return normalized || 'untitled'
 }
