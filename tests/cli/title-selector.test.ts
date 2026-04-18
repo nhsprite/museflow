@@ -1,0 +1,140 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Mock inquirer before importing title-selector
+vi.mock('inquirer', () => ({
+  default: {
+    prompt: vi.fn().mockResolvedValue({ selectedIndex: 0 }),
+    Separator: vi.fn().mockImplementation(() => '---'),
+  },
+}))
+
+// Mock the model registry
+vi.mock('../../src/model/registry.js', () => ({
+  createProvider: () => ({
+    chat: vi.fn().mockResolvedValue(JSON.stringify([
+      {
+        title: '《逆天改命》',
+        worldDirection: {
+          cultivationSystem: '凡境→灵境→仙境',
+          coreConflict: '资源争夺、宗门秘宝',
+          worldFeatures: ['中土大陆', '灵气衰退'],
+        },
+      },
+      {
+        title: '《凡人之躯》',
+        worldDirection: {
+          cultivationSystem: '炼体、炼气、炼神三阶段',
+          coreConflict: '人与天斗、阶级固化',
+          worldFeatures: ['偏远山村', '世俗王朝'],
+        },
+      },
+      {
+        title: '《破妄之剑》',
+        worldDirection: {
+          cultivationSystem: '剑修为尊；剑意凝兵',
+          coreConflict: '正邪两道、师门恩怨',
+          worldFeatures: ['万剑山脉', '剑冢禁地'],
+        },
+      },
+    ])),
+  }),
+}))
+
+import { generateTitleOptions, selectTitleOption, type TitleOption } from '../../src/cli/commands/title-selector.ts'
+
+describe('title-selector', () => {
+  describe('TitleOption types', () => {
+    it('has correct shape for title option', () => {
+      const option: TitleOption = {
+        title: '《逆天改命》',
+        worldDirection: {
+          cultivationSystem: '凡境→灵境→仙境',
+          coreConflict: '资源争夺、宗门秘宝',
+          worldFeatures: ['中土大陆', '灵气衰退'],
+        },
+      }
+      expect(option.title).toBe('《逆天改命》')
+      expect(option.worldDirection.cultivationSystem).toBe('凡境→灵境→仙境')
+      expect(option.worldDirection.worldFeatures).toHaveLength(2)
+    })
+  })
+
+  describe('generateTitleOptions', () => {
+    it('returns array of TitleOption with 3-5 items', async () => {
+      const options = await generateTitleOptions(
+        '一个少年获得修真能力后崛起为最强者的故事',
+        'xianxia',
+        10
+      )
+
+      expect(options).toBeInstanceOf(Array)
+      expect(options.length).toBeGreaterThanOrEqual(3)
+      expect(options.length).toBeLessThanOrEqual(5)
+
+      const firstOption = options[0]
+      expect(firstOption).toHaveProperty('title')
+      expect(firstOption).toHaveProperty('worldDirection')
+      expect(firstOption.worldDirection).toHaveProperty('cultivationSystem')
+      expect(firstOption.worldDirection).toHaveProperty('coreConflict')
+      expect(firstOption.worldDirection).toHaveProperty('worldFeatures')
+      expect(firstOption.worldDirection.worldFeatures).toBeInstanceOf(Array)
+    })
+
+    it('parses AI response correctly', async () => {
+      const options = await generateTitleOptions(
+        '一个少年获得修真能力后崛起为最强者的故事',
+        'xianxia',
+        10
+      )
+
+      const firstOption = options.find(o => o.title.includes('逆天改命'))
+      expect(firstOption).toBeDefined()
+      expect(firstOption!.worldDirection.cultivationSystem).toContain('凡境')
+    })
+  })
+
+  describe('selectTitleOption', () => {
+    let inquirer: typeof import('inquirer')
+
+    beforeEach(async () => {
+      inquirer = await import('inquirer')
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('returns a TitleOption when user selects one', async () => {
+      const options: TitleOption[] = [
+        {
+          title: '《逆天改命》',
+          worldDirection: {
+            cultivationSystem: '凡境→灵境→仙境',
+            coreConflict: '资源争夺',
+            worldFeatures: ['中土大陆'],
+          },
+        },
+      ]
+
+      const result = await selectTitleOption(options)
+      expect(result.title).toBe('《逆天改命》')
+    })
+
+    it('throws REGENERATE error when user chooses regenerate', async () => {
+      vi.mocked(inquirer.default.prompt).mockResolvedValue({ selectedIndex: -1 })
+
+      const options: TitleOption[] = [
+        {
+          title: '《逆天改命》',
+          worldDirection: {
+            cultivationSystem: '凡境→灵境→仙境',
+            coreConflict: '资源争夺',
+            worldFeatures: ['中土大陆'],
+          },
+        },
+      ]
+
+      await expect(selectTitleOption(options)).rejects.toThrow('REGENERATE')
+    })
+  })
+})
