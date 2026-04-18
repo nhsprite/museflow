@@ -2,10 +2,7 @@ import { createStory } from '../../storage/database/dao/story.js'
 import { runStory } from '../../core/runner.js'
 import { initStoryDb } from '../../storage/database/dao/story.js'
 import { getGenreRegistry } from '../../genres/registry.js'
-import { getStory } from '../../storage/database/dao/story.js'
 import { updateStoryStatus } from '../../storage/database/dao/story.js'
-import { updateStoryTitle } from '../../storage/database/dao/story.js'
-import type { StoryStatus } from '../../types/story.js'
 
 interface StartOptions {
   idea: string
@@ -39,21 +36,18 @@ export async function start(options: StartOptions): Promise<void> {
   await initStoryDb()
 
   const story = createStory({
+    ...(title ? { title } : {}),
     idea,
     genre,
     totalChapters: chapters,
     provider: provider || 'openai',
   })
 
-  if (title) {
-    updateStoryTitle(story.id, title)
-  }
-
   console.log(`\n[MuseFlow] 故事已创建，ID: ${story.id}`)
   console.log('[MuseFlow] 开始生成世界观...\n')
 
   try {
-    const updateStatus = (status: StoryStatus) => {
+    const updateStatus = (status: Parameters<typeof updateStoryStatus>[1]) => {
       updateStoryStatus(story.id, status)
     }
 
@@ -81,38 +75,9 @@ export async function start(options: StartOptions): Promise<void> {
 
     updateStatus('outlining')
 
-    let currentChapter = result.currentChapterIndex
-    const totalChapters = result.totalChapters
-
-    while (currentChapter < totalChapters) {
-      console.log(`[MuseFlow] 正在撰写第 ${currentChapter + 1}/${totalChapters} 章...`)
-
-      updateStatus('writing')
-
-      if (result.pendingIssues.length > 0) {
-        const errors = result.pendingIssues.filter(i => i.severity === 'error')
-        if (errors.length > 0) {
-          console.log(`\n[MuseFlow] 发现 ${errors.length} 个严重问题，需要重写:`, errors.map(e => e.description).join(', '))
-          console.log('[MuseFlow] 请使用 continue 命令继续处理\n')
-          break
-        }
-      }
-
-      if (result.chapters[currentChapter]) {
-        console.log(`[MuseFlow] 第 ${currentChapter + 1} 章完成\n`)
-      }
-
-      currentChapter = result.currentChapterIndex
-    }
-
-    if (currentChapter >= totalChapters) {
-      updateStatus('done')
-      console.log('[MuseFlow] 故事撰写完成！\n')
-    }
-
+    console.log('[MuseFlow] 规划阶段完成！\n')
     console.log(`[MuseFlow] 故事ID: ${story.id}`)
-    console.log('[MuseFlow] 使用 "museflow status" 查看进度')
-    console.log('[MuseFlow] 使用 "museflow info" 查看详情')
+    console.log('[MuseFlow] 使用 "museflow write" 开始撰写正文')
 
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))

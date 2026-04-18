@@ -22,6 +22,7 @@ export interface Story {
 }
 
 export interface StoryCreateInput {
+  title?: string
   idea: string
   genre: string
   totalChapters: number

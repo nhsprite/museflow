@@ -11,22 +11,24 @@ export function createStory(input: StoryCreateInput): Story {
   const db = getDb()
   const now = Date.now()
   const id = generateId('story')
-  const outputDir = getStoryOutputDir(id)
+  const title = input.title ?? ''
+  const provider = input.provider ?? 'openai'
+  const outputDir = getStoryOutputDir(id, title)
 
   db.run(`
-    INSERT INTO story (id, title, idea, genre, total_chapters, status, output_dir, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'init', ?, ?, ?)
-  `, [id, '', input.idea, input.genre, input.totalChapters, outputDir, now, now])
+    INSERT INTO story (id, title, idea, genre, total_chapters, status, provider, output_dir, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'init', ?, ?, ?, ?)
+  `, [id, title, input.idea, input.genre, input.totalChapters, provider, outputDir, now, now])
   persistDb()
 
   return {
     id,
-    title: '',
+    title,
     idea: input.idea,
     genre: input.genre,
     totalChapters: input.totalChapters,
     status: 'init',
-    provider: input.provider ?? 'openai',
+    provider,
     outputDir,
     createdAt: now,
     updatedAt: now,
