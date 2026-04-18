@@ -43,7 +43,7 @@ ${userContent}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\[[\s\S]*\]/) || trimmed.match(/\{[\s\S]*\}/)
+    const jsonMatch = trimmed.match(/\[[\s\S]*?\]/) || trimmed.match(/\{[\s\S]*?\}/)
     if (!jsonMatch) {
       return { success: false, error: '无法解析大纲数据：未找到 JSON 格式' }
     }

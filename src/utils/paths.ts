@@ -8,6 +8,14 @@ export function expandPath(path: string): string {
   return resolve(path)
 }
 
+export function slugify(title: string): string {
+  return title
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+    .replace(/_{2,}/g, '_')
+}
+
 export function getConfigDir(): string {
   return expandPath('~/.museflow')
 }
@@ -18,6 +26,11 @@ export function getOutputsDir(): string {
 
 export function getStoryOutputDir(storyId: string, title?: string): string {
   return join(getOutputsDir(), `${normalizeStoryTitle(title)}-${getStoryShortId(storyId)}`)
+}
+
+export function getStoryOutputDirWithTitle(title: string, storyId: string): string {
+  const slug = slugify(title)
+  return join(getOutputsDir(), `${slug}_${storyId}`)
 }
 
 export function getChapterFilePath(outputDir: string, chapterNumber: number): string {

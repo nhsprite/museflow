@@ -15,7 +15,9 @@ import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
 import { writeChapterContent, readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import { saveOutline } from '../storage/database/dao/chapter.js'
+import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
+import { getStoryOutputDirWithTitle } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
@@ -84,7 +86,15 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   const output = await agent.run(agentState)
   const world = agent.processOutput(output, state.story.id)
 
-  return { world }
+  const title = agent.extractTitle(output)
+  let newOutputDir = state.story.outputDir
+  if (title) {
+    updateStoryTitle(state.story.id, title)
+    newOutputDir = getStoryOutputDirWithTitle(title, state.story.id)
+    renameStoryOutputDir(state.story.id, newOutputDir)
+  }
+
+  return { world, story: { ...state.story, outputDir: newOutputDir, title } }
 }
 
 export async function create_characters(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {

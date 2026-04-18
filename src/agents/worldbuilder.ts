@@ -11,7 +11,13 @@ export class WorldbuilderAgent extends BaseAgent {
     const worldbuildingPrompt = genre?.worldbuildingPrompt ??
       `请为以下故事构建世界观设定。
 故事简介：{idea}
-总章节数：{totalChapters}`
+总章节数：{totalChapters}
+
+请以以下JSON格式返回：
+{
+  "title": "书名",
+  "world": "世界观详细设定内容"
+}`
 
     const userContent = this.fillTemplate(worldbuildingPrompt, {
       idea: state.idea,
@@ -25,15 +31,41 @@ export class WorldbuilderAgent extends BaseAgent {
   }
 
   protected parse(content: string): AgentOutput {
-    return { success: true, content }
+    const trimmed = content.trim()
+    const jsonMatch = trimmed.match(/\{[\s\S]*?\}/)
+    if (!jsonMatch) {
+      return { success: true, content }
+    }
+    try {
+      const data = JSON.parse(jsonMatch[0])
+      return { success: true, data }
+    } catch {
+      return { success: true, content }
+    }
   }
 
   processOutput(output: AgentOutput, storyId: string): WorldContent | null {
-    if (!output.success || !output.content) return null
+    if (!output.success) return null
+    if (output.data && typeof output.data === 'object') {
+      const obj = output.data as { title?: string; world?: string; content?: string }
+      return {
+        id: generateId(),
+        storyId,
+        content: obj.world ?? obj.content ?? '',
+      }
+    }
     return {
       id: generateId(),
       storyId,
-      content: output.content,
+      content: output.content ?? '',
     }
+  }
+
+  extractTitle(output: AgentOutput): string {
+    if (output.data && typeof output.data === 'object') {
+      const obj = output.data as { title?: string }
+      if (obj.title) return obj.title
+    }
+    return ''
   }
 }

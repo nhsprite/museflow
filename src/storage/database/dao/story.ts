@@ -1,7 +1,8 @@
 import { initDb, getDb, persistDb } from '../index.js'
 import type { Story, StoryCreateInput, StoryStatus } from '../../../types/story.js'
 import { generateId } from '../../../utils/id.js'
-import { getStoryOutputDir } from '../../../utils/paths.js'
+import { getStoryOutputDir, getStoryOutputDirWithTitle } from '../../../utils/paths.js'
+import { renameSync, existsSync } from 'node:fs'
 
 export async function initStoryDb(): Promise<void> {
   await initDb()
@@ -57,6 +58,25 @@ export function updateStoryStatus(id: string, status: StoryStatus): void {
 export function updateStoryTitle(id: string, title: string): void {
   const db = getDb()
   db.run('UPDATE story SET title = ?, updated_at = ? WHERE id = ?', [title, Date.now(), id])
+  persistDb()
+}
+
+export function renameStoryOutputDir(id: string, newOutputDir: string): void {
+  const db = getDb()
+  const stmt = db.prepare('SELECT output_dir FROM story WHERE id = ?')
+  stmt.bind([id])
+  if (!stmt.step()) {
+    stmt.free()
+    return
+  }
+  const oldOutputDir = stmt.getAsObject().output_dir as string
+  stmt.free()
+
+  if (existsSync(oldOutputDir)) {
+    renameSync(oldOutputDir, newOutputDir)
+  }
+
+  db.run('UPDATE story SET output_dir = ?, updated_at = ? WHERE id = ?', [newOutputDir, Date.now(), id])
   persistDb()
 }
 
