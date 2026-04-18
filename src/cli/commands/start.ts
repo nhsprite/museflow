@@ -8,7 +8,7 @@ interface StartOptions {
   idea: string
   chapters: number
   genre: string
-  title?: string
+  title: string
   provider?: string
 }
 
@@ -36,7 +36,7 @@ export async function start(options: StartOptions): Promise<void> {
   await initStoryDb()
 
   const story = createStory({
-    ...(title ? { title } : {}),
+    title,
     idea,
     genre,
     totalChapters: chapters,
@@ -63,6 +63,10 @@ export async function start(options: StartOptions): Promise<void> {
 
     if (result.world) {
       console.log('[MuseFlow] 世界观构建完成\n')
+    }
+
+    if (result.story.title) {
+      console.log(`[MuseFlow] 书名: ${result.story.title}\n`)
     }
 
     if (result.characters.length > 0) {

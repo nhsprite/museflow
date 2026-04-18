@@ -19,7 +19,7 @@ program.command('start')
   .requiredOption('-i, --idea <text>', '故事简介')
   .requiredOption('-c, --chapters <number>', '章节数量', parseInt)
   .option('-g, --genre <name>', '题材类型', 'default')
-  .option('-t, --title <text>', '故事标题（可选）')
+  .requiredOption('-t, --title <text>', '故事标题')
   .option('-p, --provider <name>', '模型提供商 (openai|minimax|local)', 'openai')
   .action(start)
 
