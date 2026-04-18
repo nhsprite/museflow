@@ -146,7 +146,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const output = await agent.run(agentState)
 
   const content = output.content ?? ''
-  await writeChapterContent(state.story.id, chapterIndex, content)
+  await writeChapterContent(state.story.outputDir, chapterIndex, content)
 
   const now = Date.now()
   const newChapter: ChapterMeta = {
@@ -176,7 +176,7 @@ function countChineseWords(text: string): number {
 
 export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
-  const content = await readChapterContent(state.story.id, chapterIndex)
+  const content = await readChapterContent(state.story.outputDir, chapterIndex)
 
   if (content === null) {
     return {
