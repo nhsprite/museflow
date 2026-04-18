@@ -1,4 +1,4 @@
-import { getStory, updateStoryStatus } from '../../storage/database/dao/story.js'
+import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
 import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 
@@ -11,6 +11,7 @@ interface ContinueOptions {
 export async function cont(storyId: string, options: ContinueOptions): Promise<void> {
   const { yes, no } = options
 
+  await initStoryDb()
   const story = getStory(storyId)
   if (!story) {
     console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
