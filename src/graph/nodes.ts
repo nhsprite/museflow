@@ -14,6 +14,7 @@ import {
 import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
 import { writeChapterContent, readChapterContent } from '../storage/filesystem/writer.js'
+import { saveOutline } from '../storage/database/dao/chapter.js'
 import { getGenreSkill } from '../genres/registry.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
@@ -115,6 +116,7 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
 
   const output = await agent.run(agentState)
   const outline = agent.processOutput(output)
+  saveOutline(state.story.id, outline)
 
   return { outline }
 }
