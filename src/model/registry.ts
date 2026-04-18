@@ -35,9 +35,13 @@ class MiniMaxProvider implements ModelProvider {
 
   async chat(messages: Message[], temperature?: number): Promise<string> {
     const apiKey = this.cfg.apiKey ?? process.env.MINIMAX_API_KEY ?? ''
-    const baseUrl = this.cfg.baseUrl ?? 'https://api.minimax.chat/v1'
-    const model = this.cfg.model ?? 'abab6.5s-chat'
-    const res = await fetch(`${baseUrl}/chat_completions`, {
+    // Use api.minimaxi.com for Coding Plan keys (sk-cp-), api.minimax.chat for standard keys
+    const baseUrl = this.cfg.baseUrl ?? (apiKey.startsWith('sk-cp-')
+      ? 'https://api.minimaxi.com/v1'
+      : 'https://api.minimax.chat/v1')
+    const model = this.cfg.model ?? 'MiniMax-M2.7'
+    // MiniMax v2 API uses /text/chatcompletion_v2 endpoint
+    const res = await fetch(`${baseUrl}/text/chatcompletion_v2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7 }),
