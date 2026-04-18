@@ -40,7 +40,7 @@ export function buildNovelGraph() {
   b1.addEdge(START, 'build_world')
   b1.addEdge('build_world', 'create_characters')
   b1.addEdge('create_characters', 'create_outline')
-  b1.addEdge('create_outline', 'draft_chapter')
+  b1.addConditionalEdges('create_outline', (state) => state.isWriting ? 'draft_chapter' : 'finalize_story')
 
   b1.addEdge('draft_chapter', 'validate_chapter')
   b1.addEdge('validate_chapter', 'quality_pass')

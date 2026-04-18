@@ -38,6 +38,11 @@ export const GraphState = Annotation.Root({
   pendingIssues: Annotation<Issue[]>,
   rewriteApproved: Annotation<boolean>,
   rewriteRequested: Annotation<boolean>,
+  /** Controls whether draft_chapter is reachable after create_outline.
+   *  - start / runStory: false (planning only, skip chapter writing)
+   *  - write / continue: true (resume chapter writing)
+   */
+  isWriting: Annotation<boolean>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

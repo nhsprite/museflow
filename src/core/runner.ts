@@ -34,6 +34,7 @@ export async function runStory(input: {
     pendingIssues: [],
     rewriteApproved: false,
     rewriteRequested: false,
+    isWriting: false,
   }
 
   const config: RunnableConfig = {
@@ -58,7 +59,7 @@ export async function continueStory(
     return await graph.invoke(
       new Command({
         goto: userResponse ? 'draft_chapter' : 'finalize_chapter',
-        update: { rewriteApproved: userResponse, rewriteRequested: false },
+        update: { rewriteApproved: userResponse, rewriteRequested: false, isWriting: true },
       }),
       config
     ) as ReducedGraphState
