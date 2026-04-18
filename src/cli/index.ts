@@ -21,6 +21,7 @@ program.command('start')
   .option('-g, --genre <name>', '题材类型', 'default')
   .option('-t, --title <text>', '故事标题（由 AI 自动生成，可不填）')
   .option('-p, --provider <name>', '模型提供商 (openai|minimax|local)', 'openai')
+  .option('-y, --yes', '自动选择第一个标题选项（非交互模式）')
   .action(start)
 
 program.command('write')

@@ -75,7 +75,13 @@ export function createXianxiaSkill(): GenreSkill {
 故事简介：{idea}
 总章节数：{totalChapters}
 
-请输出一份仙侠风格的世界观文档，包含：
+请以以下JSON格式返回（title 为必填字段，不可省略）：
+{
+  "title": "书名",
+  "world": "世界观详细设定内容"
+}
+
+其中 world 字段应包含以下内容：
 1. 修真境界体系（从低到高列出主要境界）
 2. 主要门派或势力
 3. 功法/法术体系
@@ -110,7 +116,13 @@ export function createSciFiSkill(): GenreSkill {
 故事简介：{idea}
 总章节数：{totalChapters}
 
-请输出一份科幻风格的世界观文档，包含：
+请以以下JSON格式返回（title 为必填字段，不可省略）：
+{
+  "title": "书名",
+  "world": "世界观详细设定内容"
+}
+
+其中 world 字段应包含以下内容：
 1. 时间设定（未来/星际/赛博朋克等）
 2. 科技水平与社会结构
 3. 主要势力或星际国家
@@ -144,7 +156,13 @@ export function createHorrorSkill(): GenreSkill {
 故事简介：{idea}
 总章节数：{totalChapters}
 
-请输出一份恐怖风格的世界观文档，包含：
+请以以下JSON格式返回（title 为必填字段，不可省略）：
+{
+  "title": "书名",
+  "world": "世界观详细设定内容"
+}
+
+其中 world 字段应包含以下内容：
 1. 恐惧来源（超自然/心理/未知等）
 2. 主要恐怖实体或现象
 3. 故事发生的地理与社会环境
@@ -178,7 +196,13 @@ export function createUrbanSkill(): GenreSkill {
 故事简介：{idea}
 总章节数：{totalChapters}
 
-请输出一份都市风格的世界观文档，包含：
+请以以下JSON格式返回（title 为必填字段，不可省略）：
+{
+  "title": "书名",
+  "world": "世界观详细设定内容"
+}
+
+其中 world 字段应包含以下内容：
 1. 现代都市背景设定
 2. 社会阶层与职场/校园环境
 3. 特殊能力或异能设定（如有）
@@ -212,7 +236,13 @@ export function createRomanceSkill(): GenreSkill {
 故事简介：{idea}
 总章节数：{totalChapters}
 
-请输出一份言情风格的世界观文档，包含：
+请以以下JSON格式返回（title 为必填字段，不可省略）：
+{
+  "title": "书名",
+  "world": "世界观详细设定内容"
+}
+
+其中 world 字段应包含以下内容：
 1. 故事背景（校园/都市/古代等）
 2. 主要人物及性格特点
 3. 人物关系网络

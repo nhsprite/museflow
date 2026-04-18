@@ -86,16 +86,19 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   const output = await agent.run(agentState)
   const world = agent.processOutput(output, state.story.id)
 
+  if (!world) {
+    console.error('[MuseFlow] 错误: 世界观生成失败，请检查 AI 输出或重试')
+    return { world: null, story: state.story }
+  }
+
   const title = agent.extractTitle(output)
   if (!title) {
-    console.warn('[MuseFlow] 警告: 未能从世界观生成中提取书名，请检查 AI 输出')
+    return { world, story: { ...state.story, title: state.story.title } }
   }
-  let newOutputDir = state.story.outputDir
-  if (title) {
-    updateStoryTitle(state.story.id, title)
-    newOutputDir = getStoryOutputDirWithTitle(title, state.story.id)
-    renameStoryOutputDir(state.story.id, newOutputDir)
-  }
+
+  updateStoryTitle(state.story.id, title)
+  const newOutputDir = getStoryOutputDirWithTitle(title, state.story.id)
+  renameStoryOutputDir(state.story.id, newOutputDir)
 
   return { world, story: { ...state.story, outputDir: newOutputDir, title } }
 }

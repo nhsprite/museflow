@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('inquirer', () => ({
   default: {
     prompt: vi.fn().mockResolvedValue({ selectedIndex: 0 }),
-    Separator: vi.fn().mockImplementation(() => '---'),
+    Separator: vi.fn().mockImplementation(() => ({ type: 'separator', separator: true })),
   },
 }))
 
@@ -98,6 +98,8 @@ describe('title-selector', () => {
 
     beforeEach(async () => {
       inquirer = await import('inquirer')
+      vi.mocked(inquirer.default.prompt).mockResolvedValue({ selectedIndex: 0 })
+      vi.mocked(inquirer.default.Separator).mockImplementation(() => ({ type: 'separator', separator: true }))
     })
 
     afterEach(() => {
@@ -118,6 +120,57 @@ describe('title-selector', () => {
 
       const result = await selectTitleOption(options)
       expect(result.title).toBe('《逆天改命》')
+    })
+
+    it('passes a rawlist question array to inquirer.prompt', async () => {
+      const options: TitleOption[] = [
+        {
+          title: '《逆天改命》',
+          worldDirection: {
+            cultivationSystem: '凡境→灵境→仙境',
+            coreConflict: '资源争夺',
+            worldFeatures: ['中土大陆'],
+          },
+        },
+      ]
+
+      await selectTitleOption(options)
+
+      expect(inquirer.default.prompt).toHaveBeenCalledWith([
+        expect.objectContaining({
+          type: 'rawlist',
+          name: 'selectedIndex',
+          message: '请选择书名和世界观方向：',
+          pageSize: 10,
+        }),
+      ])
+    })
+
+    it('uses an inquirer separator before the regenerate option', async () => {
+      const options: TitleOption[] = [
+        {
+          title: '《逆天改命》',
+          worldDirection: {
+            cultivationSystem: '凡境→灵境→仙境',
+            coreConflict: '资源争夺',
+            worldFeatures: ['中土大陆'],
+          },
+        },
+      ]
+
+      await selectTitleOption(options)
+
+      expect(inquirer.default.Separator).toHaveBeenCalledTimes(1)
+
+      const promptArg = vi.mocked(inquirer.default.prompt).mock.calls[0]?.[0]
+      expect(Array.isArray(promptArg)).toBe(true)
+
+      const question = promptArg?.[0]
+      expect(question?.choices).toEqual([
+        expect.objectContaining({ value: 0 }),
+        { type: 'separator', separator: true },
+        expect.objectContaining({ name: '重新生成选项', value: -1 }),
+      ])
     })
 
     it('throws REGENERATE error when user chooses regenerate', async () => {

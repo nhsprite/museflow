@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "node --loader ts-node/esm src/cli/index.ts",
+    "start": "tsx src/cli/index.ts",
     "dev": "tsx watch src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -11,12 +11,13 @@ interface StartOptions {
   genre: string
   title?: string
   provider?: string
+  yes?: boolean
 }
 
 const MAX_REGENERATE_ATTEMPTS = 3
 
 export async function start(options: StartOptions): Promise<void> {
-  const { idea, chapters, genre, provider } = options
+  const { idea, chapters, genre, provider, yes } = options
 
   console.log('[MuseFlow] 开始创建故事...')
   console.log(`  简介: ${idea}`)
@@ -46,7 +47,13 @@ export async function start(options: StartOptions): Promise<void> {
 
     try {
       const titleOptions = await generateTitleOptions(idea, genre, chapters)
-      selectedOption = await selectTitleOption(titleOptions)
+
+      if (yes) {
+        console.log('[MuseFlow] 非交互模式 - 自动选择第一个选项\n')
+        selectedOption = titleOptions[0]!
+      } else {
+        selectedOption = await selectTitleOption(titleOptions)
+      }
     } catch (err) {
       if (err instanceof Error && err.message === 'REGENERATE') {
         regenerateAttempts++

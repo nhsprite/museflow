@@ -94,23 +94,25 @@ export async function generateTitleOptions(
 }
 
 export async function selectTitleOption(options: TitleOption[]): Promise<TitleOption> {
-  const choices: Array<{ name: string; value: number }> = [
+  const choices: Array<{ name: string; value: number } | InstanceType<typeof inquirer.Separator>> = [
     ...options.map((opt, index) => ({
       name: formatOptionForDisplay(opt, index + 1),
       value: index,
     })),
-    { name: '---', value: -2 },
+    new inquirer.Separator(),
     { name: '重新生成选项', value: -1 },
   ]
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const answer = await (inquirer.prompt as any)({
-    type: 'list',
-    name: 'selectedIndex',
-    message: '请选择书名和世界观方向：',
-    choices,
-    pageSize: 10,
-  })
+  const answer = await (inquirer.prompt as any)([
+    {
+      type: 'rawlist',
+      name: 'selectedIndex',
+      message: '请选择书名和世界观方向：',
+      choices,
+      pageSize: 10,
+    },
+  ])
 
   const selectedIndex = answer.selectedIndex as number
 
@@ -128,8 +130,5 @@ export async function selectTitleOption(options: TitleOption[]): Promise<TitleOp
 
 function formatOptionForDisplay(option: TitleOption, number: number): string {
   const features = option.worldDirection.worldFeatures.join('、')
-  return `${number}. ${option.title}
-   修炼体系：${option.worldDirection.cultivationSystem}
-   核心冲突：${option.worldDirection.coreConflict}
-   世界观特色：${features}`
+  return `${number}. ${option.title} | 修炼体系：${option.worldDirection.cultivationSystem} | 核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
 }

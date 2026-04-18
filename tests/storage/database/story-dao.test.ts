@@ -1,14 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createStory, getStory, updateStoryStatus, updateStoryTitle } from '../../../src/storage/database/dao/story.ts'
 import { getStoryOutputDir } from '../../../src/utils/paths.js'
 
 describe('story DAO', () => {
+  const createdStories: string[] = []
+
   beforeEach(async () => {
     for (const story of ['story_test1', 'story_test2', 'story_test3']) {
       await rm(join(process.cwd(), 'books', story), { force: true, recursive: true }).catch(() => {})
     }
+  })
+
+  afterEach(async () => {
+    await Promise.all(
+      createdStories.splice(0).map(id => rm(join(process.cwd(), 'books', id), { force: true, recursive: true }))
+    )
   })
 
   it('should create and retrieve a story', async () => {
@@ -18,6 +26,7 @@ describe('story DAO', () => {
       genre: 'fantasy',
       totalChapters: 10,
     })
+    createdStories.push(story.id)
     expect(story.id).toBeDefined()
     expect(story.title).toBe('Hello 世界!!! / test')
     expect(story.idea).toBe('test idea')
@@ -35,11 +44,13 @@ describe('story DAO', () => {
 
   it('should use untitled for missing or blank titles', async () => {
     const untitled = createStory({ idea: 'test', genre: 'fantasy', totalChapters: 3 })
+    createdStories.push(untitled.id)
     expect(untitled.outputDir).toBe(getStoryOutputDir(untitled.id, undefined))
   })
 
   it('should update story status', async () => {
     const story = createStory({ idea: 'test', genre: 'scifi', totalChapters: 5 })
+    createdStories.push(story.id)
     updateStoryStatus(story.id, 'worldbuilding')
     const loaded = getStory(story.id)
     expect(loaded?.status).toBe('worldbuilding')
@@ -47,6 +58,7 @@ describe('story DAO', () => {
 
   it('should update story title', async () => {
     const story = createStory({ idea: 'test', genre: 'xianxia', totalChapters: 20 })
+    createdStories.push(story.id)
     const originalOutputDir = story.outputDir
     updateStoryTitle(story.id, 'My Novel Title')
     const loaded = getStory(story.id)

@@ -34,13 +34,13 @@ export class WorldbuilderAgent extends BaseAgent {
     const trimmed = content.trim()
     const jsonMatch = trimmed.match(/\{[\s\S]*?\}/)
     if (!jsonMatch) {
-      return { success: true, content }
+      return { success: false, error: '无法解析世界观数据：未找到 JSON 格式' }
     }
     try {
       const data = JSON.parse(jsonMatch[0])
       return { success: true, data }
     } catch {
-      return { success: true, content }
+      return { success: false, error: '无法解析世界观数据：JSON 格式错误' }
     }
   }
 
