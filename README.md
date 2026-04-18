@@ -64,17 +64,20 @@ npm start -- config set --provider local --model llama3 --base-url http://localh
 ## 启动故事
 
 ```bash
-# 启动新故事（示例：3章，仙侠题材）
+# 启动新故事（仅规划和创建，不写正文）
 npm start -- start --idea "一个少年获得修真能力后崛起为最强者的故事" --chapters 3 --genre xianxia
 
-# 继续生成（从断点恢复，或处理重写确认）
-npm start -- continue <story-id>
+# 撰写故事正文
+npm start -- write <story-id>
 
 # 自动确认重写（不询问直接重写）
-npm start -- continue <story-id> --yes
+npm start -- write <story-id> --yes
 
 # 自动跳过重写（不重写直接继续下一章）
-npm start -- continue <story-id> --no
+npm start -- write <story-id> --no
+
+# 继续撰写（处理重写确认，或从断点恢复）
+npm start -- continue <story-id>
 
 # 查看故事状态
 npm start -- status <story-id>
@@ -83,13 +86,13 @@ npm start -- status <story-id>
 npm start -- info <story-id>
 ```
 
-`start` 命令会创建故事并从世界观构建开始自动跑完规划阶段，然后在每章生成后停顿等待确认。故事 ID 会输出在终端。后续用 `continue` 继续。
+`start` 命令创建故事并完成世界观、人物、大纲等规划阶段。`write` 命令从第一章开始撰写正文，在每章生成后停顿等待确认（或用 `--yes`/`--no` 自动处理）。`continue` 命令同样用于继续撰写，支持重写确认交互。
 
 ## 项目结构
 
 ```
 src/
-├── cli/           # 命令行入口
+├── cli/           # 命令行入口（start/write/continue/status/info/config/genres）
 ├── graph/         # LangGraph 图编排（状态、节点、边、检查点）
 ├── agents/        # 8 类 Agent 实现
 ├── core/          # 核心业务逻辑（Runner）
@@ -106,24 +109,24 @@ src/
 
 ## 数据存储
 
-故事数据保存在本地，目录位于 `~/.museflow/`：
+故事数据保存在本地 `./books/` 目录下：
 
 | 路径 | 内容 |
 |------|------|
 | `~/.museflow/config.json` | 用户配置（API key、provider 等） |
-| `~/.museflow/outputs/{story_id}/chapters/` | 各章正文 `.md` 文件 |
-| `~/.museflow/checkpoints/` | SQLite 断点恢复文件 |
+| `./books/{story_id}/chapter_{n}.md` | 各章正文 `.md` 文件 |
+| `./books/{story_id}/{story_id}.sqlite` | SQLite 断点恢复文件 |
 
 ## 常见问题
 
-**`continue` 没有反应**  
-确保传入了 story-id：`npm start -- continue <story-id>`
+**`write` / `continue` 没有反应**  
+确保传入了 story-id：`npm start -- write <story-id>`
 
 **API 调用报错**  
 检查 config 中 api key 和 base url 是否正确，用 `npm start -- config show` 确认。
 
 **故事停在"等待重写确认"**  
-用 `--yes` 自动重写，或 `--no` 跳过重写继续下一章。
+用 `--yes` 自动重写，或 `--no` 跳过重写继续下一章：`npm start -- write <story-id> --yes`
 
 ## 开发
 

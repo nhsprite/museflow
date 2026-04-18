@@ -64,9 +64,10 @@ export function getChapters(storyId: string): ChapterMeta[] {
 
 export function saveOutline(storyId: string, chapters: { number: number; title: string; description: string }[]): void {
   const db = getDb()
+  db.run('DELETE FROM outline WHERE story_id = ?', [storyId])
   for (const ch of chapters) {
     db.run(`
-      INSERT OR REPLACE INTO outline (id, story_id, chapter_number, title, description)
+      INSERT INTO outline (id, story_id, chapter_number, title, description)
       VALUES (?, ?, ?, ?, ?)
     `, [generateId('outl'), storyId, ch.number, ch.title, ch.description])
   }

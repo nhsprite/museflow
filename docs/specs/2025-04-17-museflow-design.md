@@ -60,7 +60,7 @@ CLI 工具（`museflow start --idea "..."`），本地运行，数据完全在�
 - 章节元数据（chapter table）
 
 **文件系统**（正文内容）：
-- 路径：`outputs/{story_id}/chapters/chapter_{n}.md`
+- 路径：`books/{story_id}/chapter_{n}.md`
 - 每章一个 `.md` 文件，包含完整正文
 
 ### 4.2 数据库 Schema（概要）
@@ -241,7 +241,7 @@ LangGraph 内置 SQLite CheckpointSaver：
 import { SqliteSaver } from "@langgraph/langgraph-native/checkpoint-sqlite"
 
 const checkpointer = new SqliteSaver({
-  dbPath: "~/.museflow/checkpoints/{story_id}.sqlite"
+  dbPath: "books/{story_id}/{story_id}.sqlite"
 })
 
 const graph = new StateGraph({ /* ... */ })
@@ -250,7 +250,7 @@ const graph = new StateGraph({ /* ... */ })
 ```
 
 **恢复流程**：
-1. CLI 启动时检测 `~/.museflow/checkpoints/{story_id}.sqlite` 是否存在
+1. CLI 启动时检测 `books/{story_id}/{story_id}.sqlite` 是否存在
 2. 存在则 `graph.getState({ config: { thread_id: story_id } })` 恢复状态
 3. 从断点继续执行（用户执行 `museflow continue` 时自动触发）
 
@@ -308,7 +308,7 @@ async function build_world(state: GraphState, config: LangGraphConfig) {
 
 ### 6.2 Checkpoint 文件路径
 
-`~/.museflow/checkpoints/{story_id}.sqlite`
+`books/{story_id}/{story_id}.sqlite`
 
 每创建一个新故事，对应一个独立的 Checkpoint SQLite 文件，重启后直接加载。
 

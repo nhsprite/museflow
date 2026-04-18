@@ -20,7 +20,7 @@
 ### 3.1 Path Convention
 
 ```
-outputs/{story_id}/chapters/chapter_{n}.md
+books/{story_id}/chapter_{n}.md
 ```
 
 Where `n` is 0-indexed (`chapter_0.md`, `chapter_1.md`, … `chapter_{N-1}.md`).

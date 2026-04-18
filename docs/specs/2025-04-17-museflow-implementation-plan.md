@@ -72,7 +72,7 @@ Create the minimum project skeleton required to support strict TypeScript develo
 | `package.json` | Project metadata, `bin` entry, scripts for `build`, `test`, `typecheck`, `lint`, `start:dev` |
 | `tsconfig.json` | Strict TypeScript config, CommonJS or ESM decision, output to `dist/` |
 | `vitest.config.ts` | Test runner config, temp test environment defaults, coverage config |
-| `.gitignore` | Ignore `dist/`, `node_modules/`, `.sqlite`, WAL files, `outputs/`, `.museflow/` temp fixtures |
+| `.gitignore` | Ignore `dist/`, `node_modules/`, `.sqlite`, WAL files, `books/`, `.museflow/` temp fixtures |
 | `README.md` | Short project description, local setup, script usage, current status |
 | `tests/smoke/project-smoke.test.ts` | Minimal test that verifies the package can load core modules without runtime failure |
 
@@ -165,7 +165,7 @@ The storage layer should extend the design doc with:
 - A story workspace can be created.
 - Metadata can be inserted and reloaded.
 - Context can be reconstructed after process restart.
-- Chapter markdown can be written to `outputs/{story_id}/chapters/`.
+- Chapter markdown can be written to `books/{story_id}/chapter_{n}.md`.
 
 ## Phase 2. Config, Provider Abstraction, And Genre System
 
@@ -263,7 +263,7 @@ Build the LangGraph state machine that orchestrates the entire novel generation 
 | `src/graph/nodes.ts` | All node functions (`build_world`, `create_characters`, `create_outline`, `draft_chapter`, `quality_pass`, `detect_foreshadowing`, `detect_hallucination`, `detect_consistency`, `request_rewrite`, `save_checkpoint`, `finalize_chapter`, `finalize_story`) |
 | `src/graph/edges.ts` | Conditional edge functions (`should_continue`, `after_user_confirmation`, `should_start_chapters`) |
 | `src/graph/novel.graph.ts` | `new StateGraph(...)` construction, node registration, edge registration, `.compile({ checkpointer })` |
-| `src/graph/checkpointer.ts` | `SqliteSaver` factory / wrapper for `~/.museflow/checkpoints/` |
+| `src/graph/checkpointer.ts` | `SqliteSaver` factory / wrapper for `books/{story_id}/` |
 | `src/core/runner.ts` | Public API: `runStory(input)`, `continueStory(storyId)`, `getState(storyId)`, `resumeFromInterrupt(storyId, userResponse)` |
 | `tests/graph/state.test.ts` | GraphState type validity, partial state updates |
 | `tests/graph/nodes.test.ts` | Node function signatures, input/output contract (using fakes) |

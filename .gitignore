@@ -11,7 +11,9 @@ dist/
 
 # MuseFlow runtime data
 .museflow/
-outputs/
+
+# Local books (generated stories)
+books/
 
 # Environment
 .env

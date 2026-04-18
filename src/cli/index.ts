@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import { start } from './commands/start.js'
+import { write } from './commands/write.js'
 import { cont } from './commands/continue.js'
 import { status } from './commands/status.js'
 import { info } from './commands/info.js'
@@ -14,13 +15,20 @@ program
   .version('0.1.0')
 
 program.command('start')
-  .description('开始一个新的故事')
+  .description('开始一个新的故事（仅规划和创建）')
   .requiredOption('-i, --idea <text>', '故事简介')
   .requiredOption('-c, --chapters <number>', '章节数量', parseInt)
   .option('-g, --genre <name>', '题材类型', 'default')
   .option('-t, --title <text>', '故事标题（可选）')
   .option('-p, --provider <name>', '模型提供商 (openai|minimax|local)', 'openai')
   .action(start)
+
+program.command('write')
+  .description('撰写故事正文')
+  .argument('<story-id>', '故事ID')
+  .option('-y, --yes', '自动确认重写请求')
+  .option('-n, --no', '自动拒绝重写请求')
+  .action(write)
 
 program.command('continue')
   .description('继续一个未完成的故事')
