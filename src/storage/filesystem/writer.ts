@@ -1,5 +1,6 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
 import { getChapterFilePath } from '../../utils/paths.js'
 
@@ -19,6 +20,24 @@ export async function writeChapterContent(
   const filePath = getChapterFilePath(outputDir, chapterNumber)
   await writeFile(filePath, content, 'utf-8')
   logger.debug(`Chapter ${chapterNumber} written to: ${filePath}`)
+}
+
+export async function writeOutlineContent(
+  outputDir: string,
+  storyTitle: string,
+  outline: { number: number; title: string; description: string }[],
+): Promise<void> {
+  await ensureStoryDir(outputDir)
+  const lines = [`# ${storyTitle || '故事大纲'}`, '', '---', '']
+  for (const ch of outline) {
+    lines.push(`## 第${ch.number}章　${ch.title}`, '')
+    lines.push(ch.description, '')
+    lines.push('', '---', '')
+  }
+  const content = lines.join('\n').trim() + '\n'
+  const filePath = join(outputDir, 'outline.md')
+  await writeFile(filePath, content, 'utf-8')
+  logger.debug(`Outline written to: ${filePath}`)
 }
 
 export async function readChapterContent(
