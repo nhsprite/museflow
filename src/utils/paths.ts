@@ -34,7 +34,7 @@ export function getStoryOutputDirWithTitle(title: string, storyId: string): stri
 }
 
 export function getChapterFilePath(outputDir: string, chapterNumber: number): string {
-  return join(outputDir, `chapter_${chapterNumber}.md`)
+  return join(outputDir, `chapter_${chapterNumber + 1}.md`)
 }
 
 export function getConfigFilePath(): string {
