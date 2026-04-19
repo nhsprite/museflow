@@ -24,7 +24,7 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
     process.exit(1)
   }
 
-  console.log(`[MuseFlow] 继续故事: ${story.idea}`)
+  console.log(`[MuseFlow] 继续故事: ${story.title}`)
   console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
   console.log(`  状态: ${state.rewriteRequested ? '等待重写确认' : '撰写中'}\n`)
 

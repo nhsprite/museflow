@@ -21,11 +21,11 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
   }
 
   if (story.status === 'outlining') {
-    console.log(`[MuseFlow] 开始撰写: ${story.idea}`)
+    console.log(`[MuseFlow] 开始撰写: ${story.title}`)
     console.log(`  总章节: ${state.totalChapters}`)
     console.log(`  从第 1 章开始\n`)
   } else {
-    console.log(`[MuseFlow] 继续撰写: ${story.idea}`)
+    console.log(`[MuseFlow] 继续撰写: ${story.title}`)
     console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}\n`)
   }
 

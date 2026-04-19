@@ -21,7 +21,7 @@ export async function rewrite(storyId: string, _options: RewriteOptions): Promis
   }
 
   if (state.pendingIssues.length > 0) {
-    console.log('[MuseFlow] 重写章节: ', story.idea)
+    console.log('[MuseFlow] 重写章节: ', story.title)
     console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
     console.log('[MuseFlow] 发现以下问题:')
     for (const issue of state.pendingIssues) {
@@ -33,7 +33,7 @@ export async function rewrite(storyId: string, _options: RewriteOptions): Promis
     }
     console.log()
   } else {
-    console.log(`[MuseFlow] 重写章节: ${story.idea}`)
+    console.log(`[MuseFlow] 重写章节: ${story.title}`)
     console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
     console.log('[MuseFlow] 当前章节没有已知问题，确认重写？')
     const answer = await question('  输入 y 确认重写，输入 n 取消 > ')
