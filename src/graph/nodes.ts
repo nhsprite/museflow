@@ -211,12 +211,12 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = newChapter
 
+  const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
+
   return {
     chapters: newChapters,
-    // Clear pendingIssues when rewriting - the new draft will be validated
-    // by subsequent nodes which will populate fresh issues if needed.
-    // This prevents stale issues from causing infinite rewrite loops.
-    pendingIssues: state.rewriteApproved ? [] : state.pendingIssues,
+    rewriteApproved: hasErrors ? true : state.rewriteApproved,
+    pendingIssues: hasErrors || state.rewriteApproved ? [] : state.pendingIssues,
   }
 }
 
