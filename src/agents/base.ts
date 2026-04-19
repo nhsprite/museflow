@@ -72,6 +72,7 @@ export interface AgentState {
   chapterSummaries?: string[]
   chapterTitle?: string
   chapterSummary?: string
+  timelineSnapshot?: string | null
 }
 
 export interface AgentOutput {

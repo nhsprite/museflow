@@ -19,6 +19,13 @@ export class ChapterAgent extends BaseAgent {
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
+    const timelineSection = state.timelineSnapshot
+      ? `上一章结束时的状态：
+${state.timelineSnapshot}
+
+请在继续写作时保持与上述状态的一致性。`
+      : ''
+
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
 本章大纲：
@@ -35,6 +42,8 @@ ${state.characters || '（尚未创建）'}
 ${previousSummary}
 
 ${chapterSupplement}
+
+${timelineSection}
 
 写作要求：
 1. 按照大纲展开剧情，保持文风一致
