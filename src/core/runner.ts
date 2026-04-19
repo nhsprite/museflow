@@ -64,6 +64,7 @@ export async function runStory(input: {
     rewriteApproved: false,
     rewriteRequested: false,
     isWriting: false,
+    writeOneChapterOnly: false,
     lastPrintedChapter: -1,
     lastTimelineSnapshot: null,
   }
@@ -95,7 +96,7 @@ export async function continueStory(
     return await graph.invoke(
       new Command({
         goto: userResponse ? 'draft_chapter' : 'finalize_chapter',
-        update: { rewriteApproved: userResponse, rewriteRequested: false, isWriting: true },
+        update: { rewriteApproved: userResponse, rewriteRequested: false, isWriting: true, writeOneChapterOnly: false },
       }),
       config
     ) as ReducedGraphState
@@ -104,7 +105,7 @@ export async function continueStory(
   return await graph.invoke(
     new Command({
       goto: 'draft_chapter',
-      update: { rewriteApproved: false, rewriteRequested: false, isWriting: true },
+      update: { rewriteApproved: false, rewriteRequested: false, isWriting: true, writeOneChapterOnly: true },
     }),
     config
   ) as ReducedGraphState

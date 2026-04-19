@@ -22,5 +22,8 @@ export function after_user_confirmation(state: ReducedGraphState): string {
 }
 
 export function is_last_chapter(state: ReducedGraphState): string {
+  if (state.writeOneChapterOnly) {
+    return 'finalize_story'
+  }
   return state.currentChapterIndex >= state.totalChapters - 1 ? 'finalize_story' : 'next_chapter'
 }
