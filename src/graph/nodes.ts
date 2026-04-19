@@ -368,16 +368,20 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   }
 
   const nextIndex = state.currentChapterIndex + 1
+  if (nextIndex < state.totalChapters) {
+    console.log(`\n[MuseFlow] 第 ${nextIndex + 1}/${state.totalChapters} 章处理完成`)
+  }
+
   return {
     currentChapterIndex: nextIndex,
     pendingIssues: [],
     rewriteRequested: false,
     rewriteApproved: false,
     chapterSummaries: state.chapterSummaries,
-    lastPrintedChapter: chapterIndex,
   }
 }
 
 export async function finalize_story(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  console.log('\n[MuseFlow] 全部章节撰写完成！')
   return {}
 }

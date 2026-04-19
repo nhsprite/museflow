@@ -76,23 +76,9 @@ async function handleWrite(storyId: string, userResponse?: boolean): Promise<voi
 
     const currentChapter = result.currentChapterIndex
     const totalChapters = result.totalChapters
-    const lastPrinted = result.lastPrintedChapter ?? -1
-
-    if (currentChapter < totalChapters && currentChapter > lastPrinted) {
-      console.log(`\n[MuseFlow] 第 ${currentChapter + 1}/${totalChapters} 章处理完成`)
-
-      if (result.pendingIssues.length > 0) {
-        const errors = result.pendingIssues.filter(i => i.severity === 'error')
-        if (errors.length > 0) {
-          console.log(`\n[MuseFlow] 发现 ${errors.length} 个严重问题`)
-          console.log('[MuseFlow] 请使用 museflow write 继续处理')
-        }
-      }
-    }
 
     if (currentChapter >= totalChapters) {
       updateStatus('done')
-      console.log('\n[MuseFlow] 全部章节撰写完成！')
     } else if (!result.rewriteRequested) {
       updateStatus('writing')
       await handleWrite(storyId, undefined)
