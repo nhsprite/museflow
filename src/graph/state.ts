@@ -43,6 +43,10 @@ export const GraphState = Annotation.Root({
    *  - write / continue: true (resume chapter writing)
    */
   isWriting: Annotation<boolean>,
+  /** Tracks the last chapter index for which completion was printed.
+   *  Prevents duplicate prints during graph replay.
+   */
+  lastPrintedChapter: Annotation<number>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

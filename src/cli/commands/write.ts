@@ -76,8 +76,9 @@ async function handleWrite(storyId: string, userResponse?: boolean): Promise<voi
 
     const currentChapter = result.currentChapterIndex
     const totalChapters = result.totalChapters
+    const lastPrinted = result.lastPrintedChapter ?? -1
 
-    if (currentChapter < totalChapters) {
+    if (currentChapter < totalChapters && currentChapter > lastPrinted) {
       console.log(`\n[MuseFlow] 第 ${currentChapter + 1}/${totalChapters} 章处理完成`)
 
       if (result.pendingIssues.length > 0) {

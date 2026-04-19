@@ -374,6 +374,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     rewriteRequested: false,
     rewriteApproved: false,
     chapterSummaries: state.chapterSummaries,
+    lastPrintedChapter: chapterIndex,
   }
 }
 
