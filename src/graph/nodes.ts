@@ -147,6 +147,10 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
   const output = await agent.run(agentState)
   const outline = agent.processOutput(output)
 
+  if (outline.length === 0) {
+    throw new Error('[MuseFlow] 错误：大纲解析失败，AI 输出格式无法识别，请重试')
+  }
+
   saveOutline(state.story.id, outline)
   await writeOutlineContent(state.story.outputDir, state.story.title, outline)
 

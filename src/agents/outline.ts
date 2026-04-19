@@ -44,10 +44,12 @@ ${state.characters || '（尚未创建）'}
 
 ${userContent}
 
-重要提醒：必须严格生成 exactly ${state.totalChapters} 个章节，不能多也不能少。`
+重要提醒：
+1. 必须严格生成 exactly ${state.totalChapters} 个章节，不能多也不能少
+2. 必须以 JSON 数组格式输出，每个章节是独立对象，包含 number、title、description 字段`
 
     return [
-      this.systemMessage('你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。'),
+      this.systemMessage('你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。\n\n重要：请务必以 JSON 数组格式输出大纲，每个章节必须是独立的对象，包含以下字段：\n- number：章节编号（数字）\n- title：章节标题（字符串）\n- description：本章核心事件描述（字符串）\n\n示例格式：\n[{"number": 1, "title": "第一章标题", "description": "核心事件..."}, ...]'),
       this.userMessage(context),
     ]
   }
