@@ -190,7 +190,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const output = await agent.run(agentState)
 
   const content = output.content ?? ''
-  await writeChapterContent(state.story.outputDir, chapterIndex, content)
+  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const now = Date.now()
   const newChapter: ChapterMeta = {
