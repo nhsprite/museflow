@@ -77,6 +77,10 @@ export function getStoryMetaPath(storyId: string): string {
   return join(getOutputsDir(), storyId, 'meta.json')
 }
 
+export function getStoryMetaPathFromOutputDir(outputDir: string): string {
+  return join(outputDir, 'meta.json')
+}
+
 export async function readMetaJson(storyId: string): Promise<StoryMeta | null> {
   const path = getStoryMetaPath(storyId)
   if (!existsSync(path)) return null
@@ -90,29 +94,70 @@ export async function readMetaJson(storyId: string): Promise<StoryMeta | null> {
 }
 
 export async function writeMetaJson(storyId: string, meta: StoryMeta): Promise<void> {
-  ensureStoryDir(storyId)
-  const path = getStoryMetaPath(storyId)
+  const outputDir = meta.story.outputDir
+  mkdirSync(outputDir, { recursive: true })
+  const path = getStoryMetaPathFromOutputDir(outputDir)
   writeFileSync(path, JSON.stringify(meta, null, 2), 'utf-8')
-  logger.debug(`Saved meta.json for story ${storyId}`)
+  logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
 }
 
 export function readMetaJsonSync(storyId: string): StoryMeta | null {
   const path = getStoryMetaPath(storyId)
+  if (existsSync(path)) {
+    try {
+      const content = readFileSync(path, 'utf-8')
+      return JSON.parse(content) as StoryMeta
+    } catch (err) {
+      logger.error(`Failed to read meta.json for story ${storyId}: ${err}`)
+      return null
+    }
+  }
+
+  const { readdirSync } = require('node:fs')
+  const booksDir = getOutputsDir()
+  if (!existsSync(booksDir)) return null
+
+  const storyIdSuffix = storyId.split('_').pop() ?? storyId
+  const shortId = storyIdSuffix.slice(0, 6).toLowerCase()
+
+  try {
+    const entries = readdirSync(booksDir)
+    for (const entry of entries) {
+      if (entry.includes(`-${shortId}`) || entry.includes(`_${shortId}`)) {
+        const metaPath = join(booksDir, entry, 'meta.json')
+        if (existsSync(metaPath)) {
+          const content = readFileSync(metaPath, 'utf-8')
+          const meta = JSON.parse(content) as StoryMeta
+          if (meta.story.id === storyId) {
+            return meta
+          }
+        }
+      }
+    }
+  } catch {
+  }
+
+  return null
+}
+
+export function readMetaJsonSyncFromOutputDir(outputDir: string): StoryMeta | null {
+  const path = getStoryMetaPathFromOutputDir(outputDir)
   if (!existsSync(path)) return null
   try {
     const content = readFileSync(path, 'utf-8')
     return JSON.parse(content) as StoryMeta
   } catch (err) {
-    logger.error(`Failed to read meta.json for story ${storyId}: ${err}`)
+    logger.error(`Failed to read meta.json at ${outputDir}: ${err}`)
     return null
   }
 }
 
 export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
-  ensureStoryDir(storyId)
-  const path = getStoryMetaPath(storyId)
+  const outputDir = meta.story.outputDir
+  mkdirSync(outputDir, { recursive: true })
+  const path = getStoryMetaPathFromOutputDir(outputDir)
   writeFileSync(path, JSON.stringify(meta, null, 2), 'utf-8')
-  logger.debug(`Saved meta.json for story ${storyId}`)
+  logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
 }
 
 // Re-export types used by other modules
