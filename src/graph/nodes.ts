@@ -185,6 +185,8 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
     timelineSnapshot,
+    // Pass issues to agent when rewriting so it knows what to fix
+    ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
   }
 
   const output = await agent.run(agentState)

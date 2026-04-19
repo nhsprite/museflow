@@ -26,6 +26,13 @@ ${state.timelineSnapshot}
 请在继续写作时保持与上述状态的一致性。`
       : ''
 
+    const issuesSection = state.issues && state.issues.length > 0
+      ? `本章需要修复的问题：
+${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
+
+请在重写时务必修复以上问题。`
+      : ''
+
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
 本章大纲：
@@ -44,6 +51,8 @@ ${previousSummary}
 ${chapterSupplement}
 
 ${timelineSection}
+
+${issuesSection}
 
 写作要求：
 1. 按照大纲展开剧情，保持文风一致

@@ -3,6 +3,7 @@ import { createProvider } from '../model/registry.js'
 import { getGenreSkill } from '../genres/registry.js'
 import type { GenreSkill } from '../types/genre.js'
 import type { WorldDirection } from '../types/story.js'
+import type { Issue } from '../types/agent.js'
 
 export abstract class BaseAgent {
   protected provider: ModelProvider
@@ -73,6 +74,7 @@ export interface AgentState {
   chapterTitle?: string
   chapterSummary?: string
   timelineSnapshot?: string | null
+  issues?: Issue[]
 }
 
 export interface AgentOutput {
