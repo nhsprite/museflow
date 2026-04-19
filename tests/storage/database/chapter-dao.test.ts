@@ -5,7 +5,7 @@ import { createStory } from '../../../src/storage/database/dao/story.ts'
 import { saveOutline, getOutline } from '../../../src/storage/database/dao/chapter.ts'
 
 describe('chapter DAO outline persistence', () => {
-  const createdStories: string[] = []
+  const createdStories: Array<{ id: string; outputDir: string }> = []
 
   beforeEach(async () => {
     await rm(join(process.cwd(), 'books', 'story_test1'), { force: true, recursive: true }).catch(() => {})
@@ -15,13 +15,13 @@ describe('chapter DAO outline persistence', () => {
 
   afterEach(async () => {
     await Promise.all(
-      createdStories.splice(0).map(id => rm(join(process.cwd(), 'books', id), { force: true, recursive: true }))
+      createdStories.splice(0).map(({ outputDir }) => rm(outputDir, { force: true, recursive: true }))
     )
   })
 
   it('should persist outline via saveOutline', () => {
     const story = createStory({ idea: 'test', genre: 'xianxia', totalChapters: 3 })
-    createdStories.push(story.id)
+    createdStories.push({ id: story.id, outputDir: story.outputDir })
     const chapters = [
       { number: 1, title: '第一章', description: '少年觉醒' },
       { number: 2, title: '第二章', description: '入门修行' },
@@ -38,7 +38,7 @@ describe('chapter DAO outline persistence', () => {
 
   it('should replace existing outline when saveOutline is called again', () => {
     const story = createStory({ idea: 'test', genre: 'xianxia', totalChapters: 2 })
-    createdStories.push(story.id)
+    createdStories.push({ id: story.id, outputDir: story.outputDir })
     saveOutline(story.id, [
       { number: 1, title: '旧第一章', description: '旧描述' },
       { number: 2, title: '旧第二章', description: '旧描述' },
@@ -55,7 +55,7 @@ describe('chapter DAO outline persistence', () => {
 
   it('should return empty array when no outline exists', () => {
     const story = createStory({ idea: 'test', genre: 'fantasy', totalChapters: 5 })
-    createdStories.push(story.id)
+    createdStories.push({ id: story.id, outputDir: story.outputDir })
     const loaded = getOutline(story.id)
     expect(loaded).toHaveLength(0)
   })
