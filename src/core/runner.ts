@@ -65,6 +65,7 @@ export async function runStory(input: {
     rewriteRequested: false,
     isWriting: false,
     lastPrintedChapter: -1,
+    lastTimelineSnapshot: null,
   }
 
   const config: RunnableConfig = {

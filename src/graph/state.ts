@@ -47,6 +47,10 @@ export const GraphState = Annotation.Root({
    *  Prevents duplicate prints during graph replay.
    */
   lastPrintedChapter: Annotation<number>,
+  /** Stores the last generated timeline snapshot stateSummary string.
+   *  Used to track timeline state across the graph without re-reading from disk.
+   */
+  lastTimelineSnapshot: Annotation<string | null>,
 })
 
 export type ReducedGraphState = typeof GraphState.State
