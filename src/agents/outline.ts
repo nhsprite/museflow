@@ -53,9 +53,7 @@ ${userContent}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    console.log('[DEBUG OutlineAgent] Raw AI output:', trimmed.slice(0, 2000))
 
-    // Try markdown code blocks first
     const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
     if (codeBlockMatch) {
       try {
@@ -65,7 +63,6 @@ ${userContent}
       }
     }
 
-    // Try direct JSON match
     const jsonMatch = trimmed.match(/\[[\s\S]*?\]/) || trimmed.match(/\{[\s\S]*?\}/)
     if (jsonMatch) {
       try {
@@ -75,9 +72,7 @@ ${userContent}
       }
     }
 
-    // Parse markdown format: extract chapter info from markdown text
-    // Format: ### 第X章：标题 or ## 第X章 标题
-    const chapterMatches = [...trimmed.matchAll(/#{1,3}\s*第[一二三四五六七八九十百\d]+章[：:]\s*(.+)/g)]
+    const chapterMatches = [...trimmed.matchAll(/#{1,3}\s*第[一二三四五六七八九十百\d]+章[··：:]\s*(.+)/g)]
     if (chapterMatches.length > 0) {
       const chapters = chapterMatches.map((match, idx) => {
         const title = match[1]!.trim()
@@ -95,18 +90,14 @@ ${userContent}
       }
     }
 
-    console.log('[DEBUG OutlineAgent] No JSON or markdown format found')
     return { success: false, error: '无法解析大纲数据：未找到 JSON 格式' }
   }
 
   processOutput(output: AgentOutput): ChapterOutline[] {
     if (!output.success) {
-      console.log('[DEBUG] OutlineAgent: output.success is false, error:', output.error)
       return []
     }
     if (!Array.isArray(output.data)) {
-      console.log('[DEBUG] OutlineAgent: output.data is not array')
-      // Handle wrapping object format or Chinese field names
       if (output.data && typeof output.data === 'object') {
         const obj = output.data as Record<string, unknown>
         let chapters: unknown[] = []

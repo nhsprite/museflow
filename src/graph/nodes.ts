@@ -84,9 +84,7 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   }
 
   const output = await agent.run(agentState)
-  console.log('[DEBUG] WorldbuilderAgent raw output:', JSON.stringify(output)?.slice(0, 1000))
   const world = agent.processOutput(output, state.story.id)
-  console.log('[DEBUG] WorldbuilderAgent processed world:', world ? 'exists' : 'null')
 
   if (!world) {
     console.error('[MuseFlow] 错误: 世界观生成失败，请检查 AI 输出或重试')
@@ -147,15 +145,7 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
   }
 
   const output = await agent.run(agentState)
-  console.log('[DEBUG] OutlineAgent raw output:', output)
   const outline = agent.processOutput(output)
-  console.log('[DEBUG] OutlineAgent processed:', outline)
-  console.log('[DEBUG] World content exists:', !!worldContent)
-  console.log('[DEBUG] Characters:', state.characters.length)
-
-  if (outline.length === 0 && output.success) {
-    console.log('[DEBUG] Warning: outline is empty despite success. Raw data:', output.data)
-  }
 
   saveOutline(state.story.id, outline)
   await writeOutlineContent(state.story.outputDir, state.story.title, outline)

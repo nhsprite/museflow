@@ -22,7 +22,7 @@ class OpenAIProvider implements ModelProvider {
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7, max_tokens: this.cfg.maxTokens ?? 4096 }),
+      body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7, max_tokens: this.cfg.maxTokens ?? 32768 }),
       signal: AbortSignal.timeout(300000),
     })
     if (!res.ok) throw new Error(`OpenAI API error: ${res.status}`)

@@ -32,32 +32,24 @@ export class WorldbuilderAgent extends BaseAgent {
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    console.log('[DEBUG WorldbuilderAgent] Raw AI output:', trimmed.slice(0, 2000))
 
-    // Try to extract JSON from markdown code blocks first
     const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
     if (codeBlockMatch) {
       try {
         const data = JSON.parse(codeBlockMatch[1]!.trim())
-        console.log('[DEBUG WorldbuilderAgent] Parsed from code block:', JSON.stringify(data)?.slice(0, 500))
         return { success: true, data }
-      } catch (e) {
-        console.log('[DEBUG WorldbuilderAgent] Code block parse failed:', e)
+      } catch {
       }
     }
 
-    // Try direct JSON match
     const jsonMatch = trimmed.match(/\{[\s\S]*?\}/)
     if (!jsonMatch) {
-      console.log('[DEBUG WorldbuilderAgent] No JSON found')
       return { success: false, error: '无法解析世界观数据：未找到 JSON 格式' }
     }
     try {
       const data = JSON.parse(jsonMatch[0])
-      console.log('[DEBUG WorldbuilderAgent] Parsed from direct match:', JSON.stringify(data)?.slice(0, 500))
       return { success: true, data }
-    } catch (e) {
-      console.log('[DEBUG WorldbuilderAgent] Direct JSON parse failed:', e)
+    } catch {
       return { success: false, error: '无法解析世界观数据：JSON 格式错误' }
     }
   }

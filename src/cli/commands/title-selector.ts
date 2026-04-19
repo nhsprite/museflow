@@ -67,12 +67,25 @@ export async function generateTitleOptions(
 
   const response = await provider.chat(messages, 0.8)
 
-  const jsonMatch = response.match(/\[[\s\S]*\]/)
+  let jsonStr = response.trim()
+
+  const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1]!.trim()
+  }
+
+  const jsonMatch = jsonStr.match(/\[[\s\S]*\]/)
   if (!jsonMatch) {
     throw new Error('无法从 AI 响应中解析标题选项')
   }
 
-  const parsed = JSON.parse(jsonMatch[0]) as RawTitleOption[]
+  let parsed: RawTitleOption[]
+  try {
+    parsed = JSON.parse(jsonMatch[0]) as RawTitleOption[]
+  } catch {
+    const cleaned = jsonMatch[0].replace(/"/g, '"').replace(/"/g, '"')
+    parsed = JSON.parse(cleaned) as RawTitleOption[]
+  }
 
   if (!Array.isArray(parsed) || parsed.length < 3) {
     throw new Error('AI 返回的标题选项数量不足')

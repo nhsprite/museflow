@@ -40,39 +40,67 @@ ${state.world ? `世界观设定：\n${state.world}` : ''}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    console.log('[DEBUG CharacterAgent] Raw AI output:', trimmed.slice(0, 2000))
 
-    // Try markdown code blocks first
+    let jsonStr = trimmed
+
     const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
     if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1]!.trim()
+    }
+
+    try {
+      const data = JSON.parse(jsonStr)
+      return { success: true, data }
+    } catch {
+    }
+
+    const startIdx = jsonStr.indexOf('[')
+    if (startIdx === -1) {
+      return { success: false, error: '无法解析角色数据：未找到 JSON 数组' }
+    }
+
+    let depth = 0
+    let endIdx = -1
+    for (let i = startIdx; i < jsonStr.length; i++) {
+      if (jsonStr[i] === '[' || jsonStr[i] === '{') depth++
+      else if (jsonStr[i] === ']' || jsonStr[i] === '}') depth--
+      if (depth === 0) {
+        endIdx = i + 1
+        break
+      }
+    }
+
+    if (endIdx !== -1) {
+      const potentialJson = jsonStr.slice(startIdx, endIdx)
       try {
-        const data = JSON.parse(codeBlockMatch[1]!.trim())
+        const data = JSON.parse(potentialJson)
         return { success: true, data }
       } catch {
       }
     }
 
-    const jsonMatch = trimmed.match(/\[[\s\S]*?\]/) || trimmed.match(/\{[\s\S]*?\}/)
-    if (!jsonMatch) {
-      console.log('[DEBUG CharacterAgent] No JSON found')
-      return { success: false, error: '无法解析角色数据：未找到 JSON 格式' }
+    const characters: Record<string, unknown>[] = []
+    const objectRegex = /\{[^{}]*"姓名"[^{}]*\}/g
+    let match
+    while ((match = objectRegex.exec(jsonStr)) !== null) {
+      try {
+        characters.push(JSON.parse(match[0]))
+      } catch {
+      }
     }
-    try {
-      const data = JSON.parse(jsonMatch[0])
-      return { success: true, data }
-    } catch {
-      return { success: false, error: '无法解析角色数据：JSON 格式错误' }
+
+    if (characters.length > 0) {
+      return { success: true, data: characters }
     }
+
+    return { success: false, error: '无法解析角色数据：JSON 格式错误' }
   }
 
   processOutput(output: AgentOutput, storyId: string): Character[] {
     if (!output.success) {
-      console.log('[DEBUG] CharacterAgent: output.success is false, error:', output.error)
       return []
     }
     if (!Array.isArray(output.data)) {
-      console.log('[DEBUG] CharacterAgent: output.data is not array, data type:', typeof output.data)
-      // Handle wrapping object format or Chinese field names
       if (output.data && typeof output.data === 'object') {
         const obj = output.data as Record<string, unknown>
         let chars: unknown[] = []
