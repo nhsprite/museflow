@@ -168,7 +168,24 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     writeFileSync(path, JSON.stringify(record, null, 2), 'utf-8')
     logger.debug(`Checkpoint saved: ${outputDir}/${checkpoint.id}`)
 
+    this.pruneOldCheckpoints(outputDir, 5)
+
     return { configurable: { thread_id: threadId, checkpoint_id: checkpoint.id as string, outputDir } }
+  }
+
+  private pruneOldCheckpoints(outputDir: string, keepCount: number): void {
+    const dir = this.getCheckpointDir(outputDir)
+    const files = readdirSync(dir)
+      .filter(f => f.endsWith('.json') && f !== 'pending_writes.json')
+      .sort((a, b) => b.localeCompare(a))
+
+    if (files.length <= keepCount) return
+
+    const toDelete = files.slice(keepCount)
+    for (const file of toDelete) {
+      unlinkSync(join(dir, file))
+      logger.debug(`Pruned old checkpoint: ${file}`)
+    }
   }
 
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
