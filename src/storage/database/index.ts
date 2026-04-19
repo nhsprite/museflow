@@ -1,3 +1,4 @@
+import type { StateSnapshot } from '../../types/timeline.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import { logger } from '../../utils/logger.js'
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
@@ -62,6 +63,7 @@ export interface StoryMeta {
     stateJson: string
     createdAt: number
   } | null
+  timeline?: StateSnapshot[]
 }
 
 export function ensureStoryDir(storyId: string): string {
@@ -164,3 +166,4 @@ export type { Story, StoryCreateInput, StoryStatus } from '../../types/story.js'
 export type { ChapterMeta, ChapterStatus } from '../../types/chapter.js'
 export type { Character, CharacterCreateInput } from '../../types/character.js'
 export type { WorldContent, ContextSnapshot } from '../../types/context.js'
+export type { StateSnapshot } from '../../types/timeline.js'
