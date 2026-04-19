@@ -70,6 +70,8 @@ export interface AgentState {
   chapterIndex?: number
   foreshadowStack?: string
   chapterSummaries?: string[]
+  chapterTitle?: string
+  chapterSummary?: string
 }
 
 export interface AgentOutput {
