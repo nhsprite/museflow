@@ -1,6 +1,9 @@
 import { buildNovelGraph } from '../graph/novel.graph.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
+import { getOutputsDir } from '../utils/paths.js'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -11,6 +14,31 @@ function getGraph() {
   return _graph
 }
 
+function getOutputDirFromStoryId(storyId: string): string | undefined {
+  const booksDir = getOutputsDir()
+  if (!existsSync(booksDir)) return undefined
+
+  const storyIdSuffix = storyId.split('_').pop() ?? storyId
+  const shortId = storyIdSuffix.slice(0, 12).toLowerCase()
+
+  try {
+    const entries = readdirSync(booksDir)
+    for (const entry of entries) {
+      if (!entry.includes(`-${shortId}`) && !entry.includes(`_${shortId}`)) continue
+      const metaPath = join(booksDir, entry, 'meta.json')
+      if (existsSync(metaPath)) {
+        const content = readFileSync(metaPath, 'utf-8')
+        const meta = JSON.parse(content)
+        if (meta.story?.id === storyId) {
+          return join(booksDir, entry)
+        }
+      }
+    }
+  } catch {
+  }
+  return undefined
+}
+
 export async function runStory(input: {
   storyId: string
   idea: string
@@ -19,6 +47,7 @@ export async function runStory(input: {
   story: unknown
 }): Promise<ReducedGraphState> {
   const graph = getGraph()
+  const storyObj = input.story as { id: string; outputDir: string }
   const initialState: ReducedGraphState = {
     story: input.story as ReducedGraphState['story'],
     idea: input.idea,
@@ -38,7 +67,7 @@ export async function runStory(input: {
   }
 
   const config: RunnableConfig = {
-    configurable: { thread_id: input.storyId },
+    configurable: { thread_id: input.storyId, outputDir: storyObj.outputDir },
   }
 
   const result = await graph.invoke(initialState, config)
@@ -50,8 +79,12 @@ export async function continueStory(
   userResponse?: boolean
 ): Promise<ReducedGraphState> {
   const graph = getGraph()
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    throw new Error(`Story ${storyId} not found`)
+  }
   const config: RunnableConfig = {
-    configurable: { thread_id: storyId },
+    configurable: { thread_id: storyId, outputDir },
   }
 
   if (userResponse !== undefined) {
@@ -70,8 +103,12 @@ export async function continueStory(
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {
   const graph = getGraph()
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    return null
+  }
   const config: RunnableConfig = {
-    configurable: { thread_id: storyId },
+    configurable: { thread_id: storyId, outputDir },
   }
   try {
     const state = await graph.getState(config)
