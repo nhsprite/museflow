@@ -32,6 +32,19 @@ export class WorldbuilderAgent extends BaseAgent {
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
+
+    // Try to extract JSON from markdown code blocks first
+    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    if (codeBlockMatch) {
+      try {
+        const data = JSON.parse(codeBlockMatch[1]!.trim())
+        return { success: true, data }
+      } catch {
+        // Fall through to other patterns
+      }
+    }
+
+    // Try direct JSON match
     const jsonMatch = trimmed.match(/\{[\s\S]*?\}/)
     if (!jsonMatch) {
       return { success: false, error: '无法解析世界观数据：未找到 JSON 格式' }
