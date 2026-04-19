@@ -15,6 +15,7 @@ import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
 import { writeChapterContent, readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import { saveOutline } from '../storage/database/dao/chapter.js'
+import { appendTimelineSnapshot } from '../storage/database/dao/timeline.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
@@ -376,6 +377,20 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
       state.chapterSummaries.push(summary)
     }
   }
+
+  // Generate timeline snapshot for this chapter
+  const snapshot = appendTimelineSnapshot(state.story.id, {
+    chapterNumber: chapterIndex + 1,
+    snapshotType: 'chapter_complete',
+    currentChapterIndex: chapterIndex,
+    chapterTitle: state.outline[chapterIndex]?.title ?? null,
+    chapterSummary: chapter?.summary ?? null,
+    wordCount: null,
+    stateSummary: null,
+    issuesResolved: state.pendingIssues.filter(i => i.severity !== 'error').length,
+    issuesPending: state.pendingIssues.filter(i => i.severity === 'error').length,
+    stateJson: null,
+  })
 
   const nextIndex = state.currentChapterIndex + 1
   if (nextIndex < state.totalChapters) {
