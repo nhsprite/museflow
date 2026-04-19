@@ -15,7 +15,7 @@ import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
 import { writeChapterContent, readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import { saveOutline } from '../storage/database/dao/chapter.js'
-import { appendTimelineSnapshot } from '../storage/database/dao/timeline.js'
+import { appendTimelineSnapshot, getLatestSnapshot } from '../storage/database/dao/timeline.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
@@ -170,6 +170,10 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     .map(c => c.summary || '')
     .join('\n\n')
 
+  // Get latest timeline snapshot for context
+  const latestSnapshot = getLatestSnapshot(state.story.id)
+  const timelineSnapshot = latestSnapshot?.stateSummary ?? null
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -180,6 +184,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     previousChapters,
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
+    timelineSnapshot,
   }
 
   const output = await agent.run(agentState)
