@@ -53,16 +53,50 @@ ${userContent}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
+    console.log('[DEBUG OutlineAgent] Raw AI output:', trimmed.slice(0, 2000))
+
+    // Try markdown code blocks first
+    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    if (codeBlockMatch) {
+      try {
+        const data = JSON.parse(codeBlockMatch[1]!.trim())
+        return { success: true, data }
+      } catch {
+      }
+    }
+
+    // Try direct JSON match
     const jsonMatch = trimmed.match(/\[[\s\S]*?\]/) || trimmed.match(/\{[\s\S]*?\}/)
-    if (!jsonMatch) {
-      return { success: false, error: '无法解析大纲数据：未找到 JSON 格式' }
+    if (jsonMatch) {
+      try {
+        const data = JSON.parse(jsonMatch[0])
+        return { success: true, data }
+      } catch {
+      }
     }
-    try {
-      const data = JSON.parse(jsonMatch[0])
-      return { success: true, data }
-    } catch {
-      return { success: false, error: '无法解析大纲数据：JSON 格式错误' }
+
+    // Parse markdown format: extract chapter info from markdown text
+    // Format: ### 第X章：标题 or ## 第X章 标题
+    const chapterMatches = [...trimmed.matchAll(/#{1,3}\s*第[一二三四五六七八九十百\d]+章[：:]\s*(.+)/g)]
+    if (chapterMatches.length > 0) {
+      const chapters = chapterMatches.map((match, idx) => {
+        const title = match[1]!.trim()
+        const numMatch = match[0].match(/第([一二三四五六七八九十百\d]+)章/)
+        let num = idx + 1
+        if (numMatch) {
+          const chineseToNum: Record<string, number> = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 }
+          const chinese = numMatch[1]!
+          num = chineseToNum[chinese] || parseInt(chinese, 10) || idx + 1
+        }
+        return { number: num, title, description: '' }
+      })
+      if (chapters.length > 0) {
+        return { success: true, data: chapters }
+      }
     }
+
+    console.log('[DEBUG OutlineAgent] No JSON or markdown format found')
+    return { success: false, error: '无法解析大纲数据：未找到 JSON 格式' }
   }
 
   processOutput(output: AgentOutput): ChapterOutline[] {
@@ -71,38 +105,43 @@ ${userContent}
       return []
     }
     if (!Array.isArray(output.data)) {
-      console.log('[DEBUG] OutlineAgent: output.data is not array, data type:', typeof output.data, 'data:', JSON.stringify(output.data)?.slice(0, 500))
-      // Handle wrapping object format
-      if (output.data && typeof output.data === 'object' && 'outline' in output.data) {
-        const outline = (output.data as { outline?: unknown }).outline
-        if (Array.isArray(outline)) {
-          return (outline as Array<{
-            number?: number
-            title?: string
-            description?: string
-            summary?: string
-            coreEvent?: string
-          }>).map((item, idx) => ({
-            id: generateId(),
-            number: item.number ?? idx + 1,
-            title: item.title ?? `第${idx + 1}章`,
-            description: item.description ?? item.summary ?? item.coreEvent ?? '',
-          }))
+      console.log('[DEBUG] OutlineAgent: output.data is not array')
+      // Handle wrapping object format or Chinese field names
+      if (output.data && typeof output.data === 'object') {
+        const obj = output.data as Record<string, unknown>
+        let chapters: unknown[] = []
+        if (Array.isArray(obj.outline)) {
+          chapters = obj.outline
+        } else {
+          for (const val of Object.values(obj)) {
+            if (Array.isArray(val)) {
+              chapters = val
+              break
+            }
+          }
+        }
+        if (chapters.length > 0) {
+          return chapters.map((item: unknown, idx: number) => {
+            const c = item as Record<string, unknown>
+            return {
+              id: generateId(),
+              number: Number(c['number'] || c['章节编号'] || c['章号'] || idx + 1),
+              title: String(c['title'] || c['章节标题'] || c['标题'] || `第${idx + 1}章`),
+              description: String(c['description'] || c['章节描述'] || c['描述'] || c['summary'] || c['coreEvent'] || c['核心事件'] || ''),
+            }
+          })
         }
       }
       return []
     }
-    return (output.data as Array<{
-      number?: number
-      title?: string
-      description?: string
-      summary?: string
-      coreEvent?: string
-    }>).map((item, idx) => ({
-      id: generateId(),
-      number: item.number ?? idx + 1,
-      title: item.title ?? `第${idx + 1}章`,
-      description: item.description ?? item.summary ?? item.coreEvent ?? '',
-    }))
+    return output.data.map((item: unknown, idx: number) => {
+      const c = item as Record<string, unknown>
+      return {
+        id: generateId(),
+        number: Number(c['number'] || c['章节编号'] || c['章号'] || idx + 1),
+        title: String(c['title'] || c['章节标题'] || c['标题'] || `第${idx + 1}章`),
+        description: String(c['description'] || c['章节描述'] || c['描述'] || c['summary'] || c['coreEvent'] || c['核心事件'] || ''),
+      }
+    })
   }
 }

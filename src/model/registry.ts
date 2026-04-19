@@ -23,6 +23,7 @@ class OpenAIProvider implements ModelProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7, max_tokens: this.cfg.maxTokens ?? 4096 }),
+      signal: AbortSignal.timeout(300000),
     })
     if (!res.ok) throw new Error(`OpenAI API error: ${res.status}`)
     const json = await res.json() as { choices: { message: { content: string } }[] }
@@ -45,6 +46,7 @@ class MiniMaxProvider implements ModelProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7 }),
+      signal: AbortSignal.timeout(300000),
     })
     if (!res.ok) throw new Error(`MiniMax API error: ${res.status}`)
     const json = await res.json() as { choices: { message: { content: string } }[] }
@@ -63,6 +65,7 @@ class LocalProvider implements ModelProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7 }),
+      signal: AbortSignal.timeout(300000),
     })
     if (!res.ok) throw new Error(`Local model error: ${res.status}`)
     const json = await res.json() as { choices: { message: { content: string } }[] }

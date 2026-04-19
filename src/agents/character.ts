@@ -40,8 +40,21 @@ ${state.world ? `世界观设定：\n${state.world}` : ''}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
+    console.log('[DEBUG CharacterAgent] Raw AI output:', trimmed.slice(0, 2000))
+
+    // Try markdown code blocks first
+    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    if (codeBlockMatch) {
+      try {
+        const data = JSON.parse(codeBlockMatch[1]!.trim())
+        return { success: true, data }
+      } catch {
+      }
+    }
+
     const jsonMatch = trimmed.match(/\[[\s\S]*?\]/) || trimmed.match(/\{[\s\S]*?\}/)
     if (!jsonMatch) {
+      console.log('[DEBUG CharacterAgent] No JSON found')
       return { success: false, error: '无法解析角色数据：未找到 JSON 格式' }
     }
     try {
@@ -58,40 +71,47 @@ ${state.world ? `世界观设定：\n${state.world}` : ''}
       return []
     }
     if (!Array.isArray(output.data)) {
-      console.log('[DEBUG] CharacterAgent: output.data is not array, data type:', typeof output.data, 'data:', JSON.stringify(output.data)?.slice(0, 500))
-      // Handle wrapping object format
-      if (output.data && typeof output.data === 'object' && 'characters' in output.data) {
-        const chars = (output.data as { characters?: unknown }).characters
-        if (Array.isArray(chars)) {
-          return (chars as Array<{
-            name: string
-            description?: string
-            dialogueStyle?: string
-            role?: string
-          }>).map(char => ({
-            id: generateId(),
-            storyId,
-            name: char.name || '未命名',
-            description: char.description ?? null,
-            dialogueStyle: char.dialogueStyle ?? null,
-            createdAt: Date.now(),
-          }))
+      console.log('[DEBUG] CharacterAgent: output.data is not array, data type:', typeof output.data)
+      // Handle wrapping object format or Chinese field names
+      if (output.data && typeof output.data === 'object') {
+        const obj = output.data as Record<string, unknown>
+        let chars: unknown[] = []
+        if (Array.isArray(obj.characters)) {
+          chars = obj.characters
+        } else {
+          for (const val of Object.values(obj)) {
+            if (Array.isArray(val)) {
+              chars = val
+              break
+            }
+          }
+        }
+        if (chars.length > 0) {
+          return chars.map((char: unknown) => {
+            const c = char as Record<string, unknown>
+            return {
+              id: generateId(),
+              storyId,
+              name: String(c['姓名'] || c['name'] || '未命名'),
+              description: (c['背景故事'] || c['description'] || null) as string | null,
+              dialogueStyle: (c['对话风格'] || c['dialogueStyle'] || null) as string | null,
+              createdAt: Date.now(),
+            }
+          })
         }
       }
       return []
     }
-    return (output.data as Array<{
-      name: string
-      description?: string
-      dialogueStyle?: string
-      role?: string
-    }>).map(char => ({
-      id: generateId(),
-      storyId,
-      name: char.name || '未命名',
-      description: char.description ?? null,
-      dialogueStyle: char.dialogueStyle ?? null,
-      createdAt: Date.now(),
-    }))
+    return output.data.map((char: unknown) => {
+      const c = char as Record<string, unknown>
+      return {
+        id: generateId(),
+        storyId,
+        name: String(c['姓名'] || c['name'] || '未命名'),
+        description: (c['背景故事'] || c['description'] || null) as string | null,
+        dialogueStyle: (c['对话风格'] || c['dialogueStyle'] || null) as string | null,
+        createdAt: Date.now(),
+      }
+    })
   }
 }
