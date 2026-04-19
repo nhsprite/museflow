@@ -73,18 +73,16 @@ ${userContent}
       }
     }
 
-    const chapterMatches = [...trimmed.matchAll(/#{1,3}\s*第[一二三四五六七八九十百\d]+章[··：:]\s*(.+)/g)]
-    if (chapterMatches.length > 0) {
-      const chapters = chapterMatches.map((match, idx) => {
-        const title = match[1]!.trim()
-        const numMatch = match[0].match(/第([一二三四五六七八九十百\d]+)章/)
-        let num = idx + 1
-        if (numMatch) {
-          const chineseToNum: Record<string, number> = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 }
-          const chinese = numMatch[1]!
-          num = chineseToNum[chinese] || parseInt(chinese, 10) || idx + 1
-        }
-        return { number: num, title, description: '' }
+    const chapterBlockRegex = /#{1,3}\s*第([一二三四五六七八九十百\d]+)章[··：:]\s*([^\n]+)\n([\s\S]*?)(?=\n---|\n#{1,3}\s*第|$)/g
+    const matches = [...trimmed.matchAll(chapterBlockRegex)]
+    if (matches.length > 0) {
+      const chapters = matches.map((match, idx) => {
+        const numStr = match[1]!
+        const title = match[2]!.trim()
+        const description = match[3]!.replace(/\n---/g, '').trim()
+        const chineseToNum: Record<string, number> = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 }
+        const num = chineseToNum[numStr] || parseInt(numStr, 10) || idx + 1
+        return { number: num, title, description }
       })
       if (chapters.length > 0) {
         return { success: true, data: chapters }
