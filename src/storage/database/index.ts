@@ -1,6 +1,6 @@
 import { getOutputsDir } from '../../utils/paths.js'
 import { logger } from '../../utils/logger.js'
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -113,7 +113,6 @@ export function readMetaJsonSync(storyId: string): StoryMeta | null {
     }
   }
 
-  const { readdirSync } = require('node:fs')
   const booksDir = getOutputsDir()
   if (!existsSync(booksDir)) return null
 
