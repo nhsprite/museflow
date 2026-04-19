@@ -1,5 +1,5 @@
 export interface WorldDirection {
-  cultivationSystem: string
+  cultivationSystem?: string
   coreConflict: string
   worldFeatures: string[]
 }

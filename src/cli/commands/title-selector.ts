@@ -2,7 +2,7 @@ import inquirer from 'inquirer'
 import { createProvider } from '../../model/registry.js'
 
 export interface WorldDirection {
-  cultivationSystem: string
+  cultivationSystem?: string
   coreConflict: string
   worldFeatures: string[]
 }
@@ -32,7 +32,6 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
   {
     "title": "书名1",
     "worldDirection": {
-      "cultivationSystem": "修炼体系描述",
       "coreConflict": "核心冲突描述",
       "worldFeatures": ["特色1", "特色2", "特色3"]
     }
@@ -43,10 +42,10 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
 要求：
 - 书名要新颖、有吸引力、符合题材
 - 世界观方向要各有特色，角度不同
-- cultivationSystem 简明扼要，1-2 句话
 - coreConflict 点出核心矛盾
 - worldFeatures 列出 2-4 个独特的世界观元素
-- 必须返回 3-5 个不同的候选方案`
+- 必须返回 3-5 个不同的候选方案
+{conditionalCultivation}`
 
 export async function generateTitleOptions(
   idea: string,
@@ -93,15 +92,18 @@ export async function generateTitleOptions(
 
   return parsed.map((item: RawTitleOption): TitleOption => {
     const wd = item.worldDirection
+    const worldDirection: WorldDirection = {
+      coreConflict: String(wd?.coreConflict || ''),
+      worldFeatures: Array.isArray(wd?.worldFeatures)
+        ? wd.worldFeatures.map(String)
+        : [],
+    }
+    if (wd?.cultivationSystem) {
+      worldDirection.cultivationSystem = String(wd.cultivationSystem)
+    }
     return {
       title: String(item.title || '未命名'),
-      worldDirection: {
-        cultivationSystem: String(wd?.cultivationSystem || ''),
-        coreConflict: String(wd?.coreConflict || ''),
-        worldFeatures: Array.isArray(wd?.worldFeatures)
-          ? wd.worldFeatures.map(String)
-          : [],
-      },
+      worldDirection,
     }
   })
 }
@@ -143,5 +145,7 @@ export async function selectTitleOption(options: TitleOption[]): Promise<TitleOp
 
 function formatOptionForDisplay(option: TitleOption, number: number): string {
   const features = option.worldDirection.worldFeatures.join('、')
-  return `${number}. ${option.title} | 修炼体系：${option.worldDirection.cultivationSystem} | 核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
+  const cultivation = option.worldDirection.cultivationSystem
+  const cultivationLine = cultivation ? `修炼体系：${cultivation} | ` : ''
+  return `${number}. ${option.title} | ${cultivationLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
 }

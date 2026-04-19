@@ -8,11 +8,12 @@ export class CharacterAgent extends BaseAgent {
   }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const titleLine = state.title ? `书名：${state.title}` : ''
-    const worldDirSection = state.worldDirection
+    const wd = state.worldDirection
+    const worldDirSection = wd
       ? `世界观方向：
-- 修炼体系：${state.worldDirection.cultivationSystem}
-- 核心冲突：${state.worldDirection.coreConflict}
-- 世界观特色：${state.worldDirection.worldFeatures.join('、')}`
+${wd.cultivationSystem ? `- 修炼体系：${wd.cultivationSystem}` : ''}
+- 核心冲突：${wd.coreConflict}
+- 世界观特色：${wd.worldFeatures.join('、')}`
       : ''
 
     const userContent = `根据以下故事设定，创建主要人物角色。

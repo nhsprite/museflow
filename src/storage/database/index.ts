@@ -13,7 +13,7 @@ export interface StoryMeta {
     id: string
     title: string
     worldDirection?: {
-      cultivationSystem: string
+      cultivationSystem?: string
       coreConflict: string
       worldFeatures: string[]
     }
