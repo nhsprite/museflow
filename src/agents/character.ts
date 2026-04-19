@@ -7,11 +7,20 @@ export class CharacterAgent extends BaseAgent {
     super(undefined, 0.7)
   }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
+    const titleLine = state.title ? `书名：${state.title}` : ''
+    const worldDirSection = state.worldDirection
+      ? `世界观方向：
+- 修炼体系：${state.worldDirection.cultivationSystem}
+- 核心冲突：${state.worldDirection.coreConflict}
+- 世界观特色：${state.worldDirection.worldFeatures.join('、')}`
+      : ''
+
     const userContent = `根据以下故事设定，创建主要人物角色。
 
+${titleLine}
 故事简介：${state.idea}
-世界观设定：
-${state.world || '（尚未构建世界观）'}
+${worldDirSection}
+${state.world ? `世界观设定：\n${state.world}` : ''}
 
 请为故事创建 3-8 个主要人物，每个角色需要包含：
 1. 姓名

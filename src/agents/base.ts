@@ -2,6 +2,7 @@ import type { ModelProvider, Message } from '../model/provider.js'
 import { createProvider } from '../model/registry.js'
 import { getGenreSkill } from '../genres/registry.js'
 import type { GenreSkill } from '../types/genre.js'
+import type { WorldDirection } from '../types/story.js'
 
 export abstract class BaseAgent {
   protected provider: ModelProvider
@@ -59,6 +60,8 @@ export interface AgentState {
   idea: string
   genre: string
   totalChapters: number
+  title?: string
+  worldDirection?: WorldDirection
   world?: string
   characters?: string
   outline?: string

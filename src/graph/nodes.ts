@@ -91,16 +91,26 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
     return { world: null, story: state.story }
   }
 
-  const title = agent.extractTitle(output)
-  if (!title) {
-    return { world, story: { ...state.story, title: state.story.title } }
+  // 如果用户已经选择了标题，保留用户的选择，不使用 AI 生成的标题
+  const existingTitle = state.story.title
+  const aiGeneratedTitle = agent.extractTitle(output)
+
+  if (!existingTitle || existingTitle.trim() === '') {
+    // 用户没有选择标题（旧的调用方式），使用 AI 生成的标题
+    if (!aiGeneratedTitle) {
+      return { world, story: { ...state.story, title: state.story.title } }
+    }
+
+    updateStoryTitle(state.story.id, aiGeneratedTitle)
+    const newOutputDir = getStoryOutputDirWithTitle(aiGeneratedTitle, state.story.id)
+    renameStoryOutputDir(state.story.id, newOutputDir)
+
+    return { world, story: { ...state.story, outputDir: newOutputDir, title: aiGeneratedTitle } }
   }
 
-  updateStoryTitle(state.story.id, title)
-  const newOutputDir = getStoryOutputDirWithTitle(title, state.story.id)
-  renameStoryOutputDir(state.story.id, newOutputDir)
-
-  return { world, story: { ...state.story, outputDir: newOutputDir, title } }
+  // 用户已经选择了标题，保留用户的选择
+  console.log(`[MuseFlow] 使用用户选择的书名：${existingTitle}`)
+  return { world, story: { ...state.story, title: existingTitle } }
 }
 
 export async function create_characters(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -110,6 +120,8 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
+    title: state.story.title,
+    ...(state.story.worldDirection ? { worldDirection: state.story.worldDirection } : {}),
     ...(worldContent ? { world: worldContent } : {}),
   }
 
@@ -126,6 +138,8 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
+    title: state.story.title,
+    ...(state.story.worldDirection ? { worldDirection: state.story.worldDirection } : {}),
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
   }

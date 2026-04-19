@@ -8,9 +8,20 @@ export class OutlineAgent extends BaseAgent {
   }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
+
+    const titleLine = state.title ? `书名：${state.title}` : ''
+    const worldDirSection = state.worldDirection
+      ? `世界观方向：
+- 修炼体系：${state.worldDirection.cultivationSystem}
+- 核心冲突：${state.worldDirection.coreConflict}
+- 世界观特色：${state.worldDirection.worldFeatures.join('、')}`
+      : ''
+
     const outlineTemplate = genre?.outlineTemplate ??
       `根据以下信息，为一部 {totalChapters} 章的小说制定大纲。
+${titleLine}
 故事简介：{idea}
+${worldDirSection ? '\n' + worldDirSection : ''}
 
 请按章节顺序列出每一章的：
 - 章节标题
@@ -25,8 +36,7 @@ export class OutlineAgent extends BaseAgent {
     })
 
     const context = `
-世界观设定：
-${state.world || '（尚未构建）'}
+${state.world ? `世界观设定：\n${state.world}` : ''}
 
 人物设定：
 ${state.characters || '（尚未创建）'}
