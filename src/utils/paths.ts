@@ -47,7 +47,7 @@ export function getCheckpointFilePath(outputDir: string, storyId: string): strin
 
 function getStoryShortId(storyId: string): string {
   const suffix = storyId.split('_').pop() ?? storyId
-  return suffix.slice(0, 6).toLowerCase()
+  return suffix.slice(0, 12).toLowerCase()
 }
 
 function normalizeStoryTitle(title?: string): string {

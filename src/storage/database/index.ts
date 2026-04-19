@@ -118,7 +118,7 @@ export function readMetaJsonSync(storyId: string): StoryMeta | null {
   if (!existsSync(booksDir)) return null
 
   const storyIdSuffix = storyId.split('_').pop() ?? storyId
-  const shortId = storyIdSuffix.slice(0, 6).toLowerCase()
+  const shortId = storyIdSuffix.slice(0, 12).toLowerCase()
 
   try {
     const entries = readdirSync(booksDir)
