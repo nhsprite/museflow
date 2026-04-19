@@ -67,32 +67,29 @@ npm start -- config set --provider local --model llama3 --base-url http://localh
 # 启动新故事（仅规划和创建，不写正文）
 npm start -- start --idea "一个少年获得修真能力后崛起为最强者的故事" --chapters 3 --genre xianxia
 
-# 撰写故事正文
+# 撰写故事正文（写完当前章后停止）
 npm start -- write <story-id>
 
-# 自动确认重写（不询问直接重写）
-npm start -- write <story-id> --yes
+# 重写当前有问题的章节
+npm start -- rewrite <story-id>
 
-# 自动跳过重写（不重写直接继续下一章）
-npm start -- write <story-id> --no
-
-# 继续撰写（处理重写确认，或从断点恢复）
+# 继续一个未完成的故事
 npm start -- continue <story-id>
 
-# 查看故事状态
+# 查看故事进度
 npm start -- status <story-id>
 
 # 查看故事详情
 npm start -- info <story-id>
 ```
 
-`start` 命令创建故事并完成世界观、人物、大纲等规划阶段。`write` 命令从第一章开始撰写正文，在每章生成后停顿等待确认（或用 `--yes`/`--no` 自动处理）。`continue` 命令同样用于继续撰写，支持重写确认交互。
+`start` 命令创建故事并完成世界观、人物、大纲等规划阶段。`write` 命令撰写正文，每章写完后停止；如果当前章有问题，会提示运行 `rewrite` 重写。`rewrite` 命令专门用于重写有质量问题的章节。`continue` 命令用于从断点恢复继续撰写。
 
 ## 项目结构
 
 ```
 src/
-├── cli/           # 命令行入口（start/write/continue/status/info/config/genres）
+├── cli/           # 命令行入口（start/write/rewrite/continue/status/info/config/genres）
 ├── graph/         # LangGraph 图编排（状态、节点、边、检查点）
 ├── agents/        # 8 类 Agent 实现
 ├── core/          # 核心业务逻辑（Runner）
@@ -120,14 +117,14 @@ src/
 
 ## 常见问题
 
-**`write` / `continue` 没有反应**  
+**`write` 没有反应**  
 确保传入了 story-id：`npm start -- write <story-id>`
 
 **API 调用报错**  
 检查 config 中 api key 和 base url 是否正确，用 `npm start -- config show` 确认。
 
-**故事停在"等待重写确认"**  
-用 `--yes` 自动重写，或 `--no` 跳过重写继续下一章：`npm start -- write <story-id> --yes`
+**写完一章后提示"需要处理问题"**  
+运行 `rewrite` 命令重写当前章节：`npm start -- rewrite <story-id>`
 
 ## 开发
 

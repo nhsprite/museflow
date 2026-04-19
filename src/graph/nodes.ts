@@ -199,7 +199,13 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = newChapter
 
-  return { chapters: newChapters }
+  return {
+    chapters: newChapters,
+    // Clear pendingIssues when rewriting - the new draft will be validated
+    // by subsequent nodes which will populate fresh issues if needed.
+    // This prevents stale issues from causing infinite rewrite loops.
+    pendingIssues: state.rewriteApproved ? [] : state.pendingIssues,
+  }
 }
 
 function countChineseWords(text: string): number {
@@ -259,12 +265,12 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
 
   if (!chapter) return { chapters: state.chapters }
 
-  const chapterSummary = chapter.summary ?? undefined
+  const content = await readChapterContent(state.story.outputDir, chapterIndex)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
-    ...(chapterSummary ? { chapterContent: chapterSummary } : {}),
+    ...(content ? { chapterContent: content } : {}),
   }
 
   const output = await agent.run(agentState)
@@ -288,12 +294,12 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
 
   if (!chapter) return { foreshadowStack: state.foreshadowStack }
 
-  const chapterSummary = chapter.summary ?? undefined
+  const content = await readChapterContent(state.story.outputDir, chapterIndex)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
-    ...(chapterSummary ? { chapterContent: chapterSummary } : {}),
+    ...(content ? { chapterContent: content } : {}),
   }
 
   const output = await agent.run(agentState)
@@ -310,14 +316,14 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   if (!chapter) return { pendingIssues: state.pendingIssues }
 
   const worldContent = state.world?.content
-  const chapterSummary = chapter.summary ?? undefined
+  const content = await readChapterContent(state.story.outputDir, chapterIndex)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    ...(chapterSummary ? { chapterContent: chapterSummary } : {}),
+    ...(content ? { chapterContent: content } : {}),
   }
 
   const output = await agent.run(agentState)
@@ -333,12 +339,12 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
 
   if (!chapter) return { pendingIssues: state.pendingIssues }
 
-  const chapterSummary = chapter.summary ?? undefined
+  const content = await readChapterContent(state.story.outputDir, chapterIndex)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
-    ...(chapterSummary ? { chapterContent: chapterSummary } : {}),
+    ...(content ? { chapterContent: content } : {}),
     chapterSummaries: state.chapterSummaries,
   }
 

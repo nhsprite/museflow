@@ -88,8 +88,9 @@ export async function continueStory(
     configurable: { thread_id: storyId, outputDir },
   }
 
+  const { Command } = await import('@langchain/langgraph')
+
   if (userResponse !== undefined) {
-    const { Command } = await import('@langchain/langgraph')
     return await graph.invoke(
       new Command({
         goto: userResponse ? 'draft_chapter' : 'finalize_chapter',
@@ -99,7 +100,13 @@ export async function continueStory(
     ) as ReducedGraphState
   }
 
-  return await graph.invoke(null, config) as ReducedGraphState
+  return await graph.invoke(
+    new Command({
+      goto: 'draft_chapter',
+      update: { rewriteApproved: false, rewriteRequested: false, isWriting: true },
+    }),
+    config
+  ) as ReducedGraphState
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {

@@ -4,7 +4,9 @@ export function should_start_chapters(state: ReducedGraphState): string {
   if (state.rewriteRequested && !state.rewriteApproved) {
     return 'request_rewrite'
   }
-  if (state.pendingIssues.length > 0) {
+  // Only block on error-level issues; warnings can be acknowledged and continued
+  const errorIssues = state.pendingIssues.filter(i => i.severity === 'error')
+  if (errorIssues.length > 0) {
     return 'request_rewrite'
   }
   if (state.currentChapterIndex < state.totalChapters - 1) {
