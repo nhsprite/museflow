@@ -66,7 +66,32 @@ ${userContent}
   }
 
   processOutput(output: AgentOutput): ChapterOutline[] {
-    if (!output.success || !Array.isArray(output.data)) return []
+    if (!output.success) {
+      console.log('[DEBUG] OutlineAgent: output.success is false, error:', output.error)
+      return []
+    }
+    if (!Array.isArray(output.data)) {
+      console.log('[DEBUG] OutlineAgent: output.data is not array, data type:', typeof output.data, 'data:', JSON.stringify(output.data)?.slice(0, 500))
+      // Handle wrapping object format
+      if (output.data && typeof output.data === 'object' && 'outline' in output.data) {
+        const outline = (output.data as { outline?: unknown }).outline
+        if (Array.isArray(outline)) {
+          return (outline as Array<{
+            number?: number
+            title?: string
+            description?: string
+            summary?: string
+            coreEvent?: string
+          }>).map((item, idx) => ({
+            id: generateId(),
+            number: item.number ?? idx + 1,
+            title: item.title ?? `第${idx + 1}章`,
+            description: item.description ?? item.summary ?? item.coreEvent ?? '',
+          }))
+        }
+      }
+      return []
+    }
     return (output.data as Array<{
       number?: number
       title?: string

@@ -40,7 +40,7 @@ ${state.world ? `世界观设定：\n${state.world}` : ''}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\[[\s\S]*\]/) || trimmed.match(/\{[\s\S]*\}/)
+    const jsonMatch = trimmed.match(/\[[\s\S]*?\]/) || trimmed.match(/\{[\s\S]*?\}/)
     if (!jsonMatch) {
       return { success: false, error: '无法解析角色数据：未找到 JSON 格式' }
     }
@@ -53,7 +53,33 @@ ${state.world ? `世界观设定：\n${state.world}` : ''}
   }
 
   processOutput(output: AgentOutput, storyId: string): Character[] {
-    if (!output.success || !Array.isArray(output.data)) return []
+    if (!output.success) {
+      console.log('[DEBUG] CharacterAgent: output.success is false, error:', output.error)
+      return []
+    }
+    if (!Array.isArray(output.data)) {
+      console.log('[DEBUG] CharacterAgent: output.data is not array, data type:', typeof output.data, 'data:', JSON.stringify(output.data)?.slice(0, 500))
+      // Handle wrapping object format
+      if (output.data && typeof output.data === 'object' && 'characters' in output.data) {
+        const chars = (output.data as { characters?: unknown }).characters
+        if (Array.isArray(chars)) {
+          return (chars as Array<{
+            name: string
+            description?: string
+            dialogueStyle?: string
+            role?: string
+          }>).map(char => ({
+            id: generateId(),
+            storyId,
+            name: char.name || '未命名',
+            description: char.description ?? null,
+            dialogueStyle: char.dialogueStyle ?? null,
+            createdAt: Date.now(),
+          }))
+        }
+      }
+      return []
+    }
     return (output.data as Array<{
       name: string
       description?: string
