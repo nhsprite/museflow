@@ -1,8 +1,8 @@
-import type { Story, StoryCreateInput, StoryStatus, WorldDirection } from '../../../types/story.js'
+import type { Story, StoryCreateInput, StoryStatus } from '../../../types/story.js'
 import { generateId } from '../../../utils/id.js'
-import { getStoryOutputDir, getStoryOutputDirWithTitle } from '../../../utils/paths.js'
-import { renameSync, existsSync } from 'node:fs'
-import { ensureStoryDir, readMetaJsonSync, writeMetaJsonSync, type StoryMeta } from '../index.js'
+import { getStoryOutputDir } from '../../../utils/paths.js'
+import { renameSync, existsSync, mkdirSync } from 'node:fs'
+import { readMetaJsonSync, writeMetaJsonSync, type StoryMeta } from '../index.js'
 
 export async function initStoryDb(): Promise<void> {
 }
@@ -14,7 +14,7 @@ export function createStory(input: StoryCreateInput): Story {
   const provider = input.provider ?? 'openai'
   const outputDir = getStoryOutputDir(id, title)
 
-  ensureStoryDir(id)
+  mkdirSync(outputDir, { recursive: true })
 
   const storyMeta: StoryMeta['story'] = {
     id,
