@@ -15,6 +15,8 @@ import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
 import { writeChapterContent, readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import { saveOutline } from '../storage/database/dao/chapter.js'
+import { saveCharacters } from '../storage/database/dao/character.js'
+import { saveWorld } from '../storage/database/dao/world.js'
 import { appendTimelineSnapshot, getLatestSnapshot } from '../storage/database/dao/timeline.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
@@ -92,6 +94,8 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
     return { world: null, story: state.story }
   }
 
+  saveWorld(state.story.id, world.content)
+
   // 如果用户已经选择了标题，保留用户的选择，不使用 AI 生成的标题
   const existingTitle = state.story.title
   const aiGeneratedTitle = agent.extractTitle(output)
@@ -128,6 +132,8 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
 
   const output = await agent.run(agentState)
   const characters = agent.processOutput(output, state.story.id)
+
+  saveCharacters(state.story.id, characters)
 
   return { characters }
 }

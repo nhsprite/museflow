@@ -21,6 +21,13 @@ export function saveCharacter(input: CharacterCreateInput): Character {
   return character
 }
 
+export function saveCharacters(storyId: string, characters: Character[]): void {
+  const meta = readMetaJsonSync(storyId)
+  if (!meta) return
+  meta.characters = characters
+  writeMetaJsonSync(storyId, meta)
+}
+
 export function getCharacters(storyId: string): Character[] {
   const meta = readMetaJsonSync(storyId)
   if (!meta) return []
