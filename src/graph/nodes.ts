@@ -216,7 +216,6 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   return {
     chapters: newChapters,
     rewriteApproved: hasErrors ? true : state.rewriteApproved,
-    pendingIssues: hasErrors || state.rewriteApproved ? [] : state.pendingIssues,
   }
 }
 
@@ -267,7 +266,7 @@ export async function validate_chapter(state: ReducedGraphState): Promise<Partia
     })
   }
 
-  return { pendingIssues: newIssues }
+  return {}
 }
 
 export async function quality_pass(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -296,7 +295,7 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
 
-  return { chapters: newChapters, pendingIssues: [...state.pendingIssues, ...issues] }
+  return {}
 }
 
 export async function detect_foreshadowing(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -341,7 +340,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   const output = await agent.run(agentState)
   const issues = agent.processOutput(output)
 
-  return { pendingIssues: [...state.pendingIssues, ...issues] }
+  return {}
 }
 
 export async function detect_consistency(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -363,7 +362,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   const output = await agent.run(agentState)
   const issues = agent.processOutput(output)
 
-  return { pendingIssues: [...state.pendingIssues, ...issues] }
+  return {}
 }
 
 export async function request_rewrite(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -406,7 +405,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
 
   return {
     currentChapterIndex: nextIndex,
-    pendingIssues: [],
     rewriteRequested: false,
     rewriteApproved: false,
     chapterSummaries: state.chapterSummaries,

@@ -8,6 +8,9 @@ export function should_start_chapters(state: ReducedGraphState): string {
   if (errorIssues.length > 0) {
     return 'draft_chapter'
   }
+  if (state.writeOneChapterOnly) {
+    return 'finalize_story'
+  }
   if (state.currentChapterIndex < state.totalChapters - 1) {
     return 'next_chapter'
   }
