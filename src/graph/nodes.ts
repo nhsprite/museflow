@@ -13,7 +13,7 @@ import {
 } from '../agents/index.js'
 import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
-import { writeChapterContent, readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
+import { writeChapterContent, readChapterContent, writeOutlineContent, writeStoryBible } from '../storage/filesystem/writer.js'
 import { saveOutline } from '../storage/database/dao/chapter.js'
 import { saveCharacters } from '../storage/database/dao/character.js'
 import { saveWorld } from '../storage/database/dao/world.js'
@@ -160,6 +160,14 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
 
   saveOutline(state.story.id, outline)
   await writeOutlineContent(state.story.outputDir, state.story.title, outline)
+
+  await writeStoryBible(
+    state.story.outputDir,
+    state.story,
+    worldContent || '',
+    state.characters,
+    outline,
+  )
 
   return { outline }
 }
