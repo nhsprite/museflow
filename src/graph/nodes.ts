@@ -474,3 +474,59 @@ export async function finalize_story(state: ReducedGraphState): Promise<Partial<
   console.log('\n[MuseFlow] 全部章节撰写完成！')
   return {}
 }
+
+export async function auto_fix_warnings(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  const errors = state.pendingIssues.filter(i => i.severity === 'error')
+  const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
+
+  if (errors.length > 0 || warnings.length === 0) {
+    return { pendingIssues: state.pendingIssues }
+  }
+
+  console.log(`[MuseFlow] 正在自动修复 ${warnings.length} 个质量提示...`)
+
+  const agent = getChapterAgent()
+  const chapterIndex = state.currentChapterIndex
+  const outlineItem = state.outline[chapterIndex]
+  const worldContent = state.world?.content
+
+  const previousChapters = state.chapters
+    .slice(0, chapterIndex)
+    .filter((c): c is ChapterMeta => c !== null)
+    .map(c => c.summary || '')
+    .join('\n\n')
+
+  const latestSnapshot = getLatestSnapshot(state.story.id)
+  const timelineSnapshot = latestSnapshot?.stateSummary ?? null
+
+  const warningDescriptions = warnings.map(w => `- ${w.description}`).join('\n')
+
+  const existingContent = await readChapterContent(state.story.outputDir, chapterIndex)
+
+  const agentState: AgentState = {
+    idea: state.idea,
+    genre: state.genre,
+    totalChapters: state.totalChapters,
+    ...(worldContent ? { world: worldContent } : {}),
+    characters: charactersToString(state.characters),
+    outline: outlineItem ? `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}` : '',
+    previousChapters,
+    chapterIndex,
+    chapterSummaries: state.chapterSummaries,
+    timelineSnapshot,
+    issues: state.pendingIssues,
+    ...(existingContent ? { chapterContent: existingContent } : {}),
+  }
+
+  const output = await agent.run(agentState)
+  const content = output.content ?? ''
+
+  if (content) {
+    await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+    console.log(`[MuseFlow] 已自动修复质量问题`)
+
+    return { pendingIssues: [] }
+  }
+
+  return { pendingIssues: state.pendingIssues }
+}

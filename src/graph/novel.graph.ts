@@ -12,6 +12,7 @@ import {
   detect_hallucination,
   detect_consistency,
   verify_outline_compliance,
+  auto_fix_warnings,
   request_rewrite,
   finalize_chapter,
   finalize_story,
@@ -34,6 +35,7 @@ export function buildNovelGraph() {
     detect_hallucination,
     detect_consistency,
     verify_outline_compliance,
+    auto_fix_warnings,
     request_rewrite,
     finalize_chapter,
     finalize_story,
@@ -51,8 +53,10 @@ export function buildNovelGraph() {
   b1.addEdge('detect_hallucination', 'detect_consistency')
   b1.addEdge('detect_consistency', 'verify_outline_compliance')
 
+  b1.addEdge('verify_outline_compliance', 'auto_fix_warnings')
+
   b1.addConditionalEdges(
-    'verify_outline_compliance',
+    'auto_fix_warnings',
     should_start_chapters,
     {
       request_rewrite: 'request_rewrite',
