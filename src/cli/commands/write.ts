@@ -43,6 +43,12 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
 async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>): Promise<void> {
   if (!state) return
 
+  if (state.rewriteRequested) {
+    console.error('[MuseFlow] 当前章节存在问题，需要先修复')
+    console.error(`   运行 "museflow rewrite" 重写本章\n`)
+    process.exit(1)
+  }
+
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
 
