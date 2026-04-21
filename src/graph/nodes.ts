@@ -10,6 +10,7 @@ import {
   ForeshadowingAgent,
   HallucinationAgent,
   ConsistencyAgent,
+  OutlineComplianceAgent,
 } from '../agents/index.js'
 import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
@@ -71,6 +72,13 @@ function getConsistencyAgent(): ConsistencyAgent {
   if (!consistencyAgent) consistencyAgent = new ConsistencyAgent()
   return consistencyAgent
 }
+
+function getOutlineComplianceAgent(): OutlineComplianceAgent {
+  if (!outlineComplianceAgent) outlineComplianceAgent = new OutlineComplianceAgent()
+  return outlineComplianceAgent
+}
+
+let outlineComplianceAgent: OutlineComplianceAgent | null = null
 
 function charactersToString(characters: Character[]): string {
   return characters.map(c => {
@@ -378,6 +386,40 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
 
   const output = await agent.run(agentState)
   const issues = agent.processOutput(output)
+
+  return {}
+}
+
+export async function verify_outline_compliance(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  const agent = getOutlineComplianceAgent()
+  const chapterIndex = state.currentChapterIndex
+  const outlineItem = state.outline[chapterIndex]
+  const chapter = state.chapters[chapterIndex]
+
+  if (!chapter || !outlineItem) {
+    return { pendingIssues: state.pendingIssues }
+  }
+
+  const content = await readChapterContent(state.story.outputDir, chapterIndex)
+
+  const agentState: AgentState = {
+    idea: state.idea,
+    genre: state.genre,
+    totalChapters: state.totalChapters,
+    chapterIndex,
+    outline: `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}`,
+    ...(content ? { chapterContent: content } : {}),
+  }
+
+  const output = await agent.run(agentState)
+  const { issues, isCompliant } = agent.processOutput(output)
+
+  if (!isCompliant) {
+    return {
+      pendingIssues: [...state.pendingIssues, ...issues],
+      rewriteApproved: true,
+    }
+  }
 
   return {}
 }

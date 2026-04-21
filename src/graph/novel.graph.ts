@@ -11,6 +11,7 @@ import {
   detect_foreshadowing,
   detect_hallucination,
   detect_consistency,
+  verify_outline_compliance,
   request_rewrite,
   finalize_chapter,
   finalize_story,
@@ -32,6 +33,7 @@ export function buildNovelGraph() {
     detect_foreshadowing,
     detect_hallucination,
     detect_consistency,
+    verify_outline_compliance,
     request_rewrite,
     finalize_chapter,
     finalize_story,
@@ -47,9 +49,10 @@ export function buildNovelGraph() {
   b1.addEdge('quality_pass', 'detect_foreshadowing')
   b1.addEdge('detect_foreshadowing', 'detect_hallucination')
   b1.addEdge('detect_hallucination', 'detect_consistency')
+  b1.addEdge('detect_consistency', 'verify_outline_compliance')
 
   b1.addConditionalEdges(
-    'detect_consistency',
+    'verify_outline_compliance',
     should_start_chapters,
     {
       request_rewrite: 'request_rewrite',
