@@ -125,7 +125,8 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
       if (remaining > 0) {
         console.log(`   ... 还有 ${remaining} 个问题`)
       }
-      console.log('\n   运行 "museflow rewrite" 重写本章\n')
+      console.log(`\n可以运行以下命令重写本章：`)
+      console.log(`   museflow rewrite ${storyId}\n`)
     } else {
       const warnings = result.pendingIssues.filter(i => i.severity === 'warning')
       if (warnings.length > 0) {
@@ -152,11 +153,14 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes('Branch condition returned unknown or null destination')) {
-      console.error('[MuseFlow] 错误: 章节处理流程异常（内部错误）')
-      console.error('   建议运行 "museflow status" 查看故事状态')
+      console.error('[MuseFlow] 错误: 章节处理流程异常')
     } else {
       console.error('[MuseFlow] 错误:', message)
     }
+    console.error('')
+    console.error('可以运行以下命令重试：')
+    console.error(`   museflow rewrite ${storyId}`)
+    console.error('')
     updateStatus('error')
     process.exit(1)
   }
