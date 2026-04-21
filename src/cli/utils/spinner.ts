@@ -1,35 +1,23 @@
-const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+import ora, { type Ora } from 'ora'
 
-let interval: ReturnType<typeof setInterval> | null = null
-let currentFrame = 0
-let message = ''
+let spinner: Ora | null = null
 
 export function startSpinner(msg: string): void {
-  stopSpinner()
-  currentFrame = 0
-  message = msg
-  process.stdout.write(`${frames[0]}${msg}`)
-  interval = setInterval(() => {
-    process.stdout.write('\r' + '\x1b[2K')
-    currentFrame = (currentFrame + 1) % frames.length
-    process.stdout.write(`${frames[currentFrame]}${message}`)
-  }, 80)
+  stopSpinnerQuiet()
+  spinner = ora({ text: msg, color: 'cyan', spinner: 'dots' }).start()
 }
 
 export function stopSpinner(): void {
-  if (interval) {
-    clearInterval(interval)
-    interval = null
-    process.stdout.write('\r' + '\x1b[2K')
-    process.stdout.write('✓ ' + message + '\n')
+  if (spinner) {
+    spinner.succeed(spinner.text)
+    spinner = null
   }
 }
 
 export function stopSpinnerQuiet(): void {
-  if (interval) {
-    clearInterval(interval)
-    interval = null
-    process.stdout.write('\r' + '\x1b[2K')
+  if (spinner) {
+    spinner.stop()
+    spinner = null
   }
 }
 
@@ -43,7 +31,10 @@ export async function withSpinner<T>(
     stopSpinner()
     return result
   } catch (err) {
-    stopSpinnerQuiet()
+    if (spinner) {
+      spinner.fail(`${spinner.text}: ${err instanceof Error ? err.message : String(err)}`)
+      spinner = null
+    }
     throw err
   }
 }
