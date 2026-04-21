@@ -73,9 +73,12 @@ function getConsistencyAgent(): ConsistencyAgent {
 }
 
 function charactersToString(characters: Character[]): string {
-  return characters.map(c =>
-    `【${c.name}】${c.description || '（无描述）'}`
-  ).join('\n')
+  return characters.map(c => {
+    const parts = [`【${c.name}】`]
+    if (c.description) parts.push(c.description)
+    if (c.dialogueStyle) parts.push(`对话风格：${c.dialogueStyle}`)
+    return parts.join('\n')
+  }).join('\n')
 }
 
 export async function build_world(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
