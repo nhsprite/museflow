@@ -6,7 +6,7 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 export class ChapterAgent extends BaseAgent {
   constructor() {
-    super(undefined, 0.5)
+    super(undefined, 0.7)
   }
   protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
@@ -33,7 +33,12 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。`
       : ''
 
+    const mainCharacterMatch = (state.characters || []).find(c => c.name)
+    const mainCharacterName = mainCharacterMatch?.name || '（未设定主角）'
+
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
+
+【重要】本章主角姓名是"${mainCharacterName}"，在整个章节中必须始终使用这个名字，不得使用任何其他名字代替！
 
 【必须严格遵循】本章大纲：
 标题：${chapterInfo.title}
@@ -44,7 +49,6 @@ ${state.world || '（尚未构建）'}
 
 【必须严格遵循】人物设定：
 ${state.characters || '（尚未创建）'}
-注意：主角姓名必须与人物设定中的完全一致！
 
 前几章摘要：
 ${previousSummary}
@@ -57,13 +61,14 @@ ${issuesSection}
 
 写作要求：
 1. 【必须】严格按照本章大纲展开剧情，不可自行添加或修改核心事件
-2. 【必须】人物姓名、物品名称、功法名称等必须与大纲完全一致
-3. 注重人物对话和心理描写
-4. 适时埋下伏笔，为后续章节留下悬念
-5. 每章字数建议 2000-5000 字
-6. 以自然流畅的段落叙述为主
+2. 【必须】人物姓名必须始终使用"${mainCharacterName}"，不得使用任何其他名字！
+3. 【必须】物品名称、功法名称等必须与大纲完全一致
+4. 注重人物对话和心理描写
+5. 适时埋下伏笔，为后续章节留下悬念
+6. 每章字数建议 2000-5000 字
+7. 以自然流畅的段落叙述为主
 
-请开始撰写第 ${displayChapterNumber} 章。`
+请开始撰写第 ${displayChapterNumber} 章。确保使用"${mainCharacterName}"作为主角姓名！`
 
     return [
       this.systemMessage('你是一位专业的小说作家，擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进。'),
