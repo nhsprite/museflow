@@ -1,6 +1,7 @@
 import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
 import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
+import { withSpinner } from '../utils/spinner.js'
 
 interface ContinueOptions {
   storyId: string
@@ -66,7 +67,9 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
   }
 
   try {
-    const result = await continueStory(storyId, userResponse)
+    const result = await withSpinner('正在处理章节...', () =>
+      continueStory(storyId, userResponse)
+    )
 
     const currentChapter = result.currentChapterIndex
     const totalChapters = result.totalChapters

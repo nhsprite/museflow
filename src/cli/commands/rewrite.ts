@@ -1,6 +1,7 @@
 import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
 import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
+import { withSpinner } from '../utils/spinner.js'
 
 interface RewriteOptions {
   storyId: string
@@ -53,7 +54,9 @@ async function handleRewrite(storyId: string, userResponse: boolean): Promise<vo
   }
 
   try {
-    const result = await continueStory(storyId, userResponse)
+    const result = await withSpinner('正在重写章节...', () =>
+      continueStory(storyId, userResponse)
+    )
 
     if (result.rewriteRequested) {
       console.log('\n[MuseFlow] 重写完成，使用 "museflow write" 继续')

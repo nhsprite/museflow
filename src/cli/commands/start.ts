@@ -4,6 +4,7 @@ import { initStoryDb } from '../../storage/database/dao/story.js'
 import { getGenreRegistry } from '../../genres/registry.js'
 import { updateStoryStatus } from '../../storage/database/dao/story.js'
 import { generateTitleOptions, selectTitleOption, type TitleOption } from './title-selector.js'
+import { withSpinner } from '../utils/spinner.js'
 
 interface StartOptions {
   idea: string
@@ -46,7 +47,9 @@ export async function start(options: StartOptions): Promise<void> {
     console.log('\n[MuseFlow] 正在生成书名和世界观方向选项...\n')
 
     try {
-      const titleOptions = await generateTitleOptions(idea, genre, chapters)
+      const titleOptions = await withSpinner('正在生成书名和世界观方向选项...', () =>
+        generateTitleOptions(idea, genre, chapters)
+      )
 
       if (yes) {
         console.log('[MuseFlow] 非交互模式 - 自动选择第一个选项\n')
@@ -91,13 +94,15 @@ export async function start(options: StartOptions): Promise<void> {
 
     updateStatus('worldbuilding')
 
-    const result = await runStory({
-      storyId: story.id,
-      idea,
-      genre,
-      totalChapters: chapters,
-      story,
-    })
+    const result = await withSpinner('正在构建世界观和角色设定...', () =>
+      runStory({
+        storyId: story.id,
+        idea,
+        genre,
+        totalChapters: chapters,
+        story,
+      })
+    )
 
     if (result.world) {
       console.log('[MuseFlow] 世界观构建完成\n')
