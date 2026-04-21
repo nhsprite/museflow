@@ -3,8 +3,6 @@ import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
-import { OutlineAgent } from '../../agents/outline.js'
-import type { AgentState } from '../../agents/base.js'
 
 interface WriteOptions {
   storyId: string
@@ -55,7 +53,7 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   console.log('═'.repeat(60))
   console.log(`\n${outlineItem.description}\n`)
 
-  const answer = await question('确认按此大纲撰写章节？(y/n/r重新生成大纲) > ')
+  const answer = await question('确认按此大纲撰写章节？(y/n) > ')
   const normalized = answer.toLowerCase().trim()
 
   if (normalized === 'n' || normalized === 'no') {
@@ -63,62 +61,7 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
     return
   }
 
-  if (normalized === 'r' || normalized === 'regenerate') {
-    await regenerateOutline(storyId, state, chapterIndex)
-    return
-  }
-
   await executeWrite(storyId)
-}
-
-async function regenerateOutline(
-  storyId: string,
-  state: Awaited<ReturnType<typeof getState>>,
-  chapterIndex: number
-): Promise<void> {
-  if (!state) return
-
-  const outlineAgent = new OutlineAgent()
-
-  const outlineStr = state.outline
-    .map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}\n${o.description}`)
-    .join('\n\n')
-
-  const agentState: AgentState = {
-    idea: state.idea,
-    genre: state.genre,
-    totalChapters: state.totalChapters,
-    title: state.story.title,
-    ...(state.story.worldDirection ? { worldDirection: state.story.worldDirection } : {}),
-    ...(state.world?.content ? { world: state.world.content } : {}),
-    characters: state.characters
-      .map(c => `【${c.name}】${c.description || '（无描述）'}`)
-      .join('\n'),
-    outline: outlineStr,
-  }
-
-  const newOutline = await withSpinner('正在重新生成章节大纲...', () =>
-    outlineAgent.regenerateChapter(agentState, chapterIndex)
-  )
-
-  if (newOutline) {
-    const updatedState = await getState(storyId)
-    if (updatedState) {
-      const newOutlineList = [...updatedState.outline]
-      newOutlineList[chapterIndex] = newOutline
-
-      const { saveOutline } = await import('../../storage/database/dao/chapter.js')
-      saveOutline(storyId, newOutlineList)
-
-      Object.assign(state, { outline: newOutlineList })
-
-      console.log('[MuseFlow] 大纲已重新生成\n')
-
-      await handleWrite(storyId, state)
-    }
-  } else {
-    console.error('[MuseFlow] 大纲重新生成失败，请重试\n')
-  }
 }
 
 async function executeWrite(storyId: string): Promise<void> {
