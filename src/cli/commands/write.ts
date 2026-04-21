@@ -2,6 +2,7 @@ import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database
 import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
+import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 
 interface WriteOptions {
   storyId: string
@@ -33,10 +34,37 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
     console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}\n`)
   }
 
-  await handleWrite(storyId)
+  await handleWrite(storyId, state)
 }
 
-async function handleWrite(storyId: string): Promise<void> {
+async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>): Promise<void> {
+  if (!state) return
+
+  const chapterIndex = state.currentChapterIndex
+  const outlineItem = state.outline[chapterIndex]
+
+  if (!outlineItem) {
+    console.error('[MuseFlow] 错误: 未找到章节大纲')
+    return
+  }
+
+  console.log('═'.repeat(60))
+  console.log(`第 ${toDisplayChapterNumber(chapterIndex)} 章：${outlineItem.title}`)
+  console.log('═'.repeat(60))
+  console.log(`\n${outlineItem.description}\n`)
+
+  const answer = await question('确认按此大纲撰写章节？(y/n) > ')
+  const normalized = answer.toLowerCase().trim()
+
+  if (normalized === 'n' || normalized === 'no') {
+    console.log('[MuseFlow] 已跳过本章\n')
+    return
+  }
+
+  await executeWrite(storyId)
+}
+
+async function executeWrite(storyId: string): Promise<void> {
   const updateStatus = (status: StoryStatus) => {
     updateStoryStatus(storyId, status)
   }
@@ -84,4 +112,13 @@ async function handleWrite(storyId: string): Promise<void> {
     updateStatus('error')
     process.exit(1)
   }
+}
+
+function question(prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdout.write(prompt)
+    process.stdin.once('data', (data) => {
+      resolve(data.toString().trim())
+    })
+  })
 }
