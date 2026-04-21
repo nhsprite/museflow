@@ -6,7 +6,7 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 export class ChapterAgent extends BaseAgent {
   constructor() {
-    super(undefined, 0.3)
+    super(undefined, 0.5)
   }
   protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
