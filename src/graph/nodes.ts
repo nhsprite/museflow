@@ -252,7 +252,7 @@ function countChineseWords(text: string): number {
 
 export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
-  const content = await readChapterContent(state.story.outputDir, chapterIndex)
+  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
 
   if (content === null) {
     return {
@@ -301,7 +301,7 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
 
   if (!chapter) return { chapters: state.chapters }
 
-  const content = await readChapterContent(state.story.outputDir, chapterIndex)
+  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -330,7 +330,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
 
   if (!chapter) return { foreshadowStack: state.foreshadowStack }
 
-  const content = await readChapterContent(state.story.outputDir, chapterIndex)
+  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -352,7 +352,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   if (!chapter) return { pendingIssues: state.pendingIssues }
 
   const worldContent = state.world?.content
-  const content = await readChapterContent(state.story.outputDir, chapterIndex)
+  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -375,7 +375,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
 
   if (!chapter) return { pendingIssues: state.pendingIssues }
 
-  const content = await readChapterContent(state.story.outputDir, chapterIndex)
+  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -400,7 +400,7 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
     return { pendingIssues: state.pendingIssues }
   }
 
-  const content = await readChapterContent(state.story.outputDir, chapterIndex)
+  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
 
   const agentState: AgentState = {
     idea: state.idea,
@@ -501,7 +501,7 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
 
   const warningDescriptions = warnings.map(w => `- ${w.description}`).join('\n')
 
-  const existingContent = await readChapterContent(state.story.outputDir, chapterIndex)
+  const existingContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
 
   const agentState: AgentState = {
     idea: state.idea,
