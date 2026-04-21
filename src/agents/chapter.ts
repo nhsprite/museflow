@@ -38,7 +38,7 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
-【重要】本章主角姓名是"${mainCharacterName}"，在整个章节中必须始终使用这个名字，不得使用任何其他名字代替！
+【重要】本章主角姓名是"${mainCharacterName}"，主角的姓名在整章中必须保持一致，不得擅自更改为主角起其他名字！
 
 【必须严格遵循】本章大纲：
 标题：${chapterInfo.title}
@@ -61,14 +61,14 @@ ${issuesSection}
 
 写作要求：
 1. 【必须】严格按照本章大纲展开剧情，不可自行添加或修改核心事件
-2. 【必须】人物姓名必须始终使用"${mainCharacterName}"，不得使用任何其他名字！
+2. 【必须】主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字
 3. 【必须】物品名称、功法名称等必须与大纲完全一致
 4. 注重人物对话和心理描写
 5. 适时埋下伏笔，为后续章节留下悬念
 6. 每章字数建议 2000-5000 字
 7. 以自然流畅的段落叙述为主
 
-请开始撰写第 ${displayChapterNumber} 章。确保使用"${mainCharacterName}"作为主角姓名！`
+请开始撰写第 ${displayChapterNumber} 章。`
 
     return [
       this.systemMessage('你是一位专业的小说作家，擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进。'),
