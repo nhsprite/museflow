@@ -55,10 +55,6 @@ export const GraphState = Annotation.Root({
    *  Used to track timeline state across the graph without re-reading from disk.
    */
   lastTimelineSnapshot: Annotation<string | null>,
-  /** When true, indicates draft_chapter skipped writing because chapter already exists.
-   *  Used by edge condition to skip validation and go directly to finalize_chapter.
-   */
-  draftSkipped: Annotation<boolean>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

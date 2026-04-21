@@ -46,16 +46,12 @@ export function buildNovelGraph() {
   b1.addEdge('create_characters', 'create_outline')
   b1.addConditionalEdges('create_outline', (state) => state.isWriting ? 'draft_chapter' : 'finalize_story')
 
-  b1.addConditionalEdges(
-    'draft_chapter',
-    (state) => state.draftSkipped ? 'finalize_chapter' : 'validate_chapter'
-  )
+  b1.addEdge('draft_chapter', 'validate_chapter')
   b1.addEdge('validate_chapter', 'quality_pass')
   b1.addEdge('quality_pass', 'detect_foreshadowing')
   b1.addEdge('detect_foreshadowing', 'detect_hallucination')
   b1.addEdge('detect_hallucination', 'detect_consistency')
   b1.addEdge('detect_consistency', 'verify_outline_compliance')
-
   b1.addEdge('verify_outline_compliance', 'auto_fix_warnings')
 
   b1.addConditionalEdges(

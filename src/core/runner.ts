@@ -63,7 +63,6 @@ export async function runStory(input: {
     pendingIssues: [],
     rewriteApproved: false,
     rewriteRequested: false,
-    draftSkipped: false,
     isWriting: false,
     writeOneChapterOnly: false,
     lastPrintedChapter: -1,

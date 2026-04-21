@@ -21,7 +21,7 @@ import { saveWorld } from '../storage/database/dao/world.js'
 import { appendTimelineSnapshot, getLatestSnapshot } from '../storage/database/dao/timeline.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
-import { getStoryOutputDirWithTitle, getChapterFilePath } from '../utils/paths.js'
+import { getStoryOutputDirWithTitle } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
@@ -188,18 +188,6 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
   const worldContent = state.world?.content
-
-  const chapterFilePath = getChapterFilePath(state.story.outputDir, chapterIndex + 1)
-  const { existsSync } = await import('node:fs')
-  const chapterExists = existsSync(chapterFilePath)
-
-  if (chapterExists && !state.rewriteApproved) {
-    console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章已存在，跳过撰写`)
-    return {
-      rewriteApproved: false,
-      draftSkipped: true,
-    }
-  }
 
   const previousChapters = state.chapters
     .slice(0, chapterIndex)
@@ -484,7 +472,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     currentChapterIndex: nextIndex,
     rewriteRequested: false,
     rewriteApproved: false,
-    draftSkipped: false,
     chapterSummaries: state.chapterSummaries,
   }
 }
