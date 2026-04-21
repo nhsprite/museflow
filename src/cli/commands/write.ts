@@ -114,10 +114,21 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
     }
 
     if (errors.length > 0) {
-      console.log(`\n⚠️  发现 ${errors.length} 个问题需要处理`)
-      console.log('   运行 "museflow rewrite" 重写本章\n')
+      console.log(`\n⚠️  发现 ${errors.length} 个问题需要处理：`)
+      for (const err of errors) {
+        console.log(`   • ${err.description}`)
+      }
+      console.log('\n   运行 "museflow rewrite" 重写本章\n')
     } else {
-      console.log('\n✨ 质量检查通过\n')
+      const warnings = result.pendingIssues.filter(i => i.severity === 'warning')
+      if (warnings.length > 0) {
+        console.log('\n💡 质量提示：')
+        for (const warn of warnings) {
+          console.log(`   • ${warn.description}`)
+        }
+        console.log('')
+      }
+      console.log('✨ 质量检查通过\n')
     }
 
     console.log('下一步：')
