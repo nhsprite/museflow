@@ -240,6 +240,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   return {
     chapters: newChapters,
+    pendingIssues: [],
     rewriteApproved: hasErrors ? true : state.rewriteApproved,
   }
 }
