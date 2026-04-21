@@ -6,7 +6,7 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 export class ChapterAgent extends BaseAgent {
   constructor() {
-    super(undefined, 0.8)
+    super(undefined, 0.3)
   }
   protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
@@ -27,23 +27,24 @@ ${state.timelineSnapshot}
       : ''
 
     const issuesSection = state.issues && state.issues.length > 0
-      ? `本章需要修复的问题：
+      ? `【重要】本章需要修复的问题：
 ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
 
-请在重写时务必修复以上问题。`
+【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。`
       : ''
 
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
-本章大纲：
-${chapterInfo.title}
-${chapterInfo.description}
+【必须严格遵循】本章大纲：
+标题：${chapterInfo.title}
+核心事件：${chapterInfo.description}
 
-世界观设定：
+【必须严格遵循】世界观设定：
 ${state.world || '（尚未构建）'}
 
-人物设定：
+【必须严格遵循】人物设定：
 ${state.characters || '（尚未创建）'}
+注意：主角姓名必须与人物设定中的完全一致！
 
 前几章摘要：
 ${previousSummary}
@@ -55,11 +56,12 @@ ${timelineSection}
 ${issuesSection}
 
 写作要求：
-1. 按照大纲展开剧情，保持文风一致
-2. 注重人物对话和心理描写
-3. 适时埋下伏笔，为后续章节留下悬念
-4. 每章字数建议 2000-5000 字
-5. 以自然流畅的段落叙述为主
+1. 【必须】严格按照本章大纲展开剧情，不可自行添加或修改核心事件
+2. 【必须】人物姓名、物品名称、功法名称等必须与大纲完全一致
+3. 注重人物对话和心理描写
+4. 适时埋下伏笔，为后续章节留下悬念
+5. 每章字数建议 2000-5000 字
+6. 以自然流畅的段落叙述为主
 
 请开始撰写第 ${displayChapterNumber} 章。`
 
