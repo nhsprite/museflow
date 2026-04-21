@@ -58,8 +58,10 @@ export function buildNovelGraph() {
     'auto_fix_warnings',
     should_start_chapters,
     {
+      draft_chapter: 'draft_chapter',
       request_rewrite: 'request_rewrite',
       next_chapter: 'finalize_chapter',
+      finalize_chapter: 'finalize_chapter',
       finalize_story: 'finalize_story',
     }
   )
