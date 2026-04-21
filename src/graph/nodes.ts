@@ -197,6 +197,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章已存在，跳过撰写`)
     return {
       rewriteApproved: false,
+      draftSkipped: true,
     }
   }
 
@@ -483,6 +484,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     currentChapterIndex: nextIndex,
     rewriteRequested: false,
     rewriteApproved: false,
+    draftSkipped: false,
     chapterSummaries: state.chapterSummaries,
   }
 }
