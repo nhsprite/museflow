@@ -68,9 +68,11 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
 
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
+  const chapterNum = chapterIndex + 1
+  const totalChapters = state.totalChapters
 
   try {
-    const result = await withSpinner('正在撰写章节...', () =>
+    const result = await withSpinner(`正在撰写第 ${chapterNum}/${totalChapters} 章...`, () =>
       continueStory(storyId, undefined)
     )
 
