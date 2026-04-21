@@ -33,8 +33,10 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。`
       : ''
 
-    const mainCharacterMatch = (state.characters || []).find(c => c.name)
-    const mainCharacterName = mainCharacterMatch?.name || '（未设定主角）'
+    // Extract first character name from formatted string like "【林渊】描述..."
+    const mainCharacterName = state.characters
+      ? (state.characters.match(/^【([^】]+)】/m)?.[1] || '（未设定主角）')
+      : '（未设定主角）'
 
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
