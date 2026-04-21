@@ -3,6 +3,9 @@ import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
+import { getChapterFilePath } from '../../utils/paths.js'
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 
 interface WriteOptions {
   storyId: string
@@ -53,13 +56,18 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   console.log('═'.repeat(60))
   console.log(`\n${outlineItem.description}\n`)
 
-  await executeWrite(storyId)
+  await executeWrite(storyId, state)
 }
 
-async function executeWrite(storyId: string): Promise<void> {
+async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>): Promise<void> {
+  if (!state) return
+
   const updateStatus = (status: StoryStatus) => {
     updateStoryStatus(storyId, status)
   }
+
+  const chapterIndex = state.currentChapterIndex
+  const outlineItem = state.outline[chapterIndex]
 
   try {
     const result = await withSpinner('正在撰写章节...', () =>
@@ -79,29 +87,52 @@ async function executeWrite(storyId: string): Promise<void> {
     updateStatus('writing')
 
     const writtenIndex = result.currentChapterIndex - 1
-    const outlineItem = result.outline[writtenIndex]
+    const writtenOutlineItem = result.outline[writtenIndex]
     const errors = result.pendingIssues.filter(i => i.severity === 'error')
 
-    if (errors.length > 0) {
-      console.log(`\n[MuseFlow] 第 ${writtenIndex + 1}/${result.totalChapters} 章已完成`)
-      if (outlineItem) {
-        console.log(`  章节名: ${outlineItem.title}`)
-      }
-      console.log(`  状态: ${errors.length} 个严重问题需要处理`)
-      console.log('  请运行 "museflow rewrite" 重写本章\n')
-      return
+    // Show chapter completion info
+    console.log('\n' + '═'.repeat(60))
+    console.log(`✅ 第 ${writtenIndex + 1}/${result.totalChapters} 章撰写完成`)
+    console.log('═'.repeat(60))
+
+    if (writtenOutlineItem) {
+      console.log(`\n📖 章节：${writtenOutlineItem.title}`)
     }
 
-    console.log(`\n[MuseFlow] 第 ${writtenIndex + 1}/${result.totalChapters} 章已完成`)
-    if (outlineItem) {
-      console.log(`  章节名: ${outlineItem.title}`)
+    // Show file path
+    const story = getStory(storyId)
+    if (story) {
+      const chapterPath = getChapterFilePath(story.outputDir, writtenIndex + 1)
+      console.log(`📁 文件：${chapterPath}`)
+
+      // Show word count if file exists
+      if (existsSync(chapterPath)) {
+        const content = await readFile(chapterPath, 'utf-8')
+        const wordCount = countChineseWords(content)
+        console.log(`📝 字数：约 ${wordCount} 字`)
+      }
     }
-    console.log('  状态: 正常')
-    console.log('  输入 "museflow write" 继续下一章\n')
+
+    if (errors.length > 0) {
+      console.log(`\n⚠️  发现 ${errors.length} 个问题需要处理`)
+      console.log('   运行 "museflow rewrite" 重写本章\n')
+    } else {
+      console.log('\n✨ 质量检查通过\n')
+    }
+
+    console.log('下一步：')
+    console.log(`   输入 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
+    console.log(`   或运行 "museflow info" 查看故事进度\n`)
 
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
     updateStatus('error')
     process.exit(1)
   }
+}
+
+function countChineseWords(text: string): number {
+  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
+  const englishWords = (text.match(/[a-zA-Z]+/g) ?? []).length
+  return chineseChars + englishWords
 }
