@@ -252,6 +252,7 @@ function countChineseWords(text: string): number {
 
 export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
+  console.log(`[MuseFlow] 步骤 1/7: 检查字数...`)
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
 
   if (content === null) {
@@ -299,6 +300,7 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
+  console.log(`[MuseFlow] 步骤 2/7: 质量检查...`)
   if (!chapter) return { chapters: state.chapters }
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -328,6 +330,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
+  console.log(`[MuseFlow] 步骤 3/7: 检测伏笔...`)
   if (!chapter) return { foreshadowStack: state.foreshadowStack }
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -349,6 +352,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
+  console.log(`[MuseFlow] 步骤 4/7: 检测幻觉...`)
   if (!chapter) return { pendingIssues: state.pendingIssues }
 
   const worldContent = state.world?.content
@@ -373,6 +377,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
+  console.log(`[MuseFlow] 步骤 5/7: 检测一致性...`)
   if (!chapter) return { pendingIssues: state.pendingIssues }
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -396,6 +401,7 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
   const outlineItem = state.outline[chapterIndex]
   const chapter = state.chapters[chapterIndex]
 
+  console.log(`[MuseFlow] 步骤 6/7: 校验大纲合规性...`)
   if (!chapter || !outlineItem) {
     return { pendingIssues: state.pendingIssues }
   }
@@ -483,7 +489,7 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
     return { pendingIssues: state.pendingIssues }
   }
 
-  console.log(`[MuseFlow] 正在自动修复 ${warnings.length} 个质量提示...`)
+  console.log(`[MuseFlow] 步骤 7/7: 修复质量问题（如有）...`)
 
   const agent = getChapterAgent()
   const chapterIndex = state.currentChapterIndex
