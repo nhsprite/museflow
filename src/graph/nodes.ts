@@ -21,7 +21,7 @@ import { saveWorld } from '../storage/database/dao/world.js'
 import { appendTimelineSnapshot, getLatestSnapshot } from '../storage/database/dao/timeline.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
-import { getStoryOutputDirWithTitle } from '../utils/paths.js'
+import { getStoryOutputDirWithTitle, getChapterFilePath } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
@@ -189,13 +189,23 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const outlineItem = state.outline[chapterIndex]
   const worldContent = state.world?.content
 
+  const chapterFilePath = getChapterFilePath(state.story.outputDir, chapterIndex + 1)
+  const { existsSync } = await import('node:fs')
+  const chapterExists = existsSync(chapterFilePath)
+
+  if (chapterExists && !state.rewriteApproved) {
+    console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章已存在，跳过撰写`)
+    return {
+      rewriteApproved: false,
+    }
+  }
+
   const previousChapters = state.chapters
     .slice(0, chapterIndex)
     .filter((c): c is ChapterMeta => c !== null)
     .map(c => c.summary || '')
     .join('\n\n')
 
-  // Get latest timeline snapshot for context
   const latestSnapshot = getLatestSnapshot(state.story.id)
   const timelineSnapshot = latestSnapshot?.stateSummary ?? null
 
