@@ -53,14 +53,6 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   console.log('═'.repeat(60))
   console.log(`\n${outlineItem.description}\n`)
 
-  const answer = await question('确认按此大纲撰写章节？(y/n) > ')
-  const normalized = answer.toLowerCase().trim()
-
-  if (normalized === 'n' || normalized === 'no') {
-    console.log('[MuseFlow] 已跳过本章\n')
-    return
-  }
-
   await executeWrite(storyId)
 }
 
@@ -112,13 +104,4 @@ async function executeWrite(storyId: string): Promise<void> {
     updateStatus('error')
     process.exit(1)
   }
-}
-
-function question(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    process.stdout.write(prompt)
-    process.stdin.once('data', (data) => {
-      resolve(data.toString().trim())
-    })
-  })
 }
