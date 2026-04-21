@@ -70,6 +70,9 @@ export function buildNovelGraph() {
   b1.addConditionalEdges(
     'finalize_chapter',
     (state) => {
+      if (state.writeOneChapterOnly) {
+        return 'finalize_story'
+      }
       if (state.currentChapterIndex < state.totalChapters) {
         return 'draft_chapter'
       }

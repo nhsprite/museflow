@@ -9,7 +9,7 @@ export function should_start_chapters(state: ReducedGraphState): string {
     return 'request_rewrite'
   }
   if (state.writeOneChapterOnly) {
-    return 'finalize_story'
+    return 'finalize_chapter'
   }
   if (state.currentChapterIndex < state.totalChapters - 1) {
     return 'next_chapter'
