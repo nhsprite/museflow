@@ -4,13 +4,9 @@ import { getGenreSkill } from '../../genres/registry.js'
 import { loadConfig } from '../../config/store.js'
 import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
 
-interface InfoOptions {
-  storyId?: string
-}
+interface InfoOptions {}
 
-export async function info(options?: InfoOptions): Promise<void> {
-  const storyId = options?.storyId
-
+export async function info(storyId?: string, _options?: InfoOptions): Promise<void> {
   if (!storyId) {
     console.error('[MuseFlow] 错误: 请提供故事ID')
     console.log('用法: museflow info <story-id>')
