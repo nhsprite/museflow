@@ -53,8 +53,12 @@ async function handleRewrite(storyId: string, userResponse: boolean): Promise<vo
     updateStoryStatus(storyId, status)
   }
 
+  const state = await getState(storyId)
+  const chapterNum = state ? state.currentChapterIndex + 1 : 1
+  const totalChapters = state ? state.totalChapters : 0
+
   try {
-    const result = await withSpinner('正在重写章节...', () =>
+    const result = await withSpinner(`正在重写第 ${chapterNum}/${totalChapters} 章...`, () =>
       continueStory(storyId, userResponse)
     )
 
