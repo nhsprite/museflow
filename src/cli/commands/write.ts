@@ -150,7 +150,13 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
     console.log(`   或运行 "museflow info" 查看故事进度\n`)
 
   } catch (err) {
-    console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes('Branch condition returned unknown or null destination')) {
+      console.error('[MuseFlow] 错误: 章节处理流程异常（内部错误）')
+      console.error('   建议运行 "museflow status" 查看故事状态')
+    } else {
+      console.error('[MuseFlow] 错误:', message)
+    }
     updateStatus('error')
     process.exit(1)
   }

@@ -6,7 +6,7 @@ export function should_start_chapters(state: ReducedGraphState): string {
   }
   const errorIssues = state.pendingIssues.filter(i => i.severity === 'error')
   if (errorIssues.length > 0) {
-    return 'draft_chapter'
+    return 'request_rewrite'
   }
   if (state.writeOneChapterOnly) {
     return 'finalize_story'
