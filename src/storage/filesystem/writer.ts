@@ -9,6 +9,11 @@ export async function ensureStoryDir(outputDir: string): Promise<void> {
     await mkdir(outputDir, { recursive: true })
     logger.debug(`Created story output directory: ${outputDir}`)
   }
+  const chaptersDir = join(outputDir, 'chapters')
+  if (!existsSync(chaptersDir)) {
+    await mkdir(chaptersDir, { recursive: true })
+    logger.debug(`Created chapters directory: ${chaptersDir}`)
+  }
 }
 
 export async function writeChapterContent(
