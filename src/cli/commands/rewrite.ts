@@ -41,6 +41,7 @@ export async function rewrite(storyId: string, _options: RewriteOptions): Promis
     const confirm = answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes'
     if (!confirm) {
       console.log('[MuseFlow] 已取消')
+      console.log('  输入 "museflow write" 查看故事状态或继续撰写\n')
       return
     }
   }
