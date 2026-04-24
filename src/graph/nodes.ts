@@ -484,7 +484,9 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   saveForeshadowStack(state.story.id, state.foreshadowStack)
 
   const nextIndex = state.currentChapterIndex + 1
-  if (nextIndex < state.totalChapters) {
+  const isLastChapter = nextIndex >= state.totalChapters
+
+  if (!isLastChapter) {
     console.log(`\n[MuseFlow] 第 ${nextIndex + 1}/${state.totalChapters} 章处理完成`)
   }
 

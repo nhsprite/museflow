@@ -97,7 +97,7 @@ export async function continueStory(
     return await graph.invoke(
       new Command({
         goto: userResponse ? 'draft_chapter' : 'finalize_chapter',
-        update: { rewriteApproved: userResponse, rewriteRequested: false, isWriting: true, writeOneChapterOnly: false },
+        update: { rewriteApproved: userResponse, rewriteRequested: false, isWriting: true, writeOneChapterOnly: true },
       }),
       config
     ) as ReducedGraphState

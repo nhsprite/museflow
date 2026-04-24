@@ -1,7 +1,39 @@
 import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
-import { continueStory, getState } from '../../core/runner.js'
+import { getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
+import { buildNovelGraph } from '../../graph/novel.graph.js'
+import { getCheckpointer } from '../../graph/checkpointer.js'
+import { getOutputsDir } from '../../utils/paths.js'
+import type { RunnableConfig } from '@langchain/core/runnables'
+import type { ReducedGraphState } from '../../graph/state.js'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+function getOutputDirFromStoryId(storyId: string): string | undefined {
+  const booksDir = getOutputsDir()
+  if (!existsSync(booksDir)) return undefined
+
+  const storyIdSuffix = storyId.split('_').pop() ?? storyId
+  const shortId = storyIdSuffix.slice(0, 12).toLowerCase()
+
+  try {
+    const entries = readdirSync(booksDir)
+    for (const entry of entries) {
+      if (!entry.includes(`-${shortId}`) && !entry.includes(`_${shortId}`)) continue
+      const metaPath = join(booksDir, entry, 'meta.json')
+      if (existsSync(metaPath)) {
+        const content = readFileSync(metaPath, 'utf-8')
+        const meta = JSON.parse(content)
+        if (meta.story?.id === storyId) {
+          return join(booksDir, entry)
+        }
+      }
+    }
+  } catch {
+  }
+  return undefined
+}
 
 interface FixOptions {
   storyId: string
@@ -62,7 +94,7 @@ async function handleFix(storyId: string): Promise<void> {
 
   try {
     const result = await withSpinner(`正在修复第 ${chapterNum}/${totalChapters} 章...`, () =>
-      continueStory(storyId, true)
+      invokeGraph(storyId, true)
     )
 
     if (result.rewriteRequested) {
@@ -100,6 +132,34 @@ async function handleFix(storyId: string): Promise<void> {
     updateStatus('error')
     process.exit(1)
   }
+}
+
+async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<ReducedGraphState> {
+  const { Command } = await import('@langchain/langgraph')
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    throw new Error(`Story ${storyId} not found`)
+  }
+
+  const checkpointer = getCheckpointer()
+  const config: RunnableConfig = {
+    configurable: { thread_id: storyId, outputDir },
+  }
+
+  const graph = buildNovelGraph()
+
+  return await graph.invoke(
+    new Command({
+      goto: 'draft_chapter',
+      update: {
+        rewriteApproved,
+        rewriteRequested: false,
+        isWriting: true,
+        writeOneChapterOnly: true,
+      },
+    }),
+    config
+  )
 }
 
 function groupIssuesByType(issues: { type: string; severity: string; description: string; location?: string }[]): Record<string, typeof issues> {
