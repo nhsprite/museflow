@@ -144,6 +144,10 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
   const output = await agent.run(agentState)
   const characters = agent.processOutput(output, state.story.id)
 
+  if (characters.length === 0) {
+    throw new Error('[MuseFlow] 错误：角色生成失败，请检查 AI 输出或重试')
+  }
+
   saveCharacters(state.story.id, characters)
 
   return { characters }
@@ -198,6 +202,11 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const latestSnapshot = getLatestSnapshot(state.story.id)
   const timelineSnapshot = latestSnapshot?.stateSummary ?? null
 
+  // Read current chapter content when rewriting, so the agent can see what needs to be fixed
+  const existingContent = state.rewriteApproved
+    ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
+    : null
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -209,8 +218,9 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
     timelineSnapshot,
-    // Pass issues to agent when rewriting so it knows what to fix
+    // Pass issues and existing content to agent when rewriting so it knows what to fix
     ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
+    ...(existingContent ? { chapterContent: existingContent } : {}),
   }
 
   const output = await agent.run(agentState)
@@ -237,9 +247,13 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
 
+  // Only clear pendingIssues if no errors. When hasErrors is true, preserve
+  // issues so the rewrite loop can address them properly. Clearing issues
+  // while setting rewriteApproved=true was causing the graph to lose error
+  // context and loop indefinitely.
   return {
     chapters: newChapters,
-    pendingIssues: [],
+    pendingIssues: hasErrors ? state.pendingIssues : [],
     rewriteApproved: hasErrors ? true : state.rewriteApproved,
   }
 }
@@ -322,7 +336,8 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
 
-  return {}
+  // Quality issues are added to pendingIssues for the rewrite loop to address
+  return issues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...issues] } : {}
 }
 
 export async function detect_foreshadowing(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -369,7 +384,8 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   const output = await agent.run(agentState)
   const issues = agent.processOutput(output)
 
-  return {}
+  // Hallucination issues are added to pendingIssues for the rewrite loop to address
+  return issues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...issues] } : {}
 }
 
 export async function detect_consistency(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -392,7 +408,8 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   const output = await agent.run(agentState)
   const issues = agent.processOutput(output)
 
-  return {}
+  // Consistency issues are added to pendingIssues for the rewrite loop to address
+  return issues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...issues] } : {}
 }
 
 export async function verify_outline_compliance(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -485,54 +502,15 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   const errors = state.pendingIssues.filter(i => i.severity === 'error')
   const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
 
-  if (errors.length > 0 || warnings.length === 0) {
+  if (errors.length > 0) {
     return { pendingIssues: state.pendingIssues }
   }
 
-  console.log(`[MuseFlow] 步骤 7/7: 修复质量问题（如有）...`)
-
-  const agent = getChapterAgent()
-  const chapterIndex = state.currentChapterIndex
-  const outlineItem = state.outline[chapterIndex]
-  const worldContent = state.world?.content
-
-  const previousChapters = state.chapters
-    .slice(0, chapterIndex)
-    .filter((c): c is ChapterMeta => c !== null)
-    .map(c => c.summary || '')
-    .join('\n\n')
-
-  const latestSnapshot = getLatestSnapshot(state.story.id)
-  const timelineSnapshot = latestSnapshot?.stateSummary ?? null
-
-  const warningDescriptions = warnings.map(w => `- ${w.description}`).join('\n')
-
-  const existingContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
-
-  const agentState: AgentState = {
-    idea: state.idea,
-    genre: state.genre,
-    totalChapters: state.totalChapters,
-    ...(worldContent ? { world: worldContent } : {}),
-    characters: charactersToString(state.characters),
-    outline: outlineItem ? `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}` : '',
-    previousChapters,
-    chapterIndex,
-    chapterSummaries: state.chapterSummaries,
-    timelineSnapshot,
-    issues: state.pendingIssues,
-    ...(existingContent ? { chapterContent: existingContent } : {}),
-  }
-
-  const output = await agent.run(agentState)
-  const content = output.content ?? ''
-
-  if (content) {
-    await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
-    console.log(`[MuseFlow] 已自动修复质量问题`)
-
+  if (warnings.length === 0) {
     return { pendingIssues: [] }
   }
+
+  console.log(`[MuseFlow] 步骤 7/7: 发现 ${warnings.length} 个质量问题`)
 
   return { pendingIssues: state.pendingIssues }
 }

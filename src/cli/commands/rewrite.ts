@@ -89,12 +89,29 @@ async function handleRewrite(storyId: string, userResponse: boolean): Promise<vo
       return
     }
 
-    console.log(`\n[MuseFlow] 第 ${writtenIndex + 1}/${result.totalChapters} 章重写完成`)
+    console.log(`\n[MuseFlow] ✅ 第 ${writtenIndex + 1}/${result.totalChapters} 章重写完成`)
     if (outlineItem) {
       console.log(`  章节名: ${outlineItem.title}`)
     }
-    console.log('  状态: 正常')
-    console.log('  输入 "museflow write" 继续下一章\n')
+
+    const fixedCount = state!.pendingIssues.filter(i => i.severity === 'error').length
+    if (fixedCount > 0) {
+      console.log(`  已修复: ${fixedCount} 个严重问题`)
+    }
+
+    const remainingWarnings = result.pendingIssues.filter(i => i.severity === 'warning')
+    if (remainingWarnings.length > 0) {
+      console.log(`  仍有 ${remainingWarnings.length} 个警告`)
+    }
+
+    console.log('\n✨ 质量检查通过，运行 "museflow write" 继续下一章\n')
+
+    const nextIndex = result.currentChapterIndex + 1
+    if (nextIndex < result.totalChapters) {
+      updateStatus('writing')
+    } else {
+      updateStatus('done')
+    }
 
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))

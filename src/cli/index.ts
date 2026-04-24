@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { start } from './commands/start.js'
 import { write } from './commands/write.js'
 import { rewrite } from './commands/rewrite.js'
+import { fix } from './commands/fix.js'
 import { cont } from './commands/continue.js'
 import { status } from './commands/status.js'
 import { info } from './commands/info.js'
@@ -31,9 +32,14 @@ program.command('write')
   .action(write)
 
 program.command('rewrite')
-  .description('重写当前有问题的章节')
+  .description('重写当前有问题的章节（彻底重写）')
   .argument('<story-id>', '故事ID')
   .action(rewrite)
+
+program.command('fix')
+  .description('修复当前章节的问题（根据问题针对性修复）')
+  .argument('<story-id>', '故事ID')
+  .action(fix)
 
 program.command('continue')
   .description('继续一个未完成的故事')

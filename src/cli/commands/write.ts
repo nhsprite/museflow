@@ -133,8 +133,9 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
       if (remaining > 0) {
         console.log(`   ... 还有 ${remaining} 个问题`)
       }
-      console.log(`\n可以运行以下命令重写本章：`)
-      console.log(`   museflow rewrite ${storyId}\n`)
+      console.log(`\n请选择修复方式：`)
+      console.log(`   museflow fix ${storyId}    # 针对性修复（推荐）`)
+      console.log(`   museflow rewrite ${storyId} # 彻底重写\n`)
     } else {
       const warnings = result.pendingIssues.filter(i => i.severity === 'warning')
       if (warnings.length > 0) {

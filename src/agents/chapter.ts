@@ -33,6 +33,11 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。`
       : ''
 
+    const existingChapterSection = state.chapterContent
+      ? `【当前章节正文】（请在原文基础上修改，保留好的部分，修正问题）：
+${state.chapterContent}`
+      : ''
+
     // Extract first character name from formatted string like "【林渊】描述..."
     const mainCharacterName = state.characters
       ? (state.characters.match(/^【([^】]+)】/m)?.[1] || '（未设定主角）')
@@ -62,6 +67,8 @@ ${chapterSupplement}
 ${timelineSection}
 
 ${issuesSection}
+
+${existingChapterSection}
 
 写作要求：
 1. 【必须】严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现
