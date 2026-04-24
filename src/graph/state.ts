@@ -21,6 +21,7 @@ export interface ForeshadowItem {
   text: string
   expectedFulfillChapter: number
   createdAt: number
+  fulfilledChapter?: number
 }
 
 export const GraphState = Annotation.Root({

@@ -7,10 +7,21 @@ export class ForeshadowingAgent extends BaseAgent {
     super(undefined, 0.3)
   }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
-    const userContent = `请分析以下章节，提取可作为伏笔的元素。
+    const existingForeshadows = state.foreshadowStack || []
+
+    const userContent = `请分析以下章节，完成两项任务：1) 埋下新的伏笔，2) 检测已埋伏笔是否在本章被回收。
 
 章节内容：
 ${state.chapterContent || '（无内容）'}
+
+${
+  existingForeshadows.length > 0
+    ? `已埋伏笔列表（需要检测是否在本章被回收）：
+${existingForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.createdAt ? '之前' : '前'}章节，预期第${f.expectedFulfillChapter}章回收）`).join('\n')}
+
+请检查本章内容，判断上述伏笔是否已被回收（伏笔情节在本章得到呼应或揭示）。`
+    : '(暂无已埋伏笔)'
+}
 
 伏笔识别要求：
 1. 人物言行中暗示未来命运或选择的内容
@@ -19,17 +30,21 @@ ${state.chapterContent || '（无内容）'}
 4. 看似无关紧要的物品、事件在未来可能的关键作用
 5. 人物内心深处的秘密或矛盾
 
-请输出 JSON 格式的伏笔列表：
-[
-  {
-    "text": "伏笔文本内容",
-    "foreshadow_type": "character_destiny|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict",
-    "expected_fulfill_chapter": 预期在第几章回收（数字）,
-    "confidence": "high|medium|low"
-  }
-]
+请输出 JSON 格式：
+{
+  "new_foreshadows": [
+    {
+      "text": "伏笔文本内容",
+      "foreshadow_type": "character_destiny|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict",
+      "expected_fulfill_chapter": 预期在第几章回收（数字）,
+      "confidence": "high|medium|low"
+    }
+  ],
+  "fulfilled_foreshadows": [被回收的伏笔文本列表],
+  "overdue_foreshadows": [超过预期章节仍未回收的伏笔文本列表]
+}
 
-如果本章没有发现值得埋下的伏笔，请返回空数组 []。`
+如果本章没有发现值得埋下的伏笔，new_foreshadows 返回空数组 []。`
 
     return [
       this.systemMessage('你是一位擅长埋伏笔和制造悬念的作家，擅长在叙述中埋下不引人注意但回味无穷的线索。'),
@@ -39,7 +54,7 @@ ${state.chapterContent || '（无内容）'}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\[[\s\S]*\]/) || trimmed.match(/\{[\s\S]*\}/)
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       return { success: false, error: '无法解析伏笔数据：未找到 JSON 格式' }
     }
@@ -51,23 +66,63 @@ ${state.chapterContent || '（无内容）'}
     }
   }
 
-  processOutput(output: AgentOutput, chapterIndex: number, existingStack: ForeshadowItem[]): ForeshadowItem[] {
-    if (!output.success || !Array.isArray(output.data)) return existingStack
+  processOutput(
+    output: AgentOutput,
+    chapterIndex: number,
+    existingStack: ForeshadowItem[]
+  ): ForeshadowItem[] {
+    if (!output.success || !output.data) return existingStack
 
-    const newItems = (output.data as Array<{
-      text?: string
-      foreshadow_type?: string
-      expected_fulfill_chapter?: number
-      confidence?: string
-    }>)
+    const data = output.data as {
+      new_foreshadows?: Array<{
+        text?: string
+        foreshadow_type?: string
+        expected_fulfill_chapter?: number
+        confidence?: string
+      }>
+      fulfilled_foreshadows?: string[]
+      overdue_foreshadows?: string[]
+    }
+
+    const currentChapter = chapterIndex + 1
+
+    const updatedStack: ForeshadowItem[] = existingStack.map(item => {
+      if (item.fulfilledChapter) return item
+
+      const isFulfilled = data.fulfilled_foreshadows?.some(
+        f => f === item.text || f.includes(item.text) || item.text.includes(f)
+      )
+      const isOverdue = currentChapter > item.expectedFulfillChapter + 3
+
+      if (isFulfilled || isOverdue) {
+        return { ...item, fulfilledChapter: currentChapter } as ForeshadowItem
+      }
+
+      return item
+    })
+
+    const newItems = (data.new_foreshadows || [])
       .filter(item => item.text && item.text.length > 5)
       .map(item => ({
         id: generateId(),
         text: item.text!,
-        expectedFulfillChapter: item.expected_fulfill_chapter ?? chapterIndex + 5,
+        expectedFulfillChapter: item.expected_fulfill_chapter ?? currentChapter + 5,
         createdAt: Date.now(),
       }))
 
-    return [...existingStack, ...newItems].slice(0, 20)
+    const fulfilledCount = updatedStack.filter(item => item.fulfilledChapter && item.fulfilledChapter === currentChapter).length
+    if (fulfilledCount > 0) {
+      console.log(`[MuseFlow] 伏笔回收: 本章回收 ${fulfilledCount} 个伏笔`)
+    }
+
+    const overdueCount = updatedStack.filter(item => !item.fulfilledChapter && currentChapter > item.expectedFulfillChapter + 3).length
+    if (overdueCount > 0) {
+      console.log(`[MuseFlow] 伏笔逾期: ${overdueCount} 个伏笔超过预期章节仍未回收，已自动标记`)
+    }
+
+    const unfufilled = updatedStack.filter(item => !item.fulfilledChapter)
+    const fulfilled = updatedStack.filter(item => item.fulfilledChapter)
+    const merged = [...unfufilled, ...fulfilled, ...newItems]
+    return merged.slice(0, 20)
   }
 }

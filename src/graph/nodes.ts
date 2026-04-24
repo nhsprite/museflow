@@ -18,7 +18,7 @@ import { writeChapterContent, readChapterContent, writeOutlineContent, writeStor
 import { saveOutline } from '../storage/database/dao/chapter.js'
 import { saveCharacters } from '../storage/database/dao/character.js'
 import { saveWorld } from '../storage/database/dao/world.js'
-import { appendTimelineSnapshot, getLatestSnapshot } from '../storage/database/dao/timeline.js'
+import { appendTimelineSnapshot, getLatestSnapshot, saveForeshadowStack } from '../storage/database/dao/timeline.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
@@ -218,6 +218,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
     timelineSnapshot,
+    foreshadowStack: state.foreshadowStack,
     // Pass issues and existing content to agent when rewriting so it knows what to fix
     ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
@@ -354,6 +355,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
     genre: state.genre,
     totalChapters: state.totalChapters,
     ...(content ? { chapterContent: content } : {}),
+    foreshadowStack: state.foreshadowStack,
   }
 
   const output = await agent.run(agentState)
@@ -466,7 +468,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     }
   }
 
-  // Generate timeline snapshot for this chapter
   const snapshot = appendTimelineSnapshot(state.story.id, {
     chapterNumber: chapterIndex + 1,
     snapshotType: 'chapter_complete',
@@ -479,6 +480,8 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     issuesPending: state.pendingIssues.filter(i => i.severity === 'error').length,
     stateJson: null,
   })
+
+  saveForeshadowStack(state.story.id, state.foreshadowStack)
 
   const nextIndex = state.currentChapterIndex + 1
   if (nextIndex < state.totalChapters) {

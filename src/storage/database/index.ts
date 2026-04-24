@@ -64,6 +64,13 @@ export interface StoryMeta {
     createdAt: number
   } | null
   timeline?: StateSnapshot[]
+  foreshadowStack?: Array<{
+    id: string
+    text: string
+    expectedFulfillChapter: number
+    createdAt: number
+    fulfilledChapter?: number
+  }>
 }
 
 export function ensureStoryDir(storyId: string): string {

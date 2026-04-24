@@ -4,6 +4,7 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { getForeshadowStack } from '../storage/database/dao/timeline.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -122,7 +123,14 @@ export async function getState(storyId: string): Promise<ReducedGraphState | nul
   }
   try {
     const state = await graph.getState(config)
-    return state.values as unknown as ReducedGraphState
+    const graphState = state.values as unknown as ReducedGraphState
+
+    const persistedForeshadowStack = getForeshadowStack(storyId)
+    if (persistedForeshadowStack.length > 0) {
+      graphState.foreshadowStack = persistedForeshadowStack
+    }
+
+    return graphState
   } catch {
     return null
   }

@@ -33,6 +33,13 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。`
       : ''
 
+    const foreshadowSection = state.foreshadowStack && state.foreshadowStack.length > 0
+      ? `【伏笔回收提醒】以下伏笔需要在本章或后续章节中回收：
+${state.foreshadowStack.filter(f => !f.fulfilledChapter).map((f, i) => `${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章回收）`).join('\n')}
+
+请注意在写作时自然地呼应或揭示这些伏笔。`
+      : ''
+
     const existingChapterSection = state.chapterContent
       ? `【当前章节正文】（请在原文基础上修改，保留好的部分，修正问题）：
 ${state.chapterContent}`
@@ -67,6 +74,8 @@ ${chapterSupplement}
 ${timelineSection}
 
 ${issuesSection}
+
+${foreshadowSection}
 
 ${existingChapterSection}
 

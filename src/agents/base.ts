@@ -4,6 +4,7 @@ import { getGenreSkill } from '../genres/registry.js'
 import type { GenreSkill } from '../types/genre.js'
 import type { WorldDirection } from '../types/story.js'
 import type { Issue } from '../types/agent.js'
+import type { ForeshadowItem } from '../graph/state.js'
 
 export abstract class BaseAgent {
   protected provider: ModelProvider
@@ -69,7 +70,7 @@ export interface AgentState {
   previousChapters?: string
   chapterContent?: string
   chapterIndex?: number
-  foreshadowStack?: string
+  foreshadowStack?: ForeshadowItem[]
   chapterSummaries?: string[]
   chapterTitle?: string
   chapterSummary?: string
