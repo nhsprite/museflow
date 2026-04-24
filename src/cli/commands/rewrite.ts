@@ -2,12 +2,46 @@ import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database
 import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
+import { buildNovelGraph } from '../../graph/novel.graph.js'
+import { getCheckpointer } from '../../graph/checkpointer.js'
+import { getOutputsDir } from '../../utils/paths.js'
+import type { RunnableConfig } from '@langchain/core/runnables'
+import type { ReducedGraphState } from '../../graph/state.js'
+import type { ChapterMeta } from '../../types/chapter.js'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+function getOutputDirFromStoryId(storyId: string): string | undefined {
+  const booksDir = getOutputsDir()
+  if (!existsSync(booksDir)) return undefined
+
+  const storyIdSuffix = storyId.split('_').pop() ?? storyId
+  const shortId = storyIdSuffix.slice(0, 12).toLowerCase()
+
+  try {
+    const entries = readdirSync(booksDir)
+    for (const entry of entries) {
+      if (!entry.includes(`-${shortId}`) && !entry.includes(`_${shortId}`)) continue
+      const metaPath = join(booksDir, entry, 'meta.json')
+      if (existsSync(metaPath)) {
+        const content = readFileSync(metaPath, 'utf-8')
+        const meta = JSON.parse(content)
+        if (meta.story?.id === storyId) {
+          return join(booksDir, entry)
+        }
+      }
+    }
+  } catch {
+  }
+  return undefined
+}
 
 interface RewriteOptions {
   storyId: string
+  chapter?: string
 }
 
-export async function rewrite(storyId: string, _options: RewriteOptions): Promise<void> {
+export async function rewrite(storyId: string, options: RewriteOptions): Promise<void> {
   await initStoryDb()
   const story = getStory(storyId)
   if (!story) {
@@ -15,10 +49,25 @@ export async function rewrite(storyId: string, _options: RewriteOptions): Promis
     process.exit(1)
   }
 
+  const targetChapter = options.chapter ? parseInt(options.chapter, 10) : null
+
   const state = await getState(storyId)
   if (!state) {
     console.error('[MuseFlow] 错误: 无法获取故事状态，请先运行 start')
     process.exit(1)
+  }
+
+  if (targetChapter !== null) {
+    if (targetChapter < 1 || targetChapter > state.totalChapters) {
+      console.error(`[MuseFlow] 错误: 章节编号必须在 1 到 ${state.totalChapters} 之间`)
+      process.exit(1)
+    }
+    const targetIndex = targetChapter - 1
+    console.log(`[MuseFlow] 重写章节: ${story.title}`)
+    console.log(`  目标章节: ${targetChapter}/${state.totalChapters}`)
+    console.log(`  原当前章节: ${state.currentChapterIndex + 1}`)
+    await handleRewrite(storyId, true, targetIndex)
+    return
   }
 
   if (state.pendingIssues.length > 0) {
@@ -49,18 +98,20 @@ export async function rewrite(storyId: string, _options: RewriteOptions): Promis
   await handleRewrite(storyId, true)
 }
 
-async function handleRewrite(storyId: string, userResponse: boolean): Promise<void> {
+async function handleRewrite(storyId: string, userResponse: boolean, targetChapterIndex?: number): Promise<void> {
   const updateStatus = (status: StoryStatus) => {
     updateStoryStatus(storyId, status)
   }
 
   const state = await getState(storyId)
-  const chapterNum = state ? state.currentChapterIndex + 1 : 1
+  const chapterNum = targetChapterIndex !== undefined
+    ? targetChapterIndex + 1
+    : (state ? state.currentChapterIndex + 1 : 1)
   const totalChapters = state ? state.totalChapters : 0
 
   try {
     const result = await withSpinner(`正在重写第 ${chapterNum}/${totalChapters} 章...`, () =>
-      continueStory(storyId, userResponse)
+      rewriteChapter(storyId, userResponse, targetChapterIndex)
     )
 
     if (result.rewriteRequested) {
@@ -118,6 +169,65 @@ async function handleRewrite(storyId: string, userResponse: boolean): Promise<vo
     updateStatus('error')
     process.exit(1)
   }
+}
+
+async function rewriteChapter(storyId: string, userResponse: boolean, targetChapterIndex?: number): Promise<ReducedGraphState> {
+  const { Command } = await import('@langchain/langgraph')
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    throw new Error(`Story ${storyId} not found`)
+  }
+
+  const checkpointer = getCheckpointer()
+
+  let config: RunnableConfig = {
+    configurable: { thread_id: storyId, outputDir, checkpoint_dir: outputDir },
+  }
+
+  if (targetChapterIndex !== undefined) {
+    const chapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex + 1)
+    if (chapterCheckpoint) {
+      config = {
+        configurable: {
+          thread_id: storyId,
+          checkpoint_id: chapterCheckpoint.checkpointId,
+          outputDir,
+        },
+      }
+      console.log(`[MuseFlow] 已恢复第 ${targetChapterIndex + 1} 章完成时的状态`)
+    } else {
+      console.log(`[MuseFlow] 未找到第 ${targetChapterIndex + 1} 章的章节级 checkpoint，将从当前状态继续`)
+    }
+  }
+
+  const state = await getState(storyId)
+  const totalChapters = state?.totalChapters ?? 0
+
+  const graph = buildNovelGraph()
+
+  const update: Record<string, unknown> = {
+    rewriteApproved: userResponse,
+    rewriteRequested: false,
+    isWriting: true,
+    writeOneChapterOnly: true,
+  }
+
+  if (targetChapterIndex !== undefined) {
+    update.currentChapterIndex = targetChapterIndex
+    const newChapters: (ChapterMeta | null)[] = new Array(totalChapters).fill(null)
+    for (let i = 0; i < targetChapterIndex; i++) {
+      newChapters[i] = (state?.chapters ?? [])[i] ?? null
+    }
+    update.chapters = newChapters
+  }
+
+  return await graph.invoke(
+    new Command({
+      goto: 'draft_chapter',
+      update,
+    }),
+    config
+  ) as unknown as ReducedGraphState
 }
 
 function question(prompt: string): Promise<string> {

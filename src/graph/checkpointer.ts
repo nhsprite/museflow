@@ -168,35 +168,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     writeFileSync(path, JSON.stringify(record, null, 2), 'utf-8')
     logger.debug(`Checkpoint saved: ${outputDir}/${checkpoint.id}`)
 
-    this.pruneOldCheckpoints(outputDir, 5)
-
     return { configurable: { thread_id: threadId, checkpoint_id: checkpoint.id as string, outputDir } }
-  }
-
-  private pruneOldCheckpoints(outputDir: string, keepCount: number): void {
-    const dir = this.getCheckpointDir(outputDir)
-    const files = readdirSync(dir)
-      .filter(f => f.endsWith('.json') && f !== 'pending_writes.json')
-      .sort((a, b) => b.localeCompare(a))
-
-    if (files.length <= keepCount) return
-
-    const toDelete = files.slice(keepCount)
-    for (const file of toDelete) {
-      unlinkSync(join(dir, file))
-      logger.debug(`Pruned old checkpoint: ${file}`)
-    }
-  }
-
-  async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
-    const threadId = config.configurable?.thread_id as string | undefined
-    const outputDir = config.configurable?.outputDir as string | undefined
-    if (!threadId || !outputDir) return
-
-    const existing = this.loadPendingWrites(outputDir)
-    const filtered = existing.filter(w => !(w.taskId === taskId))
-    const newWrites: PendingWritesRecord[] = writes.map(([channel, value]) => ({ taskId, channel, value }))
-    this.savePendingWrites(outputDir, [...filtered, ...newWrites])
   }
 
   async deleteThread(threadId: string): Promise<void> {
@@ -212,6 +184,102 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
       }
     }
     logger.debug(`Deleted checkpoints for thread: ${threadId}`)
+  }
+
+  async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
+    const threadId = config.configurable?.thread_id as string | undefined
+    const outputDir = config.configurable?.outputDir as string | undefined
+    if (!threadId || !outputDir) return
+
+    const existing = this.loadPendingWrites(outputDir)
+    const filtered = existing.filter(w => !(w.taskId === taskId))
+    const newWrites: PendingWritesRecord[] = writes.map(([channel, value]) => ({ taskId, channel, value }))
+    this.savePendingWrites(outputDir, [...filtered, ...newWrites])
+  }
+
+  async saveChapterCheckpoint(outputDir: string, chapterNumber: number): Promise<void> {
+    const dir = this.getCheckpointDir(outputDir)
+    if (!existsSync(dir)) return
+
+    const chapterCheckpointId = `chapter_${chapterNumber}_done`
+
+const files = readdirSync(dir).filter(f => f.endsWith('.json') && f !== 'pending_writes.json')
+    if (files.length === 0) return
+
+    const sorted = files.sort((a, b) => b.localeCompare(a))
+    const latestFile = sorted[0]!
+    const sourcePath = join(dir, latestFile)
+    const targetPath = join(dir, `${chapterCheckpointId}.json`)
+
+    const raw = readFileSync(sourcePath, 'utf-8')
+    const record = JSON.parse(raw) as CheckpointRecord
+    record.checkpointId = chapterCheckpointId
+    record.parentCheckpointId = record.parentCheckpointId ?? null
+
+    writeFileSync(targetPath, JSON.stringify(record, null, 2), 'utf-8')
+    logger.debug(`Chapter-level checkpoint saved: ${targetPath}`)
+  }
+
+  async getChapterCheckpoint(outputDir: string, chapterNumber: number): Promise<{ checkpointId: string; checkpoint: Checkpoint; metadata: CheckpointMetadata } | undefined> {
+    const chapterCheckpointId = `chapter_${chapterNumber}_done`
+    const path = join(this.getCheckpointDir(outputDir), `${chapterCheckpointId}.json`)
+
+    if (!existsSync(path)) {
+      return undefined
+    }
+
+    try {
+      const raw = readFileSync(path, 'utf-8')
+      const record = JSON.parse(raw) as CheckpointRecord
+      return {
+        checkpointId: chapterCheckpointId,
+        checkpoint: record.checkpoint,
+        metadata: record.metadata,
+      }
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * List all chapter-level checkpoints for a story.
+   */
+  async listChapterCheckpoints(outputDir: string): Promise<{ chapterNumber: number; checkpointId: string }[]> {
+    const dir = this.getCheckpointDir(outputDir)
+    if (!existsSync(dir)) return []
+
+    const results: { chapterNumber: number; checkpointId: string }[] = []
+    const prefix = 'chapter_'
+    const suffix = '_done.json'
+
+    for (const file of readdirSync(dir)) {
+      if (!file.startsWith(prefix) || !file.endsWith(suffix)) continue
+      const chapterNum = parseInt(file.slice(prefix.length, file.length - suffix.length), 10)
+      if (!isNaN(chapterNum)) {
+        results.push({ chapterNumber: chapterNum, checkpointId: file.slice(0, -5) })
+      }
+    }
+
+return results.sort((a, b) => a.chapterNumber - b.chapterNumber)
+  }
+
+  async pruneIntermediateCheckpoints(outputDir: string): Promise<void> {
+    const dir = this.getCheckpointDir(outputDir)
+    if (!existsSync(dir)) return
+
+    const chapterPrefix = 'chapter_'
+    const files = readdirSync(dir)
+      .filter(f => f.endsWith('.json') && f !== 'pending_writes.json')
+
+    const chapterCheckpoints = new Set(files.filter(f => f.startsWith(chapterPrefix)))
+    const toDelete = files.filter(f => !f.startsWith(chapterPrefix) && !chapterCheckpoints.has(f))
+
+    for (const file of toDelete) {
+      unlinkSync(join(dir, file))
+      logger.debug(`Pruned intermediate checkpoint: ${file}`)
+    }
+
+    logger.debug(`Pruned ${toDelete.length} intermediate checkpoints, kept ${chapterCheckpoints.size} chapter checkpoints`)
   }
 }
 

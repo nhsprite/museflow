@@ -23,6 +23,7 @@ import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/
 import { getGenreSkill } from '../genres/registry.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import { getCheckpointer } from './checkpointer.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -489,6 +490,13 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   if (!isLastChapter) {
     console.log(`\n[MuseFlow] 第 ${nextIndex + 1}/${state.totalChapters} 章处理完成`)
   }
+
+  const checkpointer = getCheckpointer()
+  await checkpointer.saveChapterCheckpoint(
+    state.story.outputDir,
+    chapterIndex + 1
+  ).catch(() => {})
+  await checkpointer.pruneIntermediateCheckpoints(state.story.outputDir).catch(() => {})
 
   return {
     currentChapterIndex: nextIndex,
