@@ -214,6 +214,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
 
   if (targetChapterIndex !== undefined) {
     update.currentChapterIndex = targetChapterIndex
+    update.pendingIssues = []
     const newChapters: (ChapterMeta | null)[] = new Array(totalChapters).fill(null)
     for (let i = 0; i < targetChapterIndex; i++) {
       newChapters[i] = (state?.chapters ?? [])[i] ?? null
