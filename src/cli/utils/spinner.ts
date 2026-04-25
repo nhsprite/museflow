@@ -7,9 +7,9 @@ export function startSpinner(msg: string): void {
   spinner = ora({ text: msg, color: 'cyan', spinner: 'dots' }).start()
 }
 
-export function stopSpinner(): void {
+export function stopSpinner(msg?: string): void {
   if (spinner) {
-    spinner.succeed(spinner.text)
+    spinner.succeed(msg ?? spinner.text)
     spinner = null
   }
 }
@@ -23,12 +23,13 @@ export function stopSpinnerQuiet(): void {
 
 export async function withSpinner<T>(
   msg: string,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
+  successMsg?: string
 ): Promise<T> {
   startSpinner(msg)
   try {
     const result = await fn()
-    stopSpinner()
+    stopSpinner(successMsg)
     return result
   } catch (err) {
     if (spinner) {

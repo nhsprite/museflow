@@ -92,8 +92,10 @@ async function handleFix(storyId: string): Promise<void> {
   const currentChapterIndex = state?.currentChapterIndex ?? 0
 
   try {
-    const result = await withSpinner(`正在修复第 ${chapterNum}/${totalChapters} 章...`, () =>
-      invokeGraph(storyId, true)
+    const result = await withSpinner(
+      `正在修复第 ${chapterNum}/${totalChapters} 章...`,
+      () => invokeGraph(storyId, true),
+      `✅ 第 ${chapterNum} 章修复完成`
     )
 
     if (result.rewriteRequested) {
