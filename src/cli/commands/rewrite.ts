@@ -233,6 +233,10 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       writeOneChapterOnly: true,
     }
 
+    for (let ch = targetChapterIndex; ch <= checkpointState.totalChapters; ch++) {
+      await deleteChapterContent(outputDir, ch)
+    }
+
     const nodeSequence = [
       draft_chapter,
       validate_chapter,
@@ -257,10 +261,6 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       ...workingState,
       rewriteApproved: false,
       rewriteRequested: false,
-    }
-
-    for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
-      await deleteChapterContent(outputDir, ch)
     }
 
     await graph.updateState(config, workingState, '__input__')
