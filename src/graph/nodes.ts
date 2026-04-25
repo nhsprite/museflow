@@ -490,6 +490,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     chapterIndex + 1
   ).catch(() => {})
   await checkpointer.pruneIntermediateCheckpoints(state.story.outputDir).catch(() => {})
+  await checkpointer.clearPendingWrites(state.story.outputDir).catch(() => {})
 
   return {
     currentChapterIndex: nextIndex,

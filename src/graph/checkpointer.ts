@@ -219,6 +219,10 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     this.savePendingWrites(outputDir, [...filtered, ...newWrites])
   }
 
+  async loadPendingWritesForThread(outputDir: string): Promise<PendingWritesRecord[]> {
+    return this.loadPendingWrites(outputDir)
+  }
+
   async saveChapterCheckpoint(outputDir: string, chapterNumber: number): Promise<void> {
     const dir = this.getCheckpointDir(outputDir)
     if (!existsSync(dir)) return
@@ -310,6 +314,14 @@ return results.sort((a, b) => a.chapterNumber - b.chapterNumber)
     }
 
     logger.debug(`Pruned ${toDelete.length} intermediate checkpoints, kept ${chapterCheckpoints.size} chapter checkpoints`)
+  }
+
+  async clearPendingWrites(outputDir: string): Promise<void> {
+    const path = this.getPendingWritesPath(outputDir)
+    if (existsSync(path)) {
+      unlinkSync(path)
+      logger.debug(`Cleared pending writes: ${path}`)
+    }
   }
 }
 

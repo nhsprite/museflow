@@ -72,9 +72,10 @@ export async function readChapterContent(
 
 export async function listChapterFiles(outputDir: string): Promise<number[]> {
   const { readdirSync } = await import('node:fs')
-  if (!existsSync(outputDir)) return []
+  const chaptersDir = join(outputDir, 'chapters')
+  if (!existsSync(chaptersDir)) return []
 
-  const files = readdirSync(outputDir).filter(f => f.endsWith('.md'))
+  const files = readdirSync(chaptersDir).filter(f => f.endsWith('.md'))
   const numbers = files
     .map(f => {
       const m = f.match(/^chapter_(\d+)\.md$/)

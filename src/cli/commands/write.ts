@@ -1,11 +1,13 @@
 import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
 import { continueStory, getState } from '../../core/runner.js'
+import { getCheckpointer } from '../../graph/checkpointer.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
-import { getChapterFilePath } from '../../utils/paths.js'
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { getChapterFilePath, getOutputsDir } from '../../utils/paths.js'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { readFile as readFileAsync } from 'node:fs/promises'
 
 interface WriteOptions {
   storyId: string
@@ -25,7 +27,21 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
     process.exit(1)
   }
 
-  const isResume = state.currentChapterIndex > 0 || (state.chapters && state.chapters.some(c => c !== null))
+  const hasChaptersOnDisk = checkExistingChapters(story.outputDir)
+
+  let startChapterIndex = state.currentChapterIndex
+  if (hasChaptersOnDisk && state.currentChapterIndex === 0) {
+    const chaptersDir = join(story.outputDir, 'chapters')
+    const files = readdirSync(chaptersDir).filter(f => f.startsWith('chapter_') && f.endsWith('.md'))
+    startChapterIndex = files.length
+  }
+
+  const isResume = state.currentChapterIndex > 0 || hasChaptersOnDisk
+
+  // If disk has more chapters than state.currentChapterIndex, use disk count
+  if (hasChaptersOnDisk && startChapterIndex < state.currentChapterIndex) {
+    startChapterIndex = state.currentChapterIndex
+  }
 
   if (!isResume) {
     console.log(`[MuseFlow] 开始撰写: ${story.title}`)
@@ -34,13 +50,13 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
   } else {
     console.log(`[MuseFlow] 继续撰写: ${story.title}`)
     console.log(`  总章节: ${state.totalChapters}`)
-    console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}\n`)
+    console.log(`  当前章节: ${startChapterIndex + 1}/${state.totalChapters}\n`)
   }
 
-  await handleWrite(storyId, state)
+  await handleWrite(storyId, state, startChapterIndex)
 }
 
-async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>): Promise<void> {
+async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
   if (!state) return
 
   if (state.rewriteRequested) {
@@ -49,7 +65,7 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
     process.exit(1)
   }
 
-  const chapterIndex = state.currentChapterIndex
+  const chapterIndex = startChapterIndex
   const outlineItem = state.outline[chapterIndex]
 
   if (!outlineItem) {
@@ -62,17 +78,27 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   console.log('═'.repeat(60))
   console.log(`\n${outlineItem.description}\n`)
 
-  await executeWrite(storyId, state)
+  await executeWrite(storyId, state, chapterIndex)
 }
 
-async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>): Promise<void> {
+async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
   if (!state) return
+
+  const checkpointer = getCheckpointer()
+
+  const pendingWrites = await checkpointer.loadPendingWritesForThread(state.story.outputDir)
+  const activeChapterWrites = pendingWrites.filter(w => w.channel === 'chapters')
+  if (activeChapterWrites.length > 0) {
+    console.warn('[MuseFlow] 检测到残留的 pending writes，将清除后继续')
+    console.warn('[MuseFlow] 这通常是由于上一次执行被中断导致的\n')
+    await checkpointer.clearPendingWrites(state.story.outputDir)
+  }
 
   const updateStatus = (status: StoryStatus) => {
     updateStoryStatus(storyId, status)
   }
 
-  const chapterIndex = state.currentChapterIndex
+  const chapterIndex = startChapterIndex
   const outlineItem = state.outline[chapterIndex]
   const chapterNum = chapterIndex + 1
   const totalChapters = state.totalChapters
@@ -80,7 +106,7 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
   try {
     const result = await withSpinner(
       `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
-      () => continueStory(storyId, undefined),
+      () => continueStory(storyId, undefined, chapterIndex),
       `✅ 第 ${chapterNum} 章撰写完成`
     )
 
@@ -117,7 +143,7 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
 
       // Show word count if file exists
       if (existsSync(chapterPath)) {
-        const content = await readFile(chapterPath, 'utf-8')
+        const content = await readFileAsync(chapterPath, 'utf-8')
         const wordCount = countChineseWords(content)
         console.log(`📝 字数：约 ${wordCount} 字`)
       }
@@ -181,4 +207,11 @@ function countChineseWords(text: string): number {
   const chineseChars = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
   const englishWords = (text.match(/[a-zA-Z]+/g) ?? []).length
   return chineseChars + englishWords
+}
+
+function checkExistingChapters(outputDir: string): boolean {
+  const chaptersDir = join(outputDir, 'chapters')
+  if (!existsSync(chaptersDir)) return false
+  const files = readdirSync(chaptersDir).filter(f => f.startsWith('chapter_') && f.endsWith('.md'))
+  return files.length > 0
 }

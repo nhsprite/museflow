@@ -47,7 +47,7 @@ vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockRetu
 vi.mock('../../src/utils/paths.js', () => ({ getStoryOutputDirWithTitle: vi.fn() }))
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('generated-id') }))
 vi.mock('../../src/graph/checkpointer.js', () => ({
-  getCheckpointer: () => ({ saveChapterCheckpoint, pruneIntermediateCheckpoints }),
+  getCheckpointer: () => ({ saveChapterCheckpoint, pruneIntermediateCheckpoints, clearPendingWrites: vi.fn().mockResolvedValue(undefined) }),
 }))
 
 const baseState = {

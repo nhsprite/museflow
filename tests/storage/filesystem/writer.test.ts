@@ -20,7 +20,7 @@ describe('filesystem writer', () => {
 
     await writeChapterContent(outputDir, 2, '# Chapter 2')
 
-    expect(existsSync(join(outputDir, 'chapter_2.md'))).toBe(true)
+    expect(existsSync(join(outputDir, 'chapters', 'chapter_2.md'))).toBe(true)
     expect(await readChapterContent(outputDir, 2)).toBe('# Chapter 2')
     expect(await listChapterFiles(outputDir)).toEqual([2])
   })

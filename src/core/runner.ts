@@ -5,6 +5,18 @@ import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
+import { getCheckpointer } from '../graph/checkpointer.js'
+import {
+  draft_chapter,
+  validate_chapter,
+  quality_pass,
+  detect_foreshadowing,
+  detect_hallucination,
+  detect_consistency,
+  verify_outline_compliance,
+  auto_fix_warnings,
+  finalize_chapter,
+} from '../graph/nodes.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -80,36 +92,71 @@ export async function runStory(input: {
 
 export async function continueStory(
   storyId: string,
-  userResponse?: boolean
+  userResponse?: boolean,
+  currentChapterIndex?: number
 ): Promise<ReducedGraphState> {
   const graph = getGraph()
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
     throw new Error(`Story ${storyId} not found`)
   }
+
+  const checkpointer = getCheckpointer()
+  await checkpointer.clearPendingWrites(outputDir)
+
   const config: RunnableConfig = {
     configurable: { thread_id: storyId, outputDir },
   }
 
-  const { Command } = await import('@langchain/langgraph')
+  const snapshot = await graph.getState(config)
+  const checkpointState = snapshot.values as ReducedGraphState
 
-  if (userResponse !== undefined) {
-    return await graph.invoke(
-      new Command({
-        goto: userResponse ? 'draft_chapter' : 'finalize_chapter',
-        update: { rewriteApproved: userResponse, rewriteRequested: false, isWriting: true, writeOneChapterOnly: true },
-      }),
-      config
-    ) as ReducedGraphState
+  const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
+
+  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
+  for (let i = 0; i < targetIndex; i++) {
+    rewrittenChapters[i] = checkpointState.chapters[i] ?? null
   }
 
-  return await graph.invoke(
-    new Command({
-      goto: 'draft_chapter',
-      update: { rewriteApproved: false, rewriteRequested: false, isWriting: true, writeOneChapterOnly: true },
-    }),
-    config
-  ) as ReducedGraphState
+  let workingState: ReducedGraphState = {
+    ...checkpointState,
+    currentChapterIndex: targetIndex,
+    chapters: rewrittenChapters,
+    pendingIssues: [],
+    rewriteApproved: userResponse ?? false,
+    rewriteRequested: false,
+    isWriting: true,
+    writeOneChapterOnly: true,
+  }
+
+  const nodeSequence = [
+    draft_chapter,
+    validate_chapter,
+    quality_pass,
+    detect_foreshadowing,
+    detect_hallucination,
+    detect_consistency,
+    verify_outline_compliance,
+    auto_fix_warnings,
+    finalize_chapter,
+  ]
+
+  for (const node of nodeSequence) {
+    const partial = await node(workingState)
+    workingState = {
+      ...workingState,
+      ...partial,
+    }
+  }
+
+  workingState = {
+    ...workingState,
+    rewriteApproved: false,
+    rewriteRequested: false,
+  }
+  await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)
+
+  return workingState
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {

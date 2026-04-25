@@ -4,9 +4,11 @@ export function should_start_chapters(state: ReducedGraphState): string {
   if (state.rewriteRequested && !state.rewriteApproved) {
     return 'request_rewrite'
   }
+  // Check rewriteApproved BEFORE writeOneChapterOnly so that rewrites always proceed
+  if (state.rewriteApproved) return 'draft_chapter'
   const errorIssues = state.pendingIssues.filter(i => i.severity === 'error')
   if (errorIssues.length > 0) {
-    if (state.rewriteApproved) {
+    if (state.writeOneChapterOnly) {
       return 'finalize_chapter'
     }
     return 'request_rewrite'
@@ -14,7 +16,6 @@ export function should_start_chapters(state: ReducedGraphState): string {
   if (state.writeOneChapterOnly) {
     return 'finalize_chapter'
   }
-  if (state.rewriteApproved) return 'draft_chapter'
   if (state.currentChapterIndex < state.totalChapters - 1) {
     return 'next_chapter'
   }

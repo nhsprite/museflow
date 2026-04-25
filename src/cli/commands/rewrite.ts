@@ -81,6 +81,9 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     return
   }
 
+  const checkpointer = getCheckpointer()
+  await checkpointer.clearPendingWrites(story.outputDir)
+
   if (state.pendingIssues.length > 0) {
     console.log('[MuseFlow] 重写章节: ', story.title)
     console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
@@ -216,6 +219,8 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
   const graph = buildNovelGraph()
 
   if (targetChapterIndex !== undefined) {
+    await checkpointer.clearPendingWrites(outputDir)
+
     const snapshot = await graph.getState(config)
     const checkpointState = snapshot.values as ReducedGraphState
 
@@ -264,8 +269,6 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       rewriteApproved: false,
       rewriteRequested: false,
     }
-
-    await graph.updateState(config, workingState, '__input__')
     await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
     await checkpointer.pruneIntermediateCheckpoints(outputDir)
 
@@ -279,13 +282,63 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     writeOneChapterOnly: true,
   }
 
-  return await graph.invoke(
-    new Command({
-      goto: 'draft_chapter',
-      update,
-    }),
-    config
-  ) as unknown as ReducedGraphState
+  // For the non-targeted rewrite case, we need to use the same manual node sequence
+  // approach to avoid LangGraph's "LastValue can only receive one value per step" error
+  // that occurs when using graph.invoke(Command(goto, update)) on a persisted thread.
+  await checkpointer.clearPendingWrites(outputDir)
+
+  const snapshot = await graph.getState(config)
+  const checkpointState = snapshot.values as ReducedGraphState
+
+  // Find which chapter to rewrite - either currentChapterIndex or first chapter if none
+  const rewriteIndex = checkpointState.currentChapterIndex > 0
+    ? checkpointState.currentChapterIndex
+    : 0
+
+  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
+  for (let i = 0; i < rewriteIndex; i++) {
+    rewrittenChapters[i] = checkpointState.chapters[i] ?? null
+  }
+
+  let workingState: ReducedGraphState = {
+    ...checkpointState,
+    currentChapterIndex: rewriteIndex,
+    chapters: rewrittenChapters,
+    pendingIssues: [],
+    rewriteApproved: userResponse,
+    rewriteRequested: false,
+    isWriting: true,
+    writeOneChapterOnly: true,
+  }
+
+  const nodeSequence = [
+    draft_chapter,
+    validate_chapter,
+    quality_pass,
+    detect_foreshadowing,
+    detect_hallucination,
+    detect_consistency,
+    verify_outline_compliance,
+    auto_fix_warnings,
+    finalize_chapter,
+  ]
+
+  for (const node of nodeSequence) {
+    const partial = await node(workingState)
+    workingState = {
+      ...workingState,
+      ...partial,
+    }
+  }
+
+  workingState = {
+    ...workingState,
+    rewriteApproved: false,
+    rewriteRequested: false,
+  }
+  await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
+
+  return workingState
 }
 
 function question(prompt: string): Promise<string> {
