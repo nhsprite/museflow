@@ -233,7 +233,6 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       writeOneChapterOnly: true,
     }
 
-    console.log(`[DEBUG] Deleting chapters ${targetChapterIndex + 1} to ${checkpointState.totalChapters}`)
     for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)
     }
