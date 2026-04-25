@@ -245,18 +245,11 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   }
 
   const newChapters = [...state.chapters]
+
   newChapters[chapterIndex] = newChapter
 
-  const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
-
-  // Only clear pendingIssues if no errors. When hasErrors is true, preserve
-  // issues so the rewrite loop can address them properly. Clearing issues
-  // while setting rewriteApproved=true was causing the graph to lose error
-  // context and loop indefinitely.
   return {
     chapters: newChapters,
-    pendingIssues: hasErrors ? state.pendingIssues : [],
-    rewriteApproved: hasErrors ? true : state.rewriteApproved,
   }
 }
 
@@ -317,7 +310,7 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
   const chapter = state.chapters[chapterIndex]
 
   console.log(`[MuseFlow] 步骤 2/7: 质量检查...`)
-  if (!chapter) return { chapters: state.chapters }
+  if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const agentState: AgentState = {
@@ -348,7 +341,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
   const chapter = state.chapters[chapterIndex]
 
   console.log(`[MuseFlow] 步骤 3/7: 检测伏笔...`)
-  if (!chapter) return { foreshadowStack: state.foreshadowStack }
+  if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const agentState: AgentState = {
@@ -371,7 +364,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   const chapter = state.chapters[chapterIndex]
 
   console.log(`[MuseFlow] 步骤 4/7: 检测幻觉...`)
-  if (!chapter) return { pendingIssues: state.pendingIssues }
+  if (!chapter) return {}
 
   const worldContent = state.world?.content
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -397,7 +390,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   const chapter = state.chapters[chapterIndex]
 
   console.log(`[MuseFlow] 步骤 5/7: 检测一致性...`)
-  if (!chapter) return { pendingIssues: state.pendingIssues }
+  if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const agentState: AgentState = {
@@ -423,7 +416,7 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
 
   console.log(`[MuseFlow] 步骤 6/7: 校验大纲合规性...`)
   if (!chapter || !outlineItem) {
-    return { pendingIssues: state.pendingIssues }
+    return {}
   }
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -488,7 +481,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   const isLastChapter = nextIndex >= state.totalChapters
 
   if (!isLastChapter) {
-    console.log(`\n[MuseFlow] 第 ${nextIndex + 1}/${state.totalChapters} 章处理完成`)
+    console.log(`\n[MuseFlow] 第 ${chapterIndex + 1}/${state.totalChapters} 章处理完成`)
   }
 
   const checkpointer = getCheckpointer()
@@ -500,8 +493,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
 
   return {
     currentChapterIndex: nextIndex,
-    rewriteRequested: false,
-    rewriteApproved: false,
     chapterSummaries: state.chapterSummaries,
   }
 }
@@ -516,14 +507,14 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
 
   if (errors.length > 0) {
-    return { pendingIssues: state.pendingIssues }
+    return {}
   }
 
   if (warnings.length === 0) {
-    return { pendingIssues: [] }
+    return {}
   }
 
   console.log(`[MuseFlow] 步骤 7/7: 发现 ${warnings.length} 个质量问题`)
 
-  return { pendingIssues: state.pendingIssues }
+  return {}
 }

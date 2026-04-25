@@ -20,6 +20,8 @@ interface PendingWritesRecord {
 
 export class JsonCheckpointer extends BaseCheckpointSaver<string> {
   private threadIdToOutputDir: Map<string, string> = new Map()
+  // Track the last checkpoint ID created, used by saveChapterCheckpoint to find the correct checkpoint
+  private lastCreatedCheckpointId: string | null = null
 
   constructor() {
     super(undefined)
@@ -85,11 +87,30 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const threadId = config.configurable?.thread_id as string | undefined
     const outputDir = config.configurable?.outputDir as string | undefined
+    const checkpointId = config.configurable?.checkpoint_id as string | undefined
     if (!threadId || !outputDir) return undefined
 
     const records = this.loadCheckpointRecords(outputDir)
     if (records.size === 0) return undefined
 
+    // If checkpoint_id is provided, look up that specific checkpoint
+    if (checkpointId) {
+      const record = records.get(checkpointId)
+      if (record) {
+        const tuple: CheckpointTuple = {
+          config: { configurable: { thread_id: threadId, checkpoint_id: record.checkpointId, outputDir } },
+          checkpoint: record.checkpoint,
+          metadata: record.metadata,
+        }
+        if (record.parentCheckpointId) {
+          tuple.parentConfig = { configurable: { thread_id: threadId, checkpoint_id: record.parentCheckpointId } }
+        }
+        return tuple
+      }
+      // checkpointId provided but not found - fall through to latest
+    }
+
+    // No checkpoint_id or not found - return latest checkpoint
     const sorted = [...records.values()].sort((a, b) =>
       a.checkpointId.localeCompare(b.checkpointId)
     )
@@ -153,6 +174,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     if (!outputDir) throw new Error('outputDir required in configurable')
 
     this.threadIdToOutputDir.set(threadId, outputDir)
+    this.lastCreatedCheckpointId = checkpoint.id as string
 
     const dir = this.ensureCheckpointDir(outputDir)
     const parentId = (config.configurable?.checkpoint_id as string | undefined) ?? null
@@ -203,12 +225,19 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
 
     const chapterCheckpointId = `chapter_${chapterNumber}_done`
 
-const files = readdirSync(dir).filter(f => f.endsWith('.json') && f !== 'pending_writes.json')
-    if (files.length === 0) return
+    let sourcePath: string
+    if (this.lastCreatedCheckpointId) {
+      sourcePath = join(dir, `${this.lastCreatedCheckpointId}.json`)
+      if (!existsSync(sourcePath)) {
+        return
+      }
+    } else {
+      const files = readdirSync(dir).filter(f => f.endsWith('.json') && f !== 'pending_writes.json' && !f.startsWith('chapter_'))
+      if (files.length === 0) return
+      const sorted = files.sort((a, b) => b.localeCompare(a))
+      sourcePath = join(dir, sorted[0]!)
+    }
 
-    const sorted = files.sort((a, b) => b.localeCompare(a))
-    const latestFile = sorted[0]!
-    const sourcePath = join(dir, latestFile)
     const targetPath = join(dir, `${chapterCheckpointId}.json`)
 
     const raw = readFileSync(sourcePath, 'utf-8')
@@ -217,6 +246,7 @@ const files = readdirSync(dir).filter(f => f.endsWith('.json') && f !== 'pending
     record.parentCheckpointId = record.parentCheckpointId ?? null
 
     writeFileSync(targetPath, JSON.stringify(record, null, 2), 'utf-8')
+    this.lastCreatedCheckpointId = null
     logger.debug(`Chapter-level checkpoint saved: ${targetPath}`)
   }
 

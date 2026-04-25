@@ -3,7 +3,6 @@ import { getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { buildNovelGraph } from '../../graph/novel.graph.js'
-import { getCheckpointer } from '../../graph/checkpointer.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
@@ -141,7 +140,6 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<R
     throw new Error(`Story ${storyId} not found`)
   }
 
-  const checkpointer = getCheckpointer()
   const config: RunnableConfig = {
     configurable: { thread_id: storyId, outputDir },
   }

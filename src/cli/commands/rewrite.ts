@@ -1,13 +1,24 @@
 import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
-import { continueStory, getState } from '../../core/runner.js'
+import { getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { buildNovelGraph } from '../../graph/novel.graph.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
+import {
+  auto_fix_warnings,
+  detect_consistency,
+  detect_foreshadowing,
+  detect_hallucination,
+  draft_chapter,
+  finalize_chapter,
+  quality_pass,
+  validate_chapter,
+  verify_outline_compliance,
+} from '../../graph/nodes.js'
+import { writeChapterContent, deleteChapterContent } from '../../storage/filesystem/writer.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
-import type { ChapterMeta } from '../../types/chapter.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -200,26 +211,70 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     }
   }
 
-  const state = await getState(storyId)
-  const totalChapters = state?.totalChapters ?? 0
-
   const graph = buildNovelGraph()
+
+  if (targetChapterIndex !== undefined) {
+    const snapshot = await graph.getState(config)
+    const checkpointState = snapshot.values as ReducedGraphState
+
+    const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
+    for (let i = 0; i < targetChapterIndex; i++) {
+      rewrittenChapters[i] = checkpointState.chapters[i] ?? null
+    }
+
+    let workingState: ReducedGraphState = {
+      ...checkpointState,
+      currentChapterIndex: targetChapterIndex,
+      chapters: rewrittenChapters,
+      pendingIssues: [],
+      rewriteApproved: userResponse,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+    }
+
+    const nodeSequence = [
+      draft_chapter,
+      validate_chapter,
+      quality_pass,
+      detect_foreshadowing,
+      detect_hallucination,
+      detect_consistency,
+      verify_outline_compliance,
+      auto_fix_warnings,
+      finalize_chapter,
+    ]
+
+    for (const node of nodeSequence) {
+      const partial = await node(workingState)
+      workingState = {
+        ...workingState,
+        ...partial,
+      }
+    }
+
+    workingState = {
+      ...workingState,
+      rewriteApproved: false,
+      rewriteRequested: false,
+    }
+
+    for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
+      await deleteChapterContent(outputDir, ch)
+    }
+
+    await graph.updateState(config, workingState, '__input__')
+    await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
+    await checkpointer.pruneIntermediateCheckpoints(outputDir)
+
+    return workingState
+  }
 
   const update: Record<string, unknown> = {
     rewriteApproved: userResponse,
     rewriteRequested: false,
     isWriting: true,
     writeOneChapterOnly: true,
-  }
-
-  if (targetChapterIndex !== undefined) {
-    update.currentChapterIndex = targetChapterIndex
-    update.pendingIssues = []
-    const newChapters: (ChapterMeta | null)[] = new Array(totalChapters).fill(null)
-    for (let i = 0; i < targetChapterIndex; i++) {
-      newChapters[i] = (state?.chapters ?? [])[i] ?? null
-    }
-    update.chapters = newChapters
   }
 
   return await graph.invoke(

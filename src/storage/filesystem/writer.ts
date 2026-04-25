@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
@@ -25,6 +25,22 @@ export async function writeChapterContent(
   const filePath = getChapterFilePath(outputDir, chapterNumber)
   await writeFile(filePath, content, 'utf-8')
   logger.debug(`Chapter ${chapterNumber} written to: ${filePath}`)
+}
+
+export async function deleteChapterContent(
+  outputDir: string,
+  chapterNumber: number,
+): Promise<void> {
+  const filePath = getChapterFilePath(outputDir, chapterNumber)
+  try {
+    await unlink(filePath)
+    logger.debug(`Chapter ${chapterNumber} deleted: ${filePath}`)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err
+    }
+    logger.debug(`Chapter ${chapterNumber} not found, skip delete: ${filePath}`)
+  }
 }
 
 export async function writeOutlineContent(
