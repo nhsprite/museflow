@@ -297,6 +297,14 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       rewriteRequested: hasErrors,
     }
     if (!hasErrors) {
+      await graph.updateState(
+        { configurable: { thread_id: storyId, outputDir } },
+        {
+          rewriteApproved: false,
+          rewriteRequested: false,
+          pendingIssues: [],
+        }
+      )
       await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
       await checkpointer.pruneIntermediateCheckpoints(outputDir)
     } else {
@@ -391,6 +399,14 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     rewriteRequested: hasErrors,
   }
   if (!hasErrors) {
+    await graph.updateState(
+      { configurable: { thread_id: storyId, outputDir } },
+      {
+        rewriteApproved: false,
+        rewriteRequested: false,
+        pendingIssues: [],
+      }
+    )
     await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
   } else {
     await checkpointer.clearPendingWrites(outputDir)

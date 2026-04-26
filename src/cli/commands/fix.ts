@@ -236,6 +236,14 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<R
     rewriteApproved: false,
     rewriteRequested: false,
   }
+  await graph.updateState(
+    { configurable: { thread_id: storyId, outputDir } },
+    {
+      rewriteApproved: false,
+      rewriteRequested: false,
+      pendingIssues: [],
+    }
+  )
   await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)
 
   return workingState
