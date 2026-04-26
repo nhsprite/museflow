@@ -112,7 +112,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
 
     // No checkpoint_id or not found - return latest checkpoint
     const sorted = [...records.values()].sort((a, b) =>
-      a.checkpointId.localeCompare(b.checkpointId)
+      a.checkpoint.ts.localeCompare(b.checkpoint.ts)
     )
     const latest = sorted[sorted.length - 1]
     if (!latest) return undefined
@@ -140,7 +140,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     const limit = options?.limit ?? 100
 
     const sorted = [...records.values()]
-      .sort((a, b) => b.checkpointId.localeCompare(a.checkpointId))
+      .sort((a, b) => b.checkpoint.ts.localeCompare(a.checkpoint.ts))
 
     let count = 0
     for (const rec of sorted) {
