@@ -10,7 +10,7 @@ import { getCheckpointer } from '../../graph/checkpointer.js'
 import { buildNovelGraph } from '../../graph/novel.graph.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import {
-  draft_chapter,
+  fix_chapter,
   validate_chapter,
   quality_pass,
   detect_foreshadowing,
@@ -183,7 +183,7 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<R
   }
 
   const nodeSequence = [
-    draft_chapter,
+    fix_chapter,
     validate_chapter,
     quality_pass,
     detect_foreshadowing,

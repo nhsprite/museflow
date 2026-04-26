@@ -11,6 +11,7 @@ import {
   HallucinationAgent,
   ConsistencyAgent,
   OutlineComplianceAgent,
+  FixAgent,
 } from '../agents/index.js'
 import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
@@ -79,7 +80,13 @@ function getOutlineComplianceAgent(): OutlineComplianceAgent {
   return outlineComplianceAgent
 }
 
+function getFixAgent(): FixAgent {
+  if (!fixAgent) fixAgent = new FixAgent()
+  return fixAgent
+}
+
 let outlineComplianceAgent: OutlineComplianceAgent | null = null
+let fixAgent: FixAgent | null = null
 
 function charactersToString(characters: Character[]): string {
   return characters.map(c => {
@@ -252,6 +259,59 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const newChapters = [...state.chapters]
 
   newChapters[chapterIndex] = newChapter
+
+  return {
+    chapters: newChapters,
+  }
+}
+
+export async function fix_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  const agent = getFixAgent()
+  const chapterIndex = state.currentChapterIndex
+  const outlineItem = state.outline[chapterIndex]
+
+  const existingContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  if (!existingContent) {
+    throw new Error(
+      `第 ${chapterIndex + 1} 章文件不存在，无法修复。请运行 write 或 rewrite。`
+    )
+  }
+
+  const agentState: AgentState = {
+    idea: state.idea,
+    genre: state.genre,
+    totalChapters: state.totalChapters,
+    chapterIndex,
+    issues: state.pendingIssues,
+    chapterContent: existingContent,
+  }
+
+  const output = await agent.run(agentState)
+
+  const content = output.content ?? ''
+  if (!content || content.trim().length === 0) {
+    throw new Error(
+      `第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`
+    )
+  }
+  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+
+  const now = Date.now()
+  const updatedChapter: ChapterMeta = {
+    id: generateId(),
+    storyId: state.story.id,
+    number: toDisplayChapterNumber(chapterIndex),
+    title: null,
+    outline: outlineItem?.description || null,
+    summary: null,
+    foreshadows: null,
+    status: 'drafting',
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  const newChapters = [...state.chapters]
+  newChapters[chapterIndex] = updatedChapter
 
   return {
     chapters: newChapters,
