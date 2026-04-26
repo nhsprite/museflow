@@ -8,13 +8,15 @@ const appendTimelineSnapshot = vi.fn().mockReturnValue({})
 const getLatestSnapshot = vi.fn().mockReturnValue(null)
 const saveForeshadowStack = vi.fn()
 
+let mockChapterContentValue = 'rewritten chapter content'
+
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
   CharacterAgent: class {},
   OutlineAgent: class {},
   ChapterAgent: class {
     async run() {
-      return { content: 'rewritten chapter content' }
+      return { content: mockChapterContentValue }
     }
   },
   QualityAgent: class {},
@@ -121,5 +123,84 @@ describe('rewrite flow regression', () => {
     expect(result.currentChapterIndex).toBe(1)
     expect(logs.some(log => String(log).includes('第 1/20 章处理完成'))).toBe(true)
     expect(logs.some(log => String(log).includes('第 2/20 章处理完成'))).toBe(false)
+  })
+})
+
+describe('draft_chapter guard against empty content', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockChapterContentValue = 'rewritten chapter content'
+  })
+
+  it('throws error when AI returns empty string', async () => {
+    mockChapterContentValue = ''
+
+    const { draft_chapter } = await import('../../src/graph/nodes.js')
+
+    await expect(draft_chapter({
+      ...baseState,
+      currentChapterIndex: 0,
+    } as never)).rejects.toThrow('第 1 章内容为空，AI 生成失败')
+  })
+
+  it('throws error when AI returns only whitespace', async () => {
+    mockChapterContentValue = '   \n\t  '
+
+    const { draft_chapter } = await import('../../src/graph/nodes.js')
+
+    await expect(draft_chapter({
+      ...baseState,
+      currentChapterIndex: 0,
+    } as never)).rejects.toThrow('第 1 章内容为空，AI 生成失败')
+  })
+
+  it('throws error when AI returns null content', async () => {
+    mockChapterContentValue = null as unknown as string
+
+    const { draft_chapter } = await import('../../src/graph/nodes.js')
+
+    await expect(draft_chapter({
+      ...baseState,
+      currentChapterIndex: 0,
+    } as never)).rejects.toThrow('第 1 章内容为空，AI 生成失败')
+  })
+})
+
+describe('finalize_chapter guard against empty file', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('throws error when chapter file does not exist (returns null)', async () => {
+    readChapterContent.mockResolvedValue(null)
+
+    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+
+    await expect(finalize_chapter({
+      ...baseState,
+      currentChapterIndex: 0,
+    } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+  })
+
+  it('throws error when chapter file is empty string', async () => {
+    readChapterContent.mockResolvedValue('')
+
+    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+
+    await expect(finalize_chapter({
+      ...baseState,
+      currentChapterIndex: 0,
+    } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+  })
+
+  it('throws error when chapter file is only whitespace', async () => {
+    readChapterContent.mockResolvedValue('   \n\t  ')
+
+    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+
+    await expect(finalize_chapter({
+      ...baseState,
+      currentChapterIndex: 0,
+    } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
   })
 })

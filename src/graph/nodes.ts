@@ -228,6 +228,11 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const output = await agent.run(agentState)
 
   const content = output.content ?? ''
+  if (!content || content.trim().length === 0) {
+    throw new Error(
+      `第 ${chapterIndex + 1} 章内容为空，AI 生成失败。请重试。`
+    )
+  }
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const now = Date.now()
@@ -454,6 +459,14 @@ export async function request_rewrite(state: ReducedGraphState): Promise<Partial
 export async function finalize_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
+
+  // Guard: Verify chapter file has content before marking as complete
+  const chapterContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  if (chapterContent === null || chapterContent.trim().length === 0) {
+    throw new Error(
+      `第 ${chapterIndex + 1} 章文件为空或不存在，无法标记为完成。请重试撰写。`
+    )
+  }
 
   if (chapter) {
     const summary = chapter.summary || ''

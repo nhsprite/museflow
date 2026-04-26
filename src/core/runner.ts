@@ -147,6 +147,20 @@ export async function continueStory(
       ...workingState,
       ...partial,
     }
+    if (node === auto_fix_warnings) {
+      const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+      if (errors.length > 0) {
+        console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节撰写流程`)
+        break
+      }
+    }
+  }
+
+  const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
+  if (hasErrors) {
+    workingState.rewriteRequested = true
+    await checkpointer.clearPendingWrites(outputDir)
+    return workingState
   }
 
   workingState = {
