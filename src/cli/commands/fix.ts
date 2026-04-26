@@ -102,9 +102,10 @@ async function handleFix(storyId: string): Promise<void> {
   const chapterNum = state ? state.currentChapterIndex + 1 : 1
   const totalChapters = state ? state.totalChapters : 0
   const currentChapterIndex = state?.currentChapterIndex ?? 0
-  const maxRounds = 3
+  const maxRounds = 2
 
   let lastErrorCount = state?.pendingIssues.filter(i => i.severity === 'error').length ?? 0
+  let stagnateCount = 0
 
   for (let round = 1; round <= maxRounds; round++) {
     try {
@@ -132,17 +133,27 @@ async function handleFix(storyId: string): Promise<void> {
         return
       }
 
-      if (round < maxRounds) {
-        if (remainingErrors < lastErrorCount) {
-          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题减少：${lastErrorCount} → ${remainingErrors}，继续下一轮...\n`)
-          lastErrorCount = remainingErrors
-        } else if (remainingErrors === lastErrorCount) {
-          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题数量未变化（${remainingErrors} 个），继续下一轮尝试...\n`)
-        } else {
-          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题增加：${lastErrorCount} → ${remainingErrors}，继续下一轮尝试...\n`)
-          lastErrorCount = remainingErrors
-        }
+      if (remainingErrors > lastErrorCount) {
+        console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题反而增加（${lastErrorCount} → ${remainingErrors}）`)
+        console.log('  说明本章结构性矛盾较多，建议彻底重写\n')
+        console.log(`   museflow rewrite ${storyId}\n`)
+        return
       }
+
+      if (remainingErrors === lastErrorCount) {
+        stagnateCount++
+        if (stagnateCount >= 2) {
+          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题无变化（${remainingErrors} 个）`)
+          console.log('  多次尝试未能解决，建议彻底重写\n')
+          console.log(`   museflow rewrite ${storyId}\n`)
+          return
+        }
+        console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题无变化（${remainingErrors} 个），再试一轮...\n`)
+      } else {
+        stagnateCount = 0
+        console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题减少：${lastErrorCount} → ${remainingErrors}，继续下一轮...\n`)
+      }
+      lastErrorCount = remainingErrors
     } catch (err) {
       console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
       updateStatus('error')
