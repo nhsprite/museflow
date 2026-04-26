@@ -58,6 +58,12 @@ export abstract class BaseAgent {
   protected abstract parse(content: string): AgentOutput
 }
 
+export interface ParagraphFix {
+  index: number
+  content: string
+  issues: Issue[]
+}
+
 export interface AgentState {
   idea: string
   genre: string
@@ -76,6 +82,10 @@ export interface AgentState {
   chapterSummary?: string
   timelineSnapshot?: string | null
   issues?: Issue[]
+  paragraphFix?: {
+    paragraphs: ParagraphFix[]
+    context: string
+  }
 }
 
 export interface AgentOutput {

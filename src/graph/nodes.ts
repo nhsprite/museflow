@@ -277,6 +277,41 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     )
   }
 
+  const paragraphs = splitIntoParagraphs(existingContent)
+  const affectedIndices = findAffectedParagraphs(paragraphs, state.pendingIssues)
+
+  if (affectedIndices.length === 0) {
+    console.log('[MuseFlow] 未能定位到问题所在段落，将使用全文修复模式')
+    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem)
+  }
+
+  const paragraphFixes = affectedIndices.map(idx => {
+    const paragraphContent = paragraphs[idx]
+    if (!paragraphContent) {
+      throw new Error(`段落索引 ${idx} 超出范围`)
+    }
+    return {
+      index: idx,
+      content: paragraphContent,
+      issues: state.pendingIssues.filter(issue => {
+        const keywords = extractIssueKeywords(issue)
+        return keywords.some(kw => paragraphContent.includes(kw))
+      }),
+    }
+  })
+
+  const contextIndices = new Set<number>()
+  for (const idx of affectedIndices) {
+    if (idx > 0) contextIndices.add(idx - 1)
+    if (idx < paragraphs.length - 1) contextIndices.add(idx + 1)
+  }
+  for (const idx of affectedIndices) {
+    contextIndices.delete(idx)
+  }
+
+  const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
+  const context = contextParagraphs.join('\n\n')
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -284,16 +319,27 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     chapterIndex,
     issues: state.pendingIssues,
     chapterContent: existingContent,
+    paragraphFix: {
+      paragraphs: paragraphFixes,
+      context,
+    },
   }
 
   const output = await agent.run(agentState)
 
-  const content = output.content ?? ''
-  if (!content || content.trim().length === 0) {
-    throw new Error(
-      `第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`
-    )
+  let content: string
+  if (output.data && (output.data as { modifiedParagraphs?: Array<{ index: number; content: string }> }).modifiedParagraphs) {
+    const modifiedParagraphs = (output.data as { modifiedParagraphs: Array<{ index: number; content: string }> }).modifiedParagraphs
+    content = mergeParagraphFixes(paragraphs, modifiedParagraphs, affectedIndices)
+  } else {
+    content = output.content ?? ''
+    if (!content || content.trim().length === 0) {
+      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`)
+    }
+    content = applyParagraphDiffProtection(existingContent, content, affectedIndices)
   }
+
+  content = deduplicateSentences(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const now = Date.now()
@@ -316,6 +362,190 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
   return {
     chapters: newChapters,
   }
+}
+
+async function runLegacyFix(
+  agent: FixAgent,
+  state: ReducedGraphState,
+  existingContent: string,
+  chapterIndex: number,
+  outlineItem: { description?: string } | undefined
+): Promise<Partial<ReducedGraphState>> {
+  const agentState: AgentState = {
+    idea: state.idea,
+    genre: state.genre,
+    totalChapters: state.totalChapters,
+    chapterIndex,
+    issues: state.pendingIssues,
+    chapterContent: existingContent,
+  }
+
+  const output = await agent.run(agentState)
+
+  let content = output.content ?? ''
+  if (!content || content.trim().length === 0) {
+    throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`)
+  }
+  content = deduplicateSentences(content)
+  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+
+  const now = Date.now()
+  const updatedChapter: ChapterMeta = {
+    id: generateId(),
+    storyId: state.story.id,
+    number: toDisplayChapterNumber(chapterIndex),
+    title: null,
+    outline: outlineItem?.description || null,
+    summary: null,
+    foreshadows: null,
+    status: 'drafting',
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  const newChapters = [...state.chapters]
+  newChapters[chapterIndex] = updatedChapter
+
+  return {
+    chapters: newChapters,
+  }
+}
+
+export function splitIntoParagraphs(text: string): string[] {
+  return text.split(/\n\n+/).filter(p => p.trim().length > 0)
+}
+
+export function extractIssueKeywords(issue: { description: string; location?: string }): string[] {
+  const keywords: string[] = []
+
+  const text = issue.description + ' ' + (issue.location || '')
+
+  const quotes = text.match(/"([^"]+)"/g)
+  if (quotes) {
+    keywords.push(...quotes.map(q => q.slice(1, -1)))
+  }
+
+  const chineseSequences = text.match(/[\u4e00-\u9fff]+/g)
+  if (chineseSequences) {
+    for (const sequence of chineseSequences) {
+      const maxLen = Math.min(6, sequence.length)
+      for (let len = 2; len <= maxLen; len++) {
+        for (let i = 0; i <= sequence.length - len; i++) {
+          keywords.push(sequence.slice(i, i + len))
+        }
+      }
+    }
+  }
+
+  return [...new Set(keywords)].filter(k => k.length >= 2)
+}
+
+export function findAffectedParagraphs(paragraphs: string[], issues: Array<{ description: string; location?: string }>): number[] {
+  const affected = new Set<number>()
+
+  for (const issue of issues) {
+    const keywords = extractIssueKeywords(issue)
+    for (let i = 0; i < paragraphs.length; i++) {
+      const paragraph = paragraphs[i]
+      if (paragraph && keywords.some(kw => paragraph.includes(kw))) {
+        affected.add(i)
+      }
+    }
+  }
+
+  return Array.from(affected).sort((a, b) => a - b)
+}
+
+export function mergeParagraphFixes(
+  originalParagraphs: string[],
+  modifiedParagraphs: Array<{ index: number; content: string }>,
+  affectedIndices: number[]
+): string {
+  const result = [...originalParagraphs]
+  const modifiedMap = new Map(modifiedParagraphs.map(p => [p.index, p.content]))
+
+  for (const idx of affectedIndices) {
+    if (modifiedMap.has(idx)) {
+      result[idx] = modifiedMap.get(idx)!
+    }
+  }
+
+  return result.join('\n\n')
+}
+
+export function applyParagraphDiffProtection(
+  original: string,
+  fixed: string,
+  allowedIndices: number[]
+): string {
+  const originalParagraphs = splitIntoParagraphs(original)
+  const fixedParagraphs = splitIntoParagraphs(fixed)
+
+  if (originalParagraphs.length !== fixedParagraphs.length) {
+    console.warn('[MuseFlow] 修复后段落数量变化，跳过段落保护')
+    return fixed
+  }
+
+  const allowedSet = new Set(allowedIndices)
+  let revertedCount = 0
+  const result: string[] = []
+
+  for (let i = 0; i < originalParagraphs.length; i++) {
+    const originalParagraph = originalParagraphs[i]
+    const fixedParagraph = fixedParagraphs[i]
+    if (!originalParagraph || !fixedParagraph) {
+      continue
+    }
+    if (!allowedSet.has(i) && originalParagraph !== fixedParagraph) {
+      console.log(`[MuseFlow] 检测到无关段落 ${i} 被修改，已自动回退`)
+      result.push(originalParagraph)
+      revertedCount++
+    } else {
+      result.push(fixedParagraph)
+    }
+  }
+
+  if (revertedCount > 0) {
+    console.log(`[MuseFlow] 共回退 ${revertedCount} 个无关段落的修改`)
+  }
+
+  return result.join('\n\n')
+}
+
+export function deduplicateSentences(text: string): string {
+  const MIN_SENTENCE_LENGTH = 10
+  const SENTENCE_PATTERN = /[^。？！\n]+[。？！\n]/g
+
+  const matches = [...text.matchAll(SENTENCE_PATTERN)]
+  if (matches.length === 0) return text
+
+  const seen = new Set<string>()
+  let removedCount = 0
+  const rebuilt: string[] = []
+  let pos = 0
+
+  for (const match of matches) {
+    rebuilt.push(text.slice(pos, match.index))
+    const sentence = match[0]
+    const trimmed = sentence.trim()
+
+    const isDuplicate = trimmed.length >= MIN_SENTENCE_LENGTH && seen.has(trimmed)
+    if (isDuplicate) {
+      removedCount++
+    } else {
+      seen.add(trimmed)
+      rebuilt.push(sentence)
+    }
+
+    pos = (match.index ?? 0) + sentence.length
+  }
+  rebuilt.push(text.slice(pos))
+
+  const finalText = rebuilt.join('')
+  if (removedCount > 0) {
+    console.log(`[MuseFlow] 自动清理 ${removedCount} 个重复句子`)
+  }
+  return finalText
 }
 
 function countChineseWords(text: string): number {

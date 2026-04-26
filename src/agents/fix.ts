@@ -10,8 +10,69 @@ export class FixAgent extends BaseAgent {
 
   protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
     const chapterIndex = state.chapterIndex ?? 0
-    const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
+    const displayChapterNumber = String(toDisplayChapterNumber(chapterIndex))
 
+    if (state.paragraphFix && state.paragraphFix.paragraphs.length > 0) {
+      return this.buildParagraphPrompt(state, displayChapterNumber)
+    }
+
+    return this.buildLegacyPrompt(state, displayChapterNumber)
+  }
+
+  private buildParagraphPrompt(state: Required<AgentState>, displayChapterNumber: string): import('../model/provider.js').Message[] {
+    const { paragraphs, context } = state.paragraphFix!
+
+    const issuesSection = state.issues && state.issues.length > 0
+      ? `【必须修复的问题】
+${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}`
+      : ''
+
+    const issueIndexMap = new Map(state.issues?.map((issue, idx) => [issue, idx + 1]) ?? [])
+    const paragraphsSection = paragraphs.map((p) =>
+      `【段落 ${p.index}】${p.issues.length > 0 ? ` (涉及问题: ${p.issues.map(issue => issueIndexMap.get(issue) ?? '?').join(', ')})` : ''}
+${p.content}`
+    ).join('\n\n')
+
+    const userContent = `请对第 ${displayChapterNumber} 章的指定段落进行精准修复。
+
+${issuesSection}
+
+【上下文】（仅供参考，不要修改）
+${context}
+
+【需要修改的段落】（只能修改这些段落，其他内容不可触碰）
+${paragraphsSection}
+
+【硬性约束 — 违反任何一条即不合格】
+1. 你只能修改上面标记为【需要修改的段落】的内容
+2. 每个段落的修改必须是独立的：修改段落A时不能引用或改变段落B的内容
+3. 修改后的段落必须在意思上能独立成立，与上下文衔接自然
+4. 修改时必须彻底替换原句，绝不允许原句和新句同时存在
+5. 不得引入新的角色、地点、物品、时间线或因果关系
+6. 保持原文的语言风格、叙事节奏和人物语气
+7. 修改后通读段落，确保没有句子重复出现
+8. 你不需要输出完整章节，只需要输出修改后的段落
+
+【输出格式】
+对每个需要修改的段落，按以下格式输出：
+
+【段落 N】
+[修改后的段落内容]
+
+如果某个段落不需要修改，也按格式输出原内容：
+
+【段落 N】
+[原内容]
+
+请只输出需要修改的段落，不要输出任何其他内容。`
+
+    return [
+      this.systemMessage('你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的段落。你绝对不可以修改未指定的段落，不可以添加新段落，不可以删除段落。你只能修改标记为【需要修改的段落】的内容。修改时彻底替换原句，不要残留。'),
+      this.userMessage(userContent),
+    ]
+  }
+
+  private buildLegacyPrompt(state: Required<AgentState>, displayChapterNumber: string): import('../model/provider.js').Message[] {
     const issuesSection = state.issues && state.issues.length > 0
       ? `【必须修复的问题】
 ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}`
@@ -28,32 +89,37 @@ ${issuesSection}
 
 ${existingChapterSection}
 
-【修复策略】
-1. 先分析每个问题的根因，找出最简洁的修复方式
-2. 优先使用"补充说明""调整措辞"等最小改动，避免大幅重写段落
-3. 修改时必须考虑对全文逻辑的影响，确保不引入新的时间线、空间或因果矛盾
-4. 如果多个问题指向同一段落，请一次性综合修复，避免反复修改同一处
-
-【硬性约束 — 违反任何一条即不合格】
+【硬性约束】
 1. 只修改与上述问题直接相关的段落或句子
 2. 保留所有未涉及问题的原文内容，不得删减、改动或重新组织
-3. 宁可少改，不要多改。如果你不确定某个句子是否需要修改，不要修改它
-4. 修复后的内容必须与大纲、世界观、人物设定保持一致
-5. 保持原文的语言风格、叙事节奏和人物语气
-6. 不得引入新的角色、地点、物品、时间线或因果关系
-
-【输出格式】
-先列出你修改了哪些句子（原句 → 修改后），然后输出完整的章节正文。
+3. 宁可少改，不要多改
+4. 不得引入新的角色、地点、物品、时间线或因果关系
+5. 用"替换"而非"追加"：修改时必须彻底删除原句，用新句替代
+6. 修改后确保没有任何句子重复出现
 
 请输出修复后的完整第 ${displayChapterNumber} 章正文。`
 
     return [
-      this.systemMessage('你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。你的核心原则是：宁可少改，不要多改。你只修复指定的问题，绝不动无关内容。如果你不确定某个句子是否需要修改，保留原句。修改前请先分析问题根因，选择影响最小的修复方式，避免引入新的逻辑矛盾。'),
+      this.systemMessage('你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。'),
       this.userMessage(userContent),
     ]
   }
 
   protected parse(content: string): AgentOutput {
+    const paragraphPattern = /【段落\s*(\d+)】\n([\s\S]*?)(?=\n【段落\s*\d+】|$)/g
+    const modifiedParagraphs: Array<{ index: number; content: string }> = []
+
+    let match
+    while ((match = paragraphPattern.exec(content)) !== null) {
+      const index = parseInt(match[1] ?? '0', 10)
+      const paragraphContent = (match[2] ?? '').trim()
+      modifiedParagraphs.push({ index, content: paragraphContent })
+    }
+
+    if (modifiedParagraphs.length > 0) {
+      return { success: true, content, data: { modifiedParagraphs } }
+    }
+
     return { success: true, content }
   }
 

@@ -94,78 +94,83 @@ export async function fix(storyId: string, _options: FixOptions): Promise<void> 
 }
 
 async function handleFix(storyId: string): Promise<void> {
-  const updateStatus = (status: StoryStatus) => {
-    updateStoryStatus(storyId, status)
-  }
-
   const state = await getState(storyId)
   const chapterNum = state ? state.currentChapterIndex + 1 : 1
   const totalChapters = state ? state.totalChapters : 0
   const currentChapterIndex = state?.currentChapterIndex ?? 0
-  const maxRounds = 2
 
-  let lastErrorCount = state?.pendingIssues.filter(i => i.severity === 'error').length ?? 0
-  let stagnateCount = 0
+  const fixableIssues = state?.pendingIssues.filter(isFixable) ?? []
+  const nonFixableIssues = state?.pendingIssues.filter(i => !isFixable(i)) ?? []
 
-  for (let round = 1; round <= maxRounds; round++) {
-    try {
-      const roundLabel = round > 1 ? `（第 ${round}/${maxRounds} 轮）` : ''
-      const result = await withSpinner(
-        `正在修复第 ${chapterNum}/${totalChapters} 章${roundLabel}...`,
-        () => invokeGraph(storyId, true),
-        `✅ 第 ${chapterNum} 章第 ${round} 轮修复完成`
-      )
-
-      const remainingErrors = result.pendingIssues.filter(i => i.severity === 'error').length
-
-      if (remainingErrors === 0) {
-        console.log(`\n[MuseFlow] ✅ 第 ${chapterNum}/${totalChapters} 章修复完成`)
-        if (result.outline[currentChapterIndex]) {
-          console.log(`  章节名: ${result.outline[currentChapterIndex].title}`)
-        }
-
-        const remainingWarnings = result.pendingIssues.filter(i => i.severity === 'warning')
-        if (remainingWarnings.length > 0) {
-          console.log(`  仍有 ${remainingWarnings.length} 个警告`)
-        }
-
-        console.log('\n✨ 所有严重问题已修复，运行 "museflow write" 继续下一章\n')
-        return
-      }
-
-      if (remainingErrors > lastErrorCount) {
-        console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题反而增加（${lastErrorCount} → ${remainingErrors}）`)
-        console.log('  说明本章结构性矛盾较多，建议彻底重写\n')
-        console.log(`   museflow rewrite ${storyId}\n`)
-        return
-      }
-
-      if (remainingErrors === lastErrorCount) {
-        stagnateCount++
-        if (stagnateCount >= 2) {
-          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题无变化（${remainingErrors} 个）`)
-          console.log('  多次尝试未能解决，建议彻底重写\n')
-          console.log(`   museflow rewrite ${storyId}\n`)
-          return
-        }
-        console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题无变化（${remainingErrors} 个），再试一轮...\n`)
-      } else {
-        stagnateCount = 0
-        console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题减少：${lastErrorCount} → ${remainingErrors}，继续下一轮...\n`)
-      }
-      lastErrorCount = remainingErrors
-    } catch (err) {
-      console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
-      updateStatus('error')
-      process.exit(1)
+  if (nonFixableIssues.length > 0) {
+    console.log(`\n[MuseFlow] 检测到 ${nonFixableIssues.length} 个结构性问题，不适合用 fix 修复：`)
+    for (const issue of nonFixableIssues) {
+      console.log(`  ❌ [${issue.type}] ${issue.description}`)
     }
+    console.log('\n  结构性问题（时间线、逻辑矛盾、段落结构）需要彻底重写才能解决。')
+    console.log(`   museflow rewrite ${storyId}\n`)
+    return
   }
 
-  console.log(`\n[MuseFlow] 第 ${chapterNum}/${totalChapters} 章经过 ${maxRounds} 轮修复后仍有问题`)
-  console.log(`  状态: 仍有 ${lastErrorCount} 个问题未解决`)
-  console.log(`\n请选择修复方式：`)
-  console.log(`   museflow fix ${storyId}      # 再次尝试针对性修复（推荐）`)
-  console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+  const initialErrorCount = state?.pendingIssues.filter(i => i.severity === 'error').length ?? 0
+
+  try {
+    const result = await withSpinner(
+      `正在修复第 ${chapterNum}/${totalChapters} 章...`,
+      () => invokeGraph(storyId, true),
+      `✅ 第 ${chapterNum} 章修复完成`
+    )
+
+    const remainingErrors = result.pendingIssues.filter(i => i.severity === 'error').length
+
+    if (remainingErrors === 0) {
+      console.log(`\n[MuseFlow] ✅ 第 ${chapterNum}/${totalChapters} 章修复完成`)
+      if (result.outline[currentChapterIndex]) {
+        console.log(`  章节名: ${result.outline[currentChapterIndex].title}`)
+      }
+
+      const remainingWarnings = result.pendingIssues.filter(i => i.severity === 'warning')
+      if (remainingWarnings.length > 0) {
+        console.log(`  仍有 ${remainingWarnings.length} 个警告`)
+      }
+
+      console.log('\n✨ 所有严重问题已修复，运行 "museflow write" 继续下一章\n')
+      return
+    }
+
+    if (remainingErrors > initialErrorCount) {
+      console.log(`\n[MuseFlow] 修复后问题反而增加（${initialErrorCount} → ${remainingErrors}）`)
+      console.log('  说明本章结构性矛盾较多，建议彻底重写\n')
+      console.log(`   museflow rewrite ${storyId}\n`)
+      return
+    }
+
+    console.log(`\n[MuseFlow] 修复后仍有 ${remainingErrors} 个问题`)
+    console.log('  这些问题可能需要更大幅度的调整\n')
+    console.log(`请选择修复方式：`)
+    console.log(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
+    console.log(`   museflow fix ${storyId}      # 再次尝试针对性修复\n`)
+  } catch (err) {
+    console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
+    process.exit(1)
+  }
+}
+
+function isFixable(issue: { type: string; description: string }): boolean {
+  const nonFixableTypes = ['consistency']
+  if (nonFixableTypes.includes(issue.type)) {
+    return false
+  }
+
+  const structuralKeywords = [
+    '时间线', '时间混乱', '逻辑矛盾', '因果关系', '结构',
+    '段落结构', '叙事结构', '前后矛盾', '逻辑不通',
+  ]
+  if (structuralKeywords.some(kw => issue.description.includes(kw))) {
+    return false
+  }
+
+  return true
 }
 
 async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<ReducedGraphState> {
