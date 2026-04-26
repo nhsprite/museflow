@@ -141,8 +141,9 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
           console.log(`     位置: ${err.location}`)
         }
       }
-      console.log(`\n请运行以下命令修复：`)
-      console.log(`   museflow rewrite ${storyId}`)
+      console.log(`\n请选择修复方式：`)
+      console.log(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+      console.log(`   museflow rewrite ${storyId}  # 彻底重写`)
       return
     }
 

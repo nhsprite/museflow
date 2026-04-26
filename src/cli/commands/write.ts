@@ -62,7 +62,8 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   const unresolvedErrors = state.pendingIssues.filter(i => i.severity === 'error')
   if (state.rewriteRequested || unresolvedErrors.length > 0) {
     console.error('[MuseFlow] 当前章节存在问题，需要先修复')
-    console.error(`   运行 "museflow rewrite" 重写本章\n`)
+    console.error(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+    console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
     process.exit(1)
   }
 
@@ -121,8 +122,9 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
           console.log(`     位置: ${err.location}`)
         }
       }
-      console.log(`\n请运行以下命令修复：`)
-      console.log(`   museflow rewrite ${storyId}`)
+      console.log(`\n请选择修复方式：`)
+      console.log(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+      console.log(`   museflow rewrite ${storyId}  # 彻底重写`)
       return
     }
 
