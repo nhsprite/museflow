@@ -151,6 +151,13 @@ export async function continueStory(
       const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
       if (errors.length > 0) {
         console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节撰写流程`)
+        for (const err of errors) {
+          const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+          console.error(`  ${icon} [${err.type}] ${err.description}`)
+          if (err.location) {
+            console.error(`     位置: ${err.location}`)
+          }
+        }
         break
       }
     }

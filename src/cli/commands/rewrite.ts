@@ -132,7 +132,16 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
     )
 
     if (result.rewriteRequested) {
-      console.log('\n[MuseFlow] 检测到问题，请运行以下命令修复：')
+      const errors = result.pendingIssues.filter(i => i.severity === 'error')
+      console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，重写已中断：`)
+      for (const err of errors) {
+        const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+        console.log(`  ${icon} [${err.type}] ${err.description}`)
+        if (err.location) {
+          console.log(`     位置: ${err.location}`)
+        }
+      }
+      console.log(`\n请运行以下命令修复：`)
       console.log(`   museflow rewrite ${storyId}`)
       return
     }
@@ -268,6 +277,13 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
         const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
         if (errors.length > 0) {
           console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+          for (const err of errors) {
+            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+            console.error(`  ${icon} [${err.type}] ${err.description}`)
+            if (err.location) {
+              console.error(`     位置: ${err.location}`)
+            }
+          }
           break
         }
       }
@@ -355,6 +371,13 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
       if (errors.length > 0) {
         console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+        for (const err of errors) {
+          const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+          console.error(`  ${icon} [${err.type}] ${err.description}`)
+          if (err.location) {
+            console.error(`     位置: ${err.location}`)
+          }
+        }
         break
       }
     }
