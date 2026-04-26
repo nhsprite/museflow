@@ -110,16 +110,13 @@ async function handleFix(storyId: string): Promise<void> {
       `✅ 第 ${chapterNum} 章修复完成`
     )
 
-    if (result.rewriteRequested) {
-      console.log('\n[MuseFlow] 修复后仍有问题，运行 "museflow rewrite" 进行全面重写')
-      return
-    }
-
     const remainingErrors = result.pendingIssues.filter(i => i.severity === 'error').length
     if (remainingErrors > 0) {
-      console.log(`\n[MuseFlow] 第 ${chapterNum}/${totalChapters} 章修复完成`)
+      console.log(`\n[MuseFlow] 第 ${chapterNum}/${totalChapters} 章修复后仍有问题`)
       console.log(`  状态: 仍有 ${remainingErrors} 个问题未解决`)
-      console.log('  运行 "museflow rewrite" 进行全面重写\n')
+      console.log(`\n请选择修复方式：`)
+      console.log(`   museflow fix ${storyId}      # 再次尝试针对性修复（推荐）`)
+      console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
       return
     }
 
@@ -199,6 +196,10 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<R
     workingState = {
       ...workingState,
       ...partial,
+    }
+    if (node === fix_chapter) {
+      // fix_chapter 执行后清空 pendingIssues，让验证节点从零重新检测
+      workingState.pendingIssues = []
     }
     if (node === auto_fix_warnings) {
       const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
