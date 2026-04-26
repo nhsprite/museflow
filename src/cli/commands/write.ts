@@ -112,7 +112,17 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
     )
 
     if (result.rewriteRequested) {
-      console.log('[MuseFlow] 当前章节存在问题，请运行 "museflow rewrite" 重写')
+      const errors = result.pendingIssues.filter(i => i.severity === 'error')
+      console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，撰写已中断：`)
+      for (const err of errors) {
+        const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+        console.log(`  ${icon} [${err.type}] ${err.description}`)
+        if (err.location) {
+          console.log(`     位置: ${err.location}`)
+        }
+      }
+      console.log(`\n请运行以下命令修复：`)
+      console.log(`   museflow rewrite ${storyId}`)
       return
     }
 
