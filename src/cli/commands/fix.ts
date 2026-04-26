@@ -102,46 +102,59 @@ async function handleFix(storyId: string): Promise<void> {
   const chapterNum = state ? state.currentChapterIndex + 1 : 1
   const totalChapters = state ? state.totalChapters : 0
   const currentChapterIndex = state?.currentChapterIndex ?? 0
+  const maxRounds = 3
 
-  try {
-    const result = await withSpinner(
-      `正在修复第 ${chapterNum}/${totalChapters} 章...`,
-      () => invokeGraph(storyId, true),
-      `✅ 第 ${chapterNum} 章修复完成`
-    )
+  let lastErrorCount = state?.pendingIssues.filter(i => i.severity === 'error').length ?? 0
 
-    const remainingErrors = result.pendingIssues.filter(i => i.severity === 'error').length
-    if (remainingErrors > 0) {
-      console.log(`\n[MuseFlow] 第 ${chapterNum}/${totalChapters} 章修复后仍有问题`)
-      console.log(`  状态: 仍有 ${remainingErrors} 个问题未解决`)
-      console.log(`\n请选择修复方式：`)
-      console.log(`   museflow fix ${storyId}      # 再次尝试针对性修复（推荐）`)
-      console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
-      return
+  for (let round = 1; round <= maxRounds; round++) {
+    try {
+      const roundLabel = round > 1 ? `（第 ${round}/${maxRounds} 轮）` : ''
+      const result = await withSpinner(
+        `正在修复第 ${chapterNum}/${totalChapters} 章${roundLabel}...`,
+        () => invokeGraph(storyId, true),
+        `✅ 第 ${chapterNum} 章第 ${round} 轮修复完成`
+      )
+
+      const remainingErrors = result.pendingIssues.filter(i => i.severity === 'error').length
+
+      if (remainingErrors === 0) {
+        console.log(`\n[MuseFlow] ✅ 第 ${chapterNum}/${totalChapters} 章修复完成`)
+        if (result.outline[currentChapterIndex]) {
+          console.log(`  章节名: ${result.outline[currentChapterIndex].title}`)
+        }
+
+        const remainingWarnings = result.pendingIssues.filter(i => i.severity === 'warning')
+        if (remainingWarnings.length > 0) {
+          console.log(`  仍有 ${remainingWarnings.length} 个警告`)
+        }
+
+        console.log('\n✨ 所有严重问题已修复，运行 "museflow write" 继续下一章\n')
+        return
+      }
+
+      if (round < maxRounds) {
+        if (remainingErrors < lastErrorCount) {
+          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题减少：${lastErrorCount} → ${remainingErrors}，继续下一轮...\n`)
+          lastErrorCount = remainingErrors
+        } else if (remainingErrors === lastErrorCount) {
+          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题数量未变化（${remainingErrors} 个），继续下一轮尝试...\n`)
+        } else {
+          console.log(`\n[MuseFlow] 第 ${round} 轮修复后问题增加：${lastErrorCount} → ${remainingErrors}，继续下一轮尝试...\n`)
+          lastErrorCount = remainingErrors
+        }
+      }
+    } catch (err) {
+      console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
+      updateStatus('error')
+      process.exit(1)
     }
-
-    console.log(`\n[MuseFlow] ✅ 第 ${chapterNum}/${totalChapters} 章修复完成`)
-    if (result.outline[currentChapterIndex]) {
-      console.log(`  章节名: ${result.outline[currentChapterIndex].title}`)
-    }
-
-    const fixedWarnings = result.pendingIssues.filter(i => i.severity !== 'error').length
-    if (fixedWarnings > 0) {
-      console.log(`  已修复: ${fixedWarnings} 个问题`)
-    }
-
-    const remainingWarnings = result.pendingIssues.filter(i => i.severity === 'warning')
-    if (remainingWarnings.length > 0) {
-      console.log(`  仍有 ${remainingWarnings.length} 个警告`)
-    }
-
-    console.log('\n✨ 所有严重问题已修复，运行 "museflow write" 继续下一章\n')
-
-  } catch (err) {
-    console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
-    updateStatus('error')
-    process.exit(1)
   }
+
+  console.log(`\n[MuseFlow] 第 ${chapterNum}/${totalChapters} 章经过 ${maxRounds} 轮修复后仍有问题`)
+  console.log(`  状态: 仍有 ${lastErrorCount} 个问题未解决`)
+  console.log(`\n请选择修复方式：`)
+  console.log(`   museflow fix ${storyId}      # 再次尝试针对性修复（推荐）`)
+  console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
 }
 
 async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<ReducedGraphState> {
