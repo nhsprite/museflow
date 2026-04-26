@@ -2,12 +2,24 @@ import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database
 import { getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
-import { buildNovelGraph } from '../../graph/novel.graph.js'
 import { getOutputsDir } from '../../utils/paths.js'
-import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { getCheckpointer } from '../../graph/checkpointer.js'
+import { buildNovelGraph } from '../../graph/novel.graph.js'
+import type { RunnableConfig } from '@langchain/core/runnables'
+import {
+  draft_chapter,
+  validate_chapter,
+  quality_pass,
+  detect_foreshadowing,
+  detect_hallucination,
+  detect_consistency,
+  verify_outline_compliance,
+  auto_fix_warnings,
+  finalize_chapter,
+} from '../../graph/nodes.js'
 
 function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -136,30 +148,96 @@ async function handleFix(storyId: string): Promise<void> {
 }
 
 async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<ReducedGraphState> {
-  const { Command } = await import('@langchain/langgraph')
+  const graph = buildNovelGraph()
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
     throw new Error(`Story ${storyId} not found`)
   }
 
+  const checkpointer = getCheckpointer()
+  await checkpointer.clearPendingWrites(outputDir)
+
   const config: RunnableConfig = {
     configurable: { thread_id: storyId, outputDir },
   }
 
-  const graph = buildNovelGraph()
+  const snapshot = await graph.getState(config)
+  const checkpointState = snapshot.values as ReducedGraphState
 
-  return await graph.invoke(
-    new Command({
-      goto: 'draft_chapter',
-      update: {
-        rewriteApproved,
-        rewriteRequested: false,
-        isWriting: true,
-        writeOneChapterOnly: true,
-      },
-    }),
-    config
-  )
+  const targetIndex = checkpointState.currentChapterIndex
+
+  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
+  for (let i = 0; i < targetIndex; i++) {
+    rewrittenChapters[i] = checkpointState.chapters[i] ?? null
+  }
+
+  let workingState: ReducedGraphState = {
+    ...checkpointState,
+    currentChapterIndex: targetIndex,
+    chapters: rewrittenChapters,
+    pendingIssues: checkpointState.pendingIssues,
+    rewriteApproved,
+    rewriteRequested: false,
+    isWriting: true,
+    writeOneChapterOnly: true,
+  }
+
+  const nodeSequence = [
+    draft_chapter,
+    validate_chapter,
+    quality_pass,
+    detect_foreshadowing,
+    detect_hallucination,
+    detect_consistency,
+    verify_outline_compliance,
+    auto_fix_warnings,
+    finalize_chapter,
+  ]
+
+  for (const node of nodeSequence) {
+    const partial = await node(workingState)
+    workingState = {
+      ...workingState,
+      ...partial,
+    }
+    if (node === auto_fix_warnings) {
+      const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+      if (errors.length > 0) {
+        console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节修复流程`)
+        for (const err of errors) {
+          const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+          console.error(`  ${icon} [${err.type}] ${err.description}`)
+          if (err.location) {
+            console.error(`     位置: ${err.location}`)
+          }
+        }
+        break
+      }
+    }
+  }
+
+  const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
+  if (hasErrors) {
+    workingState.rewriteRequested = true
+    await checkpointer.clearPendingWrites(outputDir)
+    await graph.updateState(
+      { configurable: { thread_id: storyId, outputDir } },
+      {
+        rewriteRequested: true,
+        pendingIssues: workingState.pendingIssues,
+      }
+    )
+    return workingState
+  }
+
+  workingState = {
+    ...workingState,
+    rewriteApproved: false,
+    rewriteRequested: false,
+  }
+  await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)
+
+  return workingState
 }
 
 function groupIssuesByType(issues: { type: string; severity: string; description: string; location?: string }[]): Record<string, typeof issues> {
