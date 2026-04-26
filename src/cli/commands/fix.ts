@@ -255,6 +255,9 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<R
       rewriteApproved: false,
       rewriteRequested: false,
       pendingIssues: [],
+      currentChapterIndex: workingState.currentChapterIndex,
+      chapters: workingState.chapters,
+      chapterSummaries: workingState.chapterSummaries,
     }
   )
   await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)

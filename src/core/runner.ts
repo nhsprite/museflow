@@ -189,6 +189,9 @@ export async function continueStory(
       rewriteApproved: false,
       rewriteRequested: false,
       pendingIssues: [],
+      currentChapterIndex: workingState.currentChapterIndex,
+      chapters: workingState.chapters,
+      chapterSummaries: workingState.chapterSummaries,
     }
   )
   await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)

@@ -303,6 +303,9 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
           rewriteApproved: false,
           rewriteRequested: false,
           pendingIssues: [],
+          currentChapterIndex: workingState.currentChapterIndex,
+          chapters: workingState.chapters,
+          chapterSummaries: workingState.chapterSummaries,
         }
       )
       await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
@@ -405,6 +408,9 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
         rewriteApproved: false,
         rewriteRequested: false,
         pendingIssues: [],
+        currentChapterIndex: workingState.currentChapterIndex,
+        chapters: workingState.chapters,
+        chapterSummaries: workingState.chapterSummaries,
       }
     )
     await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
