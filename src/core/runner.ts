@@ -122,7 +122,7 @@ export async function continueStory(
     ...checkpointState,
     currentChapterIndex: targetIndex,
     chapters: rewrittenChapters,
-    pendingIssues: [],
+    pendingIssues: checkpointState.pendingIssues,
     rewriteApproved: userResponse ?? false,
     rewriteRequested: false,
     isWriting: true,
