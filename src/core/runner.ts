@@ -160,6 +160,14 @@ export async function continueStory(
   if (hasErrors) {
     workingState.rewriteRequested = true
     await checkpointer.clearPendingWrites(outputDir)
+    // 保存错误状态到 checkpointer，让 write 命令能检测到
+    await graph.updateState(
+      { configurable: { thread_id: storyId, outputDir } },
+      {
+        rewriteRequested: true,
+        pendingIssues: workingState.pendingIssues,
+      }
+    )
     return workingState
   }
 

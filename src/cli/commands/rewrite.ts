@@ -132,7 +132,8 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
     )
 
     if (result.rewriteRequested) {
-      console.log('\n[MuseFlow] 重写完成，使用 "museflow write" 继续')
+      console.log('\n[MuseFlow] 检测到问题，请运行以下命令修复：')
+      console.log(`   museflow rewrite ${storyId}`)
       return
     }
 
@@ -283,6 +284,14 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       await checkpointer.pruneIntermediateCheckpoints(outputDir)
     } else {
       await checkpointer.clearPendingWrites(outputDir)
+      // 保存错误状态到 checkpointer，让 write 命令能检测到
+      await graph.updateState(
+        { configurable: { thread_id: storyId, outputDir } },
+        {
+          rewriteRequested: true,
+          pendingIssues: workingState.pendingIssues,
+        }
+      )
     }
 
     return workingState
@@ -361,6 +370,14 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
   } else {
     await checkpointer.clearPendingWrites(outputDir)
+    // 保存错误状态到 checkpointer，让 write 命令能检测到
+    await graph.updateState(
+      { configurable: { thread_id: storyId, outputDir } },
+      {
+        rewriteRequested: true,
+        pendingIssues: workingState.pendingIssues,
+      }
+    )
   }
 
   return workingState
