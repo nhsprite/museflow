@@ -21,6 +21,7 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createInterface } from 'node:readline'
 
 function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -262,15 +263,27 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
         ...workingState,
         ...partial,
       }
+      if (node === auto_fix_warnings) {
+        const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+        if (errors.length > 0) {
+          console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+          break
+        }
+      }
     }
 
+    const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
     workingState = {
       ...workingState,
       rewriteApproved: false,
-      rewriteRequested: false,
+      rewriteRequested: hasErrors,
     }
-    await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
-    await checkpointer.pruneIntermediateCheckpoints(outputDir)
+    if (!hasErrors) {
+      await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
+      await checkpointer.pruneIntermediateCheckpoints(outputDir)
+    } else {
+      await checkpointer.clearPendingWrites(outputDir)
+    }
 
     return workingState
   }
@@ -329,23 +342,39 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       ...workingState,
       ...partial,
     }
+    if (node === auto_fix_warnings) {
+      const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+      if (errors.length > 0) {
+        console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+        break
+      }
+    }
   }
 
+  const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
   workingState = {
     ...workingState,
     rewriteApproved: false,
-    rewriteRequested: false,
+    rewriteRequested: hasErrors,
   }
-  await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
+  if (!hasErrors) {
+    await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
+  } else {
+    await checkpointer.clearPendingWrites(outputDir)
+  }
 
   return workingState
 }
 
 function question(prompt: string): Promise<string> {
   return new Promise((resolve) => {
-    process.stdout.write(prompt)
-    process.stdin.once('data', (data) => {
-      resolve(data.toString().trim())
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    })
+    rl.question(prompt, (answer) => {
+      rl.close()
+      resolve(answer.trim())
     })
   })
 }
