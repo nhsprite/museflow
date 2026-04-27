@@ -3,6 +3,7 @@ import type { Story } from '../types/story.js'
 import type { Character } from '../types/character.js'
 import type { Issue } from '../types/agent.js'
 import type { ChapterMeta } from '../types/chapter.js'
+import type { ChapterPlan } from '../agents/chapter-planner.js'
 
 export interface WorldContent {
   id: string
@@ -39,23 +40,11 @@ export const GraphState = Annotation.Root({
   pendingIssues: Annotation<Issue[]>,
   rewriteApproved: Annotation<boolean>,
   rewriteRequested: Annotation<boolean>,
-  /** Controls whether draft_chapter is reachable after create_outline.
-   *  - start / runStory: false (planning only, skip chapter writing)
-   *  - write / continue: true (resume chapter writing)
-   */
   isWriting: Annotation<boolean>,
-  /** When true, stop after current chapter instead of continuing to next.
-   *  Used by write command to write only one chapter per run.
-   */
   writeOneChapterOnly: Annotation<boolean>,
-  /** Tracks the last chapter index for which completion was printed.
-   *  Prevents duplicate prints during graph replay.
-   */
   lastPrintedChapter: Annotation<number>,
-  /** Stores the last generated timeline snapshot stateSummary string.
-   *  Used to track timeline state across the graph without re-reading from disk.
-   */
   lastTimelineSnapshot: Annotation<string | null>,
+  chapterPlan: Annotation<ChapterPlan | null>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

@@ -22,19 +22,52 @@ ${outlineItem}
 章节正文：
 ${state.chapterContent || '（无内容）'}
 
-请进行以下检查：
+【逐条检查清单 - 必须逐项确认】
 
-1. **核心事件检查**：章节是否完成了大纲中规定的核心事件？
-2. **情节偏离检查**：是否有大纲之外的额外情节？这些情节是否必要？
-3. **章节标题检查**：章节内容是否符合标题的预期？
-4. **逻辑连贯性**：章节内部逻辑是否连贯？
+1. **核心事件逐条检查**：
+   - 将大纲描述拆分为独立的情节点（以句号、分号或"并且"/"同时"/"然后"等连接词为界）
+   - 对每个情节点，检查正文中是否有对应的内容
+   - 如果大纲提到多个事件（如"A发生，并且B发生"），必须检查A和B是否都出现
 
+2. **时间线检查**：
+   - 大纲中明确的时间要求（如"三日后""次日""凌晨"）是否在正文中精确体现
+   - 正文的时间跨度是否与大纲一致（不能只写"过了一夜"代替"过了三日"）
+   - 事件顺序是否与大纲一致
+
+3. **关键台词检查**：
+   - 大纲中提到的具体台词是否在正文中原样出现
+   - 台词的说话人是否正确
+   - 不能将"你终于来了"改写为"我等你很久了"
+
+4. **情节偏离检查**：
+   - 是否有大纲之外的额外情节？
+   - 额外情节是否冲淡核心事件的叙事重心？
+   - 是否遗漏了大纲要求的关键事件？
+
+5. **人物行为检查**：
+   - 人物出场顺序是否与大纲一致
+   - 人物行为是否符合大纲描述
+   - 是否有大纲未提及的人物出现并占据过多篇幅？
+
+6. **逻辑连贯性**：
+   - 章节内部时间线是否连贯
+   - 因果关系是否合理
+   - 是否有前后矛盾（如先写病好了，后面又写还在生病）
+
+【输出格式】
 请输出 JSON 格式的检查结果：
 {
   "is_compliant": true或false，表示是否严格遵循大纲,
+  "event_checks": [
+    {
+      "event": "大纲中的具体情节点",
+      "found": true或false,
+      "location": "在正文中的位置"
+    }
+  ],
   "deviations": [
     {
-      "type": "missing_event|extra_event|title_mismatch|logic_issue",
+      "type": "missing_event|extra_event|timeline_mismatch|dialogue_mismatch|title_mismatch|logic_issue|character_order",
       "severity": "error|warning|info",
       "description": "偏离描述",
       "suggestion": "改进建议"
@@ -44,7 +77,7 @@ ${state.chapterContent || '（无内容）'}
 }`
 
     return [
-      this.systemMessage(`你是一位严谨的故事结构审核员，负责确保每个章节都严格遵循既定的大纲。你对偏离大纲的行为保持零容忍态度。`),
+      this.systemMessage(`你是一位极其严格的故事结构审核员，负责确保每个章节都严格遵循既定的大纲。你对偏离大纲的行为保持零容忍态度。你必须逐条检查大纲中的每个情节点，绝不能遗漏任何要求。`),
       this.userMessage(userContent),
     ]
   }
@@ -70,6 +103,11 @@ ${state.chapterContent || '（无内容）'}
 
     const data = output.data as {
       is_compliant?: boolean
+      event_checks?: Array<{
+        event?: string
+        found?: boolean
+        location?: string
+      }>
       deviations?: Array<{
         type?: string
         severity?: string
@@ -79,15 +117,29 @@ ${state.chapterContent || '（无内容）'}
       summary?: string
     }
 
-    const issues: Issue[] = (data.deviations || []).map(dev => {
+    const issues: Issue[] = []
+
+    if (data.event_checks) {
+      const missingEvents = data.event_checks.filter(e => !e.found)
+      for (const event of missingEvents) {
+        issues.push({
+          id: generateId(),
+          type: 'outline_violation',
+          severity: 'error',
+          description: `[大纲偏离] 缺少大纲要求的情节点：${event.event || '未知事件'}`,
+        })
+      }
+    }
+
+    for (const dev of (data.deviations || [])) {
       const issueType = dev.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'
-      return {
+      issues.push({
         id: generateId(),
         type: issueType,
         severity: (dev.severity as Issue['severity']) || 'warning',
         description: `[大纲偏离] ${dev.description || ''}${dev.suggestion ? `\n建议：${dev.suggestion}` : ''}`,
-      }
-    })
+      })
+    }
 
     return {
       issues,

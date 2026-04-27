@@ -3,6 +3,7 @@ import type { ChapterMeta } from '../types/chapter.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import type { ChapterPlan } from './chapter-planner.js'
 
 export class ChapterAgent extends BaseAgent {
   constructor() {
@@ -45,10 +46,17 @@ ${state.foreshadowStack.filter(f => !f.fulfilledChapter).map((f, i) => `${i + 1}
 ${state.chapterContent}`
       : ''
 
-    // Extract first character name from formatted string like "【林渊】描述..."
     const mainCharacterName = state.characters
       ? (state.characters.match(/^【([^】]+)】/m)?.[1] || '（未设定主角）')
       : '（未设定主角）'
+
+    const planSection = state.chapterPlan
+      ? `【章节写作规划】（必须严格遵循以下结构）：
+${JSON.stringify(state.chapterPlan, null, 2)}`
+      : ''
+
+    const outlineKeyPoints = this.extractOutlineKeyPoints(chapterInfo.description)
+    const planSections = state.chapterPlan?.sections ?? []
 
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
@@ -73,27 +81,85 @@ ${chapterSupplement}
 
 ${timelineSection}
 
+${planSection}
+
 ${issuesSection}
 
 ${foreshadowSection}
 
 ${existingChapterSection}
 
-写作要求：
+【输出格式要求 - 必须严格遵守】
+你的输出必须分为两个部分，用以下标记分隔：
+
+=== PRE_WRITE_CHECK ===
+（预写对齐检查表，见下方说明）
+
+=== CHAPTER_CONTENT ===
+（正文内容，从这里开始写小说正文）
+
+【第一部分：PRE_WRITE_CHECK - 写正文前必须先完成】
+在写正文之前，请先输出预写对齐检查表，逐条确认本章如何落实大纲要求。
+
+必须包含以下检查项（以 Markdown 表格形式输出）：
+
+| 检查项 | 来源 | 具体要求 | 本章执行计划 | 对应段落 |
+|--------|------|----------|-------------|----------|
+${outlineKeyPoints.map((point, i) => `| 大纲情节点${i + 1} | 大纲 | ${point} | （请填写：本章如何呈现该情节点） | （请填写：第几段） |`).join('\n')}
+${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`).join('\n')}
+| 关键台词 | 大纲 | （如有大纲要求的台词，请列出） | （请填写：由谁说、在什么场景说） | （请填写） |
+| 时间线 | 大纲/规划 | （如有时间要求，请列出） | （请填写：时间如何推进） | （请填写） |
+| 人物出场 | 大纲/规划 | （列出必须出场的人物） | （请填写：各自承担什么功能） | （请填写） |
+
+在表格之后，必须输出以下自检清单：
+- [ ] 大纲中的每个情节点都已在本章找到对应呈现方式
+- [ ] 章节规划中的每个段落都有明确的展开计划
+- [ ] 关键台词已标注说话人和场景
+- [ ] 时间线跨度符合大纲要求
+- [ ] 没有遗漏任何大纲要求
+- [ ] 没有发现与大纲矛盾的执行计划
+
+【重要】PRE_WRITE_CHECK 完成后，才能开始写正文。PRE_WRITE_CHECK 中的计划必须与正文完全一致，正文必须严格遵循 PRE_WRITE_CHECK 中确认的执行计划。
+
+【第二部分：CHAPTER_CONTENT - 正文写作要求】
 1. 【必须】严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现
 2. 【必须】主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字
 3. 【必须】物品名称、功法名称等必须与大纲完全一致
-4. 注重人物对话和心理描写
-5. 适时埋下伏笔，为后续章节留下悬念
-6. 每章字数建议 2000-5000 字
-7. 以自然流畅的段落叙述为主
+4. 【必须】时间线必须清晰连贯：
+   - 时间跨度必须符合大纲要求（如"高烧持续三日"必须描写三日，不能只写一夜）
+   - 时间跳跃必须明确标注（如"三日后""次日清晨""又过了两天"）
+   - 不能出现时间回退或逻辑矛盾（如先写"烧退了"，后又写"仍在发烧"）
+5. 【必须】关键台词必须原样出现：
+   - 大纲中明确要求的台词（如"你终于来了"）必须一字不差地出现
+   - 不能擅自改写为意思相近但措辞不同的句子
+6. 【必须】叙述视角保持一致（第三人称限制性视角），避免出现视角跳跃
+7. 【必须】因果关系明确：前一事件的结果必须自然导致后一事件，不能生硬跳转
+8. 【必须】信息一致性：本章内所有描述必须自洽，不能前后矛盾
+9. 注重人物对话和心理描写
+10. 适时埋下伏笔，为后续章节留下悬念
+11. 每章字数建议 2000-5000 字
+12. 以自然流畅的段落叙述为主
 
-请开始撰写第 ${displayChapterNumber} 章。`
+请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === CHAPTER_CONTENT === 部分。`
 
     return [
-      this.systemMessage('你是一位专业的小说作家，擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进。'),
+      this.systemMessage('你是一位专业的小说作家，擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进。在动笔前，你必须先完成预写对齐检查，确认每个大纲要求都有明确的执行计划，然后严格按照该计划撰写正文。'),
       this.userMessage(userContent),
     ]
+  }
+
+  private extractOutlineKeyPoints(description: string): string[] {
+    if (!description || description.trim().length === 0) {
+      return ['（大纲未提供具体情节点）']
+    }
+    const sentences = description
+      .split(/[。；!！?？]|\n/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+    if (sentences.length === 0) {
+      return [description.trim()]
+    }
+    return sentences
   }
 
   private extractChapterOutline(outline: string, chapterIndex: number): { title: string; description: string } {
@@ -127,7 +193,27 @@ ${existingChapterSection}
   }
 
   protected parse(content: string): AgentOutput {
-    return { success: true, content }
+    const preWriteMatch = content.match(/===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*CHAPTER_CONTENT\s*===|$)/i)
+    const preWriteCheck = preWriteMatch && preWriteMatch[1] ? preWriteMatch[1].trim() : ''
+
+    const contentMatch = content.match(/===\s*CHAPTER_CONTENT\s*===([\s\S]*)/i)
+    let chapterContent: string
+    if (contentMatch && contentMatch[1]) {
+      chapterContent = contentMatch[1].trim()
+    } else {
+      chapterContent = content.replace(/===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?:===\s*CHAPTER_CONTENT\s*===|$)/i, '').trim()
+      if (!chapterContent) {
+        chapterContent = content.trim()
+      }
+    }
+
+    const cleaned = chapterContent.replace(/<!--[\s\S]*?-->/g, '').trim()
+
+    return {
+      success: true,
+      content: cleaned || chapterContent || content,
+      data: { preWriteCheck: preWriteCheck || undefined },
+    }
   }
 
   processOutput(output: AgentOutput, storyId: string, chapterIndex: number): ChapterMeta {

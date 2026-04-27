@@ -6,6 +6,7 @@ import {
   CharacterAgent,
   OutlineAgent,
   ChapterAgent,
+  ChapterPlannerAgent,
   QualityAgent,
   ForeshadowingAgent,
   HallucinationAgent,
@@ -30,6 +31,7 @@ let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
 let outlineAgent: OutlineAgent | null = null
 let chapterAgent: ChapterAgent | null = null
+let chapterPlannerAgent: ChapterPlannerAgent | null = null
 let qualityAgent: QualityAgent | null = null
 let foreshadowingAgent: ForeshadowingAgent | null = null
 let hallucinationAgent: HallucinationAgent | null = null
@@ -53,6 +55,11 @@ function getOutlineAgent(): OutlineAgent {
 function getChapterAgent(): ChapterAgent {
   if (!chapterAgent) chapterAgent = new ChapterAgent()
   return chapterAgent
+}
+
+function getChapterPlannerAgent(): ChapterPlannerAgent {
+  if (!chapterPlannerAgent) chapterPlannerAgent = new ChapterPlannerAgent()
+  return chapterPlannerAgent
 }
 
 function getQualityAgent(): QualityAgent {
@@ -195,6 +202,46 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
   return { outline }
 }
 
+export async function plan_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  const agent = getChapterPlannerAgent()
+  const chapterIndex = state.currentChapterIndex
+  const outlineItem = state.outline[chapterIndex]
+  const worldContent = state.world?.content
+
+  const previousChapters = state.chapters
+    .slice(0, chapterIndex)
+    .filter((c): c is ChapterMeta => c !== null)
+    .map(c => c.summary || '')
+    .join('\n\n')
+
+  const latestSnapshot = getLatestSnapshot(state.story.id)
+  const timelineSnapshot = latestSnapshot?.stateSummary ?? null
+
+  const agentState: AgentState = {
+    idea: state.idea,
+    genre: state.genre,
+    totalChapters: state.totalChapters,
+    ...(worldContent ? { world: worldContent } : {}),
+    characters: charactersToString(state.characters),
+    outline: outlineItem ? `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}` : state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n'),
+    previousChapters,
+    chapterIndex,
+    chapterSummaries: state.chapterSummaries,
+    timelineSnapshot,
+    foreshadowStack: state.foreshadowStack,
+  }
+
+  const output = await agent.run(agentState)
+
+  if (!output.success || !output.data) {
+    console.warn('[MuseFlow] 章节规划失败，将跳过规划直接写作')
+    return {}
+  }
+
+  console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章规划完成：${(output.data as { sections?: Array<{ title: string }> }).sections?.length || 0} 个段落`)
+  return { chapterPlan: output.data as import('../agents/chapter-planner.js').ChapterPlan }
+}
+
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent()
   const chapterIndex = state.currentChapterIndex
@@ -210,7 +257,6 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const latestSnapshot = getLatestSnapshot(state.story.id)
   const timelineSnapshot = latestSnapshot?.stateSummary ?? null
 
-  // Read current chapter content when rewriting, so the agent can see what needs to be fixed
   const existingContent = state.rewriteApproved
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
@@ -227,9 +273,9 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     chapterSummaries: state.chapterSummaries,
     timelineSnapshot,
     foreshadowStack: state.foreshadowStack,
-    // Pass issues and existing content to agent when rewriting so it knows what to fix
     ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
+    ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
   }
 
   const output = await agent.run(agentState)
@@ -240,6 +286,14 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
       `第 ${chapterIndex + 1} 章内容为空，AI 生成失败。请重试。`
     )
   }
+
+  const preWriteCheck = (output.data as { preWriteCheck?: string } | undefined)?.preWriteCheck
+  if (preWriteCheck) {
+    console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章预写检查完成`)
+  } else {
+    console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
+  }
+
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const now = Date.now()
@@ -285,6 +339,146 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem)
   }
 
+  const sentenceFixes = buildSentenceFixes(paragraphs, affectedIndices, state.pendingIssues)
+
+  if (sentenceFixes.length > 0 && sentenceFixes.length <= 5) {
+    console.log(`[MuseFlow] 定位到 ${sentenceFixes.length} 个需修改的句子，使用句子级精准修复`)
+    return await runSentenceFix(agent, state, existingContent, paragraphs, sentenceFixes, chapterIndex, outlineItem)
+  }
+
+  console.log(`[MuseFlow] 定位到 ${affectedIndices.length} 个需修改的段落，使用段落级修复`)
+  return await runParagraphFix(agent, state, existingContent, paragraphs, affectedIndices, chapterIndex, outlineItem)
+}
+
+function buildSentenceFixes(
+  paragraphs: string[],
+  affectedIndices: number[],
+  issues: Array<import('../types/agent.js').Issue>
+): import('../agents/base.js').SentenceFix[] {
+  const sentenceFixes: import('../agents/base.js').SentenceFix[] = []
+
+  for (const idx of affectedIndices) {
+    const paragraph = paragraphs[idx]
+    if (!paragraph) continue
+
+    for (const issue of issues) {
+      const affectedSentences = findAffectedSentences(paragraph, issue)
+      for (const sentenceIdx of affectedSentences) {
+        const sentences = splitParagraphIntoSentences(paragraph)
+        const original = sentences[sentenceIdx]
+        if (original) {
+          sentenceFixes.push({
+            paragraphIndex: idx,
+            sentenceIndex: sentenceIdx,
+            original,
+            issue,
+          })
+        }
+      }
+    }
+  }
+
+  return sentenceFixes
+}
+
+async function runSentenceFix(
+  agent: FixAgent,
+  state: ReducedGraphState,
+  existingContent: string,
+  paragraphs: string[],
+  sentenceFixes: import('../agents/base.js').SentenceFix[],
+  chapterIndex: number,
+  outlineItem: { description?: string } | undefined
+): Promise<Partial<ReducedGraphState>> {
+  const affectedParagraphs = new Set(sentenceFixes.map(s => s.paragraphIndex))
+  const contextIndices = new Set<number>()
+  for (const idx of affectedParagraphs) {
+    if (idx > 0) contextIndices.add(idx - 1)
+    if (idx < paragraphs.length - 1) contextIndices.add(idx + 1)
+  }
+  for (const idx of affectedParagraphs) {
+    contextIndices.delete(idx)
+  }
+
+  const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
+  const context = contextParagraphs.join('\n\n')
+
+  const agentState: AgentState = {
+    idea: state.idea,
+    genre: state.genre,
+    totalChapters: state.totalChapters,
+    chapterIndex,
+    issues: state.pendingIssues,
+    chapterContent: existingContent,
+    sentenceFix: {
+      sentences: sentenceFixes,
+      context,
+    },
+  }
+
+  const output = await agent.run(agentState)
+
+  let content = existingContent
+  if (output.data && (output.data as { modifiedSentences?: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences) {
+    const modifiedSentences = (output.data as { modifiedSentences: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences
+    const modifiedParagraphs = new Map<number, Array<{ index: number; content: string }>>()
+
+    for (const s of modifiedSentences) {
+      if (!modifiedParagraphs.has(s.paragraphIndex)) {
+        modifiedParagraphs.set(s.paragraphIndex, [])
+      }
+      modifiedParagraphs.get(s.paragraphIndex)!.push({ index: s.sentenceIndex, content: s.content })
+    }
+
+    const resultParagraphs = [...paragraphs]
+    for (const [pIdx, sentences] of modifiedParagraphs) {
+      const originalParagraph = paragraphs[pIdx]
+      if (originalParagraph) {
+        resultParagraphs[pIdx] = mergeSentenceFixes(originalParagraph, sentences)
+      }
+    }
+    content = resultParagraphs.join('\n\n')
+  } else {
+    content = output.content ?? ''
+    if (!content || content.trim().length === 0) {
+      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`)
+    }
+    const affectedIndices = Array.from(new Set(sentenceFixes.map(s => s.paragraphIndex)))
+    content = applyParagraphDiffProtection(existingContent, content, affectedIndices)
+  }
+
+  content = deduplicateSentences(content)
+  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+
+  const now = Date.now()
+  const updatedChapter: ChapterMeta = {
+    id: generateId(),
+    storyId: state.story.id,
+    number: toDisplayChapterNumber(chapterIndex),
+    title: null,
+    outline: outlineItem?.description || null,
+    summary: null,
+    foreshadows: null,
+    status: 'drafting',
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  const newChapters = [...state.chapters]
+  newChapters[chapterIndex] = updatedChapter
+
+  return { chapters: newChapters }
+}
+
+async function runParagraphFix(
+  agent: FixAgent,
+  state: ReducedGraphState,
+  existingContent: string,
+  paragraphs: string[],
+  affectedIndices: number[],
+  chapterIndex: number,
+  outlineItem: { description?: string } | undefined
+): Promise<Partial<ReducedGraphState>> {
   const paragraphFixes = affectedIndices.map(idx => {
     const paragraphContent = paragraphs[idx]
     if (!paragraphContent) {
@@ -415,6 +609,71 @@ export function splitIntoParagraphs(text: string): string[] {
   return text.split(/\n\n+/).filter(p => p.trim().length > 0)
 }
 
+export interface LocationInfo {
+  paragraphIndex?: number
+  sentenceIndex?: number
+}
+
+export function extractLocationInfo(issue: { description: string; location?: string }): LocationInfo[] {
+  const locations: LocationInfo[] = []
+  const text = issue.description + ' ' + (issue.location || '')
+
+  const paragraphPatterns = [
+    /第\s*(\d+)\s*段/g,
+    /第\s*([一二三四五六七八九十百]+)\s*段/g,
+    /段落?\s*(\d+)/g,
+  ]
+
+  for (const pattern of paragraphPatterns) {
+    let match
+    while ((match = pattern.exec(text)) !== null) {
+      const group = match[1]
+      if (!group) continue
+      const num = parseLocationNumber(group)
+      if (num !== null) {
+        locations.push({ paragraphIndex: num - 1 })
+      }
+    }
+  }
+
+  const sentencePatterns = [
+    /第\s*(\d+)\s*句/g,
+    /第\s*([一二三四五六七八九十百]+)\s*句/g,
+  ]
+
+  for (const pattern of sentencePatterns) {
+    let match
+    while ((match = pattern.exec(text)) !== null) {
+      const group = match[1]
+      if (!group) continue
+      const num = parseLocationNumber(group)
+      if (num !== null) {
+        locations.push({ sentenceIndex: num - 1 })
+      }
+    }
+  }
+
+  return locations
+}
+
+function parseLocationNumber(str: string): number | null {
+  const num = parseInt(str, 10)
+  if (!isNaN(num)) return num
+
+  const chineseMap: Record<string, number> = {
+    '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+    '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+  }
+
+  let result = 0
+  for (const char of str) {
+    const val = chineseMap[char]
+    if (val === undefined) return null
+    result = result * 10 + val
+  }
+  return result > 0 ? result : null
+}
+
 export function extractIssueKeywords(issue: { description: string; location?: string }): string[] {
   const keywords: string[] = []
 
@@ -444,7 +703,21 @@ export function findAffectedParagraphs(paragraphs: string[], issues: Array<{ des
   const affected = new Set<number>()
 
   for (const issue of issues) {
+    const locations = extractLocationInfo(issue)
+    const hasExplicitLocation = locations.some(l => l.paragraphIndex !== undefined)
+
+    if (hasExplicitLocation) {
+      for (const loc of locations) {
+        if (loc.paragraphIndex !== undefined && loc.paragraphIndex >= 0 && loc.paragraphIndex < paragraphs.length) {
+          affected.add(loc.paragraphIndex)
+        }
+      }
+      continue
+    }
+
     const keywords = extractIssueKeywords(issue)
+    if (keywords.length === 0) continue
+
     for (let i = 0; i < paragraphs.length; i++) {
       const paragraph = paragraphs[i]
       if (paragraph && keywords.some(kw => paragraph.includes(kw))) {
@@ -454,6 +727,52 @@ export function findAffectedParagraphs(paragraphs: string[], issues: Array<{ des
   }
 
   return Array.from(affected).sort((a, b) => a - b)
+}
+
+export function splitParagraphIntoSentences(paragraph: string): string[] {
+  const matches = [...paragraph.matchAll(/[^。！？\n]+[。！？\n]?/g)]
+  if (matches.length === 0) return [paragraph]
+  return matches.map(m => m[0]).filter(s => s.trim().length > 0)
+}
+
+export function findAffectedSentences(paragraph: string, issue: { description: string; location?: string }): number[] {
+  const sentences = splitParagraphIntoSentences(paragraph)
+  const affected = new Set<number>()
+
+  const locations = extractLocationInfo(issue)
+  const hasSentenceLocation = locations.some(l => l.sentenceIndex !== undefined)
+
+  if (hasSentenceLocation) {
+    for (const loc of locations) {
+      if (loc.sentenceIndex !== undefined && loc.sentenceIndex >= 0 && loc.sentenceIndex < sentences.length) {
+        affected.add(loc.sentenceIndex)
+      }
+    }
+    return Array.from(affected).sort((a, b) => a - b)
+  }
+
+  const keywords = extractIssueKeywords(issue)
+  if (keywords.length === 0) return []
+
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i]
+    if (sentence && keywords.some(kw => sentence.includes(kw))) {
+      affected.add(i)
+    }
+  }
+
+  return Array.from(affected).sort((a, b) => a - b)
+}
+
+export function mergeSentenceFixes(
+  originalParagraph: string,
+  modifiedSentences: Array<{ index: number; content: string }>
+): string {
+  const sentences = splitParagraphIntoSentences(originalParagraph)
+  const modifiedMap = new Map(modifiedSentences.map(s => [s.index, s.content]))
+
+  const result = sentences.map((s, i) => modifiedMap.has(i) ? modifiedMap.get(i)! : s)
+  return result.join('')
 }
 
 export function mergeParagraphFixes(

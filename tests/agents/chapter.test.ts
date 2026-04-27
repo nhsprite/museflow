@@ -39,7 +39,8 @@ describe('ChapterAgent chapter numbering', () => {
     })
 
     expect(messages[1]?.content).toContain('请撰写第 1 章的正文内容。')
-    expect(messages[1]?.content).toContain('请开始撰写第 1 章。')
+    expect(messages[1]?.content).toContain('=== PRE_WRITE_CHECK ===')
+    expect(messages[1]?.content).toContain('=== CHAPTER_CONTENT ===')
     expect(messages[1]?.content).toContain('破庙惊梦')
     expect(messages[1]?.content).not.toContain('第 0 章')
   })

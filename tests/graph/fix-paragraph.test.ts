@@ -110,9 +110,18 @@ describe('findAffectedParagraphs', () => {
     '女子自称红菱，来自远方的绣坊。',
   ]
 
-  it('finds paragraphs matching issue keywords', () => {
+  it('finds paragraphs by explicit location', () => {
     const issues = [
       { description: '"红衣女子"应该改为"红菱"', location: '第三段' },
+    ]
+    const affected = findAffectedParagraphs(paragraphs, issues)
+    expect(affected).toContain(2)
+    expect(affected).not.toContain(3)
+  })
+
+  it('falls back to keyword matching when no location given', () => {
+    const issues = [
+      { description: '"红衣女子"应该改为"红菱"' },
     ]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toContain(2)

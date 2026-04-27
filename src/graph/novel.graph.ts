@@ -5,6 +5,7 @@ import {
   build_world,
   create_characters,
   create_outline,
+  plan_chapter,
   draft_chapter,
   validate_chapter,
   quality_pass,
@@ -28,6 +29,7 @@ export function buildNovelGraph() {
     build_world,
     create_characters,
     create_outline,
+    plan_chapter,
     draft_chapter,
     validate_chapter,
     quality_pass,
@@ -44,8 +46,9 @@ export function buildNovelGraph() {
   b1.addEdge(START, 'build_world')
   b1.addEdge('build_world', 'create_characters')
   b1.addEdge('create_characters', 'create_outline')
-  b1.addConditionalEdges('create_outline', (state) => state.isWriting ? 'draft_chapter' : 'finalize_story')
+  b1.addConditionalEdges('create_outline', (state) => state.isWriting ? 'plan_chapter' : 'finalize_story')
 
+  b1.addEdge('plan_chapter', 'draft_chapter')
   b1.addEdge('draft_chapter', 'validate_chapter')
   b1.addEdge('validate_chapter', 'quality_pass')
   b1.addEdge('quality_pass', 'detect_foreshadowing')
@@ -58,7 +61,7 @@ export function buildNovelGraph() {
     'auto_fix_warnings',
     should_start_chapters,
     {
-      draft_chapter: 'draft_chapter',
+      draft_chapter: 'plan_chapter',
       request_rewrite: 'request_rewrite',
       next_chapter: 'finalize_chapter',
       finalize_chapter: 'finalize_chapter',
@@ -75,7 +78,7 @@ export function buildNovelGraph() {
         return 'finalize_story'
       }
       if (state.currentChapterIndex < state.totalChapters) {
-        return 'draft_chapter'
+        return 'plan_chapter'
       }
       return 'finalize_story'
     }

@@ -5,6 +5,7 @@ import type { GenreSkill } from '../types/genre.js'
 import type { WorldDirection } from '../types/story.js'
 import type { Issue } from '../types/agent.js'
 import type { ForeshadowItem } from '../graph/state.js'
+import type { ChapterPlan } from './chapter-planner.js'
 
 export abstract class BaseAgent {
   protected provider: ModelProvider
@@ -64,6 +65,13 @@ export interface ParagraphFix {
   issues: Issue[]
 }
 
+export interface SentenceFix {
+  paragraphIndex: number
+  sentenceIndex: number
+  original: string
+  issue: Issue
+}
+
 export interface AgentState {
   idea: string
   genre: string
@@ -86,6 +94,11 @@ export interface AgentState {
     paragraphs: ParagraphFix[]
     context: string
   }
+  sentenceFix?: {
+    sentences: SentenceFix[]
+    context: string
+  }
+  chapterPlan?: ChapterPlan
 }
 
 export interface AgentOutput {

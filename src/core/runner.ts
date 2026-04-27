@@ -7,7 +7,9 @@ import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import {
+  plan_chapter,
   draft_chapter,
+  fix_chapter,
   validate_chapter,
   quality_pass,
   detect_foreshadowing,
@@ -80,6 +82,7 @@ export async function runStory(input: {
     writeOneChapterOnly: false,
     lastPrintedChapter: -1,
     lastTimelineSnapshot: null,
+    chapterPlan: null,
   }
 
   const config: RunnableConfig = {
@@ -129,54 +132,102 @@ export async function continueStory(
     writeOneChapterOnly: true,
   }
 
-  const nodeSequence = [
-    draft_chapter,
-    validate_chapter,
-    quality_pass,
-    detect_foreshadowing,
-    detect_hallucination,
-    detect_consistency,
-    verify_outline_compliance,
-    auto_fix_warnings,
-    finalize_chapter,
-  ]
+  const MAX_REWRITE_ATTEMPTS = 3
+  let rewriteAttempts = 0
 
-  for (const node of nodeSequence) {
-    const partial = await node(workingState)
-    workingState = {
-      ...workingState,
-      ...partial,
+  while (rewriteAttempts < MAX_REWRITE_ATTEMPTS) {
+    rewriteAttempts++
+    if (rewriteAttempts > 1) {
+      console.log(`[MuseFlow] 第 ${rewriteAttempts}/${MAX_REWRITE_ATTEMPTS} 次尝试...`)
     }
-    if (node === auto_fix_warnings) {
-      const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-      if (errors.length > 0) {
-        console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节撰写流程`)
-        for (const err of errors) {
-          const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-          console.error(`  ${icon} [${err.type}] ${err.description}`)
-          if (err.location) {
-            console.error(`     位置: ${err.location}`)
-          }
-        }
-        break
-      }
-    }
-  }
 
-  const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
-  if (hasErrors) {
-    workingState.rewriteRequested = true
-    await checkpointer.clearPendingWrites(outputDir)
-    // 保存错误状态到 checkpointer，让 write 命令能检测到
-    await graph.updateState(
-      { configurable: { thread_id: storyId, outputDir } },
-      {
-        rewriteRequested: true,
-        pendingIssues: workingState.pendingIssues,
-      }
+    const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue']
+    const hasStructuralIssues = workingState.pendingIssues.some(
+      i => i.severity === 'error' && structuralIssueTypes.includes(i.type)
     )
-    return workingState
+    const hasLocalIssues = workingState.pendingIssues.some(
+      i => i.severity === 'error' && !structuralIssueTypes.includes(i.type)
+    )
+
+    if (workingState.rewriteApproved && hasStructuralIssues && !hasLocalIssues) {
+      console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
+      workingState = { ...workingState, chapterPlan: null, pendingIssues: [] }
+      const planResult = await plan_chapter(workingState)
+      workingState = { ...workingState, ...planResult }
+      const draftResult = await draft_chapter(workingState)
+      workingState = { ...workingState, ...draftResult }
+    } else if (workingState.rewriteApproved && hasLocalIssues && !hasStructuralIssues) {
+      console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
+      workingState = { ...workingState, pendingIssues: workingState.pendingIssues.filter(i => i.severity === 'error') }
+      const fixResult = await fix_chapter(workingState)
+      workingState = { ...workingState, ...fixResult }
+    } else {
+      if (workingState.rewriteApproved) {
+        console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
+        workingState = { ...workingState, chapterPlan: null, pendingIssues: [] }
+        const planResult = await plan_chapter(workingState)
+        workingState = { ...workingState, ...planResult }
+      } else {
+        workingState = { ...workingState, pendingIssues: [] }
+        const planResult = await plan_chapter(workingState)
+        workingState = { ...workingState, ...planResult }
+      }
+      const draftResult = await draft_chapter(workingState)
+      workingState = { ...workingState, ...draftResult }
+    }
+
+    const checkNodes = [
+      validate_chapter,
+      quality_pass,
+      detect_foreshadowing,
+      detect_hallucination,
+      detect_consistency,
+      verify_outline_compliance,
+      auto_fix_warnings,
+    ]
+
+    let hasErrors = false
+    for (const node of checkNodes) {
+      const partial = await node(workingState)
+      workingState = {
+        ...workingState,
+        ...partial,
+      }
+      if (node === auto_fix_warnings) {
+        const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+        if (errors.length > 0) {
+          console.error(`[MuseFlow] 检测到 ${errors.length} 个错误`)
+          for (const err of errors) {
+            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+            console.error(`  ${icon} [${err.type}] ${err.description}`)
+            if (err.location) {
+              console.error(`     位置: ${err.location}`)
+            }
+          }
+          hasErrors = true
+        }
+      }
+    }
+
+    if (!hasErrors) {
+      break
+    }
+
+    if (rewriteAttempts < MAX_REWRITE_ATTEMPTS) {
+      console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
+      workingState.rewriteApproved = true
+    } else {
+      console.warn(`[MuseFlow] 已达到最大重写次数 (${MAX_REWRITE_ATTEMPTS})，将使用最后一次结果。剩余问题已记录为警告。`)
+      workingState.pendingIssues = workingState.pendingIssues.map(i => ({
+        ...i,
+        severity: i.severity === 'error' ? 'warning' : i.severity,
+      }))
+      break
+    }
   }
+
+  const finalizeResult = await finalize_chapter(workingState)
+  workingState = { ...workingState, ...finalizeResult }
 
   workingState = {
     ...workingState,
@@ -188,7 +239,7 @@ export async function continueStory(
     {
       rewriteApproved: false,
       rewriteRequested: false,
-      pendingIssues: [],
+      pendingIssues: workingState.pendingIssues,
       currentChapterIndex: workingState.currentChapterIndex,
       chapters: workingState.chapters,
       chapterSummaries: workingState.chapterSummaries,
