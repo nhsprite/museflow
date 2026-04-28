@@ -11,6 +11,7 @@ import {
   detect_hallucination,
   draft_chapter,
   finalize_chapter,
+  plan_chapter,
   quality_pass,
   validate_chapter,
   verify_outline_compliance,
@@ -245,11 +246,12 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       ...checkpointState,
       currentChapterIndex: targetChapterIndex,
       chapters: rewrittenChapters,
-      pendingIssues: checkpointState.pendingIssues,
+      pendingIssues: [],
       rewriteApproved: userResponse,
       rewriteRequested: false,
       isWriting: true,
       writeOneChapterOnly: true,
+      chapterPlan: null,
     }
 
     for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
@@ -257,6 +259,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     }
 
     const nodeSequence = [
+      plan_chapter,
       draft_chapter,
       validate_chapter,
       quality_pass,
@@ -354,14 +357,16 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     ...checkpointState,
     currentChapterIndex: rewriteIndex,
     chapters: rewrittenChapters,
-    pendingIssues: checkpointState.pendingIssues,
+    pendingIssues: [],
     rewriteApproved: userResponse,
     rewriteRequested: false,
     isWriting: true,
     writeOneChapterOnly: true,
+    chapterPlan: null,
   }
 
   const nodeSequence = [
+    plan_chapter,
     draft_chapter,
     validate_chapter,
     quality_pass,
