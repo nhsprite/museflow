@@ -58,6 +58,24 @@ ${JSON.stringify(state.chapterPlan, null, 2)}`
     const outlineKeyPoints = this.extractOutlineKeyPoints(chapterInfo.description)
     const planSections = state.chapterPlan?.sections ?? []
 
+    const remainingChapters = state.totalChapters - chapterIndex - 1
+    const closingReminder = remainingChapters === 0
+      ? `【完结期提示】这是最后一章，必须完成以下任务：
+- 回收所有主要伏笔，不得遗留未解决的悬念
+- 给出明确的结局（人物命运、冲突结果、世界状态）
+- 避免仓促收尾，给读者完整的收束感`
+      : remainingChapters === 1
+        ? `【冲突期提示】还有最后一章就完结了，本章必须：
+- 推进最终对决/高潮冲突到临界点
+- 回收至少 60% 的主要伏笔
+- 为结局做好所有铺垫，不要在最后一章引入新线索`
+        : remainingChapters <= 3
+          ? `【铺垫期提示】还有 ${remainingChapters + 1} 章完结，请注意：
+- 开始加速主线节奏，减少无关支线
+- 为主要冲突的最终爆发积蓄张力
+- 有选择地回收部分伏笔，保留核心悬念到结局`
+          : ''
+
     const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
 
 【重要】本章主角姓名是"${mainCharacterName}"，主角的姓名在整章中必须保持一致，不得擅自更改为主角起其他名字！
@@ -87,7 +105,7 @@ ${issuesSection}
 
 ${foreshadowSection}
 
-${existingChapterSection}
+${closingReminder ? closingReminder + '\n\n' : ''}${existingChapterSection}
 
 【输出格式要求 - 必须严格遵守】
 你的输出必须分为两个部分，用以下标记分隔：
