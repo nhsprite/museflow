@@ -190,6 +190,8 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     writeFileSync(path, JSON.stringify(record, null, 2), 'utf-8')
     logger.debug(`Checkpoint saved: ${outputDir}/${checkpoint.id}`)
 
+    this.savePendingWrites(outputDir, [])
+
     return { configurable: { thread_id: threadId, checkpoint_id: checkpoint.id as string, outputDir } }
   }
 
