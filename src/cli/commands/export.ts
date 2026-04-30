@@ -1,8 +1,8 @@
 import { getStory, initStoryDb } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
 import { readChapterContent, listChapterFiles } from '../../storage/filesystem/writer.js'
-import { writeFile, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { writeFile, readFile, mkdir } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { networkInterfaces } from 'node:os'
@@ -78,12 +78,17 @@ export async function exportStory(storyId: string, _options: ExportOptions): Pro
     process.exit(1)
   }
 
-  const outputDir = story.outputDir
-  const chapterNumbers = await listChapterFiles(outputDir)
+  const storyDir = story.outputDir
+  const exportDir = resolve('output')
+  const chapterNumbers = await listChapterFiles(storyDir)
 
   if (chapterNumbers.length === 0) {
     console.error('[MuseFlow] 错误: 未找到章节文件')
     process.exit(1)
+  }
+
+  if (!existsSync(exportDir)) {
+    await mkdir(exportDir, { recursive: true })
   }
 
   console.log(`[MuseFlow] 导出故事: ${story.title}`)
@@ -101,7 +106,7 @@ export async function exportStory(storyId: string, _options: ExportOptions): Pro
   lines.push('')
 
   for (const chapterNum of chapterNumbers) {
-    const content = await readChapterContent(outputDir, chapterNum)
+    const content = await readChapterContent(storyDir, chapterNum)
     if (!content) continue
 
     const outlineItem = state.outline[chapterNum - 1]
@@ -116,7 +121,7 @@ export async function exportStory(storyId: string, _options: ExportOptions): Pro
   }
 
   const fileName = `${story.title || 'story'}_${storyId.slice(0, 8)}.txt`
-  const filePath = join(outputDir, fileName)
+  const filePath = join(exportDir, fileName)
   await writeFile(filePath, lines.join('\n'), 'utf-8')
 
   const totalChars = lines.join('').length
@@ -127,15 +132,14 @@ export async function exportStory(storyId: string, _options: ExportOptions): Pro
   console.log(`  字数: 约 ${totalChars} 字符`)
 
   const { url, server } = await startDownloadServer(filePath, fileName)
-  const qrPath = join(outputDir, `${story.title || 'story'}_qr.png`)
 
-  await QRCode.toFile(qrPath, url, { width: 400, margin: 2 })
-
-  console.log(`\n[MuseFlow] 下载二维码已生成`)
-  console.log(`  二维码: ${qrPath}`)
+  console.log(`\n[MuseFlow] 下载二维码`)
   console.log(`  下载链接: ${url}`)
-  console.log(`\n请用手机扫描二维码下载文件`)
-  console.log(`按 Ctrl+C 关闭下载服务器`)
+  console.log(`\n请用手机扫描下方二维码下载文件`)
+  console.log(`按 Ctrl+C 关闭下载服务器\n`)
+
+  const qrTerminal = await QRCode.toString(url, { type: 'terminal', small: true })
+  console.log(qrTerminal)
 
   process.on('SIGINT', () => {
     console.log('\n[MuseFlow] 关闭下载服务器')
