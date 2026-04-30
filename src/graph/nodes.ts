@@ -274,7 +274,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   const output = await agent.run(agentState)
 
-  const content = output.content ?? ''
+  let content = output.content ?? ''
   if (!content || content.trim().length === 0) {
     throw new Error(
       `第 ${chapterIndex + 1} 章内容为空，AI 生成失败。请重试。`
@@ -286,6 +286,18 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章预写检查完成`)
   } else {
     console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
+  }
+
+  const trimmedContent = content.trim()
+  const firstLine = trimmedContent.split('\n').map(l => l.trim()).find(l => l.length > 0)
+  const hasTitle = firstLine && (
+    /^#{1,2}\s/.test(firstLine) ||
+    firstLine.includes(`第${chapterIndex + 1}章`) ||
+    firstLine.includes(`第 ${chapterIndex + 1} 章`)
+  )
+
+  if (!hasTitle && outlineItem) {
+    content = `# 第${chapterIndex + 1}章 ${outlineItem.title}\n\n${trimmedContent}`
   }
 
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
