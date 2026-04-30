@@ -8,6 +8,7 @@ import { status } from './commands/status.js'
 import { info } from './commands/info.js'
 import { config } from './commands/config.js'
 import { genres } from './commands/genres.js'
+import { exportStory } from './commands/export.js'
 
 const program = new Command()
 
@@ -74,5 +75,10 @@ program.command('genres')
   .argument('[name]', '题材名称')
   .option('--file <path>', '安装题材的文件路径')
   .action(genres)
+
+program.command('export')
+  .description('导出故事为 txt 文件')
+  .argument('<story-id>', '故事ID')
+  .action(exportStory)
 
 program.parse()
