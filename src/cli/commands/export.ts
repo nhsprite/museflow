@@ -13,6 +13,14 @@ interface ExportOptions {
   format?: string
 }
 
+function hasChapterTitle(content: string, chapterNum: number): boolean {
+  const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+  if (lines.length === 0) return false
+  const firstLine = lines[0]
+  if (!firstLine) return false
+  return /^#{1,2}\s/.test(firstLine) || firstLine.includes(`第${chapterNum}章`) || firstLine.includes(`第 ${chapterNum} 章`)
+}
+
 function getLocalIp(): string | null {
   const nets = networkInterfaces()
   for (const name of Object.keys(nets)) {
@@ -114,7 +122,14 @@ export async function exportStory(storyId: string, _options: ExportOptions): Pro
 
     lines.push(`第 ${chapterNum} 章: ${chapterTitle}`)
     lines.push('')
-    lines.push(content.trim())
+
+    const trimmedContent = content.trim()
+    if (!hasChapterTitle(trimmedContent, chapterNum)) {
+      lines.push(`# 第${chapterNum}章 ${chapterTitle}`)
+      lines.push('')
+    }
+
+    lines.push(trimmedContent)
     lines.push('')
     lines.push('='.repeat(60))
     lines.push('')
