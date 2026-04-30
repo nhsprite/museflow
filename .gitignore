@@ -15,6 +15,9 @@ dist/
 # Local books (generated stories)
 books/
 
+# Exported stories
+output/
+
 # Environment
 .env
 .env.local
