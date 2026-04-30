@@ -1,6 +1,7 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
+import { isSemanticallyRelated } from '../utils/text-similarity.js'
 
 export class ForeshadowingAgent extends BaseAgent {
   constructor() {
@@ -130,7 +131,7 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
       if (item.fulfilledChapter) return item
 
       const isFulfilled = data.fulfilled_foreshadows?.some(
-        f => f === item.text || f.includes(item.text) || item.text.includes(f)
+        f => isSemanticallyRelated(f, item.text, 0.35)
       )
       const isOverdue = currentChapter > item.expectedFulfillChapter + 1
 

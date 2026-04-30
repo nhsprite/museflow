@@ -50,8 +50,12 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
     const foreshadowSection = activeForeshadows.length > 0
       ? `【伏笔回收提醒】
 ${overdueForeshadows.length > 0 ? `⚠️ 已逾期伏笔（必须在本章回收）：
-${overdueForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，已逾期${currentChapterIndex - f.expectedFulfillChapter}章）`).join('\n')}\n\n` : ''}${urgentForeshadows.length > 0 ? `🔔 即将到期伏笔（建议在本章回收）：
-${urgentForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}\n\n` : ''}${normalForeshadows.length > 0 ? `⏳ 正常伏笔（后续章节回收）：
+${overdueForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，已逾期${currentChapterIndex - f.expectedFulfillChapter}章）`).join('\n')}
+
+【强制要求】以上逾期伏笔已严重超期，必须在本章明确回收。如果本章无法自然回收，请通过角色回忆、对话揭示或场景呼应的方式处理，绝不可继续拖延。\n\n` : ''}${urgentForeshadows.length > 0 ? `🔔 即将到期伏笔（建议在本章回收）：
+${urgentForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}
+
+` : ''}${normalForeshadows.length > 0 ? `⏳ 正常伏笔（后续章节回收）：
 ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}\n\n` : ''}请注意在写作时自然地呼应或揭示需要回收的伏笔。`
       : ''
 
