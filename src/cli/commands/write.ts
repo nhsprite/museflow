@@ -43,6 +43,16 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
     startChapterIndex = state.currentChapterIndex
   }
 
+  if (startChapterIndex >= state.totalChapters) {
+    console.log(`[MuseFlow] 故事已完成: ${story.title}`)
+    console.log(`  总章节: ${state.totalChapters}/${state.totalChapters} (100%)`)
+    console.log('\n全部章节已撰写完成，无需继续。')
+    console.log('使用以下命令查看或导出故事:')
+    console.log(`   museflow status ${storyId}  # 查看进度`)
+    console.log(`   museflow info ${storyId}     # 查看详情\n`)
+    return
+  }
+
   if (!isResume) {
     console.log(`[MuseFlow] 开始撰写: ${story.title}`)
     console.log(`  总章节: ${state.totalChapters}`)

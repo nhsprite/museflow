@@ -25,6 +25,16 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
     process.exit(1)
   }
 
+  if (state.currentChapterIndex >= state.totalChapters) {
+    console.log(`[MuseFlow] 故事已完成: ${story.title}`)
+    console.log(`  总章节: ${state.totalChapters}/${state.totalChapters} (100%)`)
+    console.log('\n全部章节已撰写完成，无需继续。')
+    console.log('使用以下命令查看或导出故事:')
+    console.log(`   museflow status ${storyId}  # 查看进度`)
+    console.log(`   museflow info ${storyId}     # 查看详情\n`)
+    return
+  }
+
   console.log(`[MuseFlow] 继续故事: ${story.title}`)
   console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
   console.log(`  状态: ${state.rewriteRequested ? '等待重写确认' : '撰写中'}\n`)
