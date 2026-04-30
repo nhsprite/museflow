@@ -8,8 +8,21 @@ export class ForeshadowingAgent extends BaseAgent {
   }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const existingForeshadows = state.foreshadowStack || []
+    const currentChapter = (state.chapterIndex ?? 0) + 1
 
-    const userContent = `请分析以下章节，完成两项任务：1) 埋下新的伏笔，2) 检测已埋伏笔是否在本章被回收。
+    const overdueForeshadows = existingForeshadows.filter(
+      f => !f.fulfilledChapter && currentChapter > f.expectedFulfillChapter + 1
+    )
+    const urgentForeshadows = existingForeshadows.filter(
+      f => !f.fulfilledChapter && currentChapter >= f.expectedFulfillChapter - 1 && currentChapter <= f.expectedFulfillChapter + 1
+    )
+    const normalForeshadows = existingForeshadows.filter(
+      f => !f.fulfilledChapter && currentChapter < f.expectedFulfillChapter - 1
+    )
+
+    const userContent = `请分析以下章节，完成两项任务：1) 检测已埋伏笔是否在本章被回收，2) 埋下新的伏笔。
+
+【重要优先级】请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。
 
 章节内容：
 ${state.chapterContent || '（无内容）'}
@@ -23,12 +36,39 @@ ${existingForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.create
     : '(暂无已埋伏笔)'
 }
 
+${
+  overdueForeshadows.length > 0
+    ? `【⚠️ 已逾期伏笔 - 必须优先处理】以下伏笔已超过预期回收章节，请在本章尽可能回收：
+${overdueForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，当前第${currentChapter}章，已逾期${currentChapter - f.expectedFulfillChapter}章）`).join('\n')}`
+    : ''
+}
+
+${
+  urgentForeshadows.length > 0
+    ? `【🔔 即将到期伏笔 - 建议在本章回收】以下伏笔已到达或接近预期回收章节：
+${urgentForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，当前第${currentChapter}章）`).join('\n')}`
+    : ''
+}
+
+${
+  normalForeshadows.length > 0
+    ? `【正常伏笔 - 暂时无需回收】以下伏笔还有余量，无需在本章回收：
+${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，当前第${currentChapter}章）`).join('\n')}`
+    : ''
+}
+
 伏笔识别要求：
 1. 人物言行中暗示未来命运或选择的内容
 2. 环境中不寻常的细节，可能在未来产生重要影响
 3. 人物对话中的承诺、预言、预感
 4. 看似无关紧要的物品、事件在未来可能的关键作用
 5. 人物内心深处的秘密或矛盾
+
+回收检测要求：
+1. 如果本章中出现了与伏笔含义相关的情节（即使措辞不完全相同），也视为已回收
+2. 如果伏笔的核心悬念在本章得到了揭示或呼应，也视为已回收
+3. 如果伏笔涉及的人物、物品、事件在本章有重要进展，也视为已回收
+4. 不要严格依赖文本完全匹配，要从语义层面判断是否回收
 
 请输出 JSON 格式：
 {
@@ -40,7 +80,7 @@ ${existingForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.create
       "confidence": "high|medium|low"
     }
   ],
-  "fulfilled_foreshadows": [被回收的伏笔文本列表],
+  "fulfilled_foreshadows": [被回收的伏笔文本列表（尽量精确匹配原文）],
   "overdue_foreshadows": [超过预期章节仍未回收的伏笔文本列表]
 }
 
@@ -92,7 +132,7 @@ ${existingForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.create
       const isFulfilled = data.fulfilled_foreshadows?.some(
         f => f === item.text || f.includes(item.text) || item.text.includes(f)
       )
-      const isOverdue = currentChapter > item.expectedFulfillChapter + 3
+      const isOverdue = currentChapter > item.expectedFulfillChapter + 1
 
       if (isFulfilled || isOverdue) {
         return { ...item, fulfilledChapter: currentChapter } as ForeshadowItem

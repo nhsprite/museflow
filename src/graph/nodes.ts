@@ -20,7 +20,9 @@ import { writeChapterContent, readChapterContent, writeOutlineContent, writeStor
 import { saveOutline } from '../storage/database/dao/chapter.js'
 import { saveCharacters } from '../storage/database/dao/character.js'
 import { saveWorld } from '../storage/database/dao/world.js'
-import { appendTimelineSnapshot, getLatestSnapshot, saveForeshadowStack } from '../storage/database/dao/timeline.js'
+import { appendTimelineSnapshot, getLatestSnapshot, saveForeshadowStack, saveForeshadowAlerts } from '../storage/database/dao/timeline.js'
+import { getForeshadowAlerts } from './state.js'
+import { buildLayeredSummaries } from '../utils/summary-compressor.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
@@ -208,11 +210,7 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
   const outlineItem = state.outline[chapterIndex]
   const worldContent = state.world?.content
 
-  const previousChapters = state.chapters
-    .slice(0, chapterIndex)
-    .filter((c): c is ChapterMeta => c !== null)
-    .map(c => c.summary || '')
-    .join('\n\n')
+  const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
 
   const latestSnapshot = getLatestSnapshot(state.story.id)
   const timelineSnapshot = latestSnapshot?.stateSummary ?? null
@@ -248,11 +246,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const outlineItem = state.outline[chapterIndex]
   const worldContent = state.world?.content
 
-  const previousChapters = state.chapters
-    .slice(0, chapterIndex)
-    .filter((c): c is ChapterMeta => c !== null)
-    .map(c => c.summary || '')
-    .join('\n\n')
+  const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
 
   const latestSnapshot = getLatestSnapshot(state.story.id)
   const timelineSnapshot = latestSnapshot?.stateSummary ?? null
@@ -1013,6 +1007,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
     totalChapters: state.totalChapters,
     ...(content ? { chapterContent: content } : {}),
     chapterSummaries: state.chapterSummaries,
+    chapterIndex,
   }
 
   const output = await agent.run(agentState)
@@ -1098,6 +1093,9 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   })
 
   saveForeshadowStack(state.story.id, state.foreshadowStack)
+
+  const alerts = getForeshadowAlerts(state.foreshadowStack, chapterIndex + 1)
+  saveForeshadowAlerts(state.story.id, alerts)
 
   const nextIndex = state.currentChapterIndex + 1
   const isLastChapter = nextIndex >= state.totalChapters

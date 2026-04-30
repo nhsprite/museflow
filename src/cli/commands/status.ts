@@ -1,6 +1,7 @@
 import { getStory } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
 import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
+import { getForeshadowAlerts, formatForeshadowAlerts } from '../../graph/state.js'
 
 interface StatusOptions {
   storyId?: string
@@ -69,7 +70,15 @@ export async function status(options?: StatusOptions): Promise<void> {
     }
 
     if (state.foreshadowStack.length > 0) {
-      console.log(`伏笔: ${state.foreshadowStack.length} 个待回收`)
+      const unfulfilled = state.foreshadowStack.filter(f => !f.fulfilledChapter)
+      const fulfilled = state.foreshadowStack.filter(f => f.fulfilledChapter)
+      console.log(`伏笔: ${fulfilled.length} 个已回收, ${unfulfilled.length} 个待回收`)
+
+      if (unfulfilled.length > 0) {
+        const alerts = getForeshadowAlerts(state.foreshadowStack, state.currentChapterIndex + 1)
+        console.log('')
+        console.log(formatForeshadowAlerts(alerts))
+      }
     }
 
     console.log('')

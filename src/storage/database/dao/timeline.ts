@@ -1,5 +1,5 @@
 import type { StateSnapshot } from '../../../types/timeline.js'
-import type { ForeshadowItem } from '../../../graph/state.js'
+import type { ForeshadowItem, ForeshadowAlert } from '../../../graph/state.js'
 import { generateId } from '../../../utils/id.js'
 import { readMetaJsonSync, writeMetaJsonSync } from '../index.js'
 
@@ -44,4 +44,17 @@ export function getTimeline(storyId: string): StateSnapshot[] {
 export function getLatestSnapshot(storyId: string): StateSnapshot | null {
   const timeline = getTimeline(storyId)
   return timeline[timeline.length - 1] ?? null
+}
+
+export function saveForeshadowAlerts(storyId: string, alerts: ForeshadowAlert[]): void {
+  const meta = readMetaJsonSync(storyId)
+  if (!meta) throw new Error(`Story ${storyId} not found`)
+
+  meta.foreshadowAlerts = alerts
+  writeMetaJsonSync(storyId, meta)
+}
+
+export function getForeshadowAlertsFromDb(storyId: string): ForeshadowAlert[] {
+  const meta = readMetaJsonSync(storyId)
+  return meta?.foreshadowAlerts ?? []
 }

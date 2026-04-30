@@ -1,6 +1,7 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
+import { buildLayeredSummaries } from '../utils/summary-compressor.js'
 
 export class ConsistencyAgent extends BaseAgent {
   constructor() {
@@ -25,8 +26,8 @@ export class ConsistencyAgent extends BaseAgent {
   - 可以加强因果关联
   - 可以补充过渡段落
 
-前几章摘要（仅作参考，用于理解上下文）：
-${state.chapterSummaries?.length ? state.chapterSummaries.map((s, i) => `第${i + 1}章摘要：${s}`).join('\n\n') : '（这是第一章）'}
+ 前几章摘要（仅作参考，用于理解上下文）：
+${buildLayeredSummaries(state.chapterSummaries ?? [], state.chapterIndex ?? 0)}
 
 待检测章节：
 ${state.chapterContent || '（无内容）'}

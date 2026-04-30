@@ -73,9 +73,11 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
 
     const currentChapter = result.currentChapterIndex
     const totalChapters = result.totalChapters
+    const completedChapter = currentChapter
+    const nextChapter = currentChapter + 1
 
     if (currentChapter < totalChapters) {
-      console.log(`\n[MuseFlow] 第 ${currentChapter + 1}/${totalChapters} 章处理完成`)
+      console.log(`\n[MuseFlow] 第 ${completedChapter}/${totalChapters} 章已完成，待撰写: 第 ${nextChapter} 章`)
 
       if (result.pendingIssues.length > 0) {
         const errors = result.pendingIssues.filter(i => i.severity === 'error')
