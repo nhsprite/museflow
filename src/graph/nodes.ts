@@ -166,16 +166,38 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
     ...(worldContent ? { world: worldContent } : {}),
   }
 
-  const output = await agent.run(agentState)
-  const characters = agent.processOutput(output, state.story.id)
+  const maxRetries = 2
+  let lastOutput: import('../agents/base.js').AgentOutput | null = null
 
-  if (characters.length === 0) {
-    throw new Error('[MuseFlow] 错误：角色生成失败，请检查 AI 输出或重试')
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      console.warn(`[MuseFlow] 角色生成解析失败，第 ${attempt}/${maxRetries} 次重试...`)
+    }
+
+    const output = await agent.run(agentState)
+    lastOutput = output
+    const characters = agent.processOutput(output, state.story.id)
+
+    if (characters.length > 0) {
+      if (attempt > 0) {
+        console.log(`[MuseFlow] 角色生成重试成功，共创建 ${characters.length} 个人物`)
+      }
+      saveCharacters(state.story.id, characters)
+      return { characters }
+    }
+
+    if (!output.success && output.content) {
+      console.warn(`[MuseFlow] 第 ${attempt + 1} 次角色生成原始输出（前 500 字符）：`)
+      console.warn(output.content.slice(0, 500))
+    }
   }
 
-  saveCharacters(state.story.id, characters)
-
-  return { characters }
+  console.error('[MuseFlow] 错误：角色生成失败，已达到最大重试次数')
+  if (lastOutput?.content) {
+    console.error('[MuseFlow] 最后一次原始输出（前 1000 字符）：')
+    console.error(lastOutput.content.slice(0, 1000))
+  }
+  throw new Error('[MuseFlow] 错误：角色生成失败，请检查 AI 输出或重试')
 }
 
 export async function create_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {

@@ -253,6 +253,20 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
       }
     }
 
+    const chapterHeadingPattern = /^(#{1,2}\s+第\s*\d+\s*章[\s:：]|#{1,2}\s+第\s*\d+\s*部分[\s:：]|#{1,2}\s+\d+[\.、]\s+|#{1,2}\s+章节?\s*\d+)/m
+    const headingMatch = chapterContent.match(chapterHeadingPattern)
+    if (headingMatch && headingMatch.index !== undefined && headingMatch.index > 0) {
+      const detectedPreWrite = chapterContent.slice(0, headingMatch.index).trim()
+      chapterContent = chapterContent.slice(headingMatch.index).trim()
+      if (detectedPreWrite && !preWriteCheck) {
+        return {
+          success: true,
+          content: chapterContent,
+          data: { preWriteCheck: detectedPreWrite },
+        }
+      }
+    }
+
     const cleaned = chapterContent.replace(/<!--[\s\S]*?-->/g, '').trim()
 
     return {

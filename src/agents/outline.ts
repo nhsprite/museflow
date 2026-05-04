@@ -163,7 +163,7 @@ ${otherOutlines || '（无其他章节）'}
 4. 只输出第 ${displayNum} 章的大纲，不要输出其他章节`
 
     const messages = [
-      this.systemMessage('你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。\n\n重要：只需输出单个章节的大纲，以 JSON 格式返回，包含字段：\n- number：章节编号（数字）\n- title：章节标题（字符串）\n- description：本章核心事件描述（字符串）\n\n示例：{"number": 1, "title": "觉醒", "description": "少年在山谷中偶遇..."}'),
+      this.systemMessage('你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。\n\n重要：只需输出单个章节的大纲，以 JSON 格式返回，包含字段：\n- number：章节编号（数字）\n- title：章节标题（字符串）\n- description：本章核心事件描述（字符串）\n\n示例：{"number": 1, "title": "章节标题", "description": "本章核心事件描述"}'),
       this.userMessage(context),
     ]
 

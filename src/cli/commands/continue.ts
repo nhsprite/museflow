@@ -92,8 +92,17 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
       if (result.pendingIssues.length > 0) {
         const errors = result.pendingIssues.filter(i => i.severity === 'error')
         if (errors.length > 0) {
-          console.log(`\n[MuseFlow] 发现 ${errors.length} 个严重问题`)
-          console.log('[MuseFlow] 请使用 continue 命令继续处理')
+          console.log(`\n[MuseFlow] 发现 ${errors.length} 个严重问题：`)
+          for (const err of errors) {
+            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+            console.log(`  ${icon} [${err.type}] ${err.description}`)
+            if (err.location) {
+              console.log(`     位置: ${err.location}`)
+            }
+          }
+          console.log(`\n[MuseFlow] 请先修复问题后再继续：`)
+          console.log(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+          console.log(`   museflow rewrite ${storyId}  # 彻底重写`)
         }
       }
     }

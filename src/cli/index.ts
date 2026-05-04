@@ -9,6 +9,8 @@ import { info } from './commands/info.js'
 import { config } from './commands/config.js'
 import { genres } from './commands/genres.js'
 import { exportStory } from './commands/export.js'
+import { list } from './commands/list.js'
+import { del } from './commands/delete.js'
 
 const program = new Command()
 
@@ -41,6 +43,7 @@ program.command('rewrite')
 program.command('fix')
   .description('修复当前章节的问题（根据问题针对性修复）')
   .argument('<story-id>', '故事ID')
+  .option('-c, --chapter <number>', '指定要修复的章节编号', parseInt)
   .action(fix)
 
 program.command('continue')
@@ -80,5 +83,16 @@ program.command('export')
   .description('导出故事为 txt 文件')
   .argument('<story-id>', '故事ID')
   .action(exportStory)
+
+program.command('list')
+  .description('列出所有书籍')
+  .alias('ls')
+  .action(list)
+
+program.command('delete')
+  .description('删除指定书籍')
+  .argument('<story-id>', '故事ID')
+  .option('-f, --force', '强制删除，不提示确认')
+  .action(del)
 
 program.parse()

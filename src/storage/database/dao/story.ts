@@ -1,7 +1,8 @@
 import type { Story, StoryCreateInput, StoryStatus } from '../../../types/story.js'
 import { generateId } from '../../../utils/id.js'
-import { getStoryOutputDir } from '../../../utils/paths.js'
-import { renameSync, existsSync, mkdirSync } from 'node:fs'
+import { getStoryOutputDir, getOutputsDir } from '../../../utils/paths.js'
+import { renameSync, existsSync, mkdirSync, readdirSync, rmSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { readMetaJsonSync, writeMetaJsonSync, type StoryMeta } from '../index.js'
 
 export async function initStoryDb(): Promise<void> {
@@ -80,4 +81,37 @@ export function renameStoryOutputDir(id: string, newOutputDir: string): void {
   meta.story.outputDir = newOutputDir
   meta.story.updatedAt = Date.now()
   writeMetaJsonSync(id, meta)
+}
+
+export function listStories(): Story[] {
+  const booksDir = getOutputsDir()
+  if (!existsSync(booksDir)) return []
+
+  const stories: Story[] = []
+  for (const entry of readdirSync(booksDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const metaPath = join(booksDir, entry.name, 'meta.json')
+    if (!existsSync(metaPath)) continue
+    try {
+      const content = readFileSync(metaPath, 'utf-8')
+      const meta = JSON.parse(content) as StoryMeta
+      if (meta.story) {
+        stories.push(meta.story)
+      }
+    } catch {
+    }
+  }
+
+  return stories.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+export function deleteStory(id: string): boolean {
+  const story = getStory(id)
+  if (!story) return false
+
+  if (existsSync(story.outputDir)) {
+    rmSync(story.outputDir, { recursive: true, force: true })
+  }
+
+  return true
 }

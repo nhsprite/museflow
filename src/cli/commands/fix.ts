@@ -46,11 +46,45 @@ function getOutputDirFromStoryId(storyId: string): string | undefined {
   return undefined
 }
 
-interface FixOptions {
-  storyId: string
+async function loadStateForChapter(storyId: string, currentState: ReducedGraphState, targetChapter: number): Promise<ReducedGraphState> {
+  if (targetChapter === currentState.currentChapterIndex + 1) {
+    return currentState
+  }
+
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    return { ...currentState, pendingIssues: [] }
+  }
+
+  const checkpointer = getCheckpointer()
+  const chapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapter)
+
+  if (!chapterCheckpoint) {
+    console.warn(`[MuseFlow] 未找到第 ${targetChapter} 章的 checkpoint，无法加载历史问题`)
+    return { ...currentState, pendingIssues: [] }
+  }
+
+  try {
+    const checkpointValues = (chapterCheckpoint.checkpoint as unknown as { channel_values: ReducedGraphState }).channel_values
+    if (checkpointValues && Array.isArray(checkpointValues.pendingIssues)) {
+      return {
+        ...currentState,
+        pendingIssues: checkpointValues.pendingIssues,
+      }
+    }
+  } catch {
+    console.warn(`[MuseFlow] 读取第 ${targetChapter} 章 checkpoint 失败`)
+  }
+
+  return { ...currentState, pendingIssues: [] }
 }
 
-export async function fix(storyId: string, _options: FixOptions): Promise<void> {
+interface FixOptions {
+  storyId: string
+  chapter?: number
+}
+
+export async function fix(storyId: string, options: FixOptions): Promise<void> {
   await initStoryDb()
   const story = getStory(storyId)
   if (!story) {
@@ -64,20 +98,32 @@ export async function fix(storyId: string, _options: FixOptions): Promise<void> 
     process.exit(1)
   }
 
-  if (state.pendingIssues.length === 0) {
-    console.log(`[MuseFlow] 当前章节没有待修复的问题`)
-    console.log('  运行 "museflow write" 继续撰写\n')
+  const targetChapter = options.chapter ?? state.currentChapterIndex + 1
+
+  if (targetChapter !== state.currentChapterIndex + 1) {
+    console.log(`[MuseFlow] 指定修复第 ${targetChapter} 章`)
+  }
+
+  const effectiveState = await loadStateForChapter(storyId, state, targetChapter)
+
+  if (effectiveState.pendingIssues.length === 0) {
+    console.log(`[MuseFlow] 第 ${targetChapter} 章没有待修复的问题`)
+    if (targetChapter !== state.currentChapterIndex + 1) {
+      console.log('  该章节可能没有质量检查记录，或问题已在后续修复\n')
+    } else {
+      console.log('  运行 "museflow write" 继续撰写\n')
+    }
     return
   }
 
-  const errors = state.pendingIssues.filter(i => i.severity === 'error')
-  const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
+  const errors = effectiveState.pendingIssues.filter(i => i.severity === 'error')
+  const warnings = effectiveState.pendingIssues.filter(i => i.severity === 'warning')
 
   console.log('[MuseFlow] 修复问题: ', story.title)
-  console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
+  console.log(`  目标章节: ${targetChapter}/${state.totalChapters}`)
   console.log(`  发现 ${errors.length} 个错误，${warnings.length} 个警告\n`)
 
-  const issueGroups = groupIssuesByType(state.pendingIssues)
+  const issueGroups = groupIssuesByType(effectiveState.pendingIssues)
   for (const [type, items] of Object.entries(issueGroups)) {
     console.log(`  【${type}】`)
     for (const issue of items) {
@@ -90,17 +136,18 @@ export async function fix(storyId: string, _options: FixOptions): Promise<void> 
     console.log()
   }
 
-  await handleFix(storyId)
+  await handleFix(storyId, targetChapter)
 }
 
-async function handleFix(storyId: string): Promise<void> {
+async function handleFix(storyId: string, targetChapter: number): Promise<void> {
   const state = await getState(storyId)
-  const chapterNum = state ? state.currentChapterIndex + 1 : 1
   const totalChapters = state ? state.totalChapters : 0
-  const currentChapterIndex = state?.currentChapterIndex ?? 0
+  const targetChapterIndex = targetChapter - 1
 
-  const fixableIssues = state?.pendingIssues.filter(isFixable) ?? []
-  const nonFixableIssues = state?.pendingIssues.filter(i => !isFixable(i)) ?? []
+  const effectiveState = await loadStateForChapter(storyId, state ?? {} as ReducedGraphState, targetChapter)
+
+  const fixableIssues = effectiveState.pendingIssues.filter(isFixable)
+  const nonFixableIssues = effectiveState.pendingIssues.filter(i => !isFixable(i))
 
   if (nonFixableIssues.length > 0) {
     console.log(`\n[MuseFlow] 检测到 ${nonFixableIssues.length} 个结构性问题，不适合用 fix 修复：`)
@@ -108,25 +155,25 @@ async function handleFix(storyId: string): Promise<void> {
       console.log(`  ❌ [${issue.type}] ${issue.description}`)
     }
     console.log('\n  结构性问题（时间线、逻辑矛盾、段落结构）需要彻底重写才能解决。')
-    console.log(`   museflow rewrite ${storyId}\n`)
+    console.log(`   museflow rewrite ${storyId} --chapter ${targetChapter}\n`)
     return
   }
 
-  const initialErrorCount = state?.pendingIssues.filter(i => i.severity === 'error').length ?? 0
+  const initialErrorCount = effectiveState.pendingIssues.filter(i => i.severity === 'error').length
 
   try {
     const result = await withSpinner(
-      `正在修复第 ${chapterNum}/${totalChapters} 章...`,
-      () => invokeGraph(storyId, true),
-      `✅ 第 ${chapterNum} 章修复完成`
+      `正在修复第 ${targetChapter}/${totalChapters} 章...`,
+      () => invokeGraph(storyId, true, targetChapterIndex),
+      `✅ 第 ${targetChapter} 章修复完成`
     )
 
     const remainingErrors = result.pendingIssues.filter(i => i.severity === 'error').length
 
     if (remainingErrors === 0) {
-      console.log(`\n[MuseFlow] ✅ 第 ${chapterNum}/${totalChapters} 章修复完成`)
-      if (result.outline[currentChapterIndex]) {
-        console.log(`  章节名: ${result.outline[currentChapterIndex].title}`)
+      console.log(`\n[MuseFlow] ✅ 第 ${targetChapter}/${totalChapters} 章修复完成`)
+      if (result.outline[targetChapterIndex]) {
+        console.log(`  章节名: ${result.outline[targetChapterIndex].title}`)
       }
 
       const remainingWarnings = result.pendingIssues.filter(i => i.severity === 'warning')
@@ -141,15 +188,15 @@ async function handleFix(storyId: string): Promise<void> {
     if (remainingErrors > initialErrorCount) {
       console.log(`\n[MuseFlow] 修复后问题反而增加（${initialErrorCount} → ${remainingErrors}）`)
       console.log('  说明本章结构性矛盾较多，建议彻底重写\n')
-      console.log(`   museflow rewrite ${storyId}\n`)
+      console.log(`   museflow rewrite ${storyId} --chapter ${targetChapter}\n`)
       return
     }
 
     console.log(`\n[MuseFlow] 修复后仍有 ${remainingErrors} 个问题`)
     console.log('  这些问题可能需要更大幅度的调整\n')
     console.log(`请选择修复方式：`)
-    console.log(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
-    console.log(`   museflow fix ${storyId}      # 再次尝试针对性修复\n`)
+    console.log(`   museflow rewrite ${storyId} --chapter ${targetChapter}  # 彻底重写（推荐）`)
+    console.log(`   museflow fix ${storyId} --chapter ${targetChapter}      # 再次尝试针对性修复\n`)
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
     process.exit(1)
@@ -173,7 +220,7 @@ function isFixable(issue: { type: string; description: string }): boolean {
   return true
 }
 
-async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<ReducedGraphState> {
+async function invokeGraph(storyId: string, rewriteApproved: boolean, targetChapterIndex?: number): Promise<ReducedGraphState> {
   const graph = buildNovelGraph()
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
@@ -190,7 +237,23 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<R
   const snapshot = await graph.getState(config)
   const checkpointState = snapshot.values as ReducedGraphState
 
-  const targetIndex = checkpointState.currentChapterIndex
+  let targetIndex = checkpointState.currentChapterIndex
+  let pendingIssues = checkpointState.pendingIssues
+
+  if (targetChapterIndex !== undefined && targetChapterIndex !== targetIndex) {
+    targetIndex = targetChapterIndex
+    const chapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex + 1)
+    if (chapterCheckpoint) {
+      try {
+        const checkpointValues = (chapterCheckpoint.checkpoint as unknown as { channel_values: ReducedGraphState }).channel_values
+        if (checkpointValues && Array.isArray(checkpointValues.pendingIssues)) {
+          pendingIssues = checkpointValues.pendingIssues
+        }
+      } catch {
+        console.warn(`[MuseFlow] 读取第 ${targetChapterIndex + 1} 章 checkpoint 失败，使用当前 pendingIssues`)
+      }
+    }
+  }
 
   const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
   for (let i = 0; i < targetIndex; i++) {
@@ -201,7 +264,7 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean): Promise<R
     ...checkpointState,
     currentChapterIndex: targetIndex,
     chapters: rewrittenChapters,
-    pendingIssues: checkpointState.pendingIssues,
+    pendingIssues,
     rewriteApproved,
     rewriteRequested: false,
     isWriting: true,

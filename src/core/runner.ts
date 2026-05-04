@@ -161,6 +161,8 @@ export async function continueStory(
       workingState = { ...workingState, pendingIssues: workingState.pendingIssues.filter(i => i.severity === 'error') }
       const fixResult = await fix_chapter(workingState)
       workingState = { ...workingState, ...fixResult }
+      // 修复后清除旧 issues，让下一轮验证从头检测
+      workingState = { ...workingState, pendingIssues: [] }
     } else {
       if (workingState.rewriteApproved) {
         console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
@@ -217,11 +219,18 @@ export async function continueStory(
       console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
       workingState.rewriteApproved = true
     } else {
-      console.warn(`[MuseFlow] 已达到最大重写次数 (${MAX_REWRITE_ATTEMPTS})，将使用最后一次结果。剩余问题已记录为警告。`)
-      workingState.pendingIssues = workingState.pendingIssues.map(i => ({
-        ...i,
-        severity: i.severity === 'error' ? 'warning' : i.severity,
-      }))
+      const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+      console.error(`[MuseFlow] 已达到最大重写次数 (${MAX_REWRITE_ATTEMPTS})，仍有 ${remainingErrors.length} 个未修复的严重问题：`)
+      for (const err of remainingErrors) {
+        const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+        console.error(`  ${icon} [${err.type}] ${err.description}`)
+        if (err.location) {
+          console.error(`     位置: ${err.location}`)
+        }
+      }
+      console.error(`\n[MuseFlow] 撰写已中断，请手动修复后再继续：`)
+      console.error(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+      console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
       break
     }
   }
