@@ -2,10 +2,54 @@ import { getStory } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
 import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
 import { getForeshadowAlerts, formatForeshadowAlerts } from '../../graph/state.js'
+import { getCheckpointer } from '../../graph/checkpointer.js'
+import { getOutputsDir } from '../../utils/paths.js'
+import { existsSync } from 'node:fs'
 
-interface StatusOptions {}
+interface StatusOptions {
+  issues?: boolean
+}
 
-export async function status(storyId?: string, _options?: StatusOptions): Promise<void> {
+interface ChapterIssue {
+  chapterNumber: number
+  title: string
+  issues: Array<{
+    severity: string
+    type: string
+    description: string
+    location?: string
+    suggestion?: string
+  }>
+}
+
+async function getChapterIssues(outputDir: string, totalChapters: number): Promise<ChapterIssue[]> {
+  const checkpointer = getCheckpointer()
+  const results: ChapterIssue[] = []
+
+  for (let chapterNum = 1; chapterNum <= totalChapters; chapterNum++) {
+    const checkpoint = await checkpointer.getChapterCheckpoint(outputDir, chapterNum)
+    if (!checkpoint) continue
+
+    try {
+      const values = (checkpoint.checkpoint as unknown as { channel_values?: { pendingIssues?: ChapterIssue['issues']; outline?: Array<{ title?: string }> } }).channel_values
+      const pendingIssues = values?.pendingIssues ?? []
+      const title = values?.outline?.[chapterNum - 1]?.title ?? `第${chapterNum}章`
+
+      if (pendingIssues.length > 0) {
+        results.push({
+          chapterNumber: chapterNum,
+          title,
+          issues: pendingIssues,
+        })
+      }
+    } catch {
+    }
+  }
+
+  return results
+}
+
+export async function status(storyId?: string, options?: StatusOptions): Promise<void> {
   if (!storyId) {
     console.error('[MuseFlow] 错误: 请提供故事ID')
     console.log('用法: museflow status <story-id>')
@@ -41,10 +85,52 @@ export async function status(storyId?: string, _options?: StatusOptions): Promis
 
     if (state.pendingIssues.length > 0) {
       console.log(`待处理问题: ${state.pendingIssues.length}`)
-      const errors = state.pendingIssues.filter(i => i.severity === 'error').length
-      const warnings = state.pendingIssues.filter(i => i.severity === 'warning').length
-      if (errors > 0) console.log(`  - 严重问题: ${errors}`)
-      if (warnings > 0) console.log(`  - 警告: ${warnings}`)
+      const errors = state.pendingIssues.filter(i => i.severity === 'error')
+      const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
+      const infos = state.pendingIssues.filter(i => i.severity === 'info')
+      if (errors.length > 0) console.log(`  - 严重问题: ${errors.length}`)
+      if (warnings.length > 0) console.log(`  - 警告: ${warnings.length}`)
+      if (infos.length > 0) console.log(`  - 提示: ${infos.length}`)
+
+      if (options?.issues) {
+        console.log('')
+        const showIssues = (items: typeof state.pendingIssues, label: string, icon: string) => {
+          if (items.length === 0) return
+          console.log(`  ${label}:`)
+          for (const issue of items) {
+            console.log(`    ${icon} [${issue.type}] ${issue.description}`)
+            if (issue.location) {
+              console.log(`       位置: ${issue.location}`)
+            }
+            if (issue.suggestion) {
+              console.log(`       建议: ${issue.suggestion}`)
+            }
+          }
+        }
+        showIssues(errors, '严重问题', '❌')
+        showIssues(warnings, '警告', '⚠️')
+        showIssues(infos, '提示', 'ℹ️')
+
+        const outputDir = getOutputsDir()
+        const storyDir = state.story?.outputDir
+        if (storyDir && existsSync(storyDir)) {
+          const chapterIssues = await getChapterIssues(storyDir, total)
+          if (chapterIssues.length > 0) {
+            console.log('')
+            console.log('  各章节问题汇总:')
+            for (const ci of chapterIssues) {
+              const errorCount = ci.issues.filter(i => i.severity === 'error').length
+              const warningCount = ci.issues.filter(i => i.severity === 'warning').length
+              const infoCount = ci.issues.filter(i => i.severity === 'info').length
+              const parts = []
+              if (errorCount > 0) parts.push(`${errorCount} 个错误`)
+              if (warningCount > 0) parts.push(`${warningCount} 个警告`)
+              if (infoCount > 0) parts.push(`${infoCount} 个提示`)
+              console.log(`    第 ${ci.chapterNumber} 章「${ci.title}」: ${parts.join(', ') || '0 个问题'}`)
+            }
+          }
+        }
+      }
     }
 
     if (state.world) {

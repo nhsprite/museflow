@@ -56,6 +56,7 @@ program.command('continue')
 program.command('status')
   .description('查看故事进度')
   .argument('[story-id]', '故事ID')
+  .option('--issues', '显示当前待处理问题的详细内容')
   .action(status)
 
 program.command('info')
