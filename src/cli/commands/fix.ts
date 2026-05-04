@@ -98,9 +98,31 @@ export async function fix(storyId: string, options: FixOptions): Promise<void> {
     process.exit(1)
   }
 
-  const targetChapter = options.chapter ?? state.currentChapterIndex + 1
+  let targetChapter = options.chapter
+  if (!targetChapter) {
+    const currentChapter = state.currentChapterIndex + 1
+    const currentStateCheck = await loadStateForChapter(storyId, state, currentChapter)
+    if (currentStateCheck.pendingIssues.length > 0) {
+      targetChapter = currentChapter
+    } else {
+      const previousChapter = state.currentChapterIndex
+      if (previousChapter > 0) {
+        const previousStateCheck = await loadStateForChapter(storyId, state, previousChapter)
+        if (previousStateCheck.pendingIssues.length > 0) {
+          targetChapter = previousChapter
+          console.log(`[MuseFlow] 当前章节没有问题，自动切换到最近有问题的第 ${targetChapter} 章`)
+        }
+      }
+    }
+  }
 
-  if (targetChapter !== state.currentChapterIndex + 1) {
+  if (!targetChapter) {
+    console.log('[MuseFlow] 没有找到有待修复问题的章节')
+    console.log('  运行 "museflow write" 继续撰写\n')
+    return
+  }
+
+  if (options.chapter && options.chapter !== state.currentChapterIndex + 1) {
     console.log(`[MuseFlow] 指定修复第 ${targetChapter} 章`)
   }
 
@@ -108,11 +130,7 @@ export async function fix(storyId: string, options: FixOptions): Promise<void> {
 
   if (effectiveState.pendingIssues.length === 0) {
     console.log(`[MuseFlow] 第 ${targetChapter} 章没有待修复的问题`)
-    if (targetChapter !== state.currentChapterIndex + 1) {
-      console.log('  该章节可能没有质量检查记录，或问题已在后续修复\n')
-    } else {
-      console.log('  运行 "museflow write" 继续撰写\n')
-    }
+    console.log('  该章节可能没有质量检查记录，或问题已在后续修复\n')
     return
   }
 
