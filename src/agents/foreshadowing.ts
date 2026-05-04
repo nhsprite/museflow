@@ -149,6 +149,7 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
         text: item.text!,
         expectedFulfillChapter: item.expected_fulfill_chapter ?? currentChapter + 5,
         createdAt: Date.now(),
+        createdAtChapter: currentChapter,
       }))
 
     const fulfilledCount = updatedStack.filter(item => item.fulfilledChapter && item.fulfilledChapter === currentChapter).length

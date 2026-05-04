@@ -6,10 +6,6 @@ import { getCheckpointer } from '../../graph/checkpointer.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import { existsSync } from 'node:fs'
 
-interface StatusOptions {
-  issues?: boolean
-}
-
 interface ChapterIssue {
   chapterNumber: number
   title: string
@@ -49,7 +45,7 @@ async function getChapterIssues(outputDir: string, totalChapters: number): Promi
   return results
 }
 
-export async function status(storyId?: string, options?: StatusOptions): Promise<void> {
+export async function status(storyId?: string): Promise<void> {
   if (!storyId) {
     console.error('[MuseFlow] 错误: 请提供故事ID')
     console.log('用法: museflow status <story-id>')
@@ -89,42 +85,40 @@ export async function status(storyId?: string, options?: StatusOptions): Promise
       if (warnings.length > 0) console.log(`  - 警告: ${warnings.length}`)
       if (infos.length > 0) console.log(`  - 提示: ${infos.length}`)
 
-      if (options?.issues) {
-        console.log('')
-        const showIssues = (items: typeof state.pendingIssues, label: string, icon: string) => {
-          if (items.length === 0) return
-          console.log(`  ${label}:`)
-          for (const issue of items) {
-            console.log(`    ${icon} [${issue.type}] ${issue.description}`)
-            if (issue.location) {
-              console.log(`       位置: ${issue.location}`)
-            }
-            if (issue.suggestion) {
-              console.log(`       建议: ${issue.suggestion}`)
-            }
+      console.log('')
+      const showIssues = (items: typeof state.pendingIssues, label: string, icon: string) => {
+        if (items.length === 0) return
+        console.log(`  ${label}:`)
+        for (const issue of items) {
+          console.log(`    ${icon} [${issue.type}] ${issue.description}`)
+          if (issue.location) {
+            console.log(`       位置: ${issue.location}`)
+          }
+          if (issue.suggestion) {
+            console.log(`       建议: ${issue.suggestion}`)
           }
         }
-        showIssues(errors, '严重问题', '❌')
-        showIssues(warnings, '警告', '⚠️')
-        showIssues(infos, '提示', 'ℹ️')
+      }
+      showIssues(errors, '严重问题', '❌')
+      showIssues(warnings, '警告', '⚠️')
+      showIssues(infos, '提示', 'ℹ️')
 
-        const outputDir = getOutputsDir()
-        const storyDir = state.story?.outputDir
-        if (storyDir && existsSync(storyDir)) {
-          const chapterIssues = await getChapterIssues(storyDir, total)
-          if (chapterIssues.length > 0) {
-            console.log('')
-            console.log('  各章节问题汇总:')
-            for (const ci of chapterIssues) {
-              const errorCount = ci.issues.filter(i => i.severity === 'error').length
-              const warningCount = ci.issues.filter(i => i.severity === 'warning').length
-              const infoCount = ci.issues.filter(i => i.severity === 'info').length
-              const parts = []
-              if (errorCount > 0) parts.push(`${errorCount} 个错误`)
-              if (warningCount > 0) parts.push(`${warningCount} 个警告`)
-              if (infoCount > 0) parts.push(`${infoCount} 个提示`)
-              console.log(`    第 ${ci.chapterNumber} 章「${ci.title}」: ${parts.join(', ') || '0 个问题'}`)
-            }
+      const outputDir = getOutputsDir()
+      const storyDir = state.story?.outputDir
+      if (storyDir && existsSync(storyDir)) {
+        const chapterIssues = await getChapterIssues(storyDir, total)
+        if (chapterIssues.length > 0) {
+          console.log('')
+          console.log('  各章节问题汇总:')
+          for (const ci of chapterIssues) {
+            const errorCount = ci.issues.filter(i => i.severity === 'error').length
+            const warningCount = ci.issues.filter(i => i.severity === 'warning').length
+            const infoCount = ci.issues.filter(i => i.severity === 'info').length
+            const parts = []
+            if (errorCount > 0) parts.push(`${errorCount} 个错误`)
+            if (warningCount > 0) parts.push(`${warningCount} 个警告`)
+            if (infoCount > 0) parts.push(`${infoCount} 个提示`)
+            console.log(`    第 ${ci.chapterNumber} 章「${ci.title}」: ${parts.join(', ') || '0 个问题'}`)
           }
         }
       }
@@ -157,6 +151,18 @@ export async function status(storyId?: string, options?: StatusOptions): Promise
         const alerts = getForeshadowAlerts(state.foreshadowStack, state.currentChapterIndex + 1)
         console.log('')
         console.log(formatForeshadowAlerts(alerts))
+      }
+
+      if (fulfilled.length > 0) {
+        console.log('')
+        console.log('已回收伏笔:')
+        for (const fs of fulfilled.slice(0, 5)) {
+          const createdCh = fs.createdAtChapter || '?'
+          console.log(`  ✓ "${fs.text.substring(0, 40)}..." (第${createdCh}章埋下 → 第${fs.fulfilledChapter}章回收)`)
+        }
+        if (fulfilled.length > 5) {
+          console.log(`  ... 还有 ${fulfilled.length - 5} 个`)
+        }
       }
     }
 

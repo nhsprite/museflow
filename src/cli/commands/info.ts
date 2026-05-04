@@ -82,11 +82,34 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
     }
 
     if (state.foreshadowStack.length > 0) {
-      console.log(`伏笔: ${state.foreshadowStack.length} 个待回收`)
-      for (const fs of state.foreshadowStack.slice(0, 3)) {
-        console.log(`  - 第${fs.expectedFulfillChapter}章回收: "${fs.text.substring(0, 30)}..."`)
-      }
+      const unfulfilled = state.foreshadowStack.filter(f => !f.fulfilledChapter)
+      const fulfilled = state.foreshadowStack.filter(f => f.fulfilledChapter)
+      console.log(`伏笔: ${unfulfilled.length} 个待回收, ${fulfilled.length} 个已回收`)
       console.log('')
+
+      if (unfulfilled.length > 0) {
+        console.log('待回收伏笔:')
+        for (const fs of unfulfilled.slice(0, 3)) {
+          const createdCh = fs.createdAtChapter || '?'
+          console.log(`  - 第${fs.expectedFulfillChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`)
+        }
+        if (unfulfilled.length > 3) {
+          console.log(`  ... 还有 ${unfulfilled.length - 3} 个`)
+        }
+        console.log('')
+      }
+
+      if (fulfilled.length > 0) {
+        console.log('已回收伏笔:')
+        for (const fs of fulfilled.slice(0, 3)) {
+          const createdCh = fs.createdAtChapter || '?'
+          console.log(`  ✓ 第${fs.fulfilledChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`)
+        }
+        if (fulfilled.length > 3) {
+          console.log(`  ... 还有 ${fulfilled.length - 3} 个`)
+        }
+        console.log('')
+      }
     }
 
     if (state.pendingIssues.length > 0) {

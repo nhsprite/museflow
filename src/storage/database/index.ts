@@ -70,6 +70,7 @@ export interface StoryMeta {
     text: string
     expectedFulfillChapter: number
     createdAt: number
+    createdAtChapter: number
     fulfilledChapter?: number
   }>
   foreshadowAlerts?: ForeshadowAlert[]

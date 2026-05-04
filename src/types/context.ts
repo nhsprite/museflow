@@ -20,6 +20,8 @@ export interface ForeshadowItem {
   text: string
   expectedFulfillChapter: number
   createdAt: number
+  createdAtChapter: number
+  fulfilledChapter?: number
 }
 
 export interface GraphState {
