@@ -38,7 +38,11 @@ ${state.chapterContent || '（无内容）'}
      - 是否有"这个故事告诉我们"、"从这件事可以看出"等作者跳出来抽象概括的句式
      - 段落是否以具体动作/感官细节开头，而非抽象评价
 
-【重要】请严格控制 error 数量，只有真正影响阅读理解的严重问题才报 error。一般性改进建议请报 warning 或 info。
+【重要】请严格控制 error 数量，只有真正影响阅读理解的严重问题才报 error。一般性改进建议报 warning 或 info。
+
+【关键规则】issues 数组只放需要改进的问题。
+正面评价（如"未检测到 AI 痕迹""语言流畅""描写细腻"等）必须放入 strengths，严禁放入 issues。
+如果某个维度没有问题，直接不写对应的 issue，不要写"未发现问题"的 issue。
 
   请输出 JSON 格式的评审结果：
 {
@@ -92,27 +96,55 @@ ${state.chapterContent || '（无内容）'}
       }>
     }
 
-    const issues: Issue[] = (data.issues || []).map(issue => {
-      const result: Issue = {
-        id: generateId(),
-        type: 'quality',
-        severity: (issue.severity as IssueSeverity) || 'info',
-        description: issue.description || '',
-      }
-      if (issue.location) {
-        result.location = issue.location
-      }
-      if (issue.suggestion) {
-        result.suggestion = issue.suggestion
-      }
-      return result
-    })
+    const issues: Issue[] = (data.issues || [])
+      .filter(issue => !this.isPositiveFeedback(issue.description || ''))
+      .map(issue => {
+        const result: Issue = {
+          id: generateId(),
+          type: 'quality',
+          severity: (issue.severity as IssueSeverity) || 'info',
+          description: issue.description || '',
+        }
+        if (issue.location) {
+          result.location = issue.location
+        }
+        if (issue.suggestion) {
+          result.suggestion = issue.suggestion
+        }
+        return result
+      })
 
     const result: { issues: Issue[]; qualityScore?: number } = { issues }
     if (data.quality_score !== undefined) {
       result.qualityScore = data.quality_score
     }
     return result
+  }
+
+  private isPositiveFeedback(description: string): boolean {
+    const positivePatterns = [
+      /未检测到.*AI痕迹/,
+      /未检测到.*问题/,
+      /未发现问题/,
+      /没有.*问题/,
+      /没有.*痕迹/,
+      /保持.*较好/,
+      /保持.*良好/,
+      /语言.*流畅/,
+      /描写.*细腻/,
+      /文笔.*优秀/,
+      /文笔.*出色/,
+      /节奏.*恰当/,
+      /结构.*合理/,
+      /人物.*立体/,
+      /情节.*合理/,
+      /无明显/,
+      /无.*不足/,
+      /值得肯定/,
+      /表现.*优秀/,
+      /质量.*较高/,
+    ]
+    return positivePatterns.some(pattern => pattern.test(description))
   }
 }
 
