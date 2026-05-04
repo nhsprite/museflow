@@ -28,13 +28,13 @@ export class FixAgent extends BaseAgent {
 
     const issuesSection = state.issues && state.issues.length > 0
       ? `【必须修复的问题】
-${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}`
+${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}${issue.suggestion ? `\n   修复建议: ${issue.suggestion}` : ''}`).join('\n')}`
       : ''
 
     const sentencesSection = sentences.map((s) =>
       `【段落 ${s.paragraphIndex} · 第 ${s.sentenceIndex + 1} 句】
 原句：${s.original}
-问题：${s.issue.description}`
+问题：${s.issue.description}${s.issue.suggestion ? `\n修复建议：${s.issue.suggestion}` : ''}`
     ).join('\n\n')
 
     const userContent = `请对第 ${displayChapterNumber} 章的指定句子进行精准修复。
@@ -81,7 +81,7 @@ ${sentencesSection}
 
     const issuesSection = state.issues && state.issues.length > 0
       ? `【必须修复的问题】
-${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}`
+${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}${issue.suggestion ? `\n   修复建议: ${issue.suggestion}` : ''}`).join('\n')}`
       : ''
 
     const issueIndexMap = new Map(state.issues?.map((issue, idx) => [issue, idx + 1]) ?? [])
@@ -133,7 +133,7 @@ ${paragraphsSection}
   private buildLegacyPrompt(state: Required<AgentState>, displayChapterNumber: string): import('../model/provider.js').Message[] {
     const issuesSection = state.issues && state.issues.length > 0
       ? `【必须修复的问题】
-${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}`
+${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}${issue.suggestion ? `\n   修复建议: ${issue.suggestion}` : ''}`).join('\n')}`
       : ''
 
     const existingChapterSection = state.chapterContent

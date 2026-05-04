@@ -76,7 +76,8 @@ ${state.chapterContent || '（无内容）'}
       "severity": "error|warning|info",
       "description": "问题描述（请明确指出涉及哪些章节的哪些内容）",
       "aspect": "time|space|causality|character_knowledge|dialogue|information|foreshadowing|pace",
-      "location": "具体位置"
+      "location": "具体位置",
+      "suggestion": "具体的修复建议（如：将'什么信？'改为'那封信我转交时血迹已经干了'）"
     }
   ]
 }
@@ -113,6 +114,7 @@ ${state.chapterContent || '（无内容）'}
         description?: string
         aspect?: string
         location?: string
+        suggestion?: string
       }>
     }
 
@@ -129,6 +131,9 @@ ${state.chapterContent || '（无内容）'}
       }
       if (issue.location) {
         result.location = issue.location
+      }
+      if (issue.suggestion) {
+        result.suggestion = issue.suggestion
       }
       return result
     })

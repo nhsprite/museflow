@@ -6,6 +6,7 @@ export interface Issue {
   severity: IssueSeverity
   description: string
   location?: string
+  suggestion?: string
 }
 
 export interface AgentResult {

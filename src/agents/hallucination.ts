@@ -49,7 +49,8 @@ ${state.chapterContent || '（无内容）'}
       "severity": "error|warning|info",
       "description": "问题描述",
       "conflict_with": "与什么设定冲突",
-      "location": "具体位置"
+      "location": "具体位置",
+      "suggestion": "具体的修复建议（如：将'《西游记》'替换为唐朝存在的佛经《大唐西域记》）"
     }
   ]
 }
@@ -86,6 +87,7 @@ ${state.chapterContent || '（无内容）'}
         description?: string
         conflict_with?: string
         location?: string
+        suggestion?: string
       }>
     }
 
@@ -103,6 +105,9 @@ ${state.chapterContent || '（无内容）'}
       const loc = issue.location || issue.conflict_with
       if (loc) {
         result.location = loc
+      }
+      if (issue.suggestion) {
+        result.suggestion = issue.suggestion
       }
       return result
     })

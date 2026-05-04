@@ -133,12 +133,16 @@ ${state.chapterContent || '（无内容）'}
 
     for (const dev of (data.deviations || [])) {
       const issueType = dev.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'
-      issues.push({
+      const issue: Issue = {
         id: generateId(),
         type: issueType,
         severity: (dev.severity as Issue['severity']) || 'warning',
-        description: `[大纲偏离] ${dev.description || ''}${dev.suggestion ? `\n建议：${dev.suggestion}` : ''}`,
-      })
+        description: `[大纲偏离] ${dev.description || ''}`,
+      }
+      if (dev.suggestion) {
+        issue.suggestion = dev.suggestion
+      }
+      issues.push(issue)
     }
 
     return {

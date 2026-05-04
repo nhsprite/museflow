@@ -34,12 +34,10 @@ export async function deleteChapterContent(
   const filePath = getChapterFilePath(outputDir, chapterNumber)
   try {
     await unlink(filePath)
-    logger.debug(`Chapter ${chapterNumber} deleted: ${filePath}`)
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw err
     }
-    logger.debug(`Chapter ${chapterNumber} not found, skip delete: ${filePath}`)
   }
 }
 

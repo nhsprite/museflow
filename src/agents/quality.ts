@@ -40,7 +40,7 @@ ${state.chapterContent || '（无内容）'}
 
 【重要】请严格控制 error 数量，只有真正影响阅读理解的严重问题才报 error。一般性改进建议请报 warning 或 info。
 
-请输出 JSON 格式的评审结果：
+  请输出 JSON 格式的评审结果：
 {
   "quality_score": 1-10 的评分,
   "strengths": ["优点1", "优点2"],
@@ -49,8 +49,12 @@ ${state.chapterContent || '（无内容）'}
       "type": "quality",
       "severity": "error|warning|info",
       "description": "问题描述",
-      "location": "具体位置或章节"
+      "location": "具体位置或章节",
+      "suggestion": "具体的修复建议（如：将'值得一提的是'改为具体的人物动作或场景描写）"
     }
+  ],
+  "suggestions": ["改进建议1", "改进建议2"]
+}
   ],
   "suggestions": ["改进建议1", "改进建议2"]
 }`
@@ -84,6 +88,7 @@ ${state.chapterContent || '（无内容）'}
         severity?: string
         description?: string
         location?: string
+        suggestion?: string
       }>
     }
 
@@ -96,6 +101,9 @@ ${state.chapterContent || '（无内容）'}
       }
       if (issue.location) {
         result.location = issue.location
+      }
+      if (issue.suggestion) {
+        result.suggestion = issue.suggestion
       }
       return result
     })
