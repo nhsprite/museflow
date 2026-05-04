@@ -1,6 +1,6 @@
 import { getStory } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
-import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
+
 import { getForeshadowAlerts, formatForeshadowAlerts } from '../../graph/state.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { getOutputsDir } from '../../utils/paths.js'
@@ -75,13 +75,10 @@ export async function status(storyId?: string, options?: StatusOptions): Promise
   if (state) {
     const current = state.currentChapterIndex
     const total = state.totalChapters
-    const currentChapter = getCurrentChapterDisplayNumber(current, total)
-    const progress = total > 0 ? Math.round((current / total) * 100) : 0
-
-    console.log(`章节进度: ${currentChapter}/${total} (${progress}%)`)
-
     const doneChapters = state.chapters.filter(c => c !== null).length
-    console.log(`已完成章节: ${doneChapters}`)
+    const progress = total > 0 ? Math.round((doneChapters / total) * 100) : 0
+
+    console.log(`章节进度: ${doneChapters}/${total} (${progress}%)`)
 
     if (state.pendingIssues.length > 0) {
       console.log(`待处理问题: ${state.pendingIssues.length}`)
