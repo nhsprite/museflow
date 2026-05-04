@@ -3,13 +3,9 @@ import { getState } from '../../core/runner.js'
 import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
 import { getForeshadowAlerts, formatForeshadowAlerts } from '../../graph/state.js'
 
-interface StatusOptions {
-  storyId?: string
-}
+interface StatusOptions {}
 
-export async function status(options?: StatusOptions): Promise<void> {
-  const storyId = options?.storyId
-
+export async function status(storyId?: string, _options?: StatusOptions): Promise<void> {
   if (!storyId) {
     console.error('[MuseFlow] 错误: 请提供故事ID')
     console.log('用法: museflow status <story-id>')
