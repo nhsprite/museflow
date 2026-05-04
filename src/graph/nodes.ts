@@ -13,6 +13,8 @@ import {
   ConsistencyAgent,
   OutlineComplianceAgent,
   FixAgent,
+  SummaryAgent,
+  processSummaryOutput,
 } from '../agents/index.js'
 import { generateId } from '../utils/id.js'
 import type { AgentState } from '../agents/base.js'
@@ -38,6 +40,7 @@ let qualityAgent: QualityAgent | null = null
 let foreshadowingAgent: ForeshadowingAgent | null = null
 let hallucinationAgent: HallucinationAgent | null = null
 let consistencyAgent: ConsistencyAgent | null = null
+let summaryAgent: SummaryAgent | null = null
 
 function getWorldbuilderAgent(): WorldbuilderAgent {
   if (!worldbuilderAgent) worldbuilderAgent = new WorldbuilderAgent()
@@ -82,6 +85,11 @@ function getHallucinationAgent(): HallucinationAgent {
 function getConsistencyAgent(): ConsistencyAgent {
   if (!consistencyAgent) consistencyAgent = new ConsistencyAgent()
   return consistencyAgent
+}
+
+function getSummaryAgent(): SummaryAgent {
+  if (!summaryAgent) summaryAgent = new SummaryAgent()
+  return summaryAgent
 }
 
 function getOutlineComplianceAgent(): OutlineComplianceAgent {
@@ -211,9 +219,7 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
   const worldContent = state.world?.content
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
-
-  const latestSnapshot = getLatestSnapshot(state.story.id)
-  const timelineSnapshot = latestSnapshot?.stateSummary ?? null
+  const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
   const agentState: AgentState = {
     idea: state.idea,
@@ -247,9 +253,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const worldContent = state.world?.content
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
-
-  const latestSnapshot = getLatestSnapshot(state.story.id)
-  const timelineSnapshot = latestSnapshot?.stateSummary ?? null
+  const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
   const existingContent = state.rewriteApproved
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -1013,13 +1017,19 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
+    ...(state.world?.content ? { world: state.world.content } : {}),
+    characters: charactersToString(state.characters),
+    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
     chapterSummaries: state.chapterSummaries,
     chapterIndex,
+    timelineSnapshot,
   }
 
   const output = await agent.run(agentState)
@@ -1085,7 +1095,31 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   }
 
   if (chapter) {
-    const summary = chapter.summary || ''
+    let summary = chapter.summary || ''
+    const needsSummary = !summary && chapterContent
+    if (needsSummary) {
+      console.log(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要...`)
+      const summaryAgent = getSummaryAgent()
+      const summaryState: AgentState = {
+        idea: state.idea,
+        genre: state.genre,
+        totalChapters: state.totalChapters,
+        chapterContent,
+        ...(state.outline[chapterIndex]?.title ? { chapterTitle: state.outline[chapterIndex].title } : {}),
+        chapterIndex,
+      }
+      try {
+        const summaryOutput = await summaryAgent.run(summaryState)
+        const processed = processSummaryOutput(summaryOutput)
+        if (processed) {
+          summary = processed
+          chapter.summary = summary
+        }
+      } catch (err) {
+        console.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败:`, err)
+      }
+    }
+
     if (summary && !state.chapterSummaries.includes(summary)) {
       state.chapterSummaries.push(summary)
     }
@@ -1150,4 +1184,120 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   console.log(`[MuseFlow] 步骤 7/7: 发现 ${warnings.length} 个质量问题`)
 
   return {}
+}
+
+interface CharacterFactEntry {
+  character: string
+  facts: string[]
+}
+
+const FULL_RANGE = 2
+const MEDIUM_RANGE = 6
+const UNLIMITED_FACTS = 100
+const MEDIUM_MAX_FACTS = 3
+const MINIMAL_MAX_FACTS = 1
+
+function parseCharacterFacts(summaryJson: string): CharacterFactEntry[] {
+  try {
+    const parsed = JSON.parse(summaryJson)
+    const facts = parsed.characterFacts
+    if (Array.isArray(facts)) {
+      return facts.filter((f: unknown) => f && typeof (f as CharacterFactEntry).character === 'string' && Array.isArray((f as CharacterFactEntry).facts))
+    }
+  } catch {
+    return []
+  }
+  return []
+}
+
+function isSimilarFact(a: string, b: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/[，。！？、；：""''（）【】]/g, '').trim()
+  const na = normalize(a)
+  const nb = normalize(b)
+  if (na === nb) return true
+  if (na.length > 10 && nb.length > 10) {
+    if (na.includes(nb) || nb.includes(na)) return true
+  }
+  return false
+}
+
+function deduplicateFacts(facts: string[]): string[] {
+  const result: string[] = []
+  for (const fact of facts) {
+    const isDup = result.some(existing => isSimilarFact(existing, fact))
+    if (!isDup) {
+      result.push(fact)
+    }
+  }
+  return result
+}
+
+function groupFactsByCharacter(entries: CharacterFactEntry[]): Map<string, string[]> {
+  const grouped = new Map<string, string[]>()
+  for (const entry of entries) {
+    const existing = grouped.get(entry.character) || []
+    const merged = [...existing, ...entry.facts]
+    grouped.set(entry.character, deduplicateFacts(merged))
+  }
+  return grouped
+}
+
+function applyFactLimit(grouped: Map<string, string[]>, maxFactsPerCharacter: number): CharacterFactEntry[] {
+  const result: CharacterFactEntry[] = []
+  for (const [character, facts] of grouped) {
+    const kept = facts.slice(0, maxFactsPerCharacter)
+    if (kept.length > 0) {
+      result.push({ character, facts: kept })
+    }
+  }
+  return result
+}
+
+function formatCharacterFacts(entries: CharacterFactEntry[], chapterNum: number): string {
+  if (entries.length === 0) return ''
+
+  const lines = [`第${chapterNum}章角色事实：`]
+  for (const entry of entries) {
+    lines.push(`  ${entry.character}：`)
+    for (const fact of entry.facts) {
+      lines.push(`    - ${fact}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function getMaxFactsByDistance(distance: number): number {
+  if (distance <= FULL_RANGE) return UNLIMITED_FACTS
+  if (distance <= MEDIUM_RANGE) return MEDIUM_MAX_FACTS
+  return MINIMAL_MAX_FACTS
+}
+
+function buildCharacterFactTimeline(
+  state: ReducedGraphState,
+  upToChapterIndex: number
+): string {
+  const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
+  if (!summaries.length) return '（暂无历史记录）'
+
+  const result: string[] = []
+
+  for (let i = 0; i < summaries.length; i++) {
+    const summary = summaries[i]
+    if (!summary) continue
+
+    const chapterNum = i + 1
+    const distance = upToChapterIndex - chapterNum
+    const maxFacts = getMaxFactsByDistance(distance)
+
+    const entries = parseCharacterFacts(summary)
+    const grouped = groupFactsByCharacter(entries)
+    const compressed = applyFactLimit(grouped, maxFacts)
+    const formatted = formatCharacterFacts(compressed, chapterNum)
+
+    if (formatted) {
+      result.push(formatted)
+    }
+  }
+
+  return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
 }
