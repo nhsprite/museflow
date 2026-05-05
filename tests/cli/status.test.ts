@@ -29,6 +29,21 @@ function createStory(): Story {
 }
 
 function createState(currentChapterIndex: number, totalChapters: number): ReducedGraphState {
+  const chapters = new Array(totalChapters).fill(null)
+  for (let i = 0; i < currentChapterIndex && i < totalChapters; i++) {
+    chapters[i] = {
+      id: `chapter-${i + 1}`,
+      storyId: 'story-1',
+      number: i + 1,
+      title: `Chapter ${i + 1}`,
+      outline: '',
+      summary: '',
+      foreshadows: null,
+      status: 'done',
+      createdAt: 1,
+      updatedAt: 1,
+    }
+  }
   return {
     story: createStory(),
     idea: '一个少年踏上修仙路',
@@ -37,7 +52,7 @@ function createState(currentChapterIndex: number, totalChapters: number): Reduce
     world: null,
     characters: [],
     outline: [],
-    chapters: new Array(totalChapters).fill(null),
+    chapters,
     currentChapterIndex,
     foreshadowStack: [],
     chapterSummaries: [],
@@ -66,7 +81,7 @@ describe('status command chapter display', () => {
 
     await status({ storyId: 'story-1' })
 
-    expect(logSpy).toHaveBeenCalledWith('章节进度: 1/3 (0%)')
+    expect(logSpy).toHaveBeenCalledWith('章节进度: 0/3 (0%)')
     expect(logSpy).toHaveBeenCalledWith('下一步: 撰写第 1 章')
   })
 

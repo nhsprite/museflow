@@ -40,10 +40,13 @@ vi.mock('../../src/storage/database/dao/story.js', () => ({
   updateStoryTitle: vi.fn(),
   renameStoryOutputDir: vi.fn(),
 }))
+const saveForeshadowAlerts = vi.fn()
+
 vi.mock('../../src/storage/database/dao/timeline.js', () => ({
   appendTimelineSnapshot,
   getLatestSnapshot,
   saveForeshadowStack,
+  saveForeshadowAlerts,
 }))
 vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockReturnValue(null) }))
 vi.mock('../../src/utils/paths.js', () => ({ getStoryOutputDirWithTitle: vi.fn() }))
@@ -92,7 +95,7 @@ describe('rewrite flow regression', () => {
     expect(draftResult.rewriteApproved).toBeUndefined()
     expect(draftResult.pendingIssues).toBeUndefined()
     expect(readChapterContent).toHaveBeenCalledWith('/tmp/story', 1)
-    expect(writeChapterContent).toHaveBeenCalledWith('/tmp/story', 1, 'rewritten chapter content')
+    expect(writeChapterContent).toHaveBeenCalledWith('/tmp/story', 1, '# 第1章 Chapter 1\n\nrewritten chapter content')
     expect(draftResult.chapters?.[0]?.status).toBe('drafting')
   })
 

@@ -34,7 +34,7 @@ describe('ChapterAgent chapter numbering', () => {
       previousChapters: '',
       chapterContent: '',
       chapterIndex: 0,
-      foreshadowStack: '',
+      foreshadowStack: [],
       chapterSummaries: [],
     })
 
