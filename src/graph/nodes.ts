@@ -1,3 +1,6 @@
+const GREEN = '\x1b[32m'
+const RESET = '\x1b[0m'
+
 import type { ReducedGraphState } from './state.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { Character } from '../types/character.js'
@@ -907,7 +910,7 @@ function countChineseWords(text: string): number {
 
 export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
-  console.log(`[MuseFlow] 步骤 1/7: 检查字数...`)
+  console.log(`${GREEN}[MuseFlow] 步骤 1/7: 检查字数...${RESET}`)
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
 
   if (content === null) {
@@ -955,7 +958,7 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
-  console.log(`[MuseFlow] 步骤 2/7: 质量检查...`)
+  console.log(`${GREEN}[MuseFlow] 步骤 2/7: 质量检查...${RESET}`)
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -986,7 +989,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
-  console.log(`[MuseFlow] 步骤 3/7: 检测伏笔...`)
+  console.log(`${GREEN}[MuseFlow] 步骤 3/7: 检测伏笔...${RESET}`)
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -1009,7 +1012,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
-  console.log(`[MuseFlow] 步骤 4/7: 检测幻觉...`)
+  console.log(`${GREEN}[MuseFlow] 步骤 4/7: 检测幻觉...${RESET}`)
   if (!chapter) return {}
 
   const worldContent = state.world?.content
@@ -1035,7 +1038,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
-  console.log(`[MuseFlow] 步骤 5/7: 检测一致性...`)
+  console.log(`${GREEN}[MuseFlow] 步骤 5/7: 检测一致性...${RESET}`)
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -1067,7 +1070,7 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
   const outlineItem = state.outline[chapterIndex]
   const chapter = state.chapters[chapterIndex]
 
-  console.log(`[MuseFlow] 步骤 6/7: 校验大纲合规性...`)
+  console.log(`${GREEN}[MuseFlow] 步骤 6/7: 校验大纲合规性...${RESET}`)
   if (!chapter || !outlineItem) {
     return {}
   }
