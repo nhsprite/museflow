@@ -128,8 +128,7 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
   try {
     const result = await withSpinner(
       `正在重写第 ${chapterNum}/${totalChapters} 章...`,
-      () => rewriteChapter(storyId, userResponse, targetChapterIndex),
-      `✅ 第 ${chapterNum} 章重写完成`
+      () => rewriteChapter(storyId, userResponse, targetChapterIndex)
     )
 
     if (result.rewriteRequested) {
@@ -154,6 +153,8 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
       }
       return
     }
+
+    console.log(`\n✅ 第 ${chapterNum} 章重写完成`)
 
     if (result.currentChapterIndex >= result.totalChapters) {
       updateStatus('done')
