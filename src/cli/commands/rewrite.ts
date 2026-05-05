@@ -142,9 +142,16 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
           console.log(`     位置: ${err.location}`)
         }
       }
+      const hasConsistencyErrors = errors.some(e => e.type === 'consistency')
       console.log(`\n请选择修复方式：`)
-      console.log(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
-      console.log(`   museflow rewrite ${storyId}  # 彻底重写`)
+      if (hasConsistencyErrors) {
+        console.log(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
+        console.log(`   museflow fix ${storyId}      # 针对性修复`)
+        console.log(`\n  ⚠️  检测到跨章节一致性矛盾，rewrite 才能重新对齐前文事实`)
+      } else {
+        console.log(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+        console.log(`   museflow rewrite ${storyId}  # 彻底重写`)
+      }
       return
     }
 

@@ -228,9 +228,16 @@ export async function continueStory(
           console.error(`     位置: ${err.location}`)
         }
       }
+      const hasConsistencyErrors = remainingErrors.some(e => e.type === 'consistency')
       console.error(`\n[MuseFlow] 撰写已中断，请手动修复后再继续：`)
-      console.error(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
-      console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+      if (hasConsistencyErrors) {
+        console.error(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
+        console.error(`   museflow fix ${storyId}      # 针对性修复`)
+        console.error(`\n  ⚠️  检测到跨章节一致性矛盾，rewrite 才能重新对齐前文事实\n`)
+      } else {
+        console.error(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+        console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+      }
       break
     }
   }

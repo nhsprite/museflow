@@ -221,18 +221,21 @@ async function handleFix(storyId: string, targetChapter: number): Promise<void> 
   }
 }
 
-function isFixable(issue: { type: string; description: string }): boolean {
-  const nonFixableTypes = ['consistency']
-  if (nonFixableTypes.includes(issue.type)) {
+function isFixable(issue: { type: string; severity: string; description: string }): boolean {
+  // 只有 error 级别的 consistency 才需要 rewrite
+  if (issue.type === 'consistency' && issue.severity === 'error') {
     return false
   }
 
-  const structuralKeywords = [
-    '时间线', '时间混乱', '逻辑矛盾', '因果关系', '结构',
-    '段落结构', '叙事结构', '前后矛盾', '逻辑不通',
-  ]
-  if (structuralKeywords.some(kw => issue.description.includes(kw))) {
-    return false
+  // 只有 error 级别且包含结构性关键词的问题才不可修复
+  if (issue.severity === 'error') {
+    const structuralKeywords = [
+      '时间混乱', '逻辑矛盾', '因果关系断裂', '结构',
+      '段落结构', '叙事结构', '前后矛盾', '逻辑不通',
+    ]
+    if (structuralKeywords.some(kw => issue.description.includes(kw))) {
+      return false
+    }
   }
 
   return true
