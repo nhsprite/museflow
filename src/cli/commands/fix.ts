@@ -357,6 +357,7 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean, targetChap
       {
         rewriteRequested: true,
         pendingIssues: workingState.pendingIssues,
+        currentChapterIndex: workingState.currentChapterIndex,
       }
     )
     return workingState

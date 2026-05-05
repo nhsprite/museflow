@@ -435,6 +435,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       {
         rewriteRequested: true,
         pendingIssues: workingState.pendingIssues,
+        currentChapterIndex: workingState.currentChapterIndex,
       }
     )
   }
