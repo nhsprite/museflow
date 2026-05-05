@@ -122,6 +122,26 @@ export async function fix(storyId: string, options: FixOptions): Promise<void> {
     return
   }
 
+  const outputDir = getOutputDirFromStoryId(storyId)
+  const chapterFilePath = outputDir ? join(outputDir, 'chapters', `chapter_${targetChapter}.md`) : ''
+  if (outputDir && !existsSync(chapterFilePath)) {
+    console.log(`[MuseFlow] 第 ${targetChapter} 章尚未撰写，无法修复`)
+    const previousChapter = targetChapter - 1
+    if (previousChapter > 0) {
+      const previousStateCheck = await loadStateForChapter(storyId, state, previousChapter)
+      if (previousStateCheck.pendingIssues.length > 0) {
+        targetChapter = previousChapter
+        console.log(`[MuseFlow] 自动切换到最近有问题的第 ${targetChapter} 章`)
+      } else {
+        console.log(`  请先运行: museflow write ${storyId}\n`)
+        return
+      }
+    } else {
+      console.log(`  请先运行: museflow write ${storyId}\n`)
+      return
+    }
+  }
+
   if (options.chapter && options.chapter !== state.currentChapterIndex + 1) {
     console.log(`[MuseFlow] 指定修复第 ${targetChapter} 章`)
   }
