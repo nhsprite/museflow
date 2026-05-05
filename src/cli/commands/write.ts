@@ -216,6 +216,10 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
         console.log(`   museflow fix ${storyId}    # 针对性修复（推荐）`)
         console.log(`   museflow rewrite ${storyId} # 彻底重写\n`)
       }
+
+      console.log('下一步：')
+      console.log(`   先修复第 ${writtenIndex + 1} 章的问题，再运行 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
+      console.log(`   或运行 "museflow info" 查看故事进度\n`)
     } else {
       const warnings = result.pendingIssues.filter(i => i.severity === 'warning')
       if (warnings.length > 0) {
@@ -233,11 +237,11 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
         console.log('')
       }
       console.log('✨ 质量检查通过\n')
-    }
 
-    console.log('下一步：')
-    console.log(`   输入 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
-    console.log(`   或运行 "museflow info" 查看故事进度\n`)
+      console.log('下一步：')
+      console.log(`   输入 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
+      console.log(`   或运行 "museflow info" 查看故事进度\n`)
+    }
 
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
