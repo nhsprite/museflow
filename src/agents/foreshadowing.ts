@@ -10,22 +10,27 @@ export class ForeshadowingAgent extends BaseAgent {
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const existingForeshadows = state.foreshadowStack || []
     const currentChapter = (state.chapterIndex ?? 0) + 1
+    const totalChapters = state.totalChapters ?? currentChapter
+
+    const noNewThreshold = Math.max(3, Math.floor(totalChapters * 0.15))
+    const isClosingPhase = currentChapter > totalChapters - noNewThreshold
 
     const overdueForeshadows = existingForeshadows.filter(
       f => !f.fulfilledChapter && currentChapter > f.expectedFulfillChapter + 1
     )
+    const mustFulfillForeshadows = existingForeshadows.filter(
+      f => !f.fulfilledChapter && currentChapter >= f.expectedFulfillChapter && currentChapter <= f.expectedFulfillChapter + 1
+    )
     const urgentForeshadows = existingForeshadows.filter(
-      f => !f.fulfilledChapter && currentChapter >= f.expectedFulfillChapter - 1 && currentChapter <= f.expectedFulfillChapter + 1
+      f => !f.fulfilledChapter && currentChapter >= f.expectedFulfillChapter - 1 && currentChapter < f.expectedFulfillChapter
     )
     const normalForeshadows = existingForeshadows.filter(
       f => !f.fulfilledChapter && currentChapter < f.expectedFulfillChapter - 1
     )
 
-    const isLastChapter = currentChapter === state.totalChapters
-
     const userContent = `请分析以下章节，完成两项任务：1) 检测已埋伏笔是否在本章被回收，2) 埋下新的伏笔。
 
-${isLastChapter ? '【重要】这是最后一章（终章）。终章的任务是回收所有未解决的伏笔并给出结局，**禁止埋下新的伏笔**。new_foreshadows 必须返回空数组 []。' : '【重要优先级】请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。'}
+${isClosingPhase ? `【重要】当前已进入收尾阶段（第 ${currentChapter}/${totalChapters} 章，剩余 ${totalChapters - currentChapter} 章）。**禁止埋下新的伏笔**。所有未回收的伏笔必须在本章或剩余章节内回收完毕。new_foreshadows 必须返回空数组 []。` : '【重要优先级】请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。'}
 
 章节内容：
 ${state.chapterContent || '（无内容）'}
@@ -33,10 +38,17 @@ ${state.chapterContent || '（无内容）'}
 ${
   existingForeshadows.length > 0
     ? `已埋伏笔列表（需要检测是否在本章被回收）：
-${existingForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.createdAt ? '之前' : '前'}章节，预期第${f.expectedFulfillChapter}章回收）`).join('\n')}
+${existingForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.createdAtChapter ?? '?'}章，预期第${f.expectedFulfillChapter}章回收）`).join('\n')}
 
 请检查本章内容，判断上述伏笔是否已被回收（伏笔情节在本章得到呼应或揭示）。`
     : '(暂无已埋伏笔)'
+}
+
+${
+  mustFulfillForeshadows.length > 0
+    ? `【🚨 必须在本章回收】以下伏笔已到达预期回收章节，必须在本章回收：
+${mustFulfillForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，当前第${currentChapter}章）`).join('\n')}`
+    : ''
 }
 
 ${
@@ -48,7 +60,7 @@ ${overdueForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expec
 
 ${
   urgentForeshadows.length > 0
-    ? `【🔔 即将到期伏笔 - 建议在本章回收】以下伏笔已到达或接近预期回收章节：
+    ? `【🔔 即将到期伏笔 - 建议在本章回收】以下伏笔已接近预期回收章节：
 ${urgentForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，当前第${currentChapter}章）`).join('\n')}`
     : ''
 }
