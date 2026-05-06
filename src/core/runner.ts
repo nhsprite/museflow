@@ -141,7 +141,7 @@ export async function continueStory(
       console.log(`[MuseFlow] 第 ${rewriteAttempts}/${MAX_REWRITE_ATTEMPTS} 次尝试...`)
     }
 
-    const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue']
+    const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue', 'consistency']
     const hasStructuralIssues = workingState.pendingIssues.some(
       i => i.severity === 'error' && structuralIssueTypes.includes(i.type)
     )
@@ -149,16 +149,18 @@ export async function continueStory(
       i => i.severity === 'error' && !structuralIssueTypes.includes(i.type)
     )
 
+    const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
+
     if (workingState.rewriteApproved && hasStructuralIssues && !hasLocalIssues) {
       console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
-      workingState = { ...workingState, chapterPlan: null, pendingIssues: [] }
+      workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
       const planResult = await plan_chapter(workingState)
       workingState = { ...workingState, ...planResult }
       const draftResult = await draft_chapter(workingState)
       workingState = { ...workingState, ...draftResult }
     } else if (workingState.rewriteApproved && hasLocalIssues && !hasStructuralIssues) {
       console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
-      workingState = { ...workingState, pendingIssues: workingState.pendingIssues.filter(i => i.severity === 'error') }
+      workingState = { ...workingState, pendingIssues: errorIssues }
       const fixResult = await fix_chapter(workingState)
       workingState = { ...workingState, ...fixResult }
       // 修复后清除旧 issues，让下一轮验证从头检测
@@ -166,7 +168,7 @@ export async function continueStory(
     } else {
       if (workingState.rewriteApproved) {
         console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
-        workingState = { ...workingState, chapterPlan: null, pendingIssues: [] }
+        workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
         const planResult = await plan_chapter(workingState)
         workingState = { ...workingState, ...planResult }
       } else {
@@ -240,6 +242,27 @@ export async function continueStory(
       }
       break
     }
+  }
+
+  const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+  if (remainingErrors.length > 0) {
+    workingState = {
+      ...workingState,
+      rewriteRequested: true,
+      rewriteApproved: false,
+    }
+    await graph.updateState(
+      { configurable: { thread_id: storyId, outputDir } },
+      {
+        rewriteApproved: false,
+        rewriteRequested: true,
+        pendingIssues: workingState.pendingIssues,
+        currentChapterIndex: workingState.currentChapterIndex,
+        chapters: workingState.chapters,
+        chapterSummaries: workingState.chapterSummaries,
+      }
+    )
+    return workingState
   }
 
   const finalizeResult = await finalize_chapter(workingState)

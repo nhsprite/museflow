@@ -279,6 +279,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
+  const keyEventsTimeline = buildKeyEventsTimeline(state, chapterIndex)
 
   const existingContent = state.rewriteApproved
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -295,6 +296,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
     timelineSnapshot,
+    keyEventsTimeline,
     foreshadowStack: state.foreshadowStack,
     ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
@@ -1321,6 +1323,42 @@ function buildCharacterFactTimeline(
 
     if (formatted) {
       result.push(formatted)
+    }
+  }
+
+  return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
+}
+
+function parseKeyEvents(summaryJson: string): string[] {
+  try {
+    const parsed = JSON.parse(summaryJson)
+    const events = parsed.keyEvents
+    if (Array.isArray(events)) {
+      return events.filter((e: unknown) => typeof e === 'string' && e.length > 0)
+    }
+  } catch {
+    return []
+  }
+  return []
+}
+
+function buildKeyEventsTimeline(
+  state: ReducedGraphState,
+  upToChapterIndex: number
+): string {
+  const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
+  if (!summaries.length) return '（暂无历史记录）'
+
+  const result: string[] = []
+
+  for (let i = 0; i < summaries.length; i++) {
+    const summary = summaries[i]
+    if (!summary) continue
+
+    const events = parseKeyEvents(summary)
+    if (events.length > 0) {
+      const chapterNum = i + 1
+      result.push(`第${chapterNum}章关键事件：\n${events.map(e => `  - ${e}`).join('\n')}`)
     }
   }
 

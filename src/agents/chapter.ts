@@ -27,6 +27,13 @@ ${state.timelineSnapshot}
 请在继续写作时保持与上述状态的一致性。`
       : ''
 
+    const keyEventsSection = state.keyEventsTimeline
+      ? `【重要 - 已发生的关键事件】以下事件已在前面章节中发生，后续章节必须承认并遵循这些事实，不可遗漏、遗忘或矛盾：
+${state.keyEventsTimeline}
+
+【强制要求】以上关键事件是已确立的叙事事实，本章写作时必须保持一致。如果本章涉及这些事件的后续发展，必须给出合理的因果衔接，不可凭空改变事件结果。`
+      : ''
+
     const issuesSection = state.issues && state.issues.length > 0
       ? `【重要】本章需要修复的问题：
 ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
@@ -116,6 +123,8 @@ ${previousSummary}
 ${chapterSupplement}
 
 ${timelineSection}
+
+${keyEventsSection}
 
 ${planSection}
 

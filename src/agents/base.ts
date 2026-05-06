@@ -89,6 +89,7 @@ export interface AgentState {
   chapterTitle?: string
   chapterSummary?: string
   timelineSnapshot?: string | null
+  keyEventsTimeline?: string | null
   issues?: Issue[]
   paragraphFix?: {
     paragraphs: ParagraphFix[]

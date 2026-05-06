@@ -20,6 +20,11 @@ export interface ChapterPlan {
     fulfilled: boolean
     section: string
   }>
+  consistencyCheck?: Array<{
+    potentialIssue: string
+    mitigation: string
+    section: string
+  }>
 }
 
 export class ChapterPlannerAgent extends BaseAgent {
@@ -67,6 +72,29 @@ ${previousSummary}
    - 大纲中提到的关键台词必须原样保留
    - 大纲中的时间要求（如"三日后""次日"）必须在时间线中体现
 
+【跨章节一致性检查 - 必须执行】
+在规划本章之前，请先分析前面章节的内容，检查是否存在跨章节叙事断裂的风险：
+
+1. 扫描前面章节摘要，识别所有角色的当前状态：
+   - 哪些角色处于特殊状态（被囚禁、失忆、失踪、受伤、逃亡等）
+   - 哪些情节线尚未解决（某物品下落不明、某冲突悬而未决等）
+   - 哪些伏笔尚未回收
+
+2. 检查本章大纲是否涉及这些状态/情节线的改变：
+   - 如果某角色在本章"突然出现"但前面章节未交代其如何脱身 → 需要补充说明
+   - 如果某角色在本章"突然知道"某信息但前面未交代其如何得知 → 需要补充说明
+   - 如果某物品在本章"突然出现"但前面未交代其来源 → 需要补充说明
+
+3. 如果发现潜在断裂，请在规划中增加"衔接段落"：
+   - 位置：放在本章最前面（第一个段落）或相关情节之前
+   - 内容：通过角色对话、简短回忆或旁白，解释关键状态的变化过程
+   - 要求：衔接必须自然，不能让读者感到突兀
+
+【衔接段落示例】
+- 如果某角色被囚禁多章后在本章出现：增加一段"XX通过密道脱身的过程"或"XX被救出后第一时间赶来支援"
+- 如果某角色突然知道秘密：增加一段"XX回忆三日前偶然听到的对话"
+- 如果某物品突然出现：增加一段"XX从怀中取出XX，这是前两日在XX处所得"
+
 【输出格式】
 请输出 JSON 格式：
 {
@@ -93,6 +121,13 @@ ${previousSummary}
       "fulfilled": true或false,
       "section": "对应段落标题"
     }
+  ],
+  "consistencyCheck": [
+    {
+      "potentialIssue": "检测到的潜在断裂（如：角色A在被囚禁状态后直接出现在本章）",
+      "mitigation": "规划中的解决方案（如：增加衔接段落说明脱身过程）",
+      "section": "对应段落标题"
+    }
   ]
 }
 
@@ -100,7 +135,8 @@ ${previousSummary}
 - 如果大纲要求"高烧持续三日后才退"，时间线必须显示三日，不能只写"过了一夜"
 - 如果大纲要求某人说特定台词，规划中必须标注该台词原样出现
 - 如果大纲要求"次日"发生某事，时间线必须显示"第一日→第二日"的过渡
-- 所有大纲情节点必须在 outlineCheck 中标记为 fulfilled: true`
+- 所有大纲情节点必须在 outlineCheck 中标记为 fulfilled: true
+- 如果前面章节存在未解决的状态，本章涉及该状态时必须给出合理解释，不能凭空改变`
 
     return [
       this.systemMessage('你是一位严谨的小说结构规划师。你的任务是在写作前生成详细的章节规划，确保每个大纲要求都被精确落实。你对时间线和情节顺序的准确性有零容忍态度。'),
@@ -130,6 +166,15 @@ ${previousSummary}
         return {
           success: false,
           error: `大纲检查未通过，以下要求未落实：${unfulfilled.map(u => u.requirement).join('、')}`,
+        }
+      }
+      if (data.consistencyCheck && Array.isArray(data.consistencyCheck)) {
+        const unresolvedIssues = data.consistencyCheck.filter(c => !c.mitigation || c.mitigation.length < 5)
+        if (unresolvedIssues.length > 0) {
+          console.warn(`[MuseFlow] 规划阶段检测到 ${unresolvedIssues.length} 个潜在跨章节断裂：`)
+          for (const issue of unresolvedIssues) {
+            console.warn(`  ⚠️ ${issue.potentialIssue}`)
+          }
         }
       }
       return { success: true, data }

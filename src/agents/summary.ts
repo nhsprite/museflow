@@ -23,6 +23,7 @@ export class SummaryAgent extends BaseAgent {
       "facts": ["该角色在本章中明确知道的信息/亲口说过的话/明确的态度（用第三人称客观描述）"]
     }
   ],
+  "keyEvents": ["本章发生的对后续章节有重要影响的关键事件（用第三人称客观描述）"],
   "locations": ["地点: 描述"],
   "keyItems": ["物品: 描述和状态"],
   "activePlots": ["当前进行中进行中的情节线"],
@@ -63,6 +64,7 @@ export function processSummaryOutput(output: AgentOutput): string | null {
   return JSON.stringify({
     characters: data['characters'] ?? [],
     characterFacts: data['characterFacts'] ?? [],
+    keyEvents: data['keyEvents'] ?? [],
     locations: data['locations'] ?? [],
     keyItems: data['keyItems'] ?? [],
     activePlots: data['activePlots'] ?? [],
