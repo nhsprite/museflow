@@ -158,6 +158,7 @@ export async function continueStory(
       workingState = { ...workingState, ...planResult }
       const draftResult = await draft_chapter(workingState)
       workingState = { ...workingState, ...draftResult }
+      workingState = { ...workingState, pendingIssues: [] }
     } else if (workingState.rewriteApproved && hasLocalIssues && !hasStructuralIssues) {
       console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
       workingState = { ...workingState, pendingIssues: errorIssues }
@@ -178,6 +179,7 @@ export async function continueStory(
       }
       const draftResult = await draft_chapter(workingState)
       workingState = { ...workingState, ...draftResult }
+      workingState = { ...workingState, pendingIssues: [] }
     }
 
     const checkNodes = [
