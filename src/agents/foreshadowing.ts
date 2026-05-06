@@ -21,9 +21,11 @@ export class ForeshadowingAgent extends BaseAgent {
       f => !f.fulfilledChapter && currentChapter < f.expectedFulfillChapter - 1
     )
 
+    const isLastChapter = currentChapter === state.totalChapters
+
     const userContent = `请分析以下章节，完成两项任务：1) 检测已埋伏笔是否在本章被回收，2) 埋下新的伏笔。
 
-【重要优先级】请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。
+${isLastChapter ? '【重要】这是最后一章（终章）。终章的任务是回收所有未解决的伏笔并给出结局，**禁止埋下新的伏笔**。new_foreshadows 必须返回空数组 []。' : '【重要优先级】请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。'}
 
 章节内容：
 ${state.chapterContent || '（无内容）'}

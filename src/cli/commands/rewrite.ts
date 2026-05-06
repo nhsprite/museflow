@@ -395,6 +395,9 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       ...workingState,
       ...partial,
     }
+    if (node === draft_chapter) {
+      workingState = { ...workingState, pendingIssues: [] }
+    }
     if (node === auto_fix_warnings) {
       const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
       if (errors.length > 0) {
