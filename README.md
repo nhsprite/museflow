@@ -21,6 +21,16 @@ MuseFlow 是一款本地运行的 CLI 工具，用户输入一句话故事简介
 
 ## 安装
 
+### 通过 npm 安装（推荐）
+
+```bash
+npm install -g museflow
+```
+
+安装后全局可用 `museflow` 命令。
+
+### 从源码运行（开发）
+
 ```bash
 # 克隆项目
 git clone <repository-url>
@@ -31,6 +41,9 @@ npm install
 
 # 编译 TypeScript
 npm run build
+
+# 开发时使用 npm start 代替 museflow
+npm start -- <command> [args]
 ```
 
 ## 快速开始
@@ -41,16 +54,16 @@ npm run build
 
 ```bash
 # 查看当前配置
-npm start -- config show
+museflow config show
 
 # 配置 OpenAI
-npm start -- config set --provider openai --api-key YOUR_API_KEY --model gpt-4o
+museflow config set --provider openai --api-key YOUR_API_KEY --model gpt-4o
 
 # 配置 Claude (Anthropic)
-npm start -- config set --provider anthropic --api-key YOUR_API_KEY --model claude-3-sonnet-20240229
+museflow config set --provider anthropic --api-key YOUR_API_KEY --model claude-3-sonnet-20240229
 
 # 配置其他 OpenAI 兼容服务（MiniMax、Ollama、DeepSeek 等）
-npm start -- config set --provider openai --api-key YOUR_API_KEY --model MODEL_NAME --base-url https://api.example.com/v1
+museflow config set --provider openai --api-key YOUR_API_KEY --model MODEL_NAME --base-url https://api.example.com/v1
 ```
 
 配置保存在项目目录下的 `.museflow/config.json`（项目级配置，优先于全局 `~/.museflow/config.json`）。
@@ -59,7 +72,7 @@ npm start -- config set --provider openai --api-key YOUR_API_KEY --model MODEL_N
 
 ```bash
 # 启动新故事（仅规划和创建，不写正文）
-npm start -- start --idea "一个少年获得修真能力后崛起为最强者的故事" --chapters 30 --genre xianxia
+museflow start --idea "一个少年获得修真能力后崛起为最强者的故事" --chapters 30 --genre xianxia
 ```
 
 此命令会：
@@ -72,10 +85,10 @@ npm start -- start --idea "一个少年获得修真能力后崛起为最强者�
 
 ```bash
 # 撰写当前章节（写完一章后停止）
-npm start -- write <story-id>
+museflow write <story-id>
 
 # 继续撰写下一章
-npm start -- write <story-id>
+museflow write <story-id>
 ```
 
 ### 4. 修复问题
@@ -84,10 +97,10 @@ npm start -- write <story-id>
 
 ```bash
 # 针对性修复当前章节（保留大部分内容，修改问题段落）
-npm start -- fix <story-id>
+museflow fix <story-id>
 
 # 彻底重写当前章节（从头重新撰写）
-npm start -- rewrite <story-id>
+museflow rewrite <story-id>
 ```
 
 **修复策略**：
@@ -98,10 +111,10 @@ npm start -- rewrite <story-id>
 
 ```bash
 # 查看故事进度
-npm start -- status <story-id>
+museflow status <story-id>
 
 # 查看故事详情
-npm start -- info <story-id>
+museflow info <story-id>
 ```
 
 ## 工作流程
@@ -212,16 +225,22 @@ npm run lint
 ## 常见问题
 
 ### `write` 没有反应
-确保传入了 story-id：`npm start -- write <story-id>`
+确保传入了 story-id：`museflow write <story-id>`
 
 ### API 调用报错
-检查 config 中 api key 和 base url 是否正确，用 `npm start -- config show` 确认。
+检查 config 中 api key 和 base url 是否正确，用 `museflow config show` 确认。
 
 ### 写完一章后提示"需要处理问题"
 运行 `rewrite` 或 `fix` 命令处理当前章节：
 ```bash
-npm start -- rewrite <story-id>  # 彻底重写
-npm start -- fix <story-id>      # 针对性修复
+museflow rewrite <story-id>  # 彻底重写
+museflow fix <story-id>      # 针对性修复
+```
+
+### 故事写到一半中断了怎么办？
+运行 `continue` 命令从断点恢复：
+```bash
+museflow continue <story-id>
 ```
 
 ### 为什么 fix 定位到很多段落？
@@ -230,7 +249,7 @@ Fix 命令会分析问题所在段落，只修改相关部分。如果问题描�
 ### 故事写到一半中断了怎么办？
 运行 `continue` 命令从断点恢复：
 ```bash
-npm start -- continue <story-id>
+museflow continue <story-id>
 ```
 
 ## 架构说明
