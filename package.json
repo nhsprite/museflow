@@ -6,6 +6,12 @@
   "bin": {
     "museflow": "./dist/cli/index.js"
   },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "tsx src/cli/index.ts",
