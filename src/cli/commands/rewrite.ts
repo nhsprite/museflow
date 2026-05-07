@@ -86,9 +86,13 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
   const checkpointer = getCheckpointer()
   await checkpointer.clearPendingWrites(story.outputDir)
 
+  let targetChapterIndex: number | undefined
+
   if (state.pendingIssues.length > 0) {
+    targetChapterIndex = Math.max(0, state.currentChapterIndex - 1)
+    const chapterNum = targetChapterIndex + 1
     console.log('[MuseFlow] 重写章节: ', story.title)
-    console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
+    console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
     console.log('[MuseFlow] 发现以下问题:')
     for (const issue of state.pendingIssues) {
       const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'
@@ -99,8 +103,9 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     }
     console.log()
   } else {
+    const chapterNum = state.currentChapterIndex + 1
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
-    console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
+    console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
     console.log('[MuseFlow] 当前章节没有已知问题，确认重写？')
     const answer = await question('  输入 y 确认重写，输入 n 取消 > ')
     const confirm = answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes'
@@ -111,7 +116,7 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     }
   }
 
-  await handleRewrite(storyId, true)
+  await handleRewrite(storyId, true, targetChapterIndex)
 }
 
 async function handleRewrite(storyId: string, userResponse: boolean, targetChapterIndex?: number): Promise<void> {

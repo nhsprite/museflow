@@ -1,5 +1,5 @@
 export interface ModelConfig {
-  provider: 'openai' | 'minimax' | 'local'
+  provider: 'openai' | 'anthropic'
   model?: string
   apiKey?: string
   baseUrl?: string
@@ -9,8 +9,6 @@ export interface ModelConfig {
 
 export interface AppConfig {
   model: ModelConfig
-  outputDir: string
-  checkpointsDir: string
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -20,6 +18,4 @@ export const DEFAULT_CONFIG: AppConfig = {
     temperature: 0.7,
     maxTokens: 4096,
   },
-  outputDir: '~/.museflow/outputs',
-  checkpointsDir: '~/.museflow/checkpoints',
 }

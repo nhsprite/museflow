@@ -9,7 +9,7 @@ MuseFlow 是一款本地运行的 CLI 工具，用户输入一句话故事简介
 - **LangGraph 状态图编排**：多 Agent 协同，支持断点恢复和人工确认重写
 - **8 类专业 Agent**：世界观、人物、大纲、章节、质量、伏笔检测、幻觉检测、逻辑一致性
 - **题材 Skill 系统**：内置玄幻、仙侠、科幻、恐怖等题材包，支持用户自定义 Skill
-- **本地优先**：所有数据存储在本地，模型可配置（OpenAI / MiniMax / 本地模型）
+  - **本地优先**：所有数据存储在本地，模型可配置（OpenAI 兼容 / Anthropic）
 - **断点恢复**：写作过程中断后可随时恢复，无需从头开始
 - **质量保障**：每章写完自动进行多维度质量检查，发现问题可针对性修复或重写
 
@@ -17,7 +17,7 @@ MuseFlow 是一款本地运行的 CLI 工具，用户输入一句话故事简介
 
 - **Node.js >= 20**
 - **npm** 或 **pnpm**
-- API Key（OpenAI / MiniMax / 本地 Ollama）
+- API Key（OpenAI / Claude / 其他兼容服务）
 
 ## 安装
 
@@ -46,14 +46,14 @@ npm start -- config show
 # 配置 OpenAI
 npm start -- config set --provider openai --api-key YOUR_API_KEY --model gpt-4o
 
-# 配置 MiniMax
-npm start -- config set --provider minimax --api-key YOUR_API_KEY --model abab6.5s-chat
+# 配置 Claude (Anthropic)
+npm start -- config set --provider anthropic --api-key YOUR_API_KEY --model claude-3-sonnet-20240229
 
-# 配置本地模型（需先启动 Ollama）
-npm start -- config set --provider local --model llama3 --base-url http://localhost:11434/v1
+# 配置其他 OpenAI 兼容服务（MiniMax、Ollama、DeepSeek 等）
+npm start -- config set --provider openai --api-key YOUR_API_KEY --model MODEL_NAME --base-url https://api.example.com/v1
 ```
 
-配置保存在 `~/.museflow/config.json`。
+配置保存在项目目录下的 `.museflow/config.json`（项目级配置，优先于全局 `~/.museflow/config.json`）。
 
 ### 2. 创建故事
 
@@ -168,7 +168,7 @@ MuseFlow 使用 8 类专业 Agent 协同工作：
 
 | 路径 | 内容 |
 |------|------|
-| `~/.museflow/config.json` | 用户配置（API key、provider 等） |
+| `./.museflow/config.json` | 项目级配置（API key、provider 等） |
 | `./books/{story_id}/meta.json` | 故事元数据（世界观、人物、大纲） |
 | `./books/{story_id}/checkpoints/` | LangGraph checkpoint JSON 文件 |
 | `./books/{story_id}/chapters/chapter_{n}.md` | 各章正文 `.md` 文件 |
@@ -185,7 +185,7 @@ src/
 ├── core/          # 核心业务逻辑（Runner）
 ├── genres/        # 题材 Skill 系统
 ├── storage/       # JSON 元数据 + 文件系统存储
-├── model/         # 模型抽象层（OpenAI / MiniMax / Local）
+├── model/         # 模型抽象层（OpenAI 兼容 / Anthropic）
 ├── types/         # 共享 TypeScript 类型
 └── utils/         # 工具函数
 ```

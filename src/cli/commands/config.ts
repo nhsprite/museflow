@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs'
 import { loadConfig, saveConfig } from '../../config/store.js'
+import { getProjectConfigFilePath, getGlobalConfigFilePath } from '../../utils/paths.js'
 import type { AppConfig } from '../../types/config.js'
 
 interface ConfigOptions {
@@ -8,15 +10,31 @@ interface ConfigOptions {
   baseUrl?: string
 }
 
+function getConfigSource(): { source: string; path: string } {
+  const projectPath = getProjectConfigFilePath()
+  if (existsSync(projectPath)) {
+    return { source: '项目级', path: projectPath }
+  }
+  const globalPath = getGlobalConfigFilePath()
+  if (existsSync(globalPath)) {
+    return { source: '全局', path: globalPath }
+  }
+  return { source: '默认', path: projectPath }
+}
+
 export async function config(action: string, options: ConfigOptions): Promise<void> {
   if (action === 'show') {
     const cfg = loadConfig()
+    const { source, path } = getConfigSource()
     console.log('='.repeat(50))
     console.log('MuseFlow 配置')
     console.log('='.repeat(50))
     console.log('')
+    console.log(`配置来源: ${source}`)
+    console.log(`配置文件: ${path}`)
+    console.log('')
     console.log('模型配置:')
-    console.log(`  提供商: ${cfg.model.provider}`)
+    console.log(`  协议: ${cfg.model.provider}`)
     console.log(`  模型: ${cfg.model.model || '(默认)'}`)
     console.log(`  Temperature: ${cfg.model.temperature ?? '(默认)'}`)
     console.log(`  Max Tokens: ${cfg.model.maxTokens ?? '(默认)'}`)
@@ -26,10 +44,6 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
     if (cfg.model.baseUrl) {
       console.log(`  Base URL: ${cfg.model.baseUrl}`)
     }
-    console.log('')
-    console.log('存储路径:')
-    console.log(`  输出目录: ${cfg.outputDir}`)
-    console.log(`  检查点目录: ${cfg.checkpointsDir}`)
     console.log('')
     console.log('='.repeat(50))
     console.log('')
@@ -41,12 +55,13 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
     const cfg = loadConfig()
 
     if (options.provider) {
-      if (!['openai', 'minimax', 'local'].includes(options.provider)) {
-        console.error('[MuseFlow] 错误: 提供商必须是 openai、minimax 或 local')
+      const validProtocols = ['openai', 'anthropic']
+      if (!validProtocols.includes(options.provider)) {
+        console.error(`[MuseFlow] 错误: 协议必须是 ${validProtocols.join('、')}`)
         process.exit(1)
       }
-      cfg.model.provider = options.provider as 'openai' | 'minimax' | 'local'
-      console.log(`[MuseFlow] 已设置提供商: ${options.provider}`)
+      cfg.model.provider = options.provider as 'openai' | 'anthropic'
+      console.log(`[MuseFlow] 已设置协议: ${options.provider}`)
     }
 
     if (options.model) {

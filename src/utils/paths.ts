@@ -16,8 +16,16 @@ export function slugify(title: string): string {
     .replace(/_{2,}/g, '_')
 }
 
-export function getConfigDir(): string {
+export function getGlobalConfigDir(): string {
   return expandPath('~/.museflow')
+}
+
+export function getProjectConfigDir(): string {
+  return join(process.cwd(), '.museflow')
+}
+
+export function getConfigDir(): string {
+  return getGlobalConfigDir()
 }
 
 export function getOutputsDir(): string {
@@ -37,8 +45,16 @@ export function getChapterFilePath(outputDir: string, chapterNumber: number): st
   return join(outputDir, 'chapters', `chapter_${chapterNumber}.md`)
 }
 
+export function getGlobalConfigFilePath(): string {
+  return join(getGlobalConfigDir(), 'config.json')
+}
+
+export function getProjectConfigFilePath(): string {
+  return join(getProjectConfigDir(), 'config.json')
+}
+
 export function getConfigFilePath(): string {
-  return join(getConfigDir(), 'config.json')
+  return getGlobalConfigFilePath()
 }
 
 export function getCheckpointFilePath(outputDir: string, storyId: string): string {
