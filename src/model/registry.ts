@@ -42,7 +42,7 @@ class AnthropicCompatibleProvider implements ModelProvider {
     const body: Record<string, unknown> = {
       model,
       messages: getNonSystemMessages(messages),
-      max_tokens: this.cfg.maxTokens ?? 4096,
+      max_tokens: this.cfg.maxTokens ?? 8192,
       temperature: temperature ?? this.cfg.temperature ?? 0.7,
     }
     const system = getSystemMessage(messages)
