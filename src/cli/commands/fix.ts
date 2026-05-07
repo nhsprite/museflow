@@ -184,6 +184,19 @@ async function handleFix(storyId: string, targetChapter: number): Promise<void> 
 
   const effectiveState = await loadStateForChapter(storyId, state ?? {} as ReducedGraphState, targetChapter)
 
+  const errors = effectiveState.pendingIssues.filter(i => i.severity === 'error')
+  const warnings = effectiveState.pendingIssues.filter(i => i.severity === 'warning')
+
+  if (errors.length === 0) {
+    console.log(`\n[MuseFlow] 第 ${targetChapter} 章没有需要修复的错误`)
+    if (warnings.length > 0) {
+      console.log(`  有 ${warnings.length} 个警告/建议，但不影响继续写作`)
+      console.log('  警告可在下次 rewrite 时一并优化\n')
+    }
+    console.log('  运行 "museflow write" 继续下一章\n')
+    return
+  }
+
   const fixableIssues = effectiveState.pendingIssues.filter(isFixable)
   const nonFixableIssues = effectiveState.pendingIssues.filter(i => !isFixable(i))
 
@@ -197,7 +210,7 @@ async function handleFix(storyId: string, targetChapter: number): Promise<void> 
     return
   }
 
-  const initialErrorCount = effectiveState.pendingIssues.filter(i => i.severity === 'error').length
+  const initialErrorCount = errors.length
 
   try {
     const result = await withSpinner(
