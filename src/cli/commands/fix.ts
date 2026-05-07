@@ -191,7 +191,7 @@ async function handleFix(storyId: string, targetChapter: number): Promise<void> 
     console.log(`\n[MuseFlow] 第 ${targetChapter} 章没有需要修复的错误`)
     if (warnings.length > 0) {
       console.log(`  有 ${warnings.length} 个警告/建议，但不影响继续写作`)
-      console.log('  警告可在下次 rewrite 时一并优化\n')
+      console.log('  若之后 rewrite 本章，warnings 会被重新评估\n')
     }
     console.log('  运行 "museflow write" 继续下一章\n')
     return
