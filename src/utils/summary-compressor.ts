@@ -1,4 +1,5 @@
 export type CompressionLevel = 'full' | 'medium' | 'minimal'
+export type ImportanceLevel = 'critical' | 'major' | 'minor'
 
 interface CompressionConfig {
   fullRange: number
@@ -14,7 +15,168 @@ const DEFAULT_CONFIG: CompressionConfig = {
   minimalLimit: 50,
 }
 
-export function compressSummary(
+interface ImportanceItem {
+  text: string
+  importance: ImportanceLevel
+}
+
+interface ChapterSummaryData {
+  characters?: string[]
+  characterFacts?: Array<{
+    character: string
+    facts: Array<ImportanceItem | string>
+  }>
+  keyEvents?: Array<ImportanceItem | string>
+  locations?: Array<ImportanceItem | string>
+  keyItems?: Array<ImportanceItem | string>
+  activePlots?: Array<ImportanceItem | string>
+  mood?: string
+}
+
+function getImportanceThreshold(level: CompressionLevel): ImportanceLevel {
+  switch (level) {
+    case 'full':
+      return 'minor'
+    case 'medium':
+      return 'major'
+    case 'minimal':
+      return 'critical'
+  }
+}
+
+function meetsImportanceThreshold(
+  itemImportance: ImportanceLevel,
+  threshold: ImportanceLevel
+): boolean {
+  const order = { critical: 3, major: 2, minor: 1 }
+  return order[itemImportance] >= order[threshold]
+}
+
+function extractImportance(item: ImportanceItem | string): { text: string; importance: ImportanceLevel } {
+  if (typeof item === 'string') {
+    return { text: item, importance: 'major' }
+  }
+  return {
+    text: item.text,
+    importance: item.importance ?? 'major',
+  }
+}
+
+function parseSummaryJson(summary: string): ChapterSummaryData | null {
+  try {
+    return JSON.parse(summary) as ChapterSummaryData
+  } catch {
+    return null
+  }
+}
+
+function filterByImportance<T extends ImportanceItem | string>(
+  items: T[] | undefined,
+  threshold: ImportanceLevel
+): string[] {
+  if (!items) return []
+  return items
+    .map(extractImportance)
+    .filter(item => meetsImportanceThreshold(item.importance, threshold))
+    .map(item => item.text)
+}
+
+function formatCharacterFacts(
+  characterFacts: Array<{ character: string; facts: Array<ImportanceItem | string> }> | undefined,
+  threshold: ImportanceLevel
+): string[] {
+  if (!characterFacts) return []
+  const lines: string[] = []
+  for (const entry of characterFacts) {
+    const filtered = filterByImportance(entry.facts, threshold)
+    if (filtered.length > 0) {
+      lines.push(`${entry.character}：${filtered.join('；')}`)
+    }
+  }
+  return lines
+}
+
+function formatSummarySection(title: string, items: string[] | undefined): string {
+  if (!items || items.length === 0) return ''
+  return `${title}：${items.join('；')}`
+}
+
+function compressSummaryByImportance(
+  summary: string,
+  level: CompressionLevel
+): string {
+  const data = parseSummaryJson(summary)
+  if (!data) {
+    return compressSummaryLegacy(summary, level)
+  }
+
+  const threshold = getImportanceThreshold(level)
+  const sections: string[] = []
+
+  const characters = data.characters ?? []
+  if (characters.length > 0) {
+    sections.push(`角色：${characters.join('；')}`)
+  }
+
+  const characterFactLines = formatCharacterFacts(data.characterFacts, threshold)
+  if (characterFactLines.length > 0) {
+    sections.push(`角色事实：${characterFactLines.join(' | ')}`)
+  }
+
+  const keyEvents = filterByImportance(data.keyEvents, threshold)
+  if (keyEvents.length > 0) {
+    sections.push(formatSummarySection('关键事件', keyEvents))
+  }
+
+  const locations = filterByImportance(data.locations, threshold)
+  if (locations.length > 0) {
+    sections.push(formatSummarySection('地点', locations))
+  }
+
+  const keyItems = filterByImportance(data.keyItems, threshold)
+  if (keyItems.length > 0) {
+    sections.push(formatSummarySection('关键物品', keyItems))
+  }
+
+  const activePlots = filterByImportance(data.activePlots, threshold)
+  if (activePlots.length > 0) {
+    sections.push(formatSummarySection('进行中的情节', activePlots))
+  }
+
+  if (data.mood) {
+    sections.push(`氛围：${data.mood}`)
+  }
+
+  let result = sections.join('。')
+
+  const limits = {
+    full: Infinity,
+    medium: DEFAULT_CONFIG.mediumLimit,
+    minimal: DEFAULT_CONFIG.minimalLimit,
+  }
+  const limit = limits[level]
+
+  if (result.length > limit) {
+    const slice = result.slice(0, limit)
+    const lastPunctuation = Math.max(
+      slice.lastIndexOf('。'),
+      slice.lastIndexOf('！'),
+      slice.lastIndexOf('？'),
+      slice.lastIndexOf('；'),
+      slice.lastIndexOf('.')
+    )
+    const minThreshold = level === 'medium' ? limit * 0.7 : limit * 0.6
+    if (lastPunctuation > minThreshold) {
+      result = result.slice(0, lastPunctuation + 1)
+    } else {
+      result = result.slice(0, limit) + '...'
+    }
+  }
+
+  return result
+}
+
+export function compressSummaryLegacy(
   summary: string,
   level: CompressionLevel
 ): string {
@@ -29,31 +191,11 @@ export function compressSummary(
       if (trimmed.length <= DEFAULT_CONFIG.mediumLimit) {
         return trimmed
       }
-      const mediumSlice = trimmed.slice(0, DEFAULT_CONFIG.mediumLimit)
-      const lastPunctuation = Math.max(
-        mediumSlice.lastIndexOf('。'),
-        mediumSlice.lastIndexOf('！'),
-        mediumSlice.lastIndexOf('？'),
-        mediumSlice.lastIndexOf('.')
-      )
-      if (lastPunctuation > DEFAULT_CONFIG.mediumLimit * 0.7) {
-        return trimmed.slice(0, lastPunctuation + 1)
-      }
       return trimmed.slice(0, DEFAULT_CONFIG.mediumLimit) + '...'
 
     case 'minimal':
       if (trimmed.length <= DEFAULT_CONFIG.minimalLimit) {
         return trimmed
-      }
-      const minimalSlice = trimmed.slice(0, DEFAULT_CONFIG.minimalLimit)
-      const lastPunct = Math.max(
-        minimalSlice.lastIndexOf('。'),
-        minimalSlice.lastIndexOf('！'),
-        minimalSlice.lastIndexOf('？'),
-        minimalSlice.lastIndexOf('.')
-      )
-      if (lastPunct > DEFAULT_CONFIG.minimalLimit * 0.6) {
-        return trimmed.slice(0, lastPunct + 1)
       }
       return trimmed.slice(0, DEFAULT_CONFIG.minimalLimit) + '...'
   }
@@ -89,8 +231,8 @@ export function buildLayeredSummaries(
     if (!summary || !summary.trim()) continue
 
     const level = getCompressionLevel(i, currentChapterIndex)
-    const compressed = compressSummary(summary, level)
-    
+    const compressed = compressSummaryByImportance(summary, level)
+
     if (compressed) {
       const displayChapter = i + 1
       if (level === 'full') {
@@ -112,17 +254,65 @@ export function estimateCompressedLength(
   for (let i = 0; i < summaries.length && i < currentChapterIndex; i++) {
     const level = getCompressionLevel(i, currentChapterIndex)
     const summary = summaries[i] || ''
-    switch (level) {
-      case 'full':
-        total += summary.length
-        break
-      case 'medium':
-        total += Math.min(summary.length, DEFAULT_CONFIG.mediumLimit)
-        break
-      case 'minimal':
-        total += Math.min(summary.length, DEFAULT_CONFIG.minimalLimit)
-        break
+    const data = parseSummaryJson(summary)
+
+    if (data) {
+      const threshold = getImportanceThreshold(level)
+      let sectionCount = 0
+
+      sectionCount += filterByImportance(data.keyEvents, threshold).length
+      sectionCount += filterByImportance(data.locations, threshold).length
+      sectionCount += filterByImportance(data.keyItems, threshold).length
+      sectionCount += filterByImportance(data.activePlots, threshold).length
+
+      const characterFactLines = formatCharacterFacts(data.characterFacts, threshold)
+      sectionCount += characterFactLines.length
+
+      if (data.characters && data.characters.length > 0) sectionCount++
+      if (data.mood) sectionCount++
+
+      total += Math.min(summary.length, sectionCount * 50 + 100)
+    } else {
+      switch (level) {
+        case 'full':
+          total += summary.length
+          break
+        case 'medium':
+          total += Math.min(summary.length, DEFAULT_CONFIG.mediumLimit)
+          break
+        case 'minimal':
+          total += Math.min(summary.length, DEFAULT_CONFIG.minimalLimit)
+          break
+      }
     }
   }
   return total
 }
+
+export function filterCharacterFactsByImportance(
+  summaryJson: string,
+  threshold: ImportanceLevel
+): Array<{ character: string; facts: string[] }> {
+  const data = parseSummaryJson(summaryJson)
+  if (!data || !data.characterFacts) return []
+
+  const result: Array<{ character: string; facts: string[] }> = []
+  for (const entry of data.characterFacts) {
+    const filtered = filterByImportance(entry.facts, threshold)
+    if (filtered.length > 0) {
+      result.push({ character: entry.character, facts: filtered })
+    }
+  }
+  return result
+}
+
+export function filterKeyEventsByImportance(
+  summaryJson: string,
+  threshold: ImportanceLevel
+): string[] {
+  const data = parseSummaryJson(summaryJson)
+  if (!data) return []
+  return filterByImportance(data.keyEvents, threshold)
+}
+
+export { getImportanceThreshold, meetsImportanceThreshold }

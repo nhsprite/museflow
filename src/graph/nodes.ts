@@ -27,7 +27,14 @@ import { saveCharacters } from '../storage/database/dao/character.js'
 import { saveWorld } from '../storage/database/dao/world.js'
 import { appendTimelineSnapshot, getLatestSnapshot, saveForeshadowStack, saveForeshadowAlerts } from '../storage/database/dao/timeline.js'
 import { getForeshadowAlerts } from './state.js'
-import { buildLayeredSummaries } from '../utils/summary-compressor.js'
+import {
+  buildLayeredSummaries,
+  filterCharacterFactsByImportance,
+  filterKeyEventsByImportance,
+  getImportanceThreshold,
+  getCompressionLevel,
+  type ImportanceLevel,
+} from '../utils/summary-compressor.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
@@ -1221,74 +1228,10 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   return {}
 }
 
-interface CharacterFactEntry {
-  character: string
-  facts: string[]
-}
-
-const FULL_RANGE = 2
-const MEDIUM_RANGE = 6
-const UNLIMITED_FACTS = 100
-const MEDIUM_MAX_FACTS = 3
-const MINIMAL_MAX_FACTS = 1
-
-function parseCharacterFacts(summaryJson: string): CharacterFactEntry[] {
-  try {
-    const parsed = JSON.parse(summaryJson)
-    const facts = parsed.characterFacts
-    if (Array.isArray(facts)) {
-      return facts.filter((f: unknown) => f && typeof (f as CharacterFactEntry).character === 'string' && Array.isArray((f as CharacterFactEntry).facts))
-    }
-  } catch {
-    return []
-  }
-  return []
-}
-
-function isSimilarFact(a: string, b: string): boolean {
-  const normalize = (s: string) => s.toLowerCase().replace(/[，。！？、；：""''（）【】]/g, '').trim()
-  const na = normalize(a)
-  const nb = normalize(b)
-  if (na === nb) return true
-  if (na.length > 10 && nb.length > 10) {
-    if (na.includes(nb) || nb.includes(na)) return true
-  }
-  return false
-}
-
-function deduplicateFacts(facts: string[]): string[] {
-  const result: string[] = []
-  for (const fact of facts) {
-    const isDup = result.some(existing => isSimilarFact(existing, fact))
-    if (!isDup) {
-      result.push(fact)
-    }
-  }
-  return result
-}
-
-function groupFactsByCharacter(entries: CharacterFactEntry[]): Map<string, string[]> {
-  const grouped = new Map<string, string[]>()
-  for (const entry of entries) {
-    const existing = grouped.get(entry.character) || []
-    const merged = [...existing, ...entry.facts]
-    grouped.set(entry.character, deduplicateFacts(merged))
-  }
-  return grouped
-}
-
-function applyFactLimit(grouped: Map<string, string[]>, maxFactsPerCharacter: number): CharacterFactEntry[] {
-  const result: CharacterFactEntry[] = []
-  for (const [character, facts] of grouped) {
-    const kept = facts.slice(0, maxFactsPerCharacter)
-    if (kept.length > 0) {
-      result.push({ character, facts: kept })
-    }
-  }
-  return result
-}
-
-function formatCharacterFacts(entries: CharacterFactEntry[], chapterNum: number): string {
+function formatCharacterFactEntries(
+  entries: Array<{ character: string; facts: string[] }>,
+  chapterNum: number
+): string {
   if (entries.length === 0) return ''
 
   const lines = [`第${chapterNum}章角色事实：`]
@@ -1299,12 +1242,6 @@ function formatCharacterFacts(entries: CharacterFactEntry[], chapterNum: number)
     }
   }
   return lines.join('\n')
-}
-
-function getMaxFactsByDistance(distance: number): number {
-  if (distance <= FULL_RANGE) return UNLIMITED_FACTS
-  if (distance <= MEDIUM_RANGE) return MEDIUM_MAX_FACTS
-  return MINIMAL_MAX_FACTS
 }
 
 function buildCharacterFactTimeline(
@@ -1322,12 +1259,11 @@ function buildCharacterFactTimeline(
 
     const chapterNum = i + 1
     const distance = upToChapterIndex - chapterNum
-    const maxFacts = getMaxFactsByDistance(distance)
+    const level = getCompressionLevel(chapterNum - 1, upToChapterIndex)
+    const threshold = getImportanceThreshold(level)
 
-    const entries = parseCharacterFacts(summary)
-    const grouped = groupFactsByCharacter(entries)
-    const compressed = applyFactLimit(grouped, maxFacts)
-    const formatted = formatCharacterFacts(compressed, chapterNum)
+    const filtered = filterCharacterFactsByImportance(summary, threshold)
+    const formatted = formatCharacterFactEntries(filtered, chapterNum)
 
     if (formatted) {
       result.push(formatted)
@@ -1335,19 +1271,6 @@ function buildCharacterFactTimeline(
   }
 
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
-}
-
-function parseKeyEvents(summaryJson: string): string[] {
-  try {
-    const parsed = JSON.parse(summaryJson)
-    const events = parsed.keyEvents
-    if (Array.isArray(events)) {
-      return events.filter((e: unknown) => typeof e === 'string' && e.length > 0)
-    }
-  } catch {
-    return []
-  }
-  return []
 }
 
 function buildKeyEventsTimeline(
@@ -1363,9 +1286,13 @@ function buildKeyEventsTimeline(
     const summary = summaries[i]
     if (!summary) continue
 
-    const events = parseKeyEvents(summary)
+    const chapterNum = i + 1
+    const distance = upToChapterIndex - chapterNum
+    const level = getCompressionLevel(chapterNum - 1, upToChapterIndex)
+    const threshold = getImportanceThreshold(level)
+
+    const events = filterKeyEventsByImportance(summary, threshold)
     if (events.length > 0) {
-      const chapterNum = i + 1
       result.push(`第${chapterNum}章关键事件：\n${events.map(e => `  - ${e}`).join('\n')}`)
     }
   }

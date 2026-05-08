@@ -20,15 +20,45 @@ export class SummaryAgent extends BaseAgent {
   "characterFacts": [
     {
       "character": "角色名",
-      "facts": ["该角色在本章中明确知道的信息/亲口说过的话/明确的态度（用第三人称客观描述）"]
+      "facts": [
+        {
+          "text": "该角色在本章中明确知道的信息/亲口说过的话/明确的态度（用第三人称客观描述）",
+          "importance": "critical|major|minor"
+        }
+      ]
     }
   ],
-  "keyEvents": ["本章发生的对后续章节有重要影响的关键事件（用第三人称客观描述）"],
-  "locations": ["地点: 描述"],
-  "keyItems": ["物品: 描述和状态"],
-  "activePlots": ["当前进行中进行中的情节线"],
+  "keyEvents": [
+    {
+      "text": "本章发生的对后续章节有重要影响的关键事件（用第三人称客观描述）",
+      "importance": "critical|major|minor"
+    }
+  ],
+  "locations": [
+    {
+      "text": "地点: 描述",
+      "importance": "critical|major|minor"
+    }
+  ],
+  "keyItems": [
+    {
+      "text": "物品: 描述和状态",
+      "importance": "critical|major|minor"
+    }
+  ],
+  "activePlots": [
+    {
+      "text": "当前进行中的情节线",
+      "importance": "critical|major|minor"
+    }
+  ],
   "mood": "本章整体氛围/情绪"
 }
+
+【重要性标注标准】
+- critical（核心）：对后续章节有决定性影响，远距离章节也必须保留。例如：角色死亡、重大身份揭露、核心物品获得、关键伏笔埋下
+- major（重要）：对近期章节有影响，中期距离保留。例如：角色关系变化、新能力获得、重要对话承诺
+- minor（次要）：仅对本章或极近期有参考价值，远距离可丢弃。例如：场景细节描写、临时情绪反应、次要角色互动
 
 【characterFacts 提取要求】
 对于每个有台词或明确行为描写的角色，提取：
@@ -61,13 +91,40 @@ export class SummaryAgent extends BaseAgent {
 export function processSummaryOutput(output: AgentOutput): string | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
+  
+  const migrateStringArrayToImportanceObjects = (arr: unknown): Array<{ text: string; importance: string }> => {
+    if (!Array.isArray(arr)) return []
+    return arr.map(item => {
+      if (typeof item === 'string') {
+        return { text: item, importance: 'major' }
+      }
+      return item as { text: string; importance: string }
+    })
+  }
+
+  const migrateCharacterFactEntries = (arr: unknown): unknown[] => {
+    if (!Array.isArray(arr)) return []
+    return arr.map(entry => {
+      if (!entry || typeof entry !== 'object') return entry
+      const e = entry as Record<string, unknown>
+      const rawFacts = e['facts']
+      if (Array.isArray(rawFacts)) {
+        return {
+          character: e['character'],
+          facts: migrateStringArrayToImportanceObjects(rawFacts),
+        }
+      }
+      return e
+    })
+  }
+  
   return JSON.stringify({
     characters: data['characters'] ?? [],
-    characterFacts: data['characterFacts'] ?? [],
-    keyEvents: data['keyEvents'] ?? [],
-    locations: data['locations'] ?? [],
-    keyItems: data['keyItems'] ?? [],
-    activePlots: data['activePlots'] ?? [],
+    characterFacts: migrateCharacterFactEntries(data['characterFacts']),
+    keyEvents: migrateStringArrayToImportanceObjects(data['keyEvents']),
+    locations: migrateStringArrayToImportanceObjects(data['locations']),
+    keyItems: migrateStringArrayToImportanceObjects(data['keyItems']),
+    activePlots: migrateStringArrayToImportanceObjects(data['activePlots']),
     mood: data['mood'] ?? '',
   })
 }
