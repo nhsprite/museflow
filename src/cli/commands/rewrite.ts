@@ -89,7 +89,10 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
   let targetChapterIndex: number | undefined
 
   if (state.pendingIssues.length > 0) {
-    targetChapterIndex = Math.max(0, state.currentChapterIndex - 1)
+    const currentChapterHasErrors = state.rewriteRequested
+    targetChapterIndex = currentChapterHasErrors
+      ? state.currentChapterIndex
+      : Math.max(0, state.currentChapterIndex - 1)
     const chapterNum = targetChapterIndex + 1
     console.log('[MuseFlow] 重写章节: ', story.title)
     console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)

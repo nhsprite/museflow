@@ -246,12 +246,6 @@ museflow continue <story-id>
 ### 为什么 fix 定位到很多段落？
 Fix 命令会分析问题所在段落，只修改相关部分。如果问题描述涉及常见词汇（如"轻轻"、"缓缓"），可能会匹配到多个段落。这种情况建议用 `rewrite` 代替。
 
-### 故事写到一半中断了怎么办？
-运行 `continue` 命令从断点恢复：
-```bash
-museflow continue <story-id>
-```
-
 ## 架构说明
 
 详见 [设计文档](./docs/specs/2025-04-17-museflow-design.md) 和 [实施计划](./docs/specs/2025-04-17-museflow-implementation-plan.md)。
