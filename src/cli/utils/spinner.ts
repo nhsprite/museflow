@@ -35,6 +35,7 @@ export async function withSpinner<T>(
     stopSpinner(successMsg)
     return result
   } catch (err) {
+    stopStepProgressQuiet()
     if (spinner) {
       spinner.fail(`${spinner.text}: ${err instanceof Error ? err.message : String(err)}`)
       spinner = null
@@ -43,9 +44,12 @@ export async function withSpinner<T>(
   }
 }
 
-/** Start a multi-step progress spinner. */
+/** Start a multi-step progress spinner. Pauses the main spinner if active. */
 export function startStepProgress(steps: string[]): void {
   stopStepProgressQuiet()
+  if (spinner) {
+    spinner.stop()
+  }
   stepIndex = 0
   stepTotal = steps.length
   stepSpinner = ora({ text: formatStep(1, steps[0] ?? ''), color: 'cyan', spinner: 'dots' }).start()
@@ -59,7 +63,7 @@ export function nextStep(label: string): void {
   }
 }
 
-/** Stop the step spinner with an optional success message. */
+/** Stop the step spinner with an optional success message. Resumes the main spinner if it was active. */
 export function stopStepProgress(successMsg?: string): void {
   if (stepSpinner) {
     if (successMsg) {
@@ -69,13 +73,19 @@ export function stopStepProgress(successMsg?: string): void {
     }
     stepSpinner = null
   }
+  if (spinner) {
+    spinner.start()
+  }
 }
 
-/** Stop the step spinner without any status icon. */
+/** Stop the step spinner without any status icon. Resumes the main spinner if it was active. */
 export function stopStepProgressQuiet(): void {
   if (stepSpinner) {
     stepSpinner.stop()
     stepSpinner = null
+  }
+  if (spinner) {
+    spinner.start()
   }
 }
 

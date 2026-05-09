@@ -271,7 +271,6 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
     return {}
   }
 
-  console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章规划完成：${(output.data as { sections?: Array<{ title: string }> }).sections?.length || 0} 个段落`)
   return { chapterPlan: output.data as import('../agents/chapter-planner.js').ChapterPlan }
 }
 
@@ -317,9 +316,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   }
 
   const preWriteCheck = (output.data as { preWriteCheck?: string } | undefined)?.preWriteCheck
-  if (preWriteCheck) {
-    console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章预写检查完成`)
-  } else {
+  if (!preWriteCheck) {
     console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
   }
 
@@ -1131,7 +1128,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     let summary = chapter.summary || ''
     const needsSummary = !summary && chapterContent
     if (needsSummary) {
-      console.log(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要...`)
       const summaryAgent = getSummaryAgent()
       const summaryState: AgentState = {
         idea: state.idea,
@@ -1179,10 +1175,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   const nextIndex = state.currentChapterIndex + 1
   const isLastChapter = nextIndex >= state.totalChapters
 
-  if (!isLastChapter) {
-    console.log(`\n[MuseFlow] 第 ${chapterIndex + 1}/${state.totalChapters} 章处理完成`)
-  }
-
   const checkpointer = getCheckpointer()
   await checkpointer.saveChapterCheckpoint(
     state.story.outputDir,
@@ -1198,7 +1190,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
 }
 
 export async function finalize_story(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  console.log('\n[MuseFlow] 全部章节撰写完成！')
   return {}
 }
 
