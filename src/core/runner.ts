@@ -135,160 +135,178 @@ export async function continueStory(
   const MAX_REWRITE_ATTEMPTS = 3
   let rewriteAttempts = 0
 
-  while (rewriteAttempts < MAX_REWRITE_ATTEMPTS) {
-    rewriteAttempts++
-    if (rewriteAttempts > 1) {
-      console.log(`[MuseFlow] 第 ${rewriteAttempts}/${MAX_REWRITE_ATTEMPTS} 次尝试...`)
-    }
+  try {
+    while (rewriteAttempts < MAX_REWRITE_ATTEMPTS) {
+      rewriteAttempts++
+      if (rewriteAttempts > 1) {
+        console.log(`[MuseFlow] 第 ${rewriteAttempts}/${MAX_REWRITE_ATTEMPTS} 次尝试...`)
+      }
 
-    const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue', 'consistency']
-    const hasStructuralIssues = workingState.pendingIssues.some(
-      i => i.severity === 'error' && structuralIssueTypes.includes(i.type)
-    )
-    const hasLocalIssues = workingState.pendingIssues.some(
-      i => i.severity === 'error' && !structuralIssueTypes.includes(i.type)
-    )
+      const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue', 'consistency']
+      const hasStructuralIssues = workingState.pendingIssues.some(
+        i => i.severity === 'error' && structuralIssueTypes.includes(i.type)
+      )
+      const hasLocalIssues = workingState.pendingIssues.some(
+        i => i.severity === 'error' && !structuralIssueTypes.includes(i.type)
+      )
 
-    const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
+      const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
 
-    if (workingState.rewriteApproved && hasStructuralIssues && !hasLocalIssues) {
-      console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
-      workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
-      const planResult = await plan_chapter(workingState)
-      workingState = { ...workingState, ...planResult }
-      const draftResult = await draft_chapter(workingState)
-      workingState = { ...workingState, ...draftResult }
-      workingState = { ...workingState, pendingIssues: [] }
-    } else if (workingState.rewriteApproved && hasLocalIssues && !hasStructuralIssues) {
-      console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
-      workingState = { ...workingState, pendingIssues: errorIssues }
-      const fixResult = await fix_chapter(workingState)
-      workingState = { ...workingState, ...fixResult }
-      // 修复后清除旧 issues，让下一轮验证从头检测
-      workingState = { ...workingState, pendingIssues: [] }
-    } else {
-      if (workingState.rewriteApproved) {
-        console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
+      if (workingState.rewriteApproved && hasStructuralIssues && !hasLocalIssues) {
+        console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
         workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
         const planResult = await plan_chapter(workingState)
         workingState = { ...workingState, ...planResult }
-      } else {
+        const draftResult = await draft_chapter(workingState)
+        workingState = { ...workingState, ...draftResult }
         workingState = { ...workingState, pendingIssues: [] }
-        const planResult = await plan_chapter(workingState)
-        workingState = { ...workingState, ...planResult }
+      } else if (workingState.rewriteApproved && hasLocalIssues && !hasStructuralIssues) {
+        console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
+        workingState = { ...workingState, pendingIssues: errorIssues }
+        const fixResult = await fix_chapter(workingState)
+        workingState = { ...workingState, ...fixResult }
+        // 修复后清除旧 issues，让下一轮验证从头检测
+        workingState = { ...workingState, pendingIssues: [] }
+      } else {
+        if (workingState.rewriteApproved) {
+          console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
+          workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
+          const planResult = await plan_chapter(workingState)
+          workingState = { ...workingState, ...planResult }
+        } else {
+          workingState = { ...workingState, pendingIssues: [] }
+          const planResult = await plan_chapter(workingState)
+          workingState = { ...workingState, ...planResult }
+        }
+        const draftResult = await draft_chapter(workingState)
+        workingState = { ...workingState, ...draftResult }
+        workingState = { ...workingState, pendingIssues: [] }
       }
-      const draftResult = await draft_chapter(workingState)
-      workingState = { ...workingState, ...draftResult }
-      workingState = { ...workingState, pendingIssues: [] }
+
+      const checkNodes = [
+        validate_chapter,
+        quality_pass,
+        detect_foreshadowing,
+        detect_hallucination,
+        detect_consistency,
+        verify_outline_compliance,
+        auto_fix_warnings,
+      ]
+
+      let hasErrors = false
+      for (const node of checkNodes) {
+        const partial = await node(workingState)
+        workingState = {
+          ...workingState,
+          ...partial,
+        }
+        if (node === auto_fix_warnings) {
+          const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+          if (errors.length > 0) {
+            console.error(`[MuseFlow] 检测到 ${errors.length} 个错误`)
+            for (const err of errors) {
+              const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+              console.error(`  ${icon} [${err.type}] ${err.description}`)
+              if (err.location) {
+                console.error(`     位置: ${err.location}`)
+              }
+            }
+            hasErrors = true
+          }
+        }
+      }
+
+      if (!hasErrors) {
+        break
+      }
+
+      if (rewriteAttempts < MAX_REWRITE_ATTEMPTS) {
+        console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
+        workingState.rewriteApproved = true
+      } else {
+        const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+        console.error(`[MuseFlow] 已达到最大重写次数 (${MAX_REWRITE_ATTEMPTS})，仍有 ${remainingErrors.length} 个未修复的严重问题：`)
+        for (const err of remainingErrors) {
+          const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+          console.error(`  ${icon} [${err.type}] ${err.description}`)
+          if (err.location) {
+            console.error(`     位置: ${err.location}`)
+          }
+        }
+        const hasConsistencyErrors = remainingErrors.some(e => e.type === 'consistency')
+        console.error(`\n[MuseFlow] 撰写已中断，请手动修复后再继续：`)
+        if (hasConsistencyErrors) {
+          console.error(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
+          console.error(`   museflow fix ${storyId}      # 针对性修复`)
+          console.error(`\n  ⚠️  检测到跨章节一致性矛盾，rewrite 才能重新对齐前文事实\n`)
+        } else {
+          console.error(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
+          console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+        }
+        break
+      }
     }
 
-    const checkNodes = [
-      validate_chapter,
-      quality_pass,
-      detect_foreshadowing,
-      detect_hallucination,
-      detect_consistency,
-      verify_outline_compliance,
-      auto_fix_warnings,
-    ]
-
-    let hasErrors = false
-    for (const node of checkNodes) {
-      const partial = await node(workingState)
+    const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+    if (remainingErrors.length > 0) {
       workingState = {
         ...workingState,
-        ...partial,
+        rewriteRequested: true,
+        rewriteApproved: false,
       }
-      if (node === auto_fix_warnings) {
-        const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-        if (errors.length > 0) {
-          console.error(`[MuseFlow] 检测到 ${errors.length} 个错误`)
-          for (const err of errors) {
-            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-            console.error(`  ${icon} [${err.type}] ${err.description}`)
-            if (err.location) {
-              console.error(`     位置: ${err.location}`)
-            }
-          }
-          hasErrors = true
+      await graph.updateState(
+        { configurable: { thread_id: storyId, outputDir } },
+        {
+          rewriteApproved: false,
+          rewriteRequested: true,
+          pendingIssues: workingState.pendingIssues,
+          currentChapterIndex: workingState.currentChapterIndex,
+          chapters: workingState.chapters,
+          chapterSummaries: workingState.chapterSummaries,
         }
-      }
+      )
+      return workingState
     }
 
-    if (!hasErrors) {
-      break
-    }
+    const finalizeResult = await finalize_chapter(workingState)
+    workingState = { ...workingState, ...finalizeResult }
 
-    if (rewriteAttempts < MAX_REWRITE_ATTEMPTS) {
-      console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
-      workingState.rewriteApproved = true
-    } else {
-      const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
-      console.error(`[MuseFlow] 已达到最大重写次数 (${MAX_REWRITE_ATTEMPTS})，仍有 ${remainingErrors.length} 个未修复的严重问题：`)
-      for (const err of remainingErrors) {
-        const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-        console.error(`  ${icon} [${err.type}] ${err.description}`)
-        if (err.location) {
-          console.error(`     位置: ${err.location}`)
-        }
-      }
-      const hasConsistencyErrors = remainingErrors.some(e => e.type === 'consistency')
-      console.error(`\n[MuseFlow] 撰写已中断，请手动修复后再继续：`)
-      if (hasConsistencyErrors) {
-        console.error(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
-        console.error(`   museflow fix ${storyId}      # 针对性修复`)
-        console.error(`\n  ⚠️  检测到跨章节一致性矛盾，rewrite 才能重新对齐前文事实\n`)
-      } else {
-        console.error(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
-        console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
-      }
-      break
-    }
-  }
-
-  const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
-  if (remainingErrors.length > 0) {
     workingState = {
       ...workingState,
-      rewriteRequested: true,
       rewriteApproved: false,
+      rewriteRequested: false,
     }
     await graph.updateState(
       { configurable: { thread_id: storyId, outputDir } },
       {
         rewriteApproved: false,
-        rewriteRequested: true,
+        rewriteRequested: false,
         pendingIssues: workingState.pendingIssues,
         currentChapterIndex: workingState.currentChapterIndex,
         chapters: workingState.chapters,
         chapterSummaries: workingState.chapterSummaries,
       }
     )
+    await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)
+
     return workingState
-  }
-
-  const finalizeResult = await finalize_chapter(workingState)
-  workingState = { ...workingState, ...finalizeResult }
-
-  workingState = {
-    ...workingState,
-    rewriteApproved: false,
-    rewriteRequested: false,
-  }
-  await graph.updateState(
-    { configurable: { thread_id: storyId, outputDir } },
-    {
-      rewriteApproved: false,
-      rewriteRequested: false,
-      pendingIssues: workingState.pendingIssues,
-      currentChapterIndex: workingState.currentChapterIndex,
-      chapters: workingState.chapters,
-      chapterSummaries: workingState.chapterSummaries,
+  } catch (err) {
+    // 当 draft_chapter 等节点抛出异常时，先保存当前的 pendingIssues
+    // 这样 rewrite/fix 命令才能识别到已检测但尚未修复的问题
+    if (workingState.pendingIssues.length > 0) {
+      await graph.updateState(
+        { configurable: { thread_id: storyId, outputDir } },
+        {
+          rewriteRequested: true,
+          pendingIssues: workingState.pendingIssues,
+          currentChapterIndex: workingState.currentChapterIndex,
+          chapters: workingState.chapters,
+          chapterSummaries: workingState.chapterSummaries,
+        }
+      )
     }
-  )
-  await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)
-
-  return workingState
+    throw err
+  }
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {

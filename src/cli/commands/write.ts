@@ -49,7 +49,8 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
     console.log('\n全部章节已撰写完成，无需继续。')
     console.log('使用以下命令查看或导出故事:')
     console.log(`   museflow status ${storyId}  # 查看进度`)
-    console.log(`   museflow info ${storyId}     # 查看详情\n`)
+    console.log(`   museflow info ${storyId}     # 查看详情`)
+    console.log(`   museflow export ${storyId}   # 导出为 txt 文件\n`)
     return
   }
 

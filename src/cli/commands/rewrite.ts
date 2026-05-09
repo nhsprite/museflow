@@ -287,64 +287,77 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       finalize_chapter,
     ]
 
-    for (const node of nodeSequence) {
-      const partial = await node(workingState)
+    try {
+      for (const node of nodeSequence) {
+        const partial = await node(workingState)
+        workingState = {
+          ...workingState,
+          ...partial,
+        }
+        if (node === draft_chapter) {
+          workingState = { ...workingState, pendingIssues: [] }
+        }
+        if (node === auto_fix_warnings) {
+          const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+          if (errors.length > 0) {
+            console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+            for (const err of errors) {
+              const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+              console.error(`  ${icon} [${err.type}] ${err.description}`)
+              if (err.location) {
+                console.error(`     位置: ${err.location}`)
+              }
+            }
+            break
+          }
+        }
+      }
+
+      const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
       workingState = {
         ...workingState,
-        ...partial,
+        rewriteApproved: false,
+        rewriteRequested: hasErrors,
       }
-      if (node === draft_chapter) {
-        workingState = { ...workingState, pendingIssues: [] }
-      }
-      if (node === auto_fix_warnings) {
-        const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-        if (errors.length > 0) {
-          console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
-          for (const err of errors) {
-            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-            console.error(`  ${icon} [${err.type}] ${err.description}`)
-            if (err.location) {
-              console.error(`     位置: ${err.location}`)
-            }
+      if (!hasErrors) {
+        await graph.updateState(
+          { configurable: { thread_id: storyId, outputDir } },
+          {
+            rewriteApproved: false,
+            rewriteRequested: false,
+            pendingIssues: [],
+            currentChapterIndex: workingState.currentChapterIndex,
+            chapters: workingState.chapters,
+            chapterSummaries: workingState.chapterSummaries,
           }
-          break
-        }
+        )
+        await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
+        await checkpointer.pruneIntermediateCheckpoints(outputDir)
+      } else {
+        await checkpointer.clearPendingWrites(outputDir)
+        await graph.updateState(
+          { configurable: { thread_id: storyId, outputDir } },
+          {
+            rewriteRequested: true,
+            pendingIssues: workingState.pendingIssues,
+          }
+        )
       }
-    }
 
-    const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
-    workingState = {
-      ...workingState,
-      rewriteApproved: false,
-      rewriteRequested: hasErrors,
+      return workingState
+    } catch (err) {
+      if (workingState.pendingIssues.length > 0) {
+        await graph.updateState(
+          { configurable: { thread_id: storyId, outputDir } },
+          {
+            rewriteRequested: true,
+            pendingIssues: workingState.pendingIssues,
+            currentChapterIndex: workingState.currentChapterIndex,
+          }
+        )
+      }
+      throw err
     }
-    if (!hasErrors) {
-      await graph.updateState(
-        { configurable: { thread_id: storyId, outputDir } },
-        {
-          rewriteApproved: false,
-          rewriteRequested: false,
-          pendingIssues: [],
-          currentChapterIndex: workingState.currentChapterIndex,
-          chapters: workingState.chapters,
-          chapterSummaries: workingState.chapterSummaries,
-        }
-      )
-      await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
-      await checkpointer.pruneIntermediateCheckpoints(outputDir)
-    } else {
-      await checkpointer.clearPendingWrites(outputDir)
-      // 保存错误状态到 checkpointer，让 write 命令能检测到
-      await graph.updateState(
-        { configurable: { thread_id: storyId, outputDir } },
-        {
-          rewriteRequested: true,
-          pendingIssues: workingState.pendingIssues,
-        }
-      )
-    }
-
-    return workingState
   }
 
   const update: Record<string, unknown> = {
@@ -397,64 +410,77 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     finalize_chapter,
   ]
 
-  for (const node of nodeSequence) {
-    const partial = await node(workingState)
+  try {
+    for (const node of nodeSequence) {
+      const partial = await node(workingState)
+      workingState = {
+        ...workingState,
+        ...partial,
+      }
+      if (node === draft_chapter) {
+        workingState = { ...workingState, pendingIssues: [] }
+      }
+      if (node === auto_fix_warnings) {
+        const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
+        if (errors.length > 0) {
+          console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+          for (const err of errors) {
+            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
+            console.error(`  ${icon} [${err.type}] ${err.description}`)
+            if (err.location) {
+              console.error(`     位置: ${err.location}`)
+            }
+          }
+          break
+        }
+      }
+    }
+
+    const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
     workingState = {
       ...workingState,
-      ...partial,
+      rewriteApproved: false,
+      rewriteRequested: hasErrors,
     }
-    if (node === draft_chapter) {
-      workingState = { ...workingState, pendingIssues: [] }
-    }
-    if (node === auto_fix_warnings) {
-      const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-      if (errors.length > 0) {
-        console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
-        for (const err of errors) {
-          const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-          console.error(`  ${icon} [${err.type}] ${err.description}`)
-          if (err.location) {
-            console.error(`     位置: ${err.location}`)
-          }
+    if (!hasErrors) {
+      await graph.updateState(
+        { configurable: { thread_id: storyId, outputDir } },
+        {
+          rewriteApproved: false,
+          rewriteRequested: false,
+          pendingIssues: [],
+          currentChapterIndex: workingState.currentChapterIndex,
+          chapters: workingState.chapters,
+          chapterSummaries: workingState.chapterSummaries,
         }
-        break
-      }
+      )
+      await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
+    } else {
+      await checkpointer.clearPendingWrites(outputDir)
+      await graph.updateState(
+        { configurable: { thread_id: storyId, outputDir } },
+        {
+          rewriteRequested: true,
+          pendingIssues: workingState.pendingIssues,
+          currentChapterIndex: workingState.currentChapterIndex,
+        }
+      )
     }
-  }
 
-  const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
-  workingState = {
-    ...workingState,
-    rewriteApproved: false,
-    rewriteRequested: hasErrors,
+    return workingState
+  } catch (err) {
+    if (workingState.pendingIssues.length > 0) {
+      await graph.updateState(
+        { configurable: { thread_id: storyId, outputDir } },
+        {
+          rewriteRequested: true,
+          pendingIssues: workingState.pendingIssues,
+          currentChapterIndex: workingState.currentChapterIndex,
+        }
+      )
+    }
+    throw err
   }
-  if (!hasErrors) {
-    await graph.updateState(
-      { configurable: { thread_id: storyId, outputDir } },
-      {
-        rewriteApproved: false,
-        rewriteRequested: false,
-        pendingIssues: [],
-        currentChapterIndex: workingState.currentChapterIndex,
-        chapters: workingState.chapters,
-        chapterSummaries: workingState.chapterSummaries,
-      }
-    )
-    await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
-  } else {
-    await checkpointer.clearPendingWrites(outputDir)
-    // 保存错误状态到 checkpointer，让 write 命令能检测到
-    await graph.updateState(
-      { configurable: { thread_id: storyId, outputDir } },
-      {
-        rewriteRequested: true,
-        pendingIssues: workingState.pendingIssues,
-        currentChapterIndex: workingState.currentChapterIndex,
-      }
-    )
-  }
-
-  return workingState
 }
 
 function question(prompt: string): Promise<string> {
