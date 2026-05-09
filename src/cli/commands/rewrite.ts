@@ -1,7 +1,7 @@
 import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
-import { withSpinner } from '../utils/spinner.js'
+import { withSpinner, startStepProgress, nextStep, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
 import { buildNovelGraph } from '../../graph/novel.graph.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import {
@@ -275,20 +275,23 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     }
 
     const nodeSequence = [
-      plan_chapter,
-      draft_chapter,
-      validate_chapter,
-      quality_pass,
-      detect_foreshadowing,
-      detect_hallucination,
-      detect_consistency,
-      verify_outline_compliance,
-      auto_fix_warnings,
-      finalize_chapter,
+      { node: plan_chapter, label: '规划章节' },
+      { node: draft_chapter, label: '撰写草稿' },
+      { node: validate_chapter, label: '检查字数' },
+      { node: quality_pass, label: '质量检查' },
+      { node: detect_foreshadowing, label: '检测伏笔' },
+      { node: detect_hallucination, label: '检测幻觉' },
+      { node: detect_consistency, label: '检测一致性' },
+      { node: verify_outline_compliance, label: '校验大纲合规性' },
+      { node: auto_fix_warnings, label: '自动修复警告' },
+      { node: finalize_chapter, label: '完成章节' },
     ]
 
     try {
-      for (const node of nodeSequence) {
+      startStepProgress(nodeSequence.map(n => n.label))
+
+      for (let i = 0; i < nodeSequence.length; i++) {
+        const { node } = nodeSequence[i]!
         const partial = await node(workingState)
         workingState = {
           ...workingState,
@@ -300,7 +303,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
         if (node === auto_fix_warnings) {
           const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
           if (errors.length > 0) {
-            console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+            stopStepProgress(`检测到 ${errors.length} 个错误`)
             for (const err of errors) {
               const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
               console.error(`  ${icon} [${err.type}] ${err.description}`)
@@ -311,6 +314,9 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
             break
           }
         }
+        if (i < nodeSequence.length - 1) {
+          nextStep(nodeSequence[i + 1]!.label)
+        }
       }
 
       const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
@@ -320,6 +326,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
         rewriteRequested: hasErrors,
       }
       if (!hasErrors) {
+        stopStepProgress('章节重写完成')
         await graph.updateState(
           { configurable: { thread_id: storyId, outputDir } },
           {
@@ -346,6 +353,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
 
       return workingState
     } catch (err) {
+      stopStepProgressQuiet()
       if (workingState.pendingIssues.length > 0) {
         await graph.updateState(
           { configurable: { thread_id: storyId, outputDir } },
@@ -398,20 +406,23 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
   }
 
   const nodeSequence = [
-    plan_chapter,
-    draft_chapter,
-    validate_chapter,
-    quality_pass,
-    detect_foreshadowing,
-    detect_hallucination,
-    detect_consistency,
-    verify_outline_compliance,
-    auto_fix_warnings,
-    finalize_chapter,
+    { node: plan_chapter, label: '规划章节' },
+    { node: draft_chapter, label: '撰写草稿' },
+    { node: validate_chapter, label: '检查字数' },
+    { node: quality_pass, label: '质量检查' },
+    { node: detect_foreshadowing, label: '检测伏笔' },
+    { node: detect_hallucination, label: '检测幻觉' },
+    { node: detect_consistency, label: '检测一致性' },
+    { node: verify_outline_compliance, label: '校验大纲合规性' },
+    { node: auto_fix_warnings, label: '自动修复警告' },
+    { node: finalize_chapter, label: '完成章节' },
   ]
 
   try {
-    for (const node of nodeSequence) {
+    startStepProgress(nodeSequence.map(n => n.label))
+
+    for (let i = 0; i < nodeSequence.length; i++) {
+      const { node } = nodeSequence[i]!
       const partial = await node(workingState)
       workingState = {
         ...workingState,
@@ -423,7 +434,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       if (node === auto_fix_warnings) {
         const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
         if (errors.length > 0) {
-          console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节重写流程`)
+          stopStepProgress(`检测到 ${errors.length} 个错误`)
           for (const err of errors) {
             const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
             console.error(`  ${icon} [${err.type}] ${err.description}`)
@@ -434,6 +445,9 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
           break
         }
       }
+      if (i < nodeSequence.length - 1) {
+        nextStep(nodeSequence[i + 1]!.label)
+      }
     }
 
     const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
@@ -443,6 +457,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       rewriteRequested: hasErrors,
     }
     if (!hasErrors) {
+      stopStepProgress('章节重写完成')
       await graph.updateState(
         { configurable: { thread_id: storyId, outputDir } },
         {
@@ -469,6 +484,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
 
     return workingState
   } catch (err) {
+    stopStepProgressQuiet()
     if (workingState.pendingIssues.length > 0) {
       await graph.updateState(
         { configurable: { thread_id: storyId, outputDir } },

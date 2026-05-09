@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
+import { startStepProgress, nextStep, stopStepProgress } from '../cli/utils/spinner.js'
 import {
   plan_chapter,
   draft_chapter,
@@ -184,17 +185,20 @@ export async function continueStory(
       }
 
       const checkNodes = [
-        validate_chapter,
-        quality_pass,
-        detect_foreshadowing,
-        detect_hallucination,
-        detect_consistency,
-        verify_outline_compliance,
-        auto_fix_warnings,
+        { node: validate_chapter, label: '检查字数' },
+        { node: quality_pass, label: '质量检查' },
+        { node: detect_foreshadowing, label: '检测伏笔' },
+        { node: detect_hallucination, label: '检测幻觉' },
+        { node: detect_consistency, label: '检测一致性' },
+        { node: verify_outline_compliance, label: '校验大纲合规性' },
+        { node: auto_fix_warnings, label: '自动修复警告' },
       ]
 
+      startStepProgress(checkNodes.map(n => n.label))
+
       let hasErrors = false
-      for (const node of checkNodes) {
+      for (let i = 0; i < checkNodes.length; i++) {
+        const { node } = checkNodes[i]!
         const partial = await node(workingState)
         workingState = {
           ...workingState,
@@ -203,7 +207,7 @@ export async function continueStory(
         if (node === auto_fix_warnings) {
           const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
           if (errors.length > 0) {
-            console.error(`[MuseFlow] 检测到 ${errors.length} 个错误`)
+            stopStepProgress(`检测到 ${errors.length} 个错误`)
             for (const err of errors) {
               const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
               console.error(`  ${icon} [${err.type}] ${err.description}`)
@@ -214,6 +218,13 @@ export async function continueStory(
             hasErrors = true
           }
         }
+        if (i < checkNodes.length - 1) {
+          nextStep(checkNodes[i + 1]!.label)
+        }
+      }
+
+      if (!hasErrors) {
+        stopStepProgress('质量检查通过')
       }
 
       if (!hasErrors) {
