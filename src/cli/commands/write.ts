@@ -71,7 +71,10 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   if (!state) return
 
   const unresolvedErrors = state.pendingIssues.filter(i => i.severity === 'error')
-  if (state.rewriteRequested || unresolvedErrors.length > 0) {
+  const nonDraftErrors = unresolvedErrors.filter(i => i.type !== 'draft_failure')
+  const hasOnlyDraftFailures = unresolvedErrors.length > 0 && unresolvedErrors.every(i => i.type === 'draft_failure')
+
+  if ((state.rewriteRequested || nonDraftErrors.length > 0) && !hasOnlyDraftFailures) {
     console.error('[MuseFlow] 当前章节存在问题，需要先修复')
     for (const issue of state.pendingIssues) {
       const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'
@@ -91,6 +94,11 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
       console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
     }
     process.exit(1)
+  }
+
+  if (hasOnlyDraftFailures) {
+    console.log('[MuseFlow] 检测到之前的生成失败，将重新尝试...')
+    console.log('')
   }
 
   const chapterIndex = startChapterIndex

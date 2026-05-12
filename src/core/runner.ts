@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
+import { generateId } from '../utils/id.js'
 import { startStepProgress, nextStep, stopStepProgress } from '../cli/utils/spinner.js'
 import {
   plan_chapter,
@@ -184,7 +185,8 @@ export async function continueStory(
         workingState = { ...workingState, pendingIssues: [] }
       }
 
-      const checkNodes = [
+      const { runChapterPipeline } = await import('./pipeline.js')
+      const pipelineResult = await runChapterPipeline(workingState, [
         { node: validate_chapter, label: '检查字数' },
         { node: quality_pass, label: '质量检查' },
         { node: detect_foreshadowing, label: '检测伏笔' },
@@ -192,40 +194,10 @@ export async function continueStory(
         { node: detect_consistency, label: '检测一致性' },
         { node: verify_outline_compliance, label: '校验大纲合规性' },
         { node: auto_fix_warnings, label: '自动修复警告' },
-      ]
+      ], { showProgress: true, breakOnErrors: false })
 
-      startStepProgress(checkNodes.map(n => n.label))
-
-      let hasErrors = false
-      for (let i = 0; i < checkNodes.length; i++) {
-        const { node } = checkNodes[i]!
-        const partial = await node(workingState)
-        workingState = {
-          ...workingState,
-          ...partial,
-        }
-        if (node === auto_fix_warnings) {
-          const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-          if (errors.length > 0) {
-            stopStepProgress(`检测到 ${errors.length} 个错误`)
-            for (const err of errors) {
-              const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-              console.error(`  ${icon} [${err.type}] ${err.description}`)
-              if (err.location) {
-                console.error(`     位置: ${err.location}`)
-              }
-            }
-            hasErrors = true
-          }
-        }
-        if (i < checkNodes.length - 1) {
-          nextStep(checkNodes[i + 1]!.label)
-        }
-      }
-
-      if (!hasErrors) {
-        stopStepProgress('质量检查通过')
-      }
+      workingState = pipelineResult.state
+      const hasErrors = pipelineResult.hasErrors
 
       if (!hasErrors) {
         break
@@ -302,20 +274,24 @@ export async function continueStory(
 
     return workingState
   } catch (err) {
-    // 当 draft_chapter 等节点抛出异常时，先保存当前的 pendingIssues
-    // 这样 rewrite/fix 命令才能识别到已检测但尚未修复的问题
-    if (workingState.pendingIssues.length > 0) {
-      await graph.updateState(
-        { configurable: { thread_id: storyId, outputDir } },
-        {
-          rewriteRequested: true,
-          pendingIssues: workingState.pendingIssues,
-          currentChapterIndex: workingState.currentChapterIndex,
-          chapters: workingState.chapters,
-          chapterSummaries: workingState.chapterSummaries,
-        }
-      )
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const draftIssue = {
+      id: generateId(),
+      type: 'draft_failure' as const,
+      severity: 'error' as const,
+      description: errorMessage,
     }
+
+    await graph.updateState(
+      { configurable: { thread_id: storyId, outputDir } },
+      {
+        rewriteRequested: true,
+        pendingIssues: [...workingState.pendingIssues, draftIssue],
+        currentChapterIndex: workingState.currentChapterIndex,
+        chapters: workingState.chapters,
+        chapterSummaries: workingState.chapterSummaries,
+      }
+    )
     throw err
   }
 }

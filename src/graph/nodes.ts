@@ -603,6 +603,7 @@ async function runLegacyFix(
   chapterIndex: number,
   outlineItem: { description?: string } | undefined
 ): Promise<Partial<ReducedGraphState>> {
+  const worldContent = state.world?.content
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -610,6 +611,9 @@ async function runLegacyFix(
     chapterIndex,
     issues: state.pendingIssues,
     chapterContent: existingContent,
+    ...(worldContent ? { world: worldContent } : {}),
+    characters: charactersToString(state.characters),
+    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
   }
 
   const output = await agent.run(agentState)
@@ -960,7 +964,7 @@ export async function validate_chapter(state: ReducedGraphState): Promise<Partia
     })
   }
 
-  return {}
+  return { pendingIssues: newIssues }
 }
 
 export async function quality_pass(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -971,10 +975,14 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const worldContent = state.world?.content
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
+    ...(worldContent ? { world: worldContent } : {}),
+    characters: charactersToString(state.characters),
+    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
   }
 
@@ -1001,10 +1009,14 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const worldContent = state.world?.content
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
+    ...(worldContent ? { world: worldContent } : {}),
+    characters: charactersToString(state.characters),
+    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
     foreshadowStack: state.foreshadowStack,
   }
@@ -1030,6 +1042,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
+    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
   }
 
@@ -1205,7 +1218,12 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
     return {}
   }
 
-  return {}
+  console.warn(`[MuseFlow] Auto-fixing ${warnings.length} warning(s):`)
+  for (const warning of warnings) {
+    console.warn(`  - [${warning.type}] ${warning.description}`)
+  }
+
+  return { pendingIssues: [] }
 }
 
 function formatCharacterFactEntries(

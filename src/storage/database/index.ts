@@ -2,7 +2,13 @@ import type { StateSnapshot } from '../../types/timeline.js'
 import type { ForeshadowAlert } from '../../graph/state.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import { logger } from '../../utils/logger.js'
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
+
+function writeFileAtomic(path: string, data: string): void {
+  const tmpPath = `${path}.tmp`
+  writeFileSync(tmpPath, data, 'utf-8')
+  renameSync(tmpPath, path)
+}
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -109,7 +115,7 @@ export async function writeMetaJson(storyId: string, meta: StoryMeta): Promise<v
   const outputDir = meta.story.outputDir
   mkdirSync(outputDir, { recursive: true })
   const path = getStoryMetaPathFromOutputDir(outputDir)
-  writeFileSync(path, JSON.stringify(meta, null, 2), 'utf-8')
+  writeFileAtomic(path, JSON.stringify(meta, null, 2))
   logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
 }
 
@@ -167,7 +173,7 @@ export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
   const outputDir = meta.story.outputDir
   mkdirSync(outputDir, { recursive: true })
   const path = getStoryMetaPathFromOutputDir(outputDir)
-  writeFileSync(path, JSON.stringify(meta, null, 2), 'utf-8')
+  writeFileAtomic(path, JSON.stringify(meta, null, 2))
   logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
 }
 

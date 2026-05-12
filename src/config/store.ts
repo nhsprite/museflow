@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs'
 import { z } from 'zod'
 import { expandPath } from '../utils/paths.js'
 import { getProjectConfigFilePath, getGlobalConfigFilePath } from '../utils/paths.js'
@@ -48,7 +48,9 @@ export function saveConfig(config: AppConfig): void {
   const path = getProjectConfigFilePath()
   const dir = expandPath('./.museflow')
   mkdirSync(dir, { recursive: true })
-  writeFileSync(path, JSON.stringify(config, null, 2), 'utf-8')
+  const tmpPath = `${path}.tmp`
+  writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
+  renameSync(tmpPath, path)
 }
 
 function deepMerge(target: unknown, source: unknown): unknown {

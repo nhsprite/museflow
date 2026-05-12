@@ -1,7 +1,7 @@
 import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import type { Checkpoint, CheckpointTuple, CheckpointMetadata, PendingWrite, ChannelVersions } from '@langchain/langgraph-checkpoint'
 import type { RunnableConfig } from '@langchain/core/runnables'
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../utils/logger.js'
 
@@ -20,11 +20,15 @@ interface PendingWritesRecord {
 
 export class JsonCheckpointer extends BaseCheckpointSaver<string> {
   private threadIdToOutputDir: Map<string, string> = new Map()
-  // Track the last checkpoint ID created, used by saveChapterCheckpoint to find the correct checkpoint
-  private lastCreatedCheckpointId: string | null = null
 
   constructor() {
     super(undefined)
+  }
+
+  private writeFileAtomic(path: string, data: string): void {
+    const tmpPath = `${path}.tmp`
+    writeFileSync(tmpPath, data, 'utf-8')
+    renameSync(tmpPath, path)
   }
 
   private getCheckpointDir(outputDir: string): string {
@@ -81,7 +85,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
   private savePendingWrites(outputDir: string, writes: PendingWritesRecord[]): void {
     const dir = this.ensureCheckpointDir(outputDir)
     const path = join(dir, 'pending_writes.json')
-    writeFileSync(path, JSON.stringify(writes, null, 2), 'utf-8')
+    this.writeFileAtomic(path, JSON.stringify(writes, null, 2))
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
@@ -174,7 +178,6 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     if (!outputDir) throw new Error('outputDir required in configurable')
 
     this.threadIdToOutputDir.set(threadId, outputDir)
-    this.lastCreatedCheckpointId = checkpoint.id as string
 
     const dir = this.ensureCheckpointDir(outputDir)
     const parentId = (config.configurable?.checkpoint_id as string | undefined) ?? null
@@ -187,7 +190,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     }
 
     const path = join(dir, `${checkpoint.id}.json`)
-    writeFileSync(path, JSON.stringify(record, null, 2), 'utf-8')
+    this.writeFileAtomic(path, JSON.stringify(record, null, 2))
     logger.debug(`Checkpoint saved: ${outputDir}/${checkpoint.id}`)
 
     this.savePendingWrites(outputDir, [])
@@ -231,19 +234,27 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
 
     const chapterCheckpointId = `chapter_${chapterNumber}_done`
 
-    let sourcePath: string
-    if (this.lastCreatedCheckpointId) {
-      sourcePath = join(dir, `${this.lastCreatedCheckpointId}.json`)
-      if (!existsSync(sourcePath)) {
-        return
-      }
-    } else {
-      const files = readdirSync(dir).filter(f => f.endsWith('.json') && f !== 'pending_writes.json' && !f.startsWith('chapter_'))
-      if (files.length === 0) return
-      const sorted = files.sort((a, b) => b.localeCompare(a))
-      sourcePath = join(dir, sorted[0]!)
-    }
+    const files = readdirSync(dir).filter(
+      f => f.endsWith('.json') && f !== 'pending_writes.json' && !f.startsWith('chapter_')
+    )
+    if (files.length === 0) return
 
+    const records = files
+      .map(f => {
+        try {
+          const raw = readFileSync(join(dir, f), 'utf-8')
+          const rec = JSON.parse(raw) as CheckpointRecord
+          return { file: f, ts: rec.checkpoint.ts }
+        } catch {
+          return null
+        }
+      })
+      .filter((r): r is { file: string; ts: string } => r !== null)
+      .sort((a, b) => b.ts.localeCompare(a.ts))
+
+    if (records.length === 0) return
+
+    const sourcePath = join(dir, records[0]!.file)
     const targetPath = join(dir, `${chapterCheckpointId}.json`)
 
     const raw = readFileSync(sourcePath, 'utf-8')
@@ -251,8 +262,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     record.checkpointId = chapterCheckpointId
     record.parentCheckpointId = record.parentCheckpointId ?? null
 
-    writeFileSync(targetPath, JSON.stringify(record, null, 2), 'utf-8')
-    this.lastCreatedCheckpointId = null
+    this.writeFileAtomic(targetPath, JSON.stringify(record, null, 2))
     logger.debug(`Chapter-level checkpoint saved: ${targetPath}`)
   }
 

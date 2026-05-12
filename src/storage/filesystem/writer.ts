@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises'
+import { mkdir, writeFile, readFile, unlink, rename } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
@@ -23,7 +23,9 @@ export async function writeChapterContent(
 ): Promise<void> {
   await ensureStoryDir(outputDir)
   const filePath = getChapterFilePath(outputDir, chapterNumber)
-  await writeFile(filePath, content, 'utf-8')
+  const tmpPath = `${filePath}.tmp`
+  await writeFile(tmpPath, content, 'utf-8')
+  await rename(tmpPath, filePath)
   logger.debug(`Chapter ${chapterNumber} written to: ${filePath}`)
 }
 
@@ -55,7 +57,9 @@ export async function writeOutlineContent(
   }
   const content = lines.join('\n').trim() + '\n'
   const filePath = join(outputDir, 'outline.md')
-  await writeFile(filePath, content, 'utf-8')
+  const tmpPath = `${filePath}.tmp`
+  await writeFile(tmpPath, content, 'utf-8')
+  await rename(tmpPath, filePath)
   logger.debug(`Outline written to: ${filePath}`)
 }
 
@@ -240,6 +244,8 @@ export async function writeStoryBible(
 
   const content = lines.join('\n').trim() + '\n'
   const filePath = join(outputDir, 'story_bible.md')
-  await writeFile(filePath, content, 'utf-8')
+  const tmpPath = `${filePath}.tmp`
+  await writeFile(tmpPath, content, 'utf-8')
+  await rename(tmpPath, filePath)
   logger.debug(`Story bible written to: ${filePath}`)
 }

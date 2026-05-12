@@ -274,9 +274,10 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       await deleteChapterContent(outputDir, ch)
     }
 
-    const nodeSequence = [
+    const { runChapterPipeline } = await import('../../core/pipeline.js')
+    const pipelineResult = await runChapterPipeline(workingState, [
       { node: plan_chapter, label: '规划章节' },
-      { node: draft_chapter, label: '撰写草稿' },
+      { node: draft_chapter, label: '撰写草稿', clearIssues: true },
       { node: validate_chapter, label: '检查字数' },
       { node: quality_pass, label: '质量检查' },
       { node: detect_foreshadowing, label: '检测伏笔' },
@@ -285,46 +286,18 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       { node: verify_outline_compliance, label: '校验大纲合规性' },
       { node: auto_fix_warnings, label: '自动修复警告' },
       { node: finalize_chapter, label: '完成章节' },
-    ]
+    ], { showProgress: true, breakOnErrors: true })
+
+    workingState = pipelineResult.state
+    const hasErrors = pipelineResult.hasErrors
+
+    workingState = {
+      ...workingState,
+      rewriteApproved: false,
+      rewriteRequested: hasErrors,
+    }
 
     try {
-      startStepProgress(nodeSequence.map(n => n.label))
-
-      for (let i = 0; i < nodeSequence.length; i++) {
-        const { node } = nodeSequence[i]!
-        const partial = await node(workingState)
-        workingState = {
-          ...workingState,
-          ...partial,
-        }
-        if (node === draft_chapter) {
-          workingState = { ...workingState, pendingIssues: [] }
-        }
-        if (node === auto_fix_warnings) {
-          const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-          if (errors.length > 0) {
-            stopStepProgress(`检测到 ${errors.length} 个错误`)
-            for (const err of errors) {
-              const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-              console.error(`  ${icon} [${err.type}] ${err.description}`)
-              if (err.location) {
-                console.error(`     位置: ${err.location}`)
-              }
-            }
-            break
-          }
-        }
-        if (i < nodeSequence.length - 1) {
-          nextStep(nodeSequence[i + 1]!.label)
-        }
-      }
-
-      const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
-      workingState = {
-        ...workingState,
-        rewriteApproved: false,
-        rewriteRequested: hasErrors,
-      }
       if (!hasErrors) {
         stopStepProgress('章节重写完成')
         await graph.updateState(
@@ -405,9 +378,10 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     chapterPlan: null,
   }
 
-  const nodeSequence = [
+  const { runChapterPipeline } = await import('../../core/pipeline.js')
+  const pipelineResult = await runChapterPipeline(workingState, [
     { node: plan_chapter, label: '规划章节' },
-    { node: draft_chapter, label: '撰写草稿' },
+    { node: draft_chapter, label: '撰写草稿', clearIssues: true },
     { node: validate_chapter, label: '检查字数' },
     { node: quality_pass, label: '质量检查' },
     { node: detect_foreshadowing, label: '检测伏笔' },
@@ -416,46 +390,18 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     { node: verify_outline_compliance, label: '校验大纲合规性' },
     { node: auto_fix_warnings, label: '自动修复警告' },
     { node: finalize_chapter, label: '完成章节' },
-  ]
+  ], { showProgress: true, breakOnErrors: true })
+
+  workingState = pipelineResult.state
+  const hasErrors = pipelineResult.hasErrors
+
+  workingState = {
+    ...workingState,
+    rewriteApproved: false,
+    rewriteRequested: hasErrors,
+  }
 
   try {
-    startStepProgress(nodeSequence.map(n => n.label))
-
-    for (let i = 0; i < nodeSequence.length; i++) {
-      const { node } = nodeSequence[i]!
-      const partial = await node(workingState)
-      workingState = {
-        ...workingState,
-        ...partial,
-      }
-      if (node === draft_chapter) {
-        workingState = { ...workingState, pendingIssues: [] }
-      }
-      if (node === auto_fix_warnings) {
-        const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-        if (errors.length > 0) {
-          stopStepProgress(`检测到 ${errors.length} 个错误`)
-          for (const err of errors) {
-            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-            console.error(`  ${icon} [${err.type}] ${err.description}`)
-            if (err.location) {
-              console.error(`     位置: ${err.location}`)
-            }
-          }
-          break
-        }
-      }
-      if (i < nodeSequence.length - 1) {
-        nextStep(nodeSequence[i + 1]!.label)
-      }
-    }
-
-    const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
-    workingState = {
-      ...workingState,
-      rewriteApproved: false,
-      rewriteRequested: hasErrors,
-    }
     if (!hasErrors) {
       stopStepProgress('章节重写完成')
       await graph.updateState(

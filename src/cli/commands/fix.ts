@@ -325,43 +325,19 @@ async function invokeGraph(storyId: string, rewriteApproved: boolean, targetChap
     writeOneChapterOnly: true,
   }
 
-  const nodeSequence = [
-    fix_chapter,
-    validate_chapter,
-    quality_pass,
-    detect_hallucination,
-    verify_outline_compliance,
-    auto_fix_warnings,
-    finalize_chapter,
-  ]
+  const { runChapterPipeline } = await import('../../core/pipeline.js')
+  const pipelineResult = await runChapterPipeline(workingState, [
+    { node: fix_chapter, label: '修复章节', clearIssues: true },
+    { node: validate_chapter, label: '检查字数' },
+    { node: quality_pass, label: '质量检查' },
+    { node: detect_hallucination, label: '检测幻觉' },
+    { node: verify_outline_compliance, label: '校验大纲合规性' },
+    { node: auto_fix_warnings, label: '自动修复警告' },
+    { node: finalize_chapter, label: '完成章节' },
+  ], { showProgress: false, breakOnErrors: true })
 
-  for (const node of nodeSequence) {
-    const partial = await node(workingState)
-    workingState = {
-      ...workingState,
-      ...partial,
-    }
-    if (node === fix_chapter) {
-      // fix_chapter 执行后清空 pendingIssues，让验证节点从零重新检测
-      workingState.pendingIssues = []
-    }
-    if (node === auto_fix_warnings) {
-      const errors = workingState.pendingIssues.filter((i: { severity: string }) => i.severity === 'error')
-      if (errors.length > 0) {
-        console.error(`[MuseFlow] 检测到 ${errors.length} 个错误，中断章节修复流程`)
-        for (const err of errors) {
-          const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-          console.error(`  ${icon} [${err.type}] ${err.description}`)
-          if (err.location) {
-            console.error(`     位置: ${err.location}`)
-          }
-        }
-        break
-      }
-    }
-  }
-
-  const hasErrors = workingState.pendingIssues.some((i: { severity: string }) => i.severity === 'error')
+  workingState = pipelineResult.state
+  const hasErrors = pipelineResult.hasErrors
   if (hasErrors) {
     workingState.rewriteRequested = true
     await checkpointer.clearPendingWrites(outputDir)

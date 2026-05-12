@@ -2,7 +2,7 @@ export type IssueSeverity = 'error' | 'warning' | 'info'
 
 export interface Issue {
   id: string
-  type: 'hallucination' | 'consistency' | 'quality' | 'word_count' | 'outline_violation' | 'outline_deviation'
+  type: 'hallucination' | 'consistency' | 'quality' | 'word_count' | 'outline_violation' | 'outline_deviation' | 'draft_failure'
   severity: IssueSeverity
   description: string
   location?: string
