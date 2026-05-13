@@ -5,10 +5,6 @@
   "type": "module",
   "author": "nihao.sensation@gmail.com",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nihao.sensation/museflow.git"
-  },
   "keywords": ["cli", "ai", "novel", "writing", "langgraph", "fiction", "generator"],
   "publishConfig": {
     "access": "public"
