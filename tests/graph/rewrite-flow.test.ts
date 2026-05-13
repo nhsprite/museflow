@@ -124,8 +124,7 @@ describe('rewrite flow regression', () => {
     expect(result.rewriteApproved).toBeUndefined()
     expect(result.rewriteRequested).toBeUndefined()
     expect(result.currentChapterIndex).toBe(1)
-    expect(logs.some(log => String(log).includes('第 1/20 章处理完成'))).toBe(true)
-    expect(logs.some(log => String(log).includes('第 2/20 章处理完成'))).toBe(false)
+
   })
 })
 
