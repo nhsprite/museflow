@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { Command } from 'commander'
 import { start } from './commands/start.js'
 import { write } from './commands/write.js'
