@@ -25,6 +25,7 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
+    "release": "node scripts/release.js",
     "start": "tsx src/cli/index.ts",
     "dev": "tsx watch src/cli/index.ts",
     "test": "vitest run",
