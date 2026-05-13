@@ -8,8 +8,8 @@ export class SummaryAgent extends BaseAgent {
 
   protected buildPrompt(state: AgentState): Message[] {
     return [
-      this.systemMessage('你是一位故事结构分析专家，擅长从章节内容中提取关键信息。你必须提取所有角色的关键事实（说过的话、知道的信息、态度变化），这些事实将用于后续章节的一致性检查。'),
-      this.userMessage(`请分析以下章节内容，生成结构化摘要：
+      this.systemMessage('你是一位故事结构分析专家，擅长从章节内容中提取关键信息。你必须提取所有角色的关键事实（说过的话、知道的信息、态度变化），以及角色位置、状态、物品追踪等结构化状态信息。'),
+      this.userMessage(`请分析以下章节内容，生成结构化摘要和故事状态：
 
 章节标题：${state.chapterTitle ?? '未知'}
 章节序号：${state.chapterIndex !== undefined ? `第${state.chapterIndex + 1}章` : '未知'}
@@ -52,7 +52,16 @@ export class SummaryAgent extends BaseAgent {
       "importance": "critical|major|minor"
     }
   ],
-  "mood": "本章整体氛围/情绪"
+  "mood": "本章整体氛围/情绪",
+  "storyState": {
+    "characterLocations": { "角色名": "当前所在地点" },
+    "characterStatus": { "角色名": "当前状态（受伤/中毒/健康/情绪等）" },
+    "keyItemsLocation": { "物品名": "当前位置或持有者" },
+    "activePlots": ["进行中情节线"],
+    "revealedSecrets": ["本章新揭示的秘密"],
+    "currentScene": "本章主要场景",
+    "storyTime": "故事内时间（如第三天傍晚）"
+  }
 }
 
 【重要性标注标准】
@@ -66,7 +75,21 @@ export class SummaryAgent extends BaseAgent {
 2. 该角色对本章关键信息的反应/态度（如："主角对来客表示欢迎，但眼神中闪过难以捉摸的神色"）
 3. 该角色做出的关键承诺或威胁（如："主角警告对方天黑后不要出门"）
 
-⚠️ 重要：你必须严格从上方提供的章节内容中提取事实，禁止编造、推测或引入内容中未出现的角色和事件。如果某个角色在本章中没有台词或明确行为，则不要为其创建 characterFacts 条目。
+【storyState 提取要求】
+必须从章节内容中提取以下结构化状态信息：
+1. characterLocations: 每个主要角色在本章结束时的所在位置
+2. characterStatus: 每个主要角色的身体状况、情绪状态、能力状态等
+3. keyItemsLocation: 关键物品在本章结束时的位置或持有者（如果物品位置发生变化，必须记录新位置）
+4. activePlots: 本章结束时尚未完结的情节线
+5. revealedSecrets: 本章中新揭示的秘密或真相（之前未揭示的）
+6. currentScene: 本章主要发生的场景/地点
+7. storyTime: 故事内的时间标记
+
+⚠️ 重要：
+- 你必须严格从上方提供的章节内容中提取事实，禁止编造、推测或引入内容中未出现的角色和事件
+- storyState 中的信息必须与章节内容完全一致，禁止推测角色位置或物品位置
+- 如果某个角色在本章中没有台词或明确行为，则不要为其创建 characterFacts 条目
+- 如果某个角色在本章中位置没有变化，且前章已知其位置，可以标注为"同前"
 
 只返回JSON，不要其他内容。`),
     ]
@@ -88,10 +111,10 @@ export class SummaryAgent extends BaseAgent {
   }
 }
 
-export function processSummaryOutput(output: AgentOutput): string | null {
+  export function processSummaryOutput(output: AgentOutput): { summary: string; storyState?: import('../types/story-state.js').StoryState } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
-  
+
   const migrateStringArrayToImportanceObjects = (arr: unknown): Array<{ text: string; importance: string }> => {
     if (!Array.isArray(arr)) return []
     return arr.map(item => {
@@ -117,8 +140,38 @@ export function processSummaryOutput(output: AgentOutput): string | null {
       return e
     })
   }
-  
-  return JSON.stringify({
+
+  const extractStoryState = (): import('../types/story-state.js').StoryState | undefined => {
+    const raw = data['storyState']
+    if (!raw || typeof raw !== 'object') return undefined
+    const s = raw as Record<string, unknown>
+
+    const toRecord = (val: unknown): Record<string, string> => {
+      if (!val || typeof val !== 'object') return {}
+      const result: Record<string, string> = {}
+      for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+        if (typeof v === 'string') result[k] = v
+      }
+      return result
+    }
+
+    const toStringArray = (val: unknown): string[] => {
+      if (!Array.isArray(val)) return []
+      return val.filter((v): v is string => typeof v === 'string')
+    }
+
+    return {
+      characterLocations: toRecord(s['characterLocations']),
+      characterStatus: toRecord(s['characterStatus']),
+      keyItemsLocation: toRecord(s['keyItemsLocation']),
+      activePlots: toStringArray(s['activePlots']),
+      revealedSecrets: toStringArray(s['revealedSecrets']),
+      currentScene: typeof s['currentScene'] === 'string' ? s['currentScene'] : '',
+      storyTime: typeof s['storyTime'] === 'string' ? s['storyTime'] : '',
+    }
+  }
+
+  const summary = JSON.stringify({
     characters: data['characters'] ?? [],
     characterFacts: migrateCharacterFactEntries(data['characterFacts']),
     keyEvents: migrateStringArrayToImportanceObjects(data['keyEvents']),
@@ -127,4 +180,12 @@ export function processSummaryOutput(output: AgentOutput): string | null {
     activePlots: migrateStringArrayToImportanceObjects(data['activePlots']),
     mood: data['mood'] ?? '',
   })
+
+  const storyState = extractStoryState()
+
+  if (storyState) {
+    return { summary, storyState }
+  }
+
+  return { summary }
 }

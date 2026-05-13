@@ -1,5 +1,6 @@
 import type { StateSnapshot } from '../../types/timeline.js'
 import type { ForeshadowAlert } from '../../graph/state.js'
+import type { StoryState } from '../../types/story-state.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import { logger } from '../../utils/logger.js'
 
@@ -80,6 +81,7 @@ export interface StoryMeta {
     fulfilledChapter?: number
   }>
   foreshadowAlerts?: ForeshadowAlert[]
+  storyState?: StoryState
 }
 
 export function ensureStoryDir(storyId: string): string {

@@ -37,9 +37,30 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 问题：${s.issue.description}${s.issue.suggestion ? `\n修复建议：${s.issue.suggestion}` : ''}`
     ).join('\n\n')
 
+    const previousChaptersSection = state.previousChapters && state.previousChapters !== '（这是第一章）'
+      ? `【前几章摘要】（修复时必须确保不与前文已确立的事实矛盾）
+${state.previousChapters}`
+      : ''
+
+    const timelineSection = state.timelineSnapshot && state.timelineSnapshot !== '（暂无历史记录）'
+      ? `【角色状态与时间线】（修复时必须保持与以下事实一致）
+${state.timelineSnapshot}`
+      : ''
+
+    const storyStateSection = state.storyState && state.storyState !== '（暂无状态记录）'
+      ? `【故事当前状态】（修复时必须保持与以下状态一致）
+${state.storyState}`
+      : ''
+
     const userContent = `请对第 ${displayChapterNumber} 章的指定句子进行精准修复。
 
 ${issuesSection}
+
+${previousChaptersSection}
+
+${timelineSection}
+
+${storyStateSection}
 
 【上下文】（仅供参考，不要修改）
 ${context}
@@ -55,7 +76,8 @@ ${sentencesSection}
 5. 保持原文的语言风格、叙事节奏和人物语气
 6. 消除 AI 痕迹：如原句包含"值得一提的是"、"不难发现"等 AI 惯用句式，必须用具体动作或感官细节替代，不能用另一个 AI 句式替换
 7. 修改后通读段落，确保没有句子重复出现
-8. 你不需要输出完整章节或完整段落，只需要输出修改后的句子
+8. 【关键】修复时必须对照"前几章摘要"和"角色状态与时间线"，确保不引入与前文矛盾的描述。例如：如果前文已确立"令牌在密室"，修复时不可改为"令牌在地牢"
+9. 你不需要输出完整章节或完整段落，只需要输出修改后的句子
 
 【输出格式】
 对每个需要修改的句子，按以下格式输出：
@@ -71,7 +93,7 @@ ${sentencesSection}
 请只输出需要修改的句子，不要输出任何其他内容。`
 
     return [
-      this.systemMessage('你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的句子。你绝对不可以修改未指定的句子，不可以添加新句子，不可以删除句子。你只能修改标记为【段落 N · 第 M 句】的内容。修改时彻底替换原句，不要残留。'),
+      this.systemMessage('你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的句子。你绝对不可以修改未指定的句子，不可以添加新句子，不可以删除句子。你只能修改标记为【段落 N · 第 M 句】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'),
       this.userMessage(userContent),
     ]
   }
@@ -90,9 +112,30 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 ${p.content}`
     ).join('\n\n')
 
+    const previousChaptersSection = state.previousChapters && state.previousChapters !== '（这是第一章）'
+      ? `【前几章摘要】（修复时必须确保不与前文已确立的事实矛盾）
+${state.previousChapters}`
+      : ''
+
+    const timelineSection = state.timelineSnapshot && state.timelineSnapshot !== '（暂无历史记录）'
+      ? `【角色状态与时间线】（修复时必须保持与以下事实一致）
+${state.timelineSnapshot}`
+      : ''
+
+    const storyStateSection = state.storyState && state.storyState !== '（暂无状态记录）'
+      ? `【故事当前状态】（修复时必须保持与以下状态一致）
+${state.storyState}`
+      : ''
+
     const userContent = `请对第 ${displayChapterNumber} 章的指定段落进行精准修复。
 
 ${issuesSection}
+
+${previousChaptersSection}
+
+${timelineSection}
+
+${storyStateSection}
 
 【上下文】（仅供参考，不要修改）
 ${context}
@@ -109,7 +152,8 @@ ${paragraphsSection}
 6. 保持原文的语言风格、叙事节奏和人物语气
 7. 消除 AI 痕迹：如段落中包含"值得一提的是"、"不难发现"等 AI 惯用句式，必须用具体动作或感官细节替代，不能用另一个 AI 句式替换
 8. 修改后通读段落，确保没有句子重复出现
-9. 你不需要输出完整章节，只需要输出修改后的段落
+9. 【关键】修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述。例如：如果前文已确立"令牌在密室"，修复时不可改为"令牌在地牢"；如果状态记录显示角色"身受重伤"，修复时不可改为"生龙活虎"
+10. 你不需要输出完整章节，只需要输出修改后的段落
 
 【输出格式】
 对每个需要修改的段落，按以下格式输出：
@@ -125,7 +169,7 @@ ${paragraphsSection}
 请只输出需要修改的段落，不要输出任何其他内容。`
 
     return [
-      this.systemMessage('你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的段落。你绝对不可以修改未指定的段落，不可以添加新段落，不可以删除段落。你只能修改标记为【需要修改的段落】的内容。修改时彻底替换原句，不要残留。'),
+      this.systemMessage('你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的段落。你绝对不可以修改未指定的段落，不可以添加新段落，不可以删除段落。你只能修改标记为【需要修改的段落】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'),
       this.userMessage(userContent),
     ]
   }
@@ -141,9 +185,30 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 ${state.chapterContent}`
       : ''
 
+    const previousChaptersSection = state.previousChapters && state.previousChapters !== '（这是第一章）'
+      ? `【前几章摘要】（修复时必须确保不与前文已确立的事实矛盾）
+${state.previousChapters}`
+      : ''
+
+    const timelineSection = state.timelineSnapshot && state.timelineSnapshot !== '（暂无历史记录）'
+      ? `【角色状态与时间线】（修复时必须保持与以下事实一致）
+${state.timelineSnapshot}`
+      : ''
+
+    const storyStateSection = state.storyState && state.storyState !== '（暂无状态记录）'
+      ? `【故事当前状态】（修复时必须保持与以下状态一致）
+${state.storyState}`
+      : ''
+
     const userContent = `请对第 ${displayChapterNumber} 章进行针对性修复。
 
 ${issuesSection}
+
+${previousChaptersSection}
+
+${timelineSection}
+
+${storyStateSection}
 
 ${existingChapterSection}
 
@@ -155,11 +220,12 @@ ${existingChapterSection}
 5. 用"替换"而非"追加"：修改时必须彻底删除原句，用新句替代
 6. 消除 AI 痕迹：如原文包含"值得一提的是"、"不难发现"等 AI 惯用句式，必须用具体动作或感官细节替代
 7. 修改后确保没有任何句子重复出现
+8. 【关键】修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述。例如：如果前文已确立"令牌在密室"，修复时不可改为"令牌在地牢"；如果前文角色"身受重伤"，修复时不可改为"生龙活虎"
 
 请输出修复后的完整第 ${displayChapterNumber} 章正文。`
 
     return [
-      this.systemMessage('你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。'),
+      this.systemMessage('你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'),
       this.userMessage(userContent),
     ]
   }

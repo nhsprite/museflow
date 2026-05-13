@@ -6,6 +6,7 @@ import type { WorldDirection } from '../types/story.js'
 import type { Issue } from '../types/agent.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import type { ChapterPlan } from './chapter-planner.js'
+import type { StoryState } from '../types/story-state.js'
 
 export abstract class BaseAgent {
   protected provider: ModelProvider
@@ -100,6 +101,7 @@ export interface AgentState {
     context: string
   }
   chapterPlan?: ChapterPlan
+  storyState?: string
 }
 
 export interface AgentOutput {

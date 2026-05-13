@@ -7,6 +7,9 @@ export class HallucinationAgent extends BaseAgent {
     super(undefined, 0.3)
   }
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
+    const existingForeshadows = state.foreshadowStack || []
+    const activeForeshadows = existingForeshadows.filter(f => !f.fulfilledChapter)
+
     const userContent = `请检测以下章节内容是否存在与已建立的世界观或人物设定不一致的"幻觉"内容。
 
 世界观设定：
@@ -14,6 +17,11 @@ ${state.world || '（尚未构建）'}
 
 人物设定：
 ${state.characters || '（尚未创建）'}
+
+已埋伏笔（未回收）：
+${activeForeshadows.length > 0
+    ? activeForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.createdAtChapter ?? '?'}章，预期第${f.expectedFulfillChapter}章回收）`).join('\n')
+    : '（暂无未回收伏笔）'}
 
 待检测章节内容：
 ${state.chapterContent || '（无内容）'}
@@ -37,6 +45,10 @@ ${state.chapterContent || '（无内容）'}
 3. **事实矛盾**：与前文已确立的事实相矛盾
 4. **不可能发生**：基于已建立规则，某些事件不可能发生
 5. **未介绍元素**：使用到前文未介绍的人物、地点或物品
+   【重要】判断"未介绍元素"时，必须对照"已埋伏笔"列表：
+   - 如果该元素与某个已埋伏笔相关（如伏笔暗示了某个神秘人物/物品/地点，本章首次揭示其详情），则**不应**报为"未介绍元素"
+   - 如果该元素完全不在伏笔列表中，且前文从未提及，才报为"未介绍元素"
+   - 本章对伏笔的揭示如果与埋下时的暗示方向严重不符，报 error（如伏笔暗示是"盟友"，揭示却是"路人"）
 
 【重要】请严格控制 error 数量，只有严重违反已建立设定的内容才报 error。轻微偏差报 warning，建议性意见报 info。
 

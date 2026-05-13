@@ -23,6 +23,8 @@ import { saveOutline } from '../storage/database/dao/chapter.js'
 import { saveCharacters } from '../storage/database/dao/character.js'
 import { saveWorld } from '../storage/database/dao/world.js'
 import { appendTimelineSnapshot, getLatestSnapshot, saveForeshadowStack, saveForeshadowAlerts } from '../storage/database/dao/timeline.js'
+import { saveStoryState, getStoryState, createEmptyStoryState } from '../storage/database/dao/story-state.js'
+import type { StoryState } from '../types/story-state.js'
 import { getForeshadowAlerts } from './state.js'
 import {
   buildLayeredSummaries,
@@ -288,6 +290,8 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
+  const storyStateStr = state.storyState ? formatStoryState(state.storyState) : ''
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -301,6 +305,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     timelineSnapshot,
     keyEventsTimeline,
     foreshadowStack: state.foreshadowStack,
+    storyState: storyStateStr,
     ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
@@ -372,20 +377,23 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
   const paragraphs = splitIntoParagraphs(existingContent)
   const affectedIndices = findAffectedParagraphs(paragraphs, state.pendingIssues)
 
+  const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
+  const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
+
   if (affectedIndices.length === 0) {
     console.log('[MuseFlow] 未能定位到问题所在段落，将使用全文修复模式')
-    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem)
+    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
   }
 
   const sentenceFixes = buildSentenceFixes(paragraphs, affectedIndices, state.pendingIssues)
 
   if (sentenceFixes.length > 0 && sentenceFixes.length <= 5) {
     console.log(`[MuseFlow] 定位到 ${sentenceFixes.length} 个需修改的句子，使用句子级精准修复`)
-    return await runSentenceFix(agent, state, existingContent, paragraphs, sentenceFixes, chapterIndex, outlineItem)
+    return await runSentenceFix(agent, state, existingContent, paragraphs, sentenceFixes, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
   }
 
   console.log(`[MuseFlow] 定位到 ${affectedIndices.length} 个需修改的段落，使用段落级修复`)
-  return await runParagraphFix(agent, state, existingContent, paragraphs, affectedIndices, chapterIndex, outlineItem)
+  return await runParagraphFix(agent, state, existingContent, paragraphs, affectedIndices, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
 }
 
 function buildSentenceFixes(
@@ -426,7 +434,9 @@ async function runSentenceFix(
   paragraphs: string[],
   sentenceFixes: import('../agents/base.js').SentenceFix[],
   chapterIndex: number,
-  outlineItem: { description?: string } | undefined
+  outlineItem: { description?: string } | undefined,
+  previousChapters: string,
+  timelineSnapshot: string
 ): Promise<Partial<ReducedGraphState>> {
   const affectedParagraphs = new Set(sentenceFixes.map(s => s.paragraphIndex))
   const contextIndices = new Set<number>()
@@ -448,6 +458,8 @@ async function runSentenceFix(
     chapterIndex,
     issues: state.pendingIssues,
     chapterContent: existingContent,
+    previousChapters,
+    timelineSnapshot,
     sentenceFix: {
       sentences: sentenceFixes,
       context,
@@ -515,7 +527,9 @@ async function runParagraphFix(
   paragraphs: string[],
   affectedIndices: number[],
   chapterIndex: number,
-  outlineItem: { description?: string } | undefined
+  outlineItem: { description?: string } | undefined,
+  previousChapters: string,
+  timelineSnapshot: string
 ): Promise<Partial<ReducedGraphState>> {
   const paragraphFixes = affectedIndices.map(idx => {
     const paragraphContent = paragraphs[idx]
@@ -551,6 +565,8 @@ async function runParagraphFix(
     chapterIndex,
     issues: state.pendingIssues,
     chapterContent: existingContent,
+    previousChapters,
+    timelineSnapshot,
     paragraphFix: {
       paragraphs: paragraphFixes,
       context,
@@ -601,7 +617,9 @@ async function runLegacyFix(
   state: ReducedGraphState,
   existingContent: string,
   chapterIndex: number,
-  outlineItem: { description?: string } | undefined
+  outlineItem: { description?: string } | undefined,
+  previousChapters: string,
+  timelineSnapshot: string
 ): Promise<Partial<ReducedGraphState>> {
   const worldContent = state.world?.content
   const agentState: AgentState = {
@@ -611,6 +629,8 @@ async function runLegacyFix(
     chapterIndex,
     issues: state.pendingIssues,
     chapterContent: existingContent,
+    previousChapters,
+    timelineSnapshot,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
@@ -1044,6 +1064,8 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
     characters: charactersToString(state.characters),
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
+    chapterSummaries: state.chapterSummaries,
+    foreshadowStack: state.foreshadowStack,
   }
 
   const output = await agent.run(agentState)
@@ -1074,6 +1096,8 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
     chapterSummaries: state.chapterSummaries,
     chapterIndex,
     timelineSnapshot,
+    foreshadowStack: state.foreshadowStack,
+    storyState: state.storyState ? formatStoryState(state.storyState) : '',
   }
 
   const output = await agent.run(agentState)
@@ -1137,6 +1161,8 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     )
   }
 
+  let updatedStoryState = state.storyState
+
   if (chapter) {
     let summary = chapter.summary || ''
     const needsSummary = !summary && chapterContent
@@ -1154,8 +1180,15 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
         const summaryOutput = await summaryAgent.run(summaryState)
         const processed = processSummaryOutput(summaryOutput)
         if (processed) {
-          summary = processed
+          summary = processed.summary
           chapter.summary = summary
+
+          if (processed.storyState) {
+            const existing = getStoryState(state.story.id)
+            updatedStoryState = mergeStoryState(existing, processed.storyState)
+            saveStoryState(state.story.id, updatedStoryState)
+            console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`)
+          }
         }
       } catch (err) {
         console.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败:`, err)
@@ -1199,6 +1232,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   return {
     currentChapterIndex: nextIndex,
     chapterSummaries: state.chapterSummaries,
+    storyState: updatedStoryState,
   }
 }
 
@@ -1296,4 +1330,105 @@ function buildKeyEventsTimeline(
   }
 
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
+}
+
+function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryState {
+  const base = existing ?? createEmptyStoryState()
+
+  const mergedLocations = { ...base.characterLocations }
+  for (const [char, loc] of Object.entries(delta.characterLocations)) {
+    if (loc && loc !== '同前') {
+      mergedLocations[char] = loc
+    }
+  }
+
+  const mergedStatus = { ...base.characterStatus }
+  for (const [char, status] of Object.entries(delta.characterStatus)) {
+    if (status && status !== '同前') {
+      mergedStatus[char] = status
+    }
+  }
+
+  const mergedItems = { ...base.keyItemsLocation }
+  for (const [item, loc] of Object.entries(delta.keyItemsLocation)) {
+    if (loc && loc !== '同前') {
+      mergedItems[item] = loc
+    }
+  }
+
+  const mergedPlots = [...base.activePlots]
+  for (const plot of delta.activePlots) {
+    if (plot && !mergedPlots.includes(plot)) {
+      mergedPlots.push(plot)
+    }
+  }
+
+  const mergedSecrets = [...base.revealedSecrets]
+  for (const secret of delta.revealedSecrets) {
+    if (secret && !mergedSecrets.includes(secret)) {
+      mergedSecrets.push(secret)
+    }
+  }
+
+  return {
+    characterLocations: mergedLocations,
+    characterStatus: mergedStatus,
+    keyItemsLocation: mergedItems,
+    activePlots: mergedPlots,
+    revealedSecrets: mergedSecrets,
+    currentScene: delta.currentScene || base.currentScene,
+    storyTime: delta.storyTime || base.storyTime,
+  }
+}
+
+function formatStoryState(storyState: StoryState): string {
+  const lines: string[] = []
+
+  const locations = Object.entries(storyState.characterLocations)
+  if (locations.length > 0) {
+    lines.push('【角色位置】')
+    for (const [char, loc] of locations) {
+      lines.push(`  ${char}：${loc}`)
+    }
+  }
+
+  const statuses = Object.entries(storyState.characterStatus)
+  if (statuses.length > 0) {
+    lines.push('【角色状态】')
+    for (const [char, status] of statuses) {
+      lines.push(`  ${char}：${status}`)
+    }
+  }
+
+  const items = Object.entries(storyState.keyItemsLocation)
+  if (items.length > 0) {
+    lines.push('【关键物品】')
+    for (const [item, loc] of items) {
+      lines.push(`  ${item}：${loc}`)
+    }
+  }
+
+  if (storyState.activePlots.length > 0) {
+    lines.push('【进行中的情节】')
+    for (const plot of storyState.activePlots) {
+      lines.push(`  - ${plot}`)
+    }
+  }
+
+  if (storyState.revealedSecrets.length > 0) {
+    lines.push('【已揭示的秘密】')
+    for (const secret of storyState.revealedSecrets) {
+      lines.push(`  - ${secret}`)
+    }
+  }
+
+  if (storyState.currentScene) {
+    lines.push(`【当前场景】${storyState.currentScene}`)
+  }
+
+  if (storyState.storyTime) {
+    lines.push(`【故事时间】${storyState.storyTime}`)
+  }
+
+  return lines.length > 0 ? lines.join('\n') : '（暂无状态记录）'
 }

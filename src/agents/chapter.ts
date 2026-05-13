@@ -34,6 +34,17 @@ ${state.keyEventsTimeline}
 【强制要求】以上关键事件是已确立的叙事事实，本章写作时必须保持一致。如果本章涉及这些事件的后续发展，必须给出合理的因果衔接，不可凭空改变事件结果。`
       : ''
 
+    const storyStateSection = state.storyState
+      ? `【故事当前状态 - 必须严格保持】
+${state.storyState}
+
+【强制要求】以上状态是截至上一章结束时已确立的事实。本章写作时必须：
+- 角色位置：如果角色位置发生变化，必须有合理的移动过程描写，不能瞬间转移
+- 角色状态：如果角色处于受伤/中毒/虚弱等状态，本章必须承认这些状态，除非有明确的恢复描写
+- 关键物品：物品的位置和持有者必须与前文一致，转移时必须有明确交接过程
+- 故事时间：时间推进必须符合逻辑，不能跳回过去`
+      : ''
+
     const issuesSection = state.issues && state.issues.length > 0
       ? `【重要】本章需要修复的问题：
 ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
@@ -125,6 +136,8 @@ ${chapterSupplement}
 ${timelineSection}
 
 ${keyEventsSection}
+
+${storyStateSection}
 
 ${planSection}
 

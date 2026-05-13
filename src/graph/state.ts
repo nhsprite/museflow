@@ -4,6 +4,7 @@ import type { Character } from '../types/character.js'
 import type { Issue } from '../types/agent.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
+import type { StoryState } from '../types/story-state.js'
 
 export interface WorldContent {
   id: string
@@ -112,6 +113,7 @@ export const GraphState = Annotation.Root({
   lastPrintedChapter: Annotation<number>,
   lastTimelineSnapshot: Annotation<string | null>,
   chapterPlan: Annotation<ChapterPlan | null>,
+  storyState: Annotation<StoryState>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

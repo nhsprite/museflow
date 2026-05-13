@@ -5,6 +5,7 @@ import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
+import { createEmptyStoryState } from '../storage/database/dao/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { generateId } from '../utils/id.js'
 import { startStepProgress, nextStep, stopStepProgress } from '../cli/utils/spinner.js'
@@ -85,6 +86,7 @@ export async function runStory(input: {
     lastPrintedChapter: -1,
     lastTimelineSnapshot: null,
     chapterPlan: null,
+    storyState: createEmptyStoryState(),
   }
 
   const config: RunnableConfig = {
