@@ -3,7 +3,7 @@ import { readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { expandPath } from '../utils/paths.js'
 import type { GenreSkill, GenreRegistryEntry } from '../types/genre.js'
-import { createDefaultSkill, createFantasySkill, createXianxiaSkill, createSciFiSkill, createHorrorSkill, createUrbanSkill, createRomanceSkill } from './builtin/index.js'
+import { createDefaultSkill, createFantasySkill, createXianxiaSkill, createSciFiSkill, createHorrorSkill, createMysterySkill, createUrbanSkill, createRomanceSkill } from './builtin/index.js'
 
 let _registry: GenreRegistryEntry[] | null = null
 
@@ -16,6 +16,7 @@ export function getGenreRegistry(): GenreRegistryEntry[] {
     createXianxiaSkill(),
     createSciFiSkill(),
     createHorrorSkill(),
+    createMysterySkill(),
     createUrbanSkill(),
     createRomanceSkill(),
   ]

@@ -1,6 +1,7 @@
 export { createDefaultSkill } from './default/index.js'
 export { createFantasySkill } from './fantasy/index.js'
 export { createHorrorSkill } from './horror/index.js'
+export { createMysterySkill } from './mystery/index.js'
 export { createRomanceSkill } from './romance/index.js'
 export { createSciFiSkill } from './scifi/index.js'
 export { createUrbanSkill } from './urban/index.js'
