@@ -46,6 +46,7 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
 - coreConflict 点出核心矛盾
 - worldFeatures 列出 2-4 个独特的世界观元素
 - 必须返回 3-5 个不同的候选方案
+- 重要：JSON 字段值中不要使用任何引号（包括 " " ' '），如需强调请使用书名号《》或不用引号
 {conditionalCultivation}`
 
 function getGenreConstraints(genre: string): string {
@@ -106,7 +107,9 @@ export async function generateTitleOptions(
   try {
     parsed = JSON.parse(jsonMatch[0]) as RawTitleOption[]
   } catch {
-    const cleaned = jsonMatch[0].replace(/"/g, '"').replace(/"/g, '"')
+    const cleaned = jsonMatch[0]
+      .replace(/"/g, '')
+      .replace(/"/g, '')
     parsed = JSON.parse(cleaned) as RawTitleOption[]
   }
 
