@@ -1252,9 +1252,9 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
     return {}
   }
 
-  console.warn(`[MuseFlow] Auto-fixing ${warnings.length} warning(s):`)
+  console.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${warnings.length} warning(s):\x1b[0m`)
   for (const warning of warnings) {
-    console.warn(`  - [${warning.type}] ${warning.description}`)
+    console.warn(`   \x1b[33m⚠️  [${warning.type}]\x1b[0m ${warning.description}`)
   }
 
   return { pendingIssues: [] }
