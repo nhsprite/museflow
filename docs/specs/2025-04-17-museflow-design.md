@@ -423,6 +423,7 @@ museflow/
 │   │   │   ├── xianxia/
 │   │   │   ├── scifi/
 │   │   │   ├── horror/
+│   │   │   ├── mystery/
 │   │   │   ├── urban/
 │   │   │   └── romance/
 │   │   └── custom/               # 用户自定义 Skill（符号链接到 ~/.museflow/genres/）
@@ -496,7 +497,8 @@ MuseFlow 支持通过 Genre Skill 扩展不同小说题材的生成能力。用�
 | `xianxia` | 仙侠（修真、功法、门派） |
 | `scifi` | 科幻（星际、赛博、末日） |
 | `horror` | 恐怖（克苏鲁、逃生、心理恐怖） |
-| `urban` | 都市（现代都市、异能、商战） |
+| `mystery` | 悬疑（推理、侦探、解谜） |
+| `urban` | 都市（现代都市、商战、职场） |
 | `romance` | 言情（情感、校园、都市爱情） |
 
 ### 11.3 默认 Skill
@@ -516,6 +518,7 @@ src/genres/
 │   ├── xianxia/
 │   ├── scifi/
 │   ├── horror/
+│   ├── mystery/
 │   ├── urban/
 │   └── romance/
 └── custom/                    # 用户自定义 Skill（用户安装目录）
@@ -539,6 +542,6 @@ interface GenreSkill {
 用户自定义 Skill > 内置 Skill（同名时用户自定义覆盖内置）。
 
 ### 11.6 题材扩展机制
-- **内置题材**：系统自带 6 种（fantasy / xianxia / scifi / horror / urban / romance）
+- **内置题材**：系统自带 7 种（fantasy / xianxia / scifi / horror / mystery / urban / romance）
 - **自定义题材**：用户可通过 `museflow genres install <path>` 安装本地 Skill 目录到 `~/.museflow/genres/`
 - 新题材只需在对应目录放置 `index.ts` 声明 Skill 接口，系统启动时自动扫描并注册所有可用题材，无需修改核心代码
