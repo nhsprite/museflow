@@ -16,11 +16,11 @@ export function createUrbanSkill(): GenreSkill {
 }
 
 其中 world 字段应包含以下内容：
-1. 现代都市背景设定
-2. 社会阶层与职场/校园环境
-3. 特殊能力或异能设定（如有）
+1. 现代都市背景设定（时间、地点、城市特征）
+2. 社会阶层与职场/校园/家庭环境
+3. 时代背景特征（经济、文化、科技水平）
 4. 重要人物关系网络
-5. 核心冲突来源`,
+5. 核心冲突来源（利益、情感、阶层、价值观等）`,
     outlineTemplate: `为一部 {totalChapters} 章的都市小说制定大纲。
 
 故事简介：{idea}
@@ -36,6 +36,6 @@ export function createUrbanSkill(): GenreSkill {
 - 描写职场、校园或社交场景
 - 情感细腻，节奏明快
 - 角色塑造贴近现实`,
-    tropes: ['business war', 'campuss romance', 'urban fantasy', 'superpower', 'social ladder'],
+    tropes: ['business war', 'campus romance', 'career struggle', 'family conflict', 'social ladder', 'revenge', 'redemption'],
   }
 }
