@@ -37,5 +37,6 @@ export function createUrbanSkill(): GenreSkill {
 - 情感细腻，节奏明快
 - 角色塑造贴近现实`,
     tropes: ['business war', 'campus romance', 'career struggle', 'family conflict', 'social ladder', 'revenge', 'redemption'],
+    constraints: '必须严格遵循现实主义原则。世界观基于现实社会，禁止科幻、奇幻、超自然或系统流元素。冲突来源应是现实中可能发生的：商业竞争、职场斗争、家庭矛盾、情感纠葛、阶层跨越等。重生/穿越元素仅限于主角主观视角，不应引入超自然世界观设定。',
   }
 }

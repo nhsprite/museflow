@@ -1,5 +1,6 @@
 import inquirer from 'inquirer'
 import { createProvider } from '../../model/registry.js'
+import { getGenreSkill } from '../../genres/registry.js'
 
 export interface WorldDirection {
   cultivationSystem?: string
@@ -47,20 +48,43 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
 - 必须返回 3-5 个不同的候选方案
 {conditionalCultivation}`
 
+function getGenreConstraints(genre: string): string {
+  const skill = getGenreSkill(genre)
+  const displayName = skill?.displayName || genre
+
+  if (skill?.constraints) {
+    return `题材约束：这是${displayName}题材。${skill.constraints}`
+  }
+
+  return `题材约束：这是${displayName}题材，请确保世界观和冲突符合该题材的典型特征。`
+}
+
+function getConditionalCultivation(genre: string): string {
+  if (genre === 'xianxia' || genre === 'fantasy') {
+    return '- 每个候选方案可包含 cultivationSystem 字段描述修炼/魔法体系'
+  }
+  return ''
+}
+
 export async function generateTitleOptions(
   idea: string,
   genre: string,
   totalChapters: number
 ): Promise<TitleOption[]> {
   const provider = createProvider()
+  const skill = getGenreSkill(genre)
+  const displayName = skill?.displayName || genre
 
   const userContent = TITLE_SELECTION_PROMPT
     .replace('{idea}', idea)
     .replace('{totalChapters}', String(totalChapters))
-    .replace('{genre}', genre)
+    .replace('{genre}', `${genre}（${displayName}）`)
+    .replace('{conditionalCultivation}', getConditionalCultivation(genre))
+
+  const genreConstraint = getGenreConstraints(genre)
 
   const messages = [
-    { role: 'system' as const, content: '你是一位资深的小说策划师，擅长起书名和构建世界观。' },
+    { role: 'system' as const, content: `你是一位资深的小说策划师，擅长起书名和构建世界观。\n\n${genreConstraint}` },
     { role: 'user' as const, content: userContent },
   ]
 
