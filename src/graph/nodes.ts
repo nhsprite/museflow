@@ -264,6 +264,7 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
     chapterSummaries: state.chapterSummaries,
     timelineSnapshot,
     foreshadowStack: state.foreshadowStack,
+    ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
   }
 
   const output = await agent.run(agentState)
@@ -273,7 +274,26 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
     return {}
   }
 
-  return { chapterPlan: output.data as import('../agents/chapter-planner.js').ChapterPlan }
+  const chapterPlan = output.data as import('../agents/chapter-planner.js').ChapterPlan
+
+  console.log('\n📋 章节规划：')
+  for (let i = 0; i < chapterPlan.sections.length; i++) {
+    const section = chapterPlan.sections[i]
+    if (!section) continue
+    console.log(`  ${i + 1}. ${section.title || '未命名'}${section.wordCount ? `（约${section.wordCount}字）` : ''}`)
+    if (section.events && section.events.length > 0) {
+      console.log(`     事件：${section.events.join('、')}`)
+    }
+    if (section.characters && section.characters.length > 0) {
+      console.log(`     人物：${section.characters.join('、')}`)
+    }
+    if (section.timeMark) {
+      console.log(`     时间：${section.timeMark}`)
+    }
+  }
+  console.log('')
+
+  return { chapterPlan }
 }
 
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {

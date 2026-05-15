@@ -34,10 +34,22 @@ export class ChapterPlannerAgent extends BaseAgent {
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
+    const issuesSection = state.issues && state.issues.length > 0
+      ? `【上轮问题反馈 - 必须在本次规划中修复】
+${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
+
+【要求】请逐条对照上述问题，在本次规划中确保：
+- 每个遗漏的大纲情节点都在 sections 中明确体现
+- 每个错误的时间线都在 timeline 中纠正
+- 每个未落实的要求都在 outlineCheck 中标记为 fulfilled`
+      : ''
+
     const userContent = `请为第 ${displayChapterNumber} 章生成详细的写作规划。
 
 【必须严格遵循】本章大纲：
 ${outline}
+
+${issuesSection}
 
 【必须严格遵循】世界观设定：
 ${state.world || '（尚未构建）'}
