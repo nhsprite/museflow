@@ -93,19 +93,14 @@ museflow write <story-id>
 
 ### 4. 修复问题
 
-如果质量检查发现错误，会提示修复：
+如果质量检查发现错误，会提示重写：
 
 ```bash
-# 针对性修复当前章节（保留大部分内容，修改问题段落）
-museflow fix <story-id>
-
-# 彻底重写当前章节（从头重新撰写）
+# 彻底重写当前章节
 museflow rewrite <story-id>
 ```
 
-**修复策略**：
-- **Fix**：适合局部问题（用词重复、描写不足、小逻辑矛盾）。保留 90%+ 内容，只修改相关段落。
-- **Rewrite**：适合结构性问题（时间线混乱、人物性格前后矛盾、大纲偏离）。整章重写。
+`write` 命令内部已包含自动重试机制（最多 3 次），如果仍无法通过质量检查，则需要手动运行 `rewrite` 进行彻底重写。
 
 ### 5. 查看进度
 
@@ -128,7 +123,7 @@ write → 草稿 → 质量检查 → 伏笔检测 → 幻觉检测 → 一致�
         ↓           ↓
     通过          发现问题
         ↓           ↓
-    下一章      fix / rewrite
+    下一章      rewrite
                     ↓
                 重新检查
 ```
@@ -141,7 +136,6 @@ write → 草稿 → 质量检查 → 伏笔检测 → 幻觉检测 → 一致�
 | `write <id>` | 撰写当前章节 |
 | `continue <id>` | 从断点恢复继续撰写 |
 | `rewrite <id>` | 重写有问题的章节 |
-| `fix <id>` | 针对性修复章节问题 |
 | `status <id>` | 查看故事进度 |
 | `info <id>` | 查看故事详情 |
 | `export <id>` | 导出故事为 txt 文件 |
@@ -233,20 +227,10 @@ npm run lint
 检查 config 中 api key 和 base url 是否正确，用 `museflow config show` 确认。
 
 ### 写完一章后提示"需要处理问题"
-运行 `rewrite` 或 `fix` 命令处理当前章节：
+运行 `rewrite` 命令重写当前章节：
 ```bash
 museflow rewrite <story-id>  # 彻底重写
-museflow fix <story-id>      # 针对性修复
 ```
-
-### 故事写到一半中断了怎么办？
-运行 `continue` 命令从断点恢复：
-```bash
-museflow continue <story-id>
-```
-
-### 为什么 fix 定位到很多段落？
-Fix 命令会分析问题所在段落，只修改相关部分。如果问题描述涉及常见词汇（如"轻轻"、"缓缓"），可能会匹配到多个段落。这种情况建议用 `rewrite` 代替。
 
 ## 架构说明
 

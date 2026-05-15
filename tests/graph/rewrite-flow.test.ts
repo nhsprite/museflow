@@ -142,7 +142,7 @@ describe('draft_chapter guard against empty content', () => {
     await expect(draft_chapter({
       ...baseState,
       currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章内容为空，AI 生成失败')
+    } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
   })
 
   it('throws error when AI returns only whitespace', async () => {
@@ -153,7 +153,7 @@ describe('draft_chapter guard against empty content', () => {
     await expect(draft_chapter({
       ...baseState,
       currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章内容为空，AI 生成失败')
+    } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
   })
 
   it('throws error when AI returns null content', async () => {
@@ -164,7 +164,7 @@ describe('draft_chapter guard against empty content', () => {
     await expect(draft_chapter({
       ...baseState,
       currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章内容为空，AI 生成失败')
+    } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
   })
 })
 

@@ -182,61 +182,6 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
   stopSpinnerQuiet: vi.fn(),
 }))
 
-describe('fix command state consistency', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    updateStateMock.mockResolvedValue(undefined)
-  })
-
-  it('should save currentChapterIndex when fix fails with errors', async () => {
-    const { fix } = await import('../../src/cli/commands/fix.ts')
-
-    getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
-      idea: 'test',
-      genre: 'default',
-      totalChapters: 10,
-      world: null,
-      characters: [],
-      outline: Array.from({ length: 10 }, (_, i) => ({
-        number: i + 1,
-        title: `Chapter ${i + 1}`,
-        description: `Description ${i + 1}`,
-      })),
-      chapters: Array(10).fill(null),
-      currentChapterIndex: 5,
-      foreshadowStack: [],
-      chapterSummaries: [],
-      pendingIssues: [
-        {
-          id: 'issue-1',
-          type: 'quality',
-          severity: 'error',
-          description: 'word count too low',
-          location: 'test location',
-        },
-      ],
-      rewriteApproved: false,
-      rewriteRequested: false,
-      isWriting: true,
-      writeOneChapterOnly: true,
-      lastPrintedChapter: 0,
-      lastTimelineSnapshot: null,
-    })
-
-    await fix('story-1', {}).catch(() => {})
-
-    const updateStateCalls = updateStateMock.mock.calls
-    expect(updateStateCalls.length).toBeGreaterThan(0)
-
-    const lastCall = updateStateCalls[updateStateCalls.length - 1]
-    expect(lastCall[1]).toMatchObject({
-      rewriteRequested: true,
-      currentChapterIndex: 5,
-    })
-  })
-})
-
 describe('rewrite command state consistency', () => {
   beforeEach(() => {
     vi.clearAllMocks()

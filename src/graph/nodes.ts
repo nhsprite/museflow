@@ -333,10 +333,16 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   const output = await agent.run(agentState)
 
+  if (!output.success && output.error) {
+    throw new Error(
+      `第 ${chapterIndex + 1} 章 AI 生成失败：${output.error}`
+    )
+  }
+
   let content = output.content ?? ''
   if (!content || content.trim().length === 0) {
     throw new Error(
-      `第 ${chapterIndex + 1} 章内容为空，AI 生成失败。请重试。`
+      `第 ${chapterIndex + 1} 章内容为空，AI 未返回有效内容。请检查模型配置或重试。`
     )
   }
 
@@ -509,9 +515,12 @@ async function runSentenceFix(
     }
     content = resultParagraphs.join('\n\n')
   } else {
+    if (!output.success && output.error) {
+      throw new Error(`第 ${chapterIndex + 1} 章修复失败：${output.error}`)
+    }
     content = output.content ?? ''
     if (!content || content.trim().length === 0) {
-      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`)
+      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
     }
     const affectedIndices = Array.from(new Set(sentenceFixes.map(s => s.paragraphIndex)))
     content = applyParagraphDiffProtection(existingContent, content, affectedIndices)
@@ -600,9 +609,12 @@ async function runParagraphFix(
     const modifiedParagraphs = (output.data as { modifiedParagraphs: Array<{ index: number; content: string }> }).modifiedParagraphs
     content = mergeParagraphFixes(paragraphs, modifiedParagraphs, affectedIndices)
   } else {
+    if (!output.success && output.error) {
+      throw new Error(`第 ${chapterIndex + 1} 章修复失败：${output.error}`)
+    }
     content = output.content ?? ''
     if (!content || content.trim().length === 0) {
-      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`)
+      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
     }
     content = applyParagraphDiffProtection(existingContent, content, affectedIndices)
   }
@@ -658,9 +670,13 @@ async function runLegacyFix(
 
   const output = await agent.run(agentState)
 
+  if (!output.success && output.error) {
+    throw new Error(`第 ${chapterIndex + 1} 章重写失败：${output.error}`)
+  }
+
   let content = output.content ?? ''
   if (!content || content.trim().length === 0) {
-    throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 生成失败。请重试。`)
+    throw new Error(`第 ${chapterIndex + 1} 章重写后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
   }
   content = deduplicateSentences(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)

@@ -83,16 +83,8 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
         console.error(`     位置: ${issue.location}`)
       }
     }
-    const hasConsistencyErrors = state.pendingIssues.some(i => i.severity === 'error' && i.type === 'consistency')
-    console.error(`\n请选择修复方式：`)
-    if (hasConsistencyErrors) {
-      console.error(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
-      console.error(`   museflow fix ${storyId}      # 针对性修复`)
-      console.error(`\n  ⚠️  检测到跨章节一致性矛盾，rewrite 才能重新对齐前文事实\n`)
-    } else {
-      console.error(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
-      console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
-    }
+    console.error(`\n当前章节存在严重问题，需要重写：`)
+    console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
     process.exit(1)
   }
 
@@ -156,16 +148,8 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
           console.log(`     位置: ${err.location}`)
         }
       }
-      const hasConsistencyErrors = errors.some(e => e.type === 'consistency')
-      console.log(`\n请选择修复方式：`)
-      if (hasConsistencyErrors) {
-        console.log(`   museflow rewrite ${storyId}  # 彻底重写（推荐）`)
-        console.log(`   museflow fix ${storyId}      # 针对性修复`)
-        console.log(`\n  ⚠️  检测到跨章节一致性矛盾，rewrite 才能重新对齐前文事实`)
-      } else {
-        console.log(`   museflow fix ${storyId}      # 针对性修复（推荐）`)
-        console.log(`   museflow rewrite ${storyId}  # 彻底重写`)
-      }
+      console.log(`\n请运行以下命令重写本章：`)
+      console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
       return
     }
 
@@ -215,19 +199,11 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
       if (remaining > 0) {
         console.log(`   ... 还有 ${remaining} 个问题`)
       }
-      const hasConsistencyErrors = errors.some(e => e.type === 'consistency')
-      console.log(`\n请选择修复方式：`)
-      if (hasConsistencyErrors) {
-        console.log(`   museflow rewrite ${storyId} # 彻底重写（推荐）`)
-        console.log(`   museflow fix ${storyId}    # 针对性修复`)
-        console.log(`\n  ⚠️  检测到跨章节一致性矛盾，rewrite 才能重新对齐前文事实\n`)
-      } else {
-        console.log(`   museflow fix ${storyId}    # 针对性修复（推荐）`)
-        console.log(`   museflow rewrite ${storyId} # 彻底重写\n`)
-      }
+      console.log(`\n请运行以下命令重写本章：`)
+      console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
 
       console.log('下一步：')
-      console.log(`   先修复第 ${writtenIndex + 1} 章的问题，再运行 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
+      console.log(`   重写第 ${writtenIndex + 1} 章后，再运行 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
       console.log(`   或运行 "museflow info" 查看故事进度\n`)
     } else {
       const warnings = result.pendingIssues.filter(i => i.severity === 'warning')
