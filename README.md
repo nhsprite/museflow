@@ -1,241 +1,245 @@
 # MuseFlow
 
-> AI Native 长篇小说生成工具 — 端到端 AI 写作助手
+> AI Native Long Novel Generator — End-to-End AI Writing Assistant
 
-MuseFlow 是一款本地运行的 CLI 工具，用户输入一句话故事简介，AI 自动完成从世界观构建、大纲生成到逐章正文撰写的全部工作，最终输出完整可读的长篇小说。
+MuseFlow is a locally-run CLI tool. Enter a one-sentence story pitch, and AI automatically handles everything from worldbuilding and outline generation to chapter-by-chapter drafting, producing a complete, readable long-form novel.
 
-## 核心特性
+## Key Features
 
-- **LangGraph 状态图编排**：多 Agent 协同，支持断点恢复和人工确认重写
-- **8 类专业 Agent**：世界观、人物、大纲、章节、质量、伏笔检测、幻觉检测、逻辑一致性
-- **题材 Skill 系统**：内置玄幻、仙侠、科幻、恐怖等题材包，支持用户自定义 Skill
-  - **本地优先**：所有数据存储在本地，模型可配置（OpenAI 兼容 / Anthropic）
-- **断点恢复**：写作过程中断后可随时恢复，无需从头开始
-- **质量保障**：每章写完自动进行多维度质量检查，发现问题可针对性修复或重写
+- **LangGraph State Graph Orchestration**: Multi-agent collaboration with breakpoint recovery and manual rewrite confirmation
+- **8 Specialized Agent Types**: Worldbuilding, Characters, Outline, Chapter, Quality, Foreshadowing Detection, Hallucination Detection, Logic Consistency
+- **Genre Skill System**: Built-in genre packs for Xianxia, Sci-Fi, Horror, and more, with support for user-defined Skills
+- **Local-First**: All data stored locally; configurable models (OpenAI-compatible / Anthropic)
+- **Breakpoint Recovery**: Resume writing at any time after interruption without starting over
+- **Quality Assurance**: Automatic multi-dimensional quality checks after each chapter, with targeted fixes or full rewrites for discovered issues
 
-## 系统要求
+## Requirements
 
 - **Node.js >= 20**
-- **npm** 或 **pnpm**
-- API Key（OpenAI / Claude / 其他兼容服务）
+- **npm** or **pnpm**
+- API Key (OpenAI / Claude / other compatible services)
 
-## 安装
+## Installation
 
-### 通过 npm 安装（推荐）
+### Install via npm (Recommended)
 
 ```bash
 npm install -g museflow
 ```
 
-安装后全局可用 `museflow` 命令。
+The `museflow` command will be available globally after installation.
 
-### 从源码运行（开发）
+### Run from Source (Development)
 
 ```bash
-# 克隆项目
+# Clone the repository
 git clone <repository-url>
 cd museflow
 
-# 安装依赖
+# Install dependencies
 npm install
 
-# 编译 TypeScript
+# Compile TypeScript
 npm run build
 
-# 开发时使用 npm start 代替 museflow
+# Use npm start instead of museflow during development
 npm start -- <command> [args]
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 配置模型
+### 1. Configure Your Model
 
-首次使用前需要配置 AI 模型：
+Configure the AI model before first use:
 
 ```bash
-# 查看当前配置
+# View current configuration
 museflow config show
 
-# 配置 OpenAI
+# Configure OpenAI
 museflow config set --provider openai --api-key YOUR_API_KEY --model gpt-4o
 
-# 配置 Claude (Anthropic)
+# Configure Claude (Anthropic)
 museflow config set --provider anthropic --api-key YOUR_API_KEY --model claude-3-sonnet-20240229
 
-# 配置其他 OpenAI 兼容服务（MiniMax、Ollama、DeepSeek 等）
+# Configure other OpenAI-compatible services (MiniMax, Ollama, DeepSeek, etc.)
 museflow config set --provider openai --api-key YOUR_API_KEY --model MODEL_NAME --base-url https://api.example.com/v1
 ```
 
-配置保存在项目目录下的 `.museflow/config.json`（项目级配置，优先于全局 `~/.museflow/config.json`）。
+Configuration is saved in `.museflow/config.json` in the project directory (project-level config takes precedence over the global `~/.museflow/config.json`).
 
-### 2. 创建故事
+### 2. Create a Story
 
 ```bash
-# 启动新故事（仅规划和创建，不写正文）
-museflow start --idea "一个少年获得修真能力后崛起为最强者的故事" --chapters 30 --genre xianxia
+# Start a new story (planning and creation only, no body text)
+museflow start --idea "A young man gains cultivation powers and rises to become the strongest" --chapters 30 --genre xianxia
 ```
 
-此命令会：
-1. 构建世界观
-2. 生成人物设定
-3. 生成章节大纲
-4. 保存到 `./books/{story_id}/`
+This command will:
+1. Build the world setting
+2. Generate character profiles
+3. Generate the chapter outline
+4. Save to `./books/{story_id}/`
 
-### 3. 撰写正文
+### 3. Write Chapters
 
 ```bash
-# 撰写当前章节（写完一章后停止）
+# Write the current chapter (stops after one chapter)
 museflow write <story-id>
 
-# 继续撰写下一章
+# Continue to the next chapter
 museflow write <story-id>
 ```
 
-### 4. 修复问题
+### 4. Fix Issues
 
-如果质量检查发现错误，会提示重写：
+If quality checks find errors, you will be prompted to rewrite:
 
 ```bash
-# 彻底重写当前章节
+# Fully rewrite the current chapter
 museflow rewrite <story-id>
 ```
 
-`write` 命令内部已包含自动重试机制（最多 3 次），如果仍无法通过质量检查，则需要手动运行 `rewrite` 进行彻底重写。
+The `write` command includes an automatic retry mechanism (up to 3 times). If quality checks still fail, run `rewrite` manually for a complete rewrite.
 
-### 5. 查看进度
+### 5. Check Progress
 
 ```bash
-# 查看故事进度
+# View story progress
 museflow status <story-id>
 
-# 查看故事详情
+# View story details
 museflow info <story-id>
 ```
 
-## 工作流程
+## Workflow
 
 ```
-start → 世界观 → 人物 → 大纲
-              ↓
-write → 草稿 → 质量检查 → 伏笔检测 → 幻觉检测 → 一致性检查 → 大纲合规
-              ↓
-        ┌─────┴─────┐
-        ↓           ↓
-    通过          发现问题
-        ↓           ↓
-    下一章      rewrite
-                    ↓
-                重新检查
+start → World → Characters → Outline
+                       ↓
+write → Draft → Quality Check → Foreshadowing → Hallucination → Consistency → Outline Compliance
+                       ↓
+                 ┌─────┴─────┐
+                 ↓           ↓
+             Pass         Issues Found
+                 ↓           ↓
+             Next Chapter   rewrite
+                              ↓
+                          Re-check
 ```
 
-## 命令参考
+## Command Reference
 
-| 命令 | 说明 |
-|------|------|
-| `start` | 创建新故事，完成世界观、人物、大纲 |
-| `write <id>` | 撰写当前章节 |
-| `continue <id>` | 从断点恢复继续撰写 |
-| `rewrite <id>` | 重写有问题的章节 |
-| `status <id>` | 查看故事进度 |
-| `info <id>` | 查看故事详情 |
-| `export <id>` | 导出故事为 txt 文件 |
-| `config` | 管理模型配置 |
-| `genres` | 查看可用题材 |
+| Command | Description |
+|---------|-------------|
+| `start` | Create a new story: world, characters, outline |
+| `write <id>` | Write the current chapter |
+| `continue <id>` | Resume writing from a breakpoint |
+| `rewrite <id>` | Rewrite a problematic chapter |
+| `status <id>` | View story progress |
+| `info <id>` | View story details |
+| `export <id>` | Export story as a txt file |
+| `config` | Manage model configuration |
+| `genres` | View available genres |
 
-## 题材
+## Genres
 
-内置以下题材，可通过 `--genre` 指定：
+The following genres are built-in and can be specified via `--genre`:
 
-| 题材 | 参数值 | 说明 |
-|------|--------|------|
-| 玄幻 | `xianxia` | 修真、仙侠、武侠 |
-| 科幻 | `scifi` | 未来科技、太空冒险 |
-| 恐怖 | `horror` | 惊悚、灵异 |
-| 悬疑 | `mystery` | 推理、侦探、解谜 |
-| 都市 | `urban` | 现代都市、职场 |
-| 浪漫 | `romance` | 言情、爱情 |
-| 默认 | `default` | 通用题材 |
+| Genre | Value | Description |
+|-------|-------|-------------|
+| Xianxia | `xianxia` | Cultivation, Immortality, Martial Arts |
+| Sci-Fi | `scifi` | Future Tech, Space Adventure |
+| Horror | `horror` | Thriller, Supernatural |
+| Mystery | `mystery` | Detective, Puzzle Solving |
+| Urban | `urban` | Modern City, Workplace |
+| Romance | `romance` | Love Stories |
+| Default | `default` | General purpose |
 
-## Agent 系统
+## Agent System
 
-MuseFlow 使用 8 类专业 Agent 协同工作：
+MuseFlow uses 8 specialized agent types working together:
 
-| Agent | 职责 |
-|-------|------|
-| **WorldBuilder** | 构建世界观、历史背景、社会结构 |
-| **Character** | 生成人物设定、性格、关系网 |
-| **Outline** | 生成章节大纲，确保故事结构完整 |
-| **Chapter** | 撰写章节正文，保持风格一致 |
-| **Quality** | 检查用词重复、描写质量、节奏 |
-| **Foreshadowing** | 检测伏笔回收，最后 15% 章节禁止埋新伏笔 |
-| **Hallucination** | 检测与设定矛盾的内容 |
-| **Consistency** | 检查跨章节逻辑一致性 |
+| Agent | Responsibility |
+|-------|----------------|
+| **WorldBuilder** | Build world settings, history, and social structures |
+| **Character** | Generate character profiles, personalities, and relationships |
+| **Outline** | Generate chapter outlines ensuring story structure integrity |
+| **Chapter** | Draft chapter body text with consistent style |
+| **Quality** | Check for word repetition, description quality, and pacing |
+| **Foreshadowing** | Detect foreshadowing payoffs; no new foreshadowing in final 15% |
+| **Hallucination** | Detect content contradictions with established settings |
+| **Consistency** | Check cross-chapter logic consistency |
 
-## 数据存储
+## Data Storage
 
-故事数据保存在本地 `./books/` 目录下：
+Story data is saved locally in the `./books/` directory:
 
-| 路径 | 内容 |
-|------|------|
-| `./.museflow/config.json` | 项目级配置（API key、provider 等） |
-| `./books/{story_id}/meta.json` | 故事元数据（世界观、人物、大纲） |
-| `./books/{story_id}/checkpoints/` | LangGraph checkpoint JSON 文件 |
-| `./books/{story_id}/chapters/chapter_{n}.md` | 各章正文 `.md` 文件 |
+| Path | Content |
+|------|---------|
+| `./.museflow/config.json` | Project-level config (API key, provider, etc.) |
+| `./books/{story_id}/meta.json` | Story metadata (world, characters, outline) |
+| `./books/{story_id}/checkpoints/` | LangGraph checkpoint JSON files |
+| `./books/{story_id}/chapters/chapter_{n}.md` | Chapter body text `.md` files |
 
-> **注意**：MuseFlow 使用 JSON + 文件系统存储，不依赖 SQLite。
+> **Note**: MuseFlow uses JSON + filesystem storage; it does not depend on SQLite.
 
-## 项目结构
+## Project Structure
 
 ```
 src/
-├── cli/           # 命令行入口（所有命令的实现）
-├── graph/         # LangGraph 图编排（状态、节点、边、检查点）
-├── agents/        # 8 类 Agent 实现
-├── core/          # 核心业务逻辑（Runner）
-├── genres/        # 题材 Skill 系统
-├── storage/       # JSON 元数据 + 文件系统存储
-├── model/         # 模型抽象层（OpenAI 兼容 / Anthropic）
-├── types/         # 共享 TypeScript 类型
-└── utils/         # 工具函数
+├── cli/           # CLI entry point (all command implementations)
+├── graph/         # LangGraph graph orchestration (state, nodes, edges, checkpoints)
+├── agents/        # 8 agent type implementations
+├── core/          # Core business logic (Runner)
+├── genres/        # Genre Skill system
+├── storage/       # JSON metadata + filesystem storage
+├── model/         # Model abstraction layer (OpenAI-compatible / Anthropic)
+├── types/         # Shared TypeScript types
+└── utils/         # Utility functions
 ```
 
-## 开发
+## Development
 
 ```bash
-# 监听模式运行测试
+# Run tests in watch mode
 npm run test:watch
 
-# 开发模式（tsx watch）
+# Development mode (tsx watch)
 npm run dev
 
-# 类型检查
+# Type checking
 npm run typecheck
 
-# 运行测试
+# Run tests
 npm test
 
-# 代码检查
+# Linting
 npm run lint
 ```
 
-## 常见问题
+## FAQ
 
-### `write` 没有反应
-确保传入了 story-id：`museflow write <story-id>`
+### `write` command has no output
+Make sure you passed the story-id: `museflow write <story-id>`
 
-### API 调用报错
-检查 config 中 api key 和 base url 是否正确，用 `museflow config show` 确认。
+### API call errors
+Check that the api key and base url in config are correct. Use `museflow config show` to verify.
 
-### 写完一章后提示"需要处理问题"
-运行 `rewrite` 命令重写当前章节：
+### "Issues need to be addressed" after finishing a chapter
+Run the `rewrite` command to rewrite the current chapter:
 ```bash
-museflow rewrite <story-id>  # 彻底重写
+museflow rewrite <story-id>  # Full rewrite
 ```
 
-## 架构说明
+## Architecture
 
-详见 [设计文档](./docs/specs/2025-04-17-museflow-design.md) 和 [实施计划](./docs/specs/2025-04-17-museflow-implementation-plan.md)。
+See the [Design Document](./docs/specs/2025-04-17-museflow-design.md) and [Implementation Plan](./docs/specs/2025-04-17-museflow-implementation-plan.md) for details.
 
 ## License
 
 MIT
+
+---
+
+[中文文档](./README.zh.md)
