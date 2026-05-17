@@ -271,6 +271,7 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
 
   if (!output.success || !output.data) {
     console.warn('[MuseFlow] 章节规划失败，将跳过规划直接写作')
+    console.warn('[MuseFlow] 规划失败原因:', output.error || '未知')
     return {}
   }
 
