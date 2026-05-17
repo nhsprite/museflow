@@ -222,18 +222,30 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
   }
 
   if (targetChapterIndex !== undefined) {
-    const chapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex + 1)
-    if (chapterCheckpoint) {
+    const prevChapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex)
+    if (prevChapterCheckpoint) {
       config = {
         configurable: {
           thread_id: storyId,
-          checkpoint_id: chapterCheckpoint.checkpointId,
+          checkpoint_id: prevChapterCheckpoint.checkpointId,
           outputDir,
         },
       }
-      console.log(`[MuseFlow] 已恢复第 ${targetChapterIndex + 1} 章完成时的状态`)
+      console.log(`[MuseFlow] 已恢复第 ${targetChapterIndex} 章完成时的状态`)
     } else {
-      console.log(`[MuseFlow] 未找到第 ${targetChapterIndex + 1} 章的章节级 checkpoint，将从当前状态继续`)
+      const chapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex + 1)
+      if (chapterCheckpoint) {
+        config = {
+          configurable: {
+            thread_id: storyId,
+            checkpoint_id: chapterCheckpoint.checkpointId,
+            outputDir,
+          },
+        }
+        console.log(`[MuseFlow] 未找到第 ${targetChapterIndex} 章的 checkpoint，已恢复第 ${targetChapterIndex + 1} 章完成时的状态（将清理该章状态）`)
+      } else {
+        console.log(`[MuseFlow] 未找到相关 checkpoint，将从当前状态继续`)
+      }
     }
   }
 
@@ -250,11 +262,18 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       rewrittenChapters[i] = checkpointState.chapters[i] ?? null
     }
 
+    const cleanedSummaries = checkpointState.chapterSummaries.slice(0, targetChapterIndex)
+    const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
+      f => f.createdAtChapter < targetChapterIndex + 1
+    )
+
     let workingState: ReducedGraphState = {
       ...checkpointState,
       currentChapterIndex: targetChapterIndex,
       chapters: rewrittenChapters,
-      pendingIssues: checkpointState.pendingIssues,
+      chapterSummaries: cleanedSummaries,
+      foreshadowStack: cleanedForeshadowStack,
+      pendingIssues: [],
       rewriteApproved: userResponse,
       rewriteRequested: false,
       isWriting: true,
