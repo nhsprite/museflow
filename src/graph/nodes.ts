@@ -1294,7 +1294,15 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
     console.warn(`   \x1b[33m⚠️  [${warning.type}]\x1b[0m ${warning.description}`)
   }
 
-  return { pendingIssues: [] }
+  const fixState: ReducedGraphState = { ...state, pendingIssues: warnings }
+  const fixResult = await fix_chapter(fixState)
+
+  console.log(`\x1b[92m✔ [MuseFlow] Auto-fixed ${warnings.length} warning(s)\x1b[0m`)
+
+  return {
+    ...fixResult,
+    pendingIssues: [],
+  }
 }
 
 function formatCharacterFactEntries(
