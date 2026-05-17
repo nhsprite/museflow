@@ -4,6 +4,8 @@ import { generateId } from '../utils/id.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
 
 export class ForeshadowingAgent extends BaseAgent {
+  private lastTotalChapters: number | undefined
+
   constructor() {
     super(undefined, 0.3)
   }
@@ -11,6 +13,7 @@ export class ForeshadowingAgent extends BaseAgent {
     const existingForeshadows = state.foreshadowStack || []
     const currentChapter = (state.chapterIndex ?? 0) + 1
     const totalChapters = state.totalChapters ?? currentChapter
+    this.lastTotalChapters = totalChapters
 
     const noNewThreshold = Math.max(3, Math.floor(totalChapters * 0.15))
     const isClosingPhase = currentChapter > totalChapters - noNewThreshold
@@ -91,7 +94,7 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
     {
       "text": "伏笔文本内容",
       "foreshadow_type": "character_destiny|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict",
-      "expected_fulfill_chapter": 预期在第几章回收（数字）,
+      "expected_fulfill_chapter": 预期在第几章回收（数字，必须 <= ${totalChapters}）,
       "confidence": "high|medium|low"
     }
   ],
@@ -161,7 +164,10 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
       .map(item => ({
         id: generateId(),
         text: item.text!,
-        expectedFulfillChapter: item.expected_fulfill_chapter ?? currentChapter + 5,
+        expectedFulfillChapter: Math.min(
+          item.expected_fulfill_chapter ?? currentChapter + 5,
+          this.lastTotalChapters ?? currentChapter + 5
+        ),
         createdAt: Date.now(),
         createdAtChapter: currentChapter,
       }))
