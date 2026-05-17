@@ -50,10 +50,11 @@ function getOutputDirFromStoryId(storyId: string): string | undefined {
 }
 
 interface RewriteOptions {
+  storyId: string
   chapter?: string
 }
 
-export async function rewrite(storyId: string, chapterArg: string | undefined, options: RewriteOptions): Promise<void> {
+export async function rewrite(storyId: string, options: RewriteOptions): Promise<void> {
   await initStoryDb()
   const story = getStory(storyId)
   if (!story) {
@@ -61,11 +62,7 @@ export async function rewrite(storyId: string, chapterArg: string | undefined, o
     process.exit(1)
   }
 
-  const targetChapter = chapterArg
-    ? parseInt(chapterArg, 10)
-    : options.chapter
-      ? parseInt(options.chapter, 10)
-      : null
+  const targetChapter = options.chapter ? parseInt(options.chapter, 10) : null
 
   const state = await getState(storyId)
   if (!state) {
