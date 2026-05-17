@@ -38,6 +38,7 @@ program.command('rewrite')
   .description('重写当前有问题的章节（彻底重写）')
   .argument('<story-id>', '故事ID')
   .option('-c, --chapter <number>', '指定要重写的章节编号')
+  .allowExcessArguments(false)
   .action(rewrite)
 
 program.command('continue')
