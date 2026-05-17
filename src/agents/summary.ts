@@ -14,6 +14,9 @@ export class SummaryAgent extends BaseAgent {
 章节标题：${state.chapterTitle ?? '未知'}
 章节序号：${state.chapterIndex !== undefined ? `第${state.chapterIndex + 1}章` : '未知'}
 
+章节内容：
+${state.chapterContent ?? '（无内容）'}
+
 请提取并返回以下信息（JSON格式）：
 {
   "characters": ["角色名: 当前状态描述"],
