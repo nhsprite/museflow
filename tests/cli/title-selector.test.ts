@@ -11,32 +11,35 @@ vi.mock('inquirer', () => ({
 // Mock the model registry
 vi.mock('../../src/model/registry.js', () => ({
   createProvider: () => ({
-    chat: vi.fn().mockResolvedValue(JSON.stringify([
-      {
-        title: '《逆天改命》',
-        worldDirection: {
-          cultivationSystem: '凡境→灵境→仙境',
-          coreConflict: '资源争夺、宗门秘宝',
-          worldFeatures: ['中土大陆', '灵气衰退'],
+    chat: vi.fn(),
+    chatStructured: vi.fn().mockResolvedValue({
+      options: [
+        {
+          title: '《逆天改命》',
+          worldDirection: {
+            cultivationSystem: '凡境→灵境→仙境',
+            coreConflict: '资源争夺、宗门秘宝',
+            worldFeatures: ['中土大陆', '灵气衰退'],
+          },
         },
-      },
-      {
-        title: '《凡人之躯》',
-        worldDirection: {
-          cultivationSystem: '炼体、炼气、炼神三阶段',
-          coreConflict: '人与天斗、阶级固化',
-          worldFeatures: ['偏远山村', '世俗王朝'],
+        {
+          title: '《凡人之躯》',
+          worldDirection: {
+            cultivationSystem: '炼体、炼气、炼神三阶段',
+            coreConflict: '人与天斗、阶级固化',
+            worldFeatures: ['偏远山村', '世俗王朝'],
+          },
         },
-      },
-      {
-        title: '《破妄之剑》',
-        worldDirection: {
-          cultivationSystem: '剑修为尊；剑意凝兵',
-          coreConflict: '正邪两道、师门恩怨',
-          worldFeatures: ['万剑山脉', '剑冢禁地'],
+        {
+          title: '《破妄之剑》',
+          worldDirection: {
+            cultivationSystem: '剑修为尊；剑意凝兵',
+            coreConflict: '正邪两道、师门恩怨',
+            worldFeatures: ['万剑山脉', '剑冢禁地'],
+          },
         },
-      },
-    ])),
+      ],
+    }),
   }),
 }))
 

@@ -1,6 +1,7 @@
 import inquirer from 'inquirer'
 import { createProvider } from '../../model/registry.js'
 import { getGenreSkill } from '../../genres/registry.js'
+import type { JsonSchema } from '../../model/provider.js'
 
 export interface WorldDirection {
   cultivationSystem?: string
@@ -13,13 +14,35 @@ export interface TitleOption {
   worldDirection: WorldDirection
 }
 
-interface RawTitleOption {
-  title?: unknown
-  worldDirection?: {
-    cultivationSystem?: unknown
-    coreConflict?: unknown
-    worldFeatures?: unknown[]
-  }
+const TITLE_OPTION_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    options: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '书名，要新颖、有吸引力、符合题材' },
+          worldDirection: {
+            type: 'object',
+            properties: {
+              coreConflict: { type: 'string', description: '核心冲突描述' },
+              worldFeatures: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '2-4个独特的世界观元素',
+              },
+              cultivationSystem: { type: 'string', description: '修炼/魔法体系（可选）' },
+            },
+            required: ['coreConflict', 'worldFeatures'],
+          },
+        },
+        required: ['title', 'worldDirection'],
+      },
+      description: '3-5个不同的候选方案',
+    },
+  },
+  required: ['options'],
 }
 
 const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以下故事概要，提供 3-5 个候选书名和对应的世界观方向。
@@ -28,25 +51,12 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
 总章节数：{totalChapters}
 题材：{genre}
 
-请以以下 JSON 格式返回：
-[
-  {
-    "title": "书名1",
-    "worldDirection": {
-      "coreConflict": "核心冲突描述",
-      "worldFeatures": ["特色1", "特色2", "特色3"]
-    }
-  },
-  ...
-]
-
 要求：
 - 书名要新颖、有吸引力、符合题材
 - 世界观方向要各有特色，角度不同
 - coreConflict 点出核心矛盾
 - worldFeatures 列出 2-4 个独特的世界观元素
 - 必须返回 3-5 个不同的候选方案
-- 重要：JSON 字段值中不要使用任何引号（包括 " " ' '），如需强调请使用书名号《》或不用引号
 {conditionalCultivation}`
 
 function getGenreConstraints(genre: string): string {
@@ -89,50 +99,17 @@ export async function generateTitleOptions(
     { role: 'user' as const, content: userContent },
   ]
 
-  const response = await provider.chat(messages, 0.8)
+  const parsed = await provider.chatStructured!<{ options: TitleOption[] }>(
+    messages,
+    TITLE_OPTION_SCHEMA,
+    0.8
+  )
 
-  let jsonStr = response.trim()
-
-  const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (codeBlockMatch) {
-    jsonStr = codeBlockMatch[1]!.trim()
-  }
-
-  const jsonMatch = jsonStr.match(/\[[\s\S]*\]/)
-  if (!jsonMatch) {
-    throw new Error('无法从 AI 响应中解析标题选项')
-  }
-
-  let parsed: RawTitleOption[]
-  try {
-    parsed = JSON.parse(jsonMatch[0]) as RawTitleOption[]
-  } catch {
-    const cleaned = jsonMatch[0]
-      .replace(/"/g, '')
-      .replace(/"/g, '')
-    parsed = JSON.parse(cleaned) as RawTitleOption[]
-  }
-
-  if (!Array.isArray(parsed) || parsed.length < 3) {
+  if (!Array.isArray(parsed.options) || parsed.options.length < 3) {
     throw new Error('AI 返回的标题选项数量不足')
   }
 
-  return parsed.map((item: RawTitleOption): TitleOption => {
-    const wd = item.worldDirection
-    const worldDirection: WorldDirection = {
-      coreConflict: String(wd?.coreConflict || ''),
-      worldFeatures: Array.isArray(wd?.worldFeatures)
-        ? wd.worldFeatures.map(String)
-        : [],
-    }
-    if (wd?.cultivationSystem) {
-      worldDirection.cultivationSystem = String(wd.cultivationSystem)
-    }
-    return {
-      title: String(item.title || '未命名'),
-      worldDirection,
-    }
-  })
+  return parsed.options
 }
 
 export async function selectTitleOption(options: TitleOption[]): Promise<TitleOption> {

@@ -2,6 +2,7 @@ import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database
 import { getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner, startStepProgress, nextStep, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
+import { printChapterOutline } from '../../utils/chapter-display.js'
 import { buildNovelGraph } from '../../graph/novel.graph.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import {
@@ -79,6 +80,8 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
     console.log(`  目标章节: ${targetChapter}/${state.totalChapters}`)
     console.log(`  原当前章节: ${state.currentChapterIndex + 1}`)
+    const outlineItem = state.outline[targetIndex]
+    printChapterOutline(outlineItem, targetIndex)
     await handleRewrite(storyId, true, targetIndex)
     return
   }
@@ -96,6 +99,8 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     const chapterNum = targetChapterIndex + 1
     console.log('[MuseFlow] 重写章节: ', story.title)
     console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
+    const outlineItem = state.outline[targetChapterIndex]
+    printChapterOutline(outlineItem, targetChapterIndex)
     console.log('[MuseFlow] 发现以下问题:')
     for (const issue of state.pendingIssues) {
       const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'
@@ -109,6 +114,8 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     const chapterNum = state.currentChapterIndex + 1
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
     console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
+    const outlineItem = state.outline[state.currentChapterIndex]
+    printChapterOutline(outlineItem, state.currentChapterIndex)
     console.log('[MuseFlow] 当前章节没有已知问题，确认重写？')
     const answer = await question('  输入 y 确认重写，输入 n 取消 > ')
     const confirm = answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes'

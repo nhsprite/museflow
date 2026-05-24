@@ -3,7 +3,7 @@ import { continueStory, getState } from '../../core/runner.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
-import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
+import { toDisplayChapterNumber, printChapterOutline } from '../../utils/chapter-display.js'
 import { getChapterFilePath, getOutputsDir } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -96,15 +96,9 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   const chapterIndex = startChapterIndex
   const outlineItem = state.outline[chapterIndex]
 
-  if (!outlineItem) {
-    console.error('[MuseFlow] 错误: 未找到章节大纲')
+  if (!printChapterOutline(outlineItem, chapterIndex)) {
     return
   }
-
-  console.log('═'.repeat(60))
-  console.log(`第 ${toDisplayChapterNumber(chapterIndex)} 章：${outlineItem.title}`)
-  console.log('═'.repeat(60))
-  console.log(`\n${outlineItem.description}\n`)
 
   await executeWrite(storyId, state, chapterIndex)
 }
