@@ -35,7 +35,7 @@ function getLocalIp(): string | null {
   return null
 }
 
-async function startDownloadServer(filePath: string, fileName: string): Promise<{ url: string; server: ReturnType<typeof createServer> }> {
+async function startDownloadServer(filePath: string, fileName: string): Promise<{ url: string; server: ReturnType<typeof createServer>; displayUrl: string }> {
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       if (req.url === `/${encodeURIComponent(fileName)}`) {
@@ -62,7 +62,8 @@ async function startDownloadServer(filePath: string, fileName: string): Promise<
       if (address && typeof address === 'object') {
         const ip = getLocalIp() || 'localhost'
         const url = `http://${ip}:${address.port}/${encodeURIComponent(fileName)}`
-        resolve({ url, server })
+        const displayUrl = `http://${ip}:${address.port}/${fileName}`
+        resolve({ url, server, displayUrl })
       } else {
         reject(new Error('Failed to get server address'))
       }
@@ -146,10 +147,10 @@ export async function exportStory(storyId: string, _options: ExportOptions): Pro
   console.log(`  章节: ${chapterNumbers.length} 章`)
   console.log(`  字数: 约 ${totalChars} 字符`)
 
-  const { url, server } = await startDownloadServer(filePath, fileName)
+  const { url, server, displayUrl } = await startDownloadServer(filePath, fileName)
 
   console.log(`\n[MuseFlow] 下载二维码`)
-  console.log(`  下载链接: ${url}`)
+  console.log(`  下载链接: ${displayUrl}`)
   console.log(`\n请用手机扫描下方二维码下载文件`)
   console.log(`按 Ctrl+C 关闭下载服务器\n`)
 
