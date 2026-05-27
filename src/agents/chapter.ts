@@ -261,41 +261,97 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
   }
 
   protected parse(content: string): AgentOutput {
-    const preWriteMatch = content.match(/===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*CHAPTER_CONTENT\s*===|$)/i)
-    const preWriteCheck = preWriteMatch && preWriteMatch[1] ? preWriteMatch[1].trim() : ''
+    const standardPreWriteMatch = content.match(/===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*CHAPTER_CONTENT\s*===|$)/i)
+    const standardPreWriteCheck = standardPreWriteMatch && standardPreWriteMatch[1] ? standardPreWriteMatch[1].trim() : ''
 
-    const contentMatch = content.match(/===\s*CHAPTER_CONTENT\s*===([\s\S]*)/i)
-    let chapterContent: string
-    if (contentMatch && contentMatch[1]) {
-      chapterContent = contentMatch[1].trim()
+    const standardContentMatch = content.match(/===\s*CHAPTER_CONTENT\s*===([\s\S]*)/i)
+    let extractedContent: string
+
+    if (standardContentMatch && standardContentMatch[1]) {
+      extractedContent = standardContentMatch[1].trim()
     } else {
-      chapterContent = content.replace(/===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?:===\s*CHAPTER_CONTENT\s*===|$)/i, '').trim()
-      if (!chapterContent) {
-        chapterContent = content.trim()
-      }
+      console.warn('[MuseFlow] 警告: 未检测到标准的 === CHAPTER_CONTENT === 标记，尝试智能截断...')
+      extractedContent = this.extractContentWithoutMarkers(content)
+    }
+
+    if (this.hasPreWriteCheckArtifacts(extractedContent)) {
+      console.warn('[MuseFlow] 警告: 正文中检测到检查表残留，执行清理...')
+      extractedContent = this.truncateToChapterHeading(extractedContent)
     }
 
     const chapterHeadingPattern = /^(#{1,2}\s+第\s*\d+\s*章[\s:：]|#{1,2}\s+第\s*\d+\s*部分[\s:：]|#{1,2}\s+\d+[\.、]\s+|#{1,2}\s+章节?\s*\d+)/m
-    const headingMatch = chapterContent.match(chapterHeadingPattern)
+    const headingMatch = extractedContent.match(chapterHeadingPattern)
     if (headingMatch && headingMatch.index !== undefined && headingMatch.index > 0) {
-      const detectedPreWrite = chapterContent.slice(0, headingMatch.index).trim()
-      chapterContent = chapterContent.slice(headingMatch.index).trim()
-      if (detectedPreWrite && !preWriteCheck) {
+      const detectedPreWrite = extractedContent.slice(0, headingMatch.index).trim()
+      extractedContent = extractedContent.slice(headingMatch.index).trim()
+      if (detectedPreWrite && !standardPreWriteCheck) {
         return {
           success: true,
-          content: chapterContent,
+          content: extractedContent,
           data: { preWriteCheck: detectedPreWrite },
         }
       }
     }
 
-    const cleaned = chapterContent.replace(/<!--[\s\S]*?-->/g, '').trim()
+    const cleaned = extractedContent.replace(/<!--[\s\S]*?-->/g, '').trim()
 
     return {
       success: true,
-      content: cleaned || chapterContent || content,
-      data: { preWriteCheck: preWriteCheck || undefined },
+      content: cleaned || extractedContent || content,
+      data: { preWriteCheck: standardPreWriteCheck || undefined },
     }
+  }
+
+  private extractContentWithoutMarkers(rawContent: string): string {
+    const contentAfterPreWriteRemoval = rawContent.replace(/===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i, '').trim()
+
+    if (this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)) {
+      const headingMatch = contentAfterPreWriteRemoval.match(/^(#{1,2}\s+第\s*\d+\s*章[\s:：])/m)
+      if (headingMatch && headingMatch.index !== undefined && headingMatch.index > 0) {
+        return contentAfterPreWriteRemoval.slice(headingMatch.index).trim()
+      }
+    }
+
+    if (!contentAfterPreWriteRemoval || this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)) {
+      const rawHeadingMatch = rawContent.match(/^(#{1,2}\s+第\s*\d+\s*章[\s:：])/m)
+      if (rawHeadingMatch && rawHeadingMatch.index !== undefined) {
+        return rawContent.slice(rawHeadingMatch.index).trim()
+      }
+      console.error('[MuseFlow] 错误: 无法分离检查表和正文，检查表可能已混入正文')
+      return rawContent.trim()
+    }
+
+    return contentAfterPreWriteRemoval
+  }
+
+  private hasPreWriteCheckArtifacts(text: string): boolean {
+    const artifactPatterns = [
+      /预写对齐检查表/,
+      /自检清单/,
+      /大纲中的每个情节点/,
+      /章节规划中的每个段落/,
+      /关键台词已标注/,
+      /时间线跨度符合/,
+      /没有发现与大纲矛盾/,
+      /\|\s*检查项\s*\|\s*来源\s*\|/,
+      /\[[x\s]\]\s*大纲中的每个情节点/,
+      /【段落\s*\d+\s*·\s*第/,
+      /【需要修改的段落】/,
+      /原文内容缺失，无法准确修复/,
+      /问题分析：/,
+      /修复建议：/,
+      /对应段落/,
+    ]
+    return artifactPatterns.some(pattern => pattern.test(text))
+  }
+
+  private truncateToChapterHeading(text: string): string {
+    const headingPattern = /^(#{1,2}\s+第\s*\d+\s*章[\s:：])/m
+    const match = text.match(headingPattern)
+    if (match && match.index !== undefined) {
+      return text.slice(match.index).trim()
+    }
+    return text
   }
 
   processOutput(output: AgentOutput, storyId: string, chapterIndex: number): ChapterMeta {
