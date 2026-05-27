@@ -1021,6 +1021,23 @@ export async function validate_chapter(state: ReducedGraphState): Promise<Partia
     })
   }
 
+  if (chapterIndex > 0) {
+    const prevContent = await readChapterContent(state.story.outputDir, chapterIndex)
+    if (prevContent !== null) {
+      const prevWordCount = countChineseWords(prevContent)
+      const shorter = Math.min(wordCount, prevWordCount)
+      const longer = Math.max(wordCount, prevWordCount)
+      if (longer > 0 && shorter / longer < 0.5) {
+        newIssues.push({
+          id: generateId(),
+          type: 'word_count' as const,
+          severity: 'warning',
+          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 与上一章 ${prevWordCount} 差异超过50%，请检查章节内容是否完整`,
+        })
+      }
+    }
+  }
+
   return { pendingIssues: newIssues }
 }
 
