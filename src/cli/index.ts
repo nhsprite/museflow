@@ -11,6 +11,7 @@ import { genres } from './commands/genres.js'
 import { exportStory } from './commands/export.js'
 import { list } from './commands/list.js'
 import { del } from './commands/delete.js'
+import { setDebugEnabled } from '../utils/logger.js'
 
 const program = new Command()
 
@@ -18,6 +19,14 @@ program
   .name('museflow')
   .description('AI Native 长篇小说生成工具')
   .version('0.1.0')
+  .option('-d, --debug', '显示 LLM 会话调试信息', false)
+  .hook('preAction', (thisCommand) => {
+    const opts = thisCommand.opts()
+    if (opts.debug) {
+      setDebugEnabled(true)
+      process.env.MUSEFLOW_DEBUG = '1'
+    }
+  })
 
 program.command('start')
   .description('开始一个新的故事（仅规划和创建）')

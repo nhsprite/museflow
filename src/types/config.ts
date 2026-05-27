@@ -9,6 +9,7 @@ export interface ModelConfig {
 
 export interface AppConfig {
   model: ModelConfig
+  debug?: boolean
 }
 
 export const DEFAULT_CONFIG: AppConfig = {

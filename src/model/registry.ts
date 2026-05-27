@@ -1,6 +1,7 @@
 import type { ModelProvider, Message, JsonSchema } from './provider.js'
 import { getSystemMessage, getNonSystemMessages, chatStructuredFallback } from './provider.js'
 import { loadConfig } from '../config/store.js'
+import { logger, logDebugToFile, isDebugEnabled } from '../utils/logger.js'
 
 export function createProvider(): ModelProvider {
   const config = loadConfig()
@@ -9,7 +10,13 @@ export function createProvider(): ModelProvider {
     ? new AnthropicCompatibleProvider(config.model)
     : new OpenAICompatibleProvider(config.model)
 
-  return withStructuredFallback(base)
+  const provider = withStructuredFallback(base)
+
+  if (isDebugEnabled() || config.debug) {
+    return new DebugModelProvider(provider)
+  }
+
+  return provider
 }
 
 function withStructuredFallback(provider: ModelProvider): ModelProvider {
@@ -151,5 +158,90 @@ class AnthropicCompatibleProvider implements ModelProvider {
       throw new Error('Anthropic API did not return structured output')
     }
     return toolUse.input
+  }
+}
+
+interface DebugSession {
+  timestamp: string
+  messages: Message[]
+  temperature: number | undefined
+  response: string
+  duration_ms: number
+  error?: boolean
+  structured?: boolean
+}
+
+class DebugModelProvider implements ModelProvider {
+  constructor(private provider: ModelProvider) {}
+
+  async chat(messages: Message[], temperature?: number): Promise<string> {
+    const start = Date.now()
+    try {
+      const response = await this.provider.chat(messages, temperature)
+      this.log({
+        timestamp: new Date().toISOString(),
+        messages,
+        temperature,
+        response,
+        duration_ms: Date.now() - start,
+      })
+      return response
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      this.log({
+        timestamp: new Date().toISOString(),
+        messages,
+        temperature,
+        response: errorMsg,
+        duration_ms: Date.now() - start,
+        error: true,
+      })
+      throw err
+    }
+  }
+
+  async chatStructured<T>(messages: Message[], schema: JsonSchema, temperature?: number): Promise<T> {
+    const start = Date.now()
+    if (!this.provider.chatStructured) {
+      throw new Error('Provider does not support structured output')
+    }
+    try {
+      const response = await this.provider.chatStructured<T>(messages, schema, temperature)
+      this.log({
+        timestamp: new Date().toISOString(),
+        messages,
+        temperature,
+        response: JSON.stringify(response),
+        duration_ms: Date.now() - start,
+        structured: true,
+      })
+      return response
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      this.log({
+        timestamp: new Date().toISOString(),
+        messages,
+        temperature,
+        response: errorMsg,
+        duration_ms: Date.now() - start,
+        error: true,
+        structured: true,
+      })
+      throw err
+    }
+  }
+
+  private log(session: DebugSession): void {
+    logger.debug(`[LLM] messages=${session.messages.length} temp=${session.temperature} duration=${session.duration_ms}ms`)
+
+    for (const msg of session.messages) {
+      const preview = msg.content.slice(0, 100).replace(/\n/g, ' ')
+      logger.debug(`[LLM] ${msg.role}: ${preview}${msg.content.length > 100 ? '...' : ''}`)
+    }
+
+    const respPreview = session.response.slice(0, 200).replace(/\n/g, ' ')
+    logger.debug(`[LLM] response: ${respPreview}${session.response.length > 200 ? '...' : ''}`)
+
+    logDebugToFile(session)
   }
 }

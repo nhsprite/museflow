@@ -7,6 +7,7 @@ import type { Issue } from '../types/agent.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import type { ChapterPlan } from './chapter-planner.js'
 import type { StoryState } from '../types/story-state.js'
+import { logger } from '../utils/logger.js'
 
 export abstract class BaseAgent {
   protected provider: ModelProvider
@@ -48,11 +49,15 @@ export abstract class BaseAgent {
   protected abstract buildPrompt(state: AgentState): Message[]
 
   async run(state: AgentState): Promise<AgentOutput> {
+    const agentName = this.constructor.name.replace('Agent', '').toLowerCase()
+    logger.debug(`[Agent] ${agentName} started`)
     const messages = this.buildPrompt(state)
     try {
       const content = await this.chat(messages)
+      logger.debug(`[Agent] ${agentName} completed`)
       return this.parse(content)
     } catch (err) {
+      logger.debug(`[Agent] ${agentName} failed: ${err instanceof Error ? err.message : String(err)}`)
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   }

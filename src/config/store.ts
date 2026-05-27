@@ -15,6 +15,7 @@ const ConfigSchema = z.object({
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().positive().optional(),
   }),
+  debug: z.boolean().optional(),
 })
 
 function loadConfigFromPath(path: string): AppConfig | null {
