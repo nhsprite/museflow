@@ -79,6 +79,15 @@ The graph supports **breakpoint recovery**: if validation agents flag errors, th
 - `books/`, `.museflow/`, `dist/`, `coverage/` are gitignored.
 - The `.opencode/package.json` is for the OpenCode plugin runtime — do not modify unless working on the plugin itself.
 
+## Agent Prompt Design Rules
+
+All agent prompts must follow these principles:
+
+1. **Neutrality**: Prompts must express generic writing conventions, not rules tailored to a specific book, genre, or story. Do not hard-code genre-specific concepts (e.g., "previous life memory", "fate prophecy", "cultivation realms") into prompts.
+2. **Abstraction over Example**: When forbidding patterns, state the abstract rule (e.g., "Do not end chapters with explicit chapter-end markers") rather than enumerating specific examples (e.g., "Do not use 'To be continued', '(End of Chapter)', 'Chapter X · Complete'").
+3. **Configurable over Hard-coded**: Word-count requirements, genre conventions, and style rules must be read from `GenreSkill` / config, not baked into prompt strings.
+4. **No Story Spoilers**: Agents must not reference future plot points, character arcs, or twists from the outline when checking current-chapter content.
+
 ## Adding a New Agent
 
 1. Create class in `src/agents/{name}.ts` extending the base agent pattern.
