@@ -66,6 +66,7 @@ export function buildNovelGraph() {
       next_chapter: 'finalize_chapter',
       finalize_chapter: 'finalize_chapter',
       finalize_story: 'finalize_story',
+      revalidate: 'validate_chapter',
     }
   )
 

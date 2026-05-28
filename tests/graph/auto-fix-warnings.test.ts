@@ -160,6 +160,7 @@ describe('auto_fix_warnings', () => {
       lastTimelineSnapshot: null,
       chapterPlan: null,
       storyState: null,
+      autoFixAttempts: 0,
     }
 
     const result = await auto_fix_warnings(state)
@@ -169,6 +170,7 @@ describe('auto_fix_warnings', () => {
     expect(result.pendingIssues).toEqual([])
     expect(result.chapters).toBeDefined()
     expect(result.chapters?.[2]).toBeDefined()
+    expect(result.autoFixAttempts).toBe(1)
   })
 
   it('returns empty object when errors exist (does not fix warnings)', async () => {
@@ -208,12 +210,13 @@ describe('auto_fix_warnings', () => {
       lastTimelineSnapshot: null,
       chapterPlan: null,
       storyState: null,
+      autoFixAttempts: 0,
     }
 
     const result = await auto_fix_warnings(state)
 
     expect(mockReadChapterContent).not.toHaveBeenCalled()
-    expect(result).toEqual({})
+    expect(result).toEqual({ autoFixAttempts: 0 })
   })
 
   it('returns empty object when no warnings exist', async () => {
@@ -247,11 +250,53 @@ describe('auto_fix_warnings', () => {
       lastTimelineSnapshot: null,
       chapterPlan: null,
       storyState: null,
+      autoFixAttempts: 0,
     }
 
     const result = await auto_fix_warnings(state)
 
     expect(mockReadChapterContent).not.toHaveBeenCalled()
-    expect(result).toEqual({})
+    expect(result).toEqual({ autoFixAttempts: 0 })
+  })
+
+  it('does not fix when max attempts reached (3) and preserves pendingIssues', async () => {
+    const { auto_fix_warnings } = await import('../../src/graph/nodes.js')
+
+    const state: ReducedGraphState = {
+      story: { id: 'story-1', outputDir: '/tmp/test', title: 'Test' },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      world: null,
+      characters: [],
+      outline: [],
+      chapters: [],
+      currentChapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [
+        {
+          id: 'warning-1',
+          type: 'quality',
+          severity: 'warning',
+          description: '描写冗余',
+        },
+      ],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: -1,
+      lastTimelineSnapshot: null,
+      chapterPlan: null,
+      storyState: null,
+      autoFixAttempts: 3,
+    }
+
+    const result = await auto_fix_warnings(state)
+
+    expect(mockReadChapterContent).not.toHaveBeenCalled()
+    expect(result.autoFixAttempts).toBe(3)
+    expect(result.pendingIssues).toEqual(state.pendingIssues)
   })
 })

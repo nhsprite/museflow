@@ -114,6 +114,7 @@ export const GraphState = Annotation.Root({
   lastTimelineSnapshot: Annotation<string | null>,
   chapterPlan: Annotation<ChapterPlan | null>,
   storyState: Annotation<StoryState>,
+  autoFixAttempts: Annotation<number>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

@@ -22,6 +22,9 @@ function createState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphSt
     writeOneChapterOnly: false,
     lastPrintedChapter: -1,
     lastTimelineSnapshot: null,
+    chapterPlan: null,
+    storyState: null,
+    autoFixAttempts: 0,
     ...overrides,
   } as ReducedGraphState
 }
@@ -102,6 +105,62 @@ describe('should_start_chapters edge function', () => {
       writeOneChapterOnly: true,
       rewriteApproved: false,
       rewriteRequested: false,
+    })
+    expect(should_start_chapters(state)).toBe('finalize_chapter')
+  })
+
+  it('returns revalidate when autoFixAttempts is 1', () => {
+    const state = createState({
+      autoFixAttempts: 1,
+      pendingIssues: [],
+    })
+    expect(should_start_chapters(state)).toBe('revalidate')
+  })
+
+  it('returns revalidate when autoFixAttempts is 2', () => {
+    const state = createState({
+      autoFixAttempts: 2,
+      pendingIssues: [],
+    })
+    expect(should_start_chapters(state)).toBe('revalidate')
+  })
+
+  it('proceeds normally when autoFixAttempts reaches 3', () => {
+    const state = createState({
+      autoFixAttempts: 3,
+      pendingIssues: [],
+      writeOneChapterOnly: false,
+    })
+    expect(should_start_chapters(state)).toBe('next_chapter')
+  })
+
+  it('proceeds normally when autoFixAttempts is 0', () => {
+    const state = createState({
+      autoFixAttempts: 0,
+      pendingIssues: [],
+      writeOneChapterOnly: false,
+    })
+    expect(should_start_chapters(state)).toBe('next_chapter')
+  })
+
+  it('returns request_rewrite when max attempts (3) reached and warnings remain', () => {
+    const state = createState({
+      autoFixAttempts: 3,
+      pendingIssues: [
+        { id: '1', type: 'hallucination', severity: 'warning' as const, description: 'test warning' },
+      ],
+      writeOneChapterOnly: false,
+    })
+    expect(should_start_chapters(state)).toBe('request_rewrite')
+  })
+
+  it('returns finalize_chapter when max attempts reached but writeOneChapterOnly is true', () => {
+    const state = createState({
+      autoFixAttempts: 3,
+      pendingIssues: [
+        { id: '1', type: 'hallucination', severity: 'warning' as const, description: 'test warning' },
+      ],
+      writeOneChapterOnly: true,
     })
     expect(should_start_chapters(state)).toBe('finalize_chapter')
   })

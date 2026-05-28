@@ -13,6 +13,21 @@ export function should_start_chapters(state: ReducedGraphState): string {
     }
     return 'request_rewrite'
   }
+
+  const attempts = state.autoFixAttempts || 0
+
+  if (attempts >= 3 && state.pendingIssues.length > 0) {
+    console.error(`[MuseFlow] 自动修复 ${attempts} 次后仍有 ${state.pendingIssues.length} 个警告未解决，需要手动重写`)
+    if (state.writeOneChapterOnly) {
+      return 'finalize_chapter'
+    }
+    return 'request_rewrite'
+  }
+
+  if (attempts > 0 && attempts < 3) {
+    return 'revalidate'
+  }
+
   if (state.writeOneChapterOnly) {
     return 'finalize_chapter'
   }

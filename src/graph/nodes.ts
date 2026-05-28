@@ -1299,14 +1299,21 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
 
   if (errors.length > 0) {
-    return {}
+    return { autoFixAttempts: 0 }
   }
 
   if (warnings.length === 0) {
-    return {}
+    return { autoFixAttempts: 0 }
   }
 
-  console.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${warnings.length} warning(s):\x1b[0m`)
+  const attempts = (state.autoFixAttempts || 0)
+
+  if (attempts >= 3) {
+    console.warn(`\x1b[93m[MuseFlow] 自动修复已达最大尝试次数 (${attempts})，停止修复，保留 ${warnings.length} 个警告待处理\x1b[0m`)
+    return { autoFixAttempts: attempts, pendingIssues: state.pendingIssues }
+  }
+
+  console.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${warnings.length} warning(s) (attempt ${attempts + 1}/3):\x1b[0m`)
   for (const warning of warnings) {
     console.warn(`   \x1b[33m⚠️  [${warning.type}]\x1b[0m ${warning.description}`)
   }
@@ -1314,11 +1321,12 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   const fixState: ReducedGraphState = { ...state, pendingIssues: warnings }
   const fixResult = await fix_chapter(fixState)
 
-  console.log(`\x1b[92m✔ [MuseFlow] Auto-fixed ${warnings.length} warning(s)\x1b[0m`)
+  console.log(`\x1b[92m✔ [MuseFlow] Auto-fixed ${warnings.length} warning(s) (attempt ${attempts + 1}/3)\x1b[0m`)
 
   return {
     ...fixResult,
     pendingIssues: [],
+    autoFixAttempts: attempts + 1,
   }
 }
 

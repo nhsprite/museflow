@@ -87,6 +87,7 @@ export async function runStory(input: {
     lastTimelineSnapshot: null,
     chapterPlan: null,
     storyState: createEmptyStoryState(),
+    autoFixAttempts: 0,
   }
 
   const config: RunnableConfig = {
