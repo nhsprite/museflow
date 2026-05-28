@@ -27,6 +27,36 @@ vi.mock('../../src/storage/database/dao/story.js', () => ({
 
 vi.mock('../../src/core/runner.js', () => ({
   getState: getStateMock,
+  getOutputDirFromStoryId: vi.fn().mockReturnValue('/tmp/test-story'),
+  getGraph: vi.fn().mockReturnValue({
+    getState: vi.fn().mockResolvedValue({
+      values: {
+        story: { id: 'story-1', outputDir: '/tmp/test-story' },
+        idea: 'test',
+        genre: 'default',
+        totalChapters: 10,
+        world: null,
+        characters: [],
+        outline: Array.from({ length: 10 }, (_, i) => ({
+          number: i + 1,
+          title: `Chapter ${i + 1}`,
+          description: `Description ${i + 1}`,
+        })),
+        chapters: Array(10).fill(null),
+        currentChapterIndex: 5,
+        foreshadowStack: [],
+        chapterSummaries: [],
+        pendingIssues: [],
+        rewriteApproved: false,
+        rewriteRequested: false,
+        isWriting: true,
+        writeOneChapterOnly: true,
+        lastPrintedChapter: 0,
+        lastTimelineSnapshot: null,
+      },
+    }),
+    updateState: updateStateMock,
+  }),
 }))
 
 vi.mock('../../src/graph/novel.graph.js', () => ({
@@ -180,6 +210,8 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
   startSpinner: vi.fn(),
   stopSpinner: vi.fn(),
   stopSpinnerQuiet: vi.fn(),
+  stopStepProgress: vi.fn(),
+  stopStepProgressQuiet: vi.fn(),
 }))
 
 describe('rewrite command state consistency', () => {

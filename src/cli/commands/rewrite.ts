@@ -1,54 +1,14 @@
 import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
-import { getState } from '../../core/runner.js'
+import { getState, getGraph, getOutputDirFromStoryId } from '../../core/runner.js'
+import { executeChapterGeneration } from '../../core/chapter-generation.js'
 import type { StoryStatus } from '../../types/story.js'
-import { withSpinner, startStepProgress, nextStep, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
+import { withSpinner, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
 import { printChapterOutline } from '../../utils/chapter-display.js'
-import { buildNovelGraph } from '../../graph/novel.graph.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
-import {
-  auto_fix_warnings,
-  detect_consistency,
-  detect_foreshadowing,
-  detect_hallucination,
-  draft_chapter,
-  finalize_chapter,
-  plan_chapter,
-  quality_pass,
-  validate_chapter,
-  verify_outline_compliance,
-} from '../../graph/nodes.js'
-import { writeChapterContent, deleteChapterContent } from '../../storage/filesystem/writer.js'
-import { getOutputsDir } from '../../utils/paths.js'
+import { deleteChapterContent } from '../../storage/filesystem/writer.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-
-function getOutputDirFromStoryId(storyId: string): string | undefined {
-  const booksDir = getOutputsDir()
-  if (!existsSync(booksDir)) return undefined
-
-  const storyIdSuffix = storyId.split('_').pop() ?? storyId
-  const shortId = storyIdSuffix.slice(0, 12).toLowerCase()
-
-  try {
-    const entries = readdirSync(booksDir)
-    for (const entry of entries) {
-      if (!entry.includes(`-${shortId}`) && !entry.includes(`_${shortId}`)) continue
-      const metaPath = join(booksDir, entry, 'meta.json')
-      if (existsSync(metaPath)) {
-        const content = readFileSync(metaPath, 'utf-8')
-        const meta = JSON.parse(content)
-        if (meta.story?.id === storyId) {
-          return join(booksDir, entry)
-        }
-      }
-    }
-  } catch {
-  }
-  return undefined
-}
 
 interface RewriteOptions {
   storyId: string
@@ -216,17 +176,19 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
 }
 
 async function rewriteChapter(storyId: string, userResponse: boolean, targetChapterIndex?: number): Promise<ReducedGraphState> {
-  const { Command } = await import('@langchain/langgraph')
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
     throw new Error(`Story ${storyId} not found`)
   }
 
   const checkpointer = getCheckpointer()
+  const graph = getGraph()
 
   let config: RunnableConfig = {
     configurable: { thread_id: storyId, outputDir, checkpoint_dir: outputDir },
   }
+
+  let workingState: ReducedGraphState
 
   if (targetChapterIndex !== undefined) {
     const prevChapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex)
@@ -254,12 +216,6 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
         console.log(`[MuseFlow] 未找到相关 checkpoint，将从当前状态继续`)
       }
     }
-  }
-
-  const graph = buildNovelGraph()
-
-  if (targetChapterIndex !== undefined) {
-    await checkpointer.clearPendingWrites(outputDir)
 
     const snapshot = await graph.getState(config)
     const checkpointState = snapshot.values as ReducedGraphState
@@ -274,7 +230,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       f => f.createdAtChapter < targetChapterIndex + 1
     )
 
-    let workingState: ReducedGraphState = {
+    workingState = {
       ...checkpointState,
       currentChapterIndex: targetChapterIndex,
       chapters: rewrittenChapters,
@@ -291,174 +247,53 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)
     }
+  } else {
+    await checkpointer.clearPendingWrites(outputDir)
 
-    const { runChapterPipeline } = await import('../../core/pipeline.js')
-    const pipelineResult = await runChapterPipeline(workingState, [
-      { node: plan_chapter, label: '规划章节' },
-      { node: draft_chapter, label: '撰写草稿', clearIssues: true },
-      { node: validate_chapter, label: '检查字数' },
-      { node: quality_pass, label: '质量检查' },
-      { node: detect_foreshadowing, label: '检测伏笔' },
-      { node: detect_hallucination, label: '检测幻觉' },
-      { node: detect_consistency, label: '检测一致性' },
-      { node: verify_outline_compliance, label: '校验大纲合规性' },
-      { node: auto_fix_warnings, label: '自动修复警告' },
-      { node: finalize_chapter, label: '完成章节' },
-    ], { showProgress: true, breakOnErrors: true })
+    const snapshot = await graph.getState(config)
+    const checkpointState = snapshot.values as ReducedGraphState
 
-    workingState = pipelineResult.state
-    const hasErrors = pipelineResult.hasErrors
+    const rewriteIndex = checkpointState.currentChapterIndex > 0
+      ? checkpointState.currentChapterIndex
+      : 0
+
+    const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
+    for (let i = 0; i < rewriteIndex; i++) {
+      rewrittenChapters[i] = checkpointState.chapters[i] ?? null
+    }
 
     workingState = {
-      ...workingState,
-      rewriteApproved: false,
-      rewriteRequested: hasErrors,
+      ...checkpointState,
+      currentChapterIndex: rewriteIndex,
+      chapters: rewrittenChapters,
+      pendingIssues: checkpointState.pendingIssues,
+      rewriteApproved: userResponse,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      chapterPlan: null,
     }
-
-    try {
-      if (!hasErrors) {
-        stopStepProgress('章节重写完成')
-        await graph.updateState(
-          { configurable: { thread_id: storyId, outputDir } },
-          {
-            rewriteApproved: false,
-            rewriteRequested: false,
-            pendingIssues: [],
-            currentChapterIndex: workingState.currentChapterIndex,
-            chapters: workingState.chapters,
-            chapterSummaries: workingState.chapterSummaries,
-          }
-        )
-        await checkpointer.saveChapterCheckpoint(outputDir, targetChapterIndex + 1)
-        await checkpointer.pruneIntermediateCheckpoints(outputDir)
-      } else {
-        await checkpointer.clearPendingWrites(outputDir)
-        await graph.updateState(
-          { configurable: { thread_id: storyId, outputDir } },
-          {
-            rewriteRequested: true,
-            pendingIssues: workingState.pendingIssues,
-          }
-        )
-      }
-
-      return workingState
-    } catch (err) {
-      stopStepProgressQuiet()
-      if (workingState.pendingIssues.length > 0) {
-        await graph.updateState(
-          { configurable: { thread_id: storyId, outputDir } },
-          {
-            rewriteRequested: true,
-            pendingIssues: workingState.pendingIssues,
-            currentChapterIndex: workingState.currentChapterIndex,
-          }
-        )
-      }
-      throw err
-    }
-  }
-
-  const update: Record<string, unknown> = {
-    rewriteApproved: userResponse,
-    rewriteRequested: false,
-    isWriting: true,
-    writeOneChapterOnly: true,
-  }
-
-  // For the non-targeted rewrite case, we need to use the same manual node sequence
-  // approach to avoid LangGraph's "LastValue can only receive one value per step" error
-  // that occurs when using graph.invoke(Command(goto, update)) on a persisted thread.
-  await checkpointer.clearPendingWrites(outputDir)
-
-  const snapshot = await graph.getState(config)
-  const checkpointState = snapshot.values as ReducedGraphState
-
-  // Find which chapter to rewrite - either currentChapterIndex or first chapter if none
-  const rewriteIndex = checkpointState.currentChapterIndex > 0
-    ? checkpointState.currentChapterIndex
-    : 0
-
-  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
-  for (let i = 0; i < rewriteIndex; i++) {
-    rewrittenChapters[i] = checkpointState.chapters[i] ?? null
-  }
-
-  let workingState: ReducedGraphState = {
-    ...checkpointState,
-    currentChapterIndex: rewriteIndex,
-    chapters: rewrittenChapters,
-    pendingIssues: checkpointState.pendingIssues,
-    rewriteApproved: userResponse,
-    rewriteRequested: false,
-    isWriting: true,
-    writeOneChapterOnly: true,
-    chapterPlan: null,
-  }
-
-  const { runChapterPipeline } = await import('../../core/pipeline.js')
-  const pipelineResult = await runChapterPipeline(workingState, [
-    { node: plan_chapter, label: '规划章节' },
-    { node: draft_chapter, label: '撰写草稿', clearIssues: true },
-    { node: validate_chapter, label: '检查字数' },
-    { node: quality_pass, label: '质量检查' },
-    { node: detect_foreshadowing, label: '检测伏笔' },
-    { node: detect_hallucination, label: '检测幻觉' },
-    { node: detect_consistency, label: '检测一致性' },
-    { node: verify_outline_compliance, label: '校验大纲合规性' },
-    { node: auto_fix_warnings, label: '自动修复警告' },
-    { node: finalize_chapter, label: '完成章节' },
-  ], { showProgress: true, breakOnErrors: true })
-
-  workingState = pipelineResult.state
-  const hasErrors = pipelineResult.hasErrors
-
-  workingState = {
-    ...workingState,
-    rewriteApproved: false,
-    rewriteRequested: hasErrors,
   }
 
   try {
-    if (!hasErrors) {
-      stopStepProgress('章节重写完成')
-      await graph.updateState(
-        { configurable: { thread_id: storyId, outputDir } },
-        {
-          rewriteApproved: false,
-          rewriteRequested: false,
-          pendingIssues: [],
-          currentChapterIndex: workingState.currentChapterIndex,
-          chapters: workingState.chapters,
-          chapterSummaries: workingState.chapterSummaries,
-        }
-      )
-      await checkpointer.saveChapterCheckpoint(outputDir, rewriteIndex + 1)
-    } else {
-      await checkpointer.clearPendingWrites(outputDir)
-      await graph.updateState(
-        { configurable: { thread_id: storyId, outputDir } },
-        {
-          rewriteRequested: true,
-          pendingIssues: workingState.pendingIssues,
-          currentChapterIndex: workingState.currentChapterIndex,
-        }
-      )
+    const result = await executeChapterGeneration(storyId, outputDir, workingState, graph, checkpointer, {
+      breakOnErrors: true,
+      maxRewriteAttempts: 1,
+      enableRevalidation: true,
+      enableStructuralBranching: false,
+    })
+
+    if (!result.rewriteRequested && targetChapterIndex !== undefined) {
+      await checkpointer.pruneIntermediateCheckpoints(outputDir)
     }
 
-    return workingState
+    if (!result.rewriteRequested) {
+      stopStepProgress('章节重写完成')
+    }
+
+    return result
   } catch (err) {
     stopStepProgressQuiet()
-    if (workingState.pendingIssues.length > 0) {
-      await graph.updateState(
-        { configurable: { thread_id: storyId, outputDir } },
-        {
-          rewriteRequested: true,
-          pendingIssues: workingState.pendingIssues,
-          currentChapterIndex: workingState.currentChapterIndex,
-        }
-      )
-    }
     throw err
   }
 }
