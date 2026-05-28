@@ -189,18 +189,62 @@ export async function continueStory(
       }
 
       const { runChapterPipeline } = await import('./pipeline.js')
-      const pipelineResult = await runChapterPipeline(workingState, [
-        { node: validate_chapter, label: '检查字数' },
-        { node: quality_pass, label: '质量检查' },
-        { node: detect_foreshadowing, label: '检测伏笔' },
-        { node: detect_hallucination, label: '检测幻觉' },
-        { node: detect_consistency, label: '检测一致性' },
-        { node: verify_outline_compliance, label: '校验大纲合规性' },
-        { node: auto_fix_warnings, label: '自动修复警告' },
-      ], { showProgress: true, breakOnErrors: false })
 
-      workingState = pipelineResult.state
-      const hasErrors = pipelineResult.hasErrors
+      let validationPassed = false
+      let validationAttempts = 0
+      const MAX_VALIDATION_ATTEMPTS = 3
+
+      while (!validationPassed && validationAttempts < MAX_VALIDATION_ATTEMPTS) {
+        validationAttempts++
+
+        const isRevalidation = validationAttempts > 1
+        const pipelineResult = await runChapterPipeline(workingState, [
+          { node: validate_chapter, label: isRevalidation ? `检查字数(重验${validationAttempts - 1})` : '检查字数' },
+          { node: quality_pass, label: isRevalidation ? `质量检查(重验${validationAttempts - 1})` : '质量检查' },
+          { node: detect_foreshadowing, label: isRevalidation ? `检测伏笔(重验${validationAttempts - 1})` : '检测伏笔' },
+          { node: detect_hallucination, label: isRevalidation ? `检测幻觉(重验${validationAttempts - 1})` : '检测幻觉' },
+          { node: detect_consistency, label: isRevalidation ? `检测一致性(重验${validationAttempts - 1})` : '检测一致性' },
+          { node: verify_outline_compliance, label: isRevalidation ? `校验大纲(重验${validationAttempts - 1})` : '校验大纲合规性' },
+          { node: auto_fix_warnings, label: isRevalidation ? `自动修复(重验${validationAttempts - 1})` : '自动修复警告' },
+        ], { showProgress: !isRevalidation, breakOnErrors: false })
+
+        workingState = pipelineResult.state
+
+        if (pipelineResult.hasErrors) {
+          break
+        }
+
+        const autoFixAttempts = workingState.autoFixAttempts || 0
+        if (autoFixAttempts > 0 && autoFixAttempts < MAX_VALIDATION_ATTEMPTS) {
+          continue
+        }
+
+        const remainingWarnings = workingState.pendingIssues.filter(i => i.severity === 'warning')
+        if (remainingWarnings.length === 0) {
+          validationPassed = true
+        }
+      }
+
+      if (!validationPassed) {
+        const remainingWarnings = workingState.pendingIssues.filter(i => i.severity === 'warning')
+        if (remainingWarnings.length > 0) {
+          console.error(`[MuseFlow] 自动修复 ${MAX_VALIDATION_ATTEMPTS} 次后仍有 ${remainingWarnings.length} 个警告未解决`)
+          workingState = {
+            ...workingState,
+            pendingIssues: [
+              ...workingState.pendingIssues,
+              {
+                id: 'max-fix-attempts',
+                type: 'quality',
+                severity: 'error' as const,
+                description: `自动修复 ${MAX_VALIDATION_ATTEMPTS} 次后仍有 ${remainingWarnings.length} 个警告未解决`,
+              },
+            ],
+          }
+        }
+      }
+
+      const hasErrors = workingState.pendingIssues.some(i => i.severity === 'error')
 
       if (!hasErrors) {
         break
