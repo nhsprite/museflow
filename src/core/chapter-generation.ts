@@ -101,6 +101,7 @@ export async function executeChapterGeneration(
 
       let validationPassed = false
       let validationAttempts = 0
+      let hadPipelineErrors = false
       const MAX_VALIDATION_ATTEMPTS = 3
 
       while (!validationPassed && validationAttempts < MAX_VALIDATION_ATTEMPTS) {
@@ -120,6 +121,7 @@ export async function executeChapterGeneration(
         workingState = pipelineResult.state
 
         if (pipelineResult.hasErrors) {
+          hadPipelineErrors = true
           break
         }
 
@@ -139,7 +141,7 @@ export async function executeChapterGeneration(
         }
       }
 
-      if (!validationPassed && enableRevalidation) {
+      if (!validationPassed && enableRevalidation && !hadPipelineErrors) {
         const remainingWarnings = workingState.pendingIssues.filter(i => i.severity === 'warning')
         if (remainingWarnings.length > 0) {
           console.error(`[MuseFlow] 自动修复 ${MAX_VALIDATION_ATTEMPTS} 次后仍有 ${remainingWarnings.length} 个警告未解决`)

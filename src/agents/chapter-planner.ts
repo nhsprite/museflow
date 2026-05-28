@@ -34,6 +34,11 @@ export class ChapterPlannerAgent extends BaseAgent {
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
+    const characterOmissionIssues = state.issues?.filter(i =>
+      i.type === 'consistency' &&
+      (i.description.includes('角色遗漏') || i.description.includes('未提及') || i.description.includes('未出现'))
+    ) ?? []
+
     const issuesSection = state.issues && state.issues.length > 0
       ? `【上轮问题反馈 - 必须在本次规划中修复】
 ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
@@ -41,7 +46,15 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 【要求】请逐条对照上述问题，在本次规划中确保：
 - 每个遗漏的大纲情节点都在 sections 中明确体现
 - 每个错误的时间线都在 timeline 中纠正
-- 每个未落实的要求都在 outlineCheck 中标记为 fulfilled`
+- 每个未落实的要求都在 outlineCheck 中标记为 fulfilled
+${characterOmissionIssues.length > 0 ? `
+【角色遗漏专项修复】
+上轮检测到以下角色遗漏问题，本次规划必须修复：
+${characterOmissionIssues.map((issue, i) => `${i + 1}. ${issue.description}`).join('\n')}
+修复方式（二选一）：
+- 方式A：在相关段落的 characters 列表中加入该角色，并在 events 中设计该角色的出场情节
+- 方式B：在 timeline 或某段落的 events 中明确说明该角色缺席的合理原因（如"留守庄院"、"外出化缘"、"因伤休养"等）
+禁止方式：不得无视该角色，不得让其无故消失且不作任何交代。` : ''}`
       : ''
 
     const userContent = `请为第 ${displayChapterNumber} 章生成详细的写作规划。
@@ -78,12 +91,20 @@ ${previousSummary}
    - 大纲中提到的所有事件都有对应的段落
    - 大纲中提到的关键台词必须原样保留
    - 大纲中的时间要求（如"三日后""次日"）必须在时间线中体现
-5. 【重要】检查前面章节中是否有遗留的未解决状态：
-   - 扫描前面章节摘要，识别哪些角色处于特殊状态（被囚禁、失忆、失踪、受伤等）
-   - 如果本章大纲涉及这些状态的改变，请确保在规划中包含"衔接段落"
-   - 衔接段落位置：放在本章最前面或相关情节之前
-   - 衔接段落内容：通过角色对话、简短回忆或旁白，解释关键状态的变化过程
-   - 示例：某角色被囚禁多章后在本章出现 → 增加一段回忆说明营救过程
+5. 【角色完整性检查 - 必须执行】
+    - 扫描人物设定和前几章摘要，识别哪些角色已加入团队/组织或已成为常驻角色
+    - 对于每个已加入的常驻角色，必须在本章规划中明确安排：
+      a) 出场：在对应段落的 characters 列表中加入该角色
+      b) 缺席：在 timeline 或 events 中明确说明缺席原因（如"留守"、"外出"、"养伤"等）
+    - 禁止无故遗漏任何已加入的团队成员
+    - 如果问题反馈指出角色遗漏，必须按【角色遗漏专项修复】要求处理
+
+6. 【重要】检查前面章节中是否有遗留的未解决状态：
+    - 扫描前面章节摘要，识别哪些角色处于特殊状态（被囚禁、失忆、失踪、受伤等）
+    - 如果本章大纲涉及这些状态的改变，请确保在规划中包含"衔接段落"
+    - 衔接段落位置：放在本章最前面或相关情节之前
+    - 衔接段落内容：通过角色对话、简短回忆或旁白，解释关键状态的变化过程
+    - 示例：某角色被囚禁多章后在本章出现 → 增加一段回忆说明营救过程
 
 【输出格式】
 请输出 JSON 格式：
@@ -118,7 +139,8 @@ ${previousSummary}
 - 如果大纲要求"高烧持续三日后才退"，时间线必须显示三日，不能只写"过了一夜"
 - 如果大纲要求某人说特定台词，规划中必须标注该台词原样出现
 - 如果大纲要求"次日"发生某事，时间线必须显示"第一日→第二日"的过渡
-- 所有大纲情节点必须在 outlineCheck 中标记为 fulfilled: true`
+- 所有大纲情节点必须在 outlineCheck 中标记为 fulfilled: true
+- 所有已加入的常驻角色必须在 sections 或 timeline 中有明确交代，不得无故遗漏`
 
     return [
       this.systemMessage('你是一位严谨的小说结构规划师。你的任务是在写作前生成详细的章节规划，确保每个大纲要求都被精确落实。你对时间线和情节顺序的准确性有零容忍态度。'),
