@@ -16,7 +16,9 @@ interface RewriteOptions {
 }
 
 export async function rewrite(storyId: string, options: RewriteOptions): Promise<void> {
+  console.log('[MuseFlow] 初始化数据库...')
   await initStoryDb()
+  console.log('[MuseFlow] 查找故事...')
   const story = getStory(storyId)
   if (!story) {
     console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
@@ -25,11 +27,13 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
 
   const targetChapter = options.chapter ? parseInt(options.chapter, 10) : null
 
+  console.log('[MuseFlow] 加载故事状态...')
   const state = await getState(storyId)
   if (!state) {
     console.error('[MuseFlow] 错误: 无法获取故事状态，请先运行 start')
     process.exit(1)
   }
+  console.log('[MuseFlow] 状态加载完成')
 
   if (targetChapter !== null) {
     if (targetChapter < 1 || targetChapter > state.totalChapters) {
@@ -176,11 +180,13 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
 }
 
 async function rewriteChapter(storyId: string, userResponse: boolean, targetChapterIndex?: number): Promise<ReducedGraphState> {
+  console.log('[MuseFlow] 查找输出目录...')
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
     throw new Error(`Story ${storyId} not found`)
   }
 
+  console.log('[MuseFlow] 初始化 checkpoint 和 graph...')
   const checkpointer = getCheckpointer()
   const graph = getGraph()
 
@@ -191,6 +197,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
   let workingState: ReducedGraphState
 
   if (targetChapterIndex !== undefined) {
+    console.log(`[MuseFlow] 查找第 ${targetChapterIndex} 章 checkpoint...`)
     const prevChapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex)
     if (prevChapterCheckpoint) {
       config = {
@@ -217,8 +224,10 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       }
     }
 
+    console.log('[MuseFlow] 加载 graph state...')
     const snapshot = await graph.getState(config)
     const checkpointState = snapshot.values as ReducedGraphState
+    console.log('[MuseFlow] graph state 加载完成')
 
     const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
     for (let i = 0; i < targetChapterIndex; i++) {
@@ -244,9 +253,11 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       chapterPlan: null,
     }
 
+    console.log('[MuseFlow] 清理后续章节内容...')
     for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)
     }
+    console.log('[MuseFlow] 开始生成章节...')
   } else {
     await checkpointer.clearPendingWrites(outputDir)
 
@@ -276,12 +287,14 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
   }
 
   try {
+    console.log('[MuseFlow] 调用 executeChapterGeneration...')
     const result = await executeChapterGeneration(storyId, outputDir, workingState, graph, checkpointer, {
       breakOnErrors: true,
-      maxRewriteAttempts: 1,
+      maxRewriteAttempts: 3,
       enableRevalidation: true,
       enableStructuralBranching: false,
     })
+    console.log('[MuseFlow] executeChapterGeneration 完成')
 
     if (!result.rewriteRequested && targetChapterIndex !== undefined) {
       await checkpointer.pruneIntermediateCheckpoints(outputDir)

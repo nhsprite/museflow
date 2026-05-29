@@ -135,8 +135,7 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   const world = agent.processOutput(output, state.story.id)
 
   if (!world) {
-    console.error('[MuseFlow] 错误: 世界观生成失败，请检查 AI 输出或重试')
-    return { world: null, story: state.story }
+    throw new Error('世界观生成失败，请检查 AI 输出或重试')
   }
 
   saveWorld(state.story.id, world.content)

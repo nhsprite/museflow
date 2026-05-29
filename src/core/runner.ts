@@ -8,6 +8,7 @@ import { getForeshadowStack } from '../storage/database/dao/timeline.js'
 import { createEmptyStoryState } from '../storage/database/dao/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { executeChapterGeneration } from './chapter-generation.js'
+import { getWorld } from '../storage/database/dao/world.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -38,7 +39,8 @@ export function getOutputDirFromStoryId(storyId: string): string | undefined {
         }
       }
     }
-  } catch {
+  } catch (err) {
+    console.error(`[MuseFlow] 查找故事目录时出错: ${err instanceof Error ? err.message : String(err)}`)
   }
   return undefined
 }
@@ -149,8 +151,14 @@ export async function getState(storyId: string): Promise<ReducedGraphState | nul
       graphState.foreshadowStack = persistedForeshadowStack
     }
 
+    const persistedWorld = getWorld(storyId)
+    if (persistedWorld && !graphState.world) {
+      graphState.world = persistedWorld
+    }
+
     return graphState
-  } catch {
+  } catch (err) {
+    console.error(`[MuseFlow] 获取故事状态时出错: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
 }
