@@ -77,8 +77,11 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
   }
 
   try {
-    const result = await withSpinner('正在处理章节...', () =>
-      continueStory(storyId, userResponse)
+    const result = await withSpinner(
+      '正在处理章节...',
+      () => continueStory(storyId, userResponse),
+      undefined,
+      (result) => !result.rewriteRequested
     )
 
     const currentChapter = result.currentChapterIndex

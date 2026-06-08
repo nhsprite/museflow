@@ -27,12 +27,19 @@ export function stopSpinnerQuiet(): void {
 export async function withSpinner<T>(
   msg: string,
   fn: () => Promise<T>,
-  successMsg?: string
+  successMsg?: string,
+  shouldSucceed?: (result: T) => boolean
 ): Promise<T> {
   startSpinner(msg)
   try {
     const result = await fn()
-    stopSpinner(successMsg)
+    const isSuccess = !shouldSucceed || shouldSucceed(result)
+    if (isSuccess) {
+      stopSpinner(successMsg)
+    } else {
+      stopSpinnerQuiet()
+      ora().fail(msg)
+    }
     return result
   } catch (err) {
     stopStepProgressQuiet()

@@ -129,7 +129,8 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
     const result = await withSpinner(
       `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
       () => continueStory(storyId, undefined, chapterIndex),
-      `✅ 第 ${chapterNum} 章撰写完成`
+      `✅ 第 ${chapterNum} 章撰写完成`,
+      (result) => !result.rewriteRequested
     )
 
     if (result.rewriteRequested) {
