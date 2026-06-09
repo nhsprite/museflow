@@ -330,9 +330,9 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
   const output = await agent.run(agentState)
 
   if (!output.success || !output.data) {
-    console.warn('[MuseFlow] 章节规划失败，将跳过规划直接写作')
-    console.warn('[MuseFlow] 规划失败原因:', output.error || '未知')
-    return {}
+    throw new Error(
+      `第 ${chapterIndex + 1} 章规划失败：${output.error || '无法生成章节规划。请检查模型输出或重试。'}`
+    )
   }
 
   const chapterPlan = output.data as import('../agents/chapter-planner.js').ChapterPlan
