@@ -242,6 +242,67 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
   return { outline }
 }
 
+export async function validate_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  const outline = state.outline
+  const issues: Array<import('../types/agent.js').Issue> = []
+
+  for (const item of outline) {
+    if (!item) continue
+    const eventCount = item.description.split(/[。；]/).filter(s => s.trim().length > 5).length
+    if (eventCount > 5) {
+      issues.push({
+        id: generateId(),
+        type: 'outline_density',
+        severity: 'warning',
+        description: `第${item.number}章大纲包含 ${eventCount} 个情节点，信息密度过高，建议拆分为2章或简化`,
+        location: `第${item.number}章：${item.title}`,
+      })
+    }
+  }
+
+  const foreshadowPattern = /伏笔|铺垫|暗示|预示|留下悬念|日后|将来|未来/g
+  const callbackPattern = /回收|兑现|揭晓|揭示|真相大白|终于明白/g
+  for (let i = 0; i < outline.length; i++) {
+    const item = outline[i]
+    if (!item) continue
+    const hasForeshadow = foreshadowPattern.test(item.description)
+    const hasCallback = callbackPattern.test(item.description)
+    if (hasForeshadow && hasCallback) {
+      issues.push({
+        id: generateId(),
+        type: 'outline_foreshadow',
+        severity: 'error',
+        description: `第${item.number}章大纲同时包含"埋下伏笔"和"回收伏笔"的描述，这会导致伏笔在同一章被展示`,
+        location: `第${item.number}章：${item.title}`,
+      })
+    }
+  }
+
+  for (let i = 1; i < outline.length; i++) {
+    const prev = outline[i - 1]
+    const curr = outline[i]
+    if (!prev || !curr) continue
+    
+    const timePattern = /第([一二三四五六七八九十百\d]+)[章节]/g
+    const prevTimes = [...prev.description.matchAll(timePattern)].map(m => m[1])
+    const currTimes = [...curr.description.matchAll(timePattern)].map(m => m[1])
+    
+    if (prevTimes.length > 0 && currTimes.length > 0) {
+    }
+  }
+
+  if (issues.length > 0) {
+    console.warn(`\n[MuseFlow] 大纲校验发现 ${issues.length} 个问题：`)
+    for (const issue of issues) {
+      const icon = issue.severity === 'error' ? '❌' : '⚠️'
+      console.warn(`  ${icon} [${issue.type}] ${issue.description}`)
+    }
+    console.warn('')
+  }
+
+  return { pendingIssues: [...state.pendingIssues, ...issues] }
+}
+
 export async function plan_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterPlannerAgent()
   const chapterIndex = state.currentChapterIndex

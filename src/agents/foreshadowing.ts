@@ -170,6 +170,8 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
         ),
         createdAt: Date.now(),
         createdAtChapter: currentChapter,
+        status: (item.foreshadow_type === 'explicit' ? 'shown' : 'planted') as import('../graph/state.js').ForeshadowStatus,
+        isExplicit: item.foreshadow_type === 'explicit',
       }))
 
     const fulfilledCount = updatedStack.filter(item => item.fulfilledChapter && item.fulfilledChapter === currentChapter).length

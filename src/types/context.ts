@@ -15,6 +15,8 @@ export interface ChapterOutline {
   description: string
 }
 
+export type ForeshadowStatus = 'planted' | 'hinted' | 'shown' | 'recalled'
+
 export interface ForeshadowItem {
   id: string
   text: string
@@ -22,6 +24,8 @@ export interface ForeshadowItem {
   createdAt: number
   createdAtChapter: number
   fulfilledChapter?: number
+  status: ForeshadowStatus
+  isExplicit: boolean
 }
 
 export interface GraphState {

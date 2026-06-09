@@ -33,7 +33,12 @@ export function saveForeshadowStack(storyId: string, foreshadowStack: Foreshadow
 
 export function getForeshadowStack(storyId: string): ForeshadowItem[] {
   const meta = readMetaJsonSync(storyId)
-  return meta?.foreshadowStack ?? []
+  const stack = (meta?.foreshadowStack ?? []) as ForeshadowItem[]
+  return stack.map((item) => ({
+    ...item,
+    status: item.status ?? 'planted',
+    isExplicit: item.isExplicit ?? false,
+  }))
 }
 
 export function getTimeline(storyId: string): StateSnapshot[] {

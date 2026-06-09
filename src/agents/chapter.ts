@@ -427,6 +427,8 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
             expectedFulfillChapter: Math.min(futureChapter, chapterIndex + 10),
             createdAt: Date.now(),
             createdAtChapter: chapterIndex + 1,
+            status: 'planted',
+            isExplicit: false,
           })
         }
       }
