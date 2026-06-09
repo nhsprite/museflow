@@ -181,6 +181,11 @@ export async function executeChapterGeneration(
         }
         console.error(`\n[MuseFlow] 撰写已中断，请手动重写后再继续：`)
         console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+
+        const { diagnoseStoryState, printDiagnosis } = await import('./diagnose.js')
+        const diagnosis = await diagnoseStoryState(workingState, outputDir)
+        printDiagnosis(diagnosis)
+
         break
       }
     }

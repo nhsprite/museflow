@@ -11,7 +11,6 @@ import { genres } from './commands/genres.js'
 import { exportStory } from './commands/export.js'
 import { list } from './commands/list.js'
 import { del } from './commands/delete.js'
-import { validate } from './commands/validate.js'
 import { setDebugEnabled } from '../utils/logger.js'
 
 const program = new Command()
@@ -99,10 +98,5 @@ program.command('delete')
   .argument('<story-id>', '故事ID')
   .option('-f, --force', '强制删除，不提示确认')
   .action(del)
-
-program.command('validate')
-  .description('校验故事状态一致性（大纲、文件、伏笔）')
-  .argument('<story-id>', '故事ID')
-  .action(validate)
 
 program.parse()
