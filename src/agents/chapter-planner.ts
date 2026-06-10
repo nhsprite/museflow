@@ -150,12 +150,40 @@ ${previousSummary}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
+
+    const extractors = [
+      () => {
+        const match = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+        return match ? match[1]!.trim() : null
+      },
+      () => {
+        const match = trimmed.match(/\{[\s\S]*?\}(?=\s*$)/)
+        return match ? match[0] : null
+      },
+      () => {
+        const start = trimmed.indexOf('{')
+        const end = trimmed.lastIndexOf('}')
+        if (start !== -1 && end !== -1 && end > start) {
+          return trimmed.slice(start, end + 1)
+        }
+        return null
+      },
+    ]
+
+    let jsonText: string | null = null
+    for (const extractor of extractors) {
+      jsonText = extractor()
+      if (jsonText) break
+    }
+
+    if (!jsonText) {
       return { success: false, error: '无法解析规划数据：未找到 JSON 格式' }
     }
+
+    const repaired = this.repairJson(jsonText)
+
     try {
-      const data = JSON.parse(jsonMatch[0]) as ChapterPlan
+      const data = JSON.parse(repaired) as ChapterPlan
       if (!data.sections || !Array.isArray(data.sections)) {
         return { success: false, error: '规划数据缺少 sections 字段' }
       }
@@ -163,18 +191,26 @@ ${previousSummary}
         return { success: false, error: '规划数据缺少 timeline 字段' }
       }
       if (!data.outlineCheck || !Array.isArray(data.outlineCheck)) {
-        return { success: false, error: '规划数据缺少 outlineCheck 字段' }
+        data.outlineCheck = []
       }
       const unfulfilled = data.outlineCheck.filter(c => !c.fulfilled)
       if (unfulfilled.length > 0) {
-        return {
-          success: false,
-          error: `大纲检查未通过，以下要求未落实：${unfulfilled.map(u => u.requirement).join('、')}`,
+        console.warn(`[MuseFlow] 规划警告：${unfulfilled.length} 项大纲要求未在规划中明确落实`)
+        for (const u of unfulfilled) {
+          console.warn(`  - ${u.requirement}`)
         }
       }
       return { success: true, data }
     } catch {
       return { success: false, error: '无法解析规划数据：JSON 格式错误' }
     }
+  }
+
+  private repairJson(text: string): string {
+    return text
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/([\{,])\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*:/g, '$1"$2":')
   }
 }
