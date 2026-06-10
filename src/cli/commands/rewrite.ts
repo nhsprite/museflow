@@ -6,6 +6,7 @@ import { withSpinner, stopStepProgress, stopStepProgressQuiet } from '../utils/s
 import { printChapterOutline } from '../../utils/chapter-display.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { deleteChapterContent } from '../../storage/filesystem/writer.js'
+import { getStoryState } from '../../storage/database/dao/story-state.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
 import { createInterface } from 'node:readline'
@@ -240,6 +241,12 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
     const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
       f => f.createdAtChapter < targetChapterIndex + 1
     )
+
+    // 从 meta.json 恢复最新的 storyState，因为 checkpoint 中的 storyState 可能是空的或旧的
+    const persistedStoryState = getStoryState(storyId)
+    if (persistedStoryState && Object.keys(persistedStoryState.characterStatus || {}).length > 0) {
+      checkpointState.storyState = persistedStoryState
+    }
 
     workingState = {
       ...checkpointState,

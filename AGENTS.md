@@ -88,6 +88,13 @@ All agent prompts must follow these principles:
 3. **Configurable over Hard-coded**: Word-count requirements, genre conventions, and style rules must be read from `GenreSkill` / config, not baked into prompt strings.
 4. **No Story Spoilers**: Agents must not reference future plot points, character arcs, or twists from the outline when checking current-chapter content.
 
+## Data Integrity Rules (Critical)
+
+1. **Never modify `books/` directory directly**: The `books/` directory contains runtime-generated story data (meta.json, chapters, checkpoints). Direct modification causes data inconsistency, breaks reproducibility, and hides real code defects. All data changes must be driven by code logic or CLI commands.
+2. **Code fixes over data patches**: When story data has errors (e.g., contradictory timeline, wrong character status), fix the code that generates or consumes the data (agents, runners, checkpointers) — never hand-edit the data files.
+3. **Git does not track `books/`**: Since `books/` is `.gitignore`d, manual changes have no history and cannot be reverted. This makes debugging impossible.
+4. **Checkpoint consistency**: Checkpoints, timeline snapshots, and meta.json reference each other. Modifying one without updating others creates orphaned references.
+
 ## Adding a New Agent
 
 1. Create class in `src/agents/{name}.ts` extending the base agent pattern.

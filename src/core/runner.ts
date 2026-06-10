@@ -5,7 +5,7 @@ import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
-import { createEmptyStoryState } from '../storage/database/dao/story-state.js'
+import { createEmptyStoryState, getStoryState } from '../storage/database/dao/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { executeChapterGeneration } from './chapter-generation.js'
 import { getWorld } from '../storage/database/dao/world.js'
@@ -106,6 +106,12 @@ export async function continueStory(
 
   const snapshot = await graph.getState(config)
   const checkpointState = snapshot.values as ReducedGraphState
+
+  // 从 meta.json 恢复最新的 storyState，因为 checkpoint 中的 storyState 可能是空的或旧的
+  const persistedStoryState = getStoryState(storyId)
+  if (persistedStoryState && Object.keys(persistedStoryState.characterStatus || {}).length > 0) {
+    checkpointState.storyState = persistedStoryState
+  }
 
   const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
 
