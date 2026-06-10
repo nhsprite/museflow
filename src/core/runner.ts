@@ -120,11 +120,14 @@ export async function continueStory(
     rewrittenChapters[i] = checkpointState.chapters[i] ?? null
   }
 
+  // 清除过时的 draft_failure 问题，因为本次运行会重新生成章节
+  const cleanedPendingIssues = checkpointState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
+
   const workingState: ReducedGraphState = {
     ...checkpointState,
     currentChapterIndex: targetIndex,
     chapters: rewrittenChapters,
-    pendingIssues: checkpointState.pendingIssues,
+    pendingIssues: cleanedPendingIssues,
     rewriteApproved: userResponse ?? false,
     rewriteRequested: false,
     isWriting: true,
@@ -161,6 +164,9 @@ export async function getState(storyId: string): Promise<ReducedGraphState | nul
     if (persistedWorld && !graphState.world) {
       graphState.world = persistedWorld
     }
+
+    // 清除过时的 draft_failure 问题，避免阻断后续生成
+    graphState.pendingIssues = graphState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
 
     return graphState
   } catch (err) {

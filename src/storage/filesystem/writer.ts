@@ -155,63 +155,14 @@ export async function writeStoryBible(
   lines.push('---')
   lines.push('')
 
-  // 02_主角
-  lines.push('## 02_主角')
+  lines.push('## 02_人物')
   lines.push('')
-  const protagonist = characters.find(c =>
-    c.name && (
-      c.description?.includes('主角') ||
-      c.description?.includes('出生于凡间') ||
-      c.description?.includes('十岁')
-    )
-  )
-  if (protagonist) {
-    lines.push('### 身份设定')
-    lines.push(`**${protagonist.name}**`)
+  for (const c of characters) {
+    lines.push(`### ${c.name}`)
     lines.push('')
-    lines.push(protagonist.description || '')
-    lines.push('')
-    lines.push('### 性格关键词')
-    lines.push('- 外冷内热、实用主义、执念深重、创伤驱动')
-    lines.push('')
-    lines.push('### 行为边界')
-    lines.push('- **绝不**：为私利杀人、主动伤害无辜者、完全信任任何\'好意的\'灵体')
-    lines.push('- **可以**：利用规则对付恶人、与鬼魂做交易（但不轻易许诺）')
+    lines.push(c.description || '')
     lines.push('')
   }
-  lines.push('---')
-  lines.push('')
-
-  // 03_势力与人物
-  lines.push('## 03_势力与人物')
-  lines.push('')
-
-  const protagonistNames = new Set(['叶尘', '林青山', '冷月瑶', '周天行', '苏寒渊'])
-  const antagonistNames = new Set(['姜云澜', '赵无极'])
-
-  const allies = characters.filter(c => c.name && protagonistNames.has(c.name) && c.name !== '叶尘')
-  const antagonists = characters.filter(c => c.name && antagonistNames.has(c.name))
-
-  if (allies.length > 0) {
-    lines.push('### 正道阵营')
-    lines.push('')
-    for (const c of allies) {
-      lines.push(`#### ${c.name}`)
-      lines.push(`- ${c.description || ''}`)
-      lines.push('')
-    }
-  }
-
-  if (antagonists.length > 0) {
-    lines.push('### 敌对势力')
-    lines.push('')
-    for (const c of antagonists) {
-      lines.push(`#### ${c.name}`)
-      lines.push(`- ${c.description || ''}`)
-      lines.push('')
-    }
-  }
-
   lines.push('---')
   lines.push('')
 

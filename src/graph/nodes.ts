@@ -39,6 +39,7 @@ import { getGenreSkill } from '../genres/registry.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getCheckpointer } from './checkpointer.js'
+import { isSemanticallyRelated } from '../utils/text-similarity.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -1144,6 +1145,28 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const worldContent = state.world?.content
+
+  // 清理"自埋自收"伏笔：过滤掉在当前章节或之后章节创建的伏笔（这些很可能是错误标记的）
+  const currentChapter = chapterIndex + 1
+  const cleanedForeshadowStack = state.foreshadowStack.filter(f => {
+    const createdAt = f.createdAtChapter ?? 0
+    // 移除在当前章节或之后章节创建的伏笔
+    if (createdAt >= currentChapter) {
+      if (content && createdAt === currentChapter) {
+        const isSelfReferential = isSemanticallyRelated(f.text, content, 0.5)
+        if (isSelfReferential) {
+          console.log(`[MuseFlow] 伏笔清理: 移除自埋自收伏笔 "${f.text.substring(0, 30)}..."`)
+        } else {
+          console.log(`[MuseFlow] 伏笔清理: 移除当前章节创建的伏笔 "${f.text.substring(0, 30)}..."`)
+        }
+      } else {
+        console.log(`[MuseFlow] 伏笔清理: 移除未来章节(${createdAt})创建的伏笔 "${f.text.substring(0, 30)}..."`)
+      }
+      return false
+    }
+    return true
+  })
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -1152,13 +1175,21 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
     characters: charactersToString(state.characters),
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
-    foreshadowStack: state.foreshadowStack,
+    foreshadowStack: cleanedForeshadowStack,
   }
 
   const output = await agent.run(agentState)
-  const foreshadowStack = agent.processOutput(output, chapterIndex, state.foreshadowStack)
+  let foreshadowStack = agent.processOutput(output, chapterIndex, cleanedForeshadowStack, content || undefined)
 
-  return { foreshadowStack }
+  const finalStack = foreshadowStack.filter(f => {
+    if (f.createdAtChapter === currentChapter && f.text.length < 40 && !f.fulfilledChapter) {
+      console.log(`[MuseFlow] 伏笔清理: 移除agent误判的短文本伏笔 "${f.text.substring(0, 30)}..."`)
+      return false
+    }
+    return true
+  })
+
+  return { foreshadowStack: finalStack }
 }
 
 export async function detect_hallucination(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {

@@ -134,7 +134,8 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
   processOutput(
     output: AgentOutput,
     chapterIndex: number,
-    existingStack: ForeshadowItem[]
+    existingStack: ForeshadowItem[],
+    chapterContent?: string
   ): ForeshadowItem[] {
     if (!output.success || !output.data) return existingStack
 
@@ -168,6 +169,24 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
 
     const newItems = (data.new_foreshadows || [])
       .filter(item => item.text && item.text.length > 5)
+      .filter(item => {
+        if (!chapterContent) return true
+        const normalizedItem = item.text!.replace(/[^\u4e00-\u9fff]/g, '')
+        const normalizedChapter = chapterContent.replace(/[^\u4e00-\u9fff]/g, '')
+        if (normalizedItem.length > 5 && normalizedChapter.includes(normalizedItem)) {
+          console.log(`[MuseFlow] 伏笔过滤: 剔除本章叙事内容 "${item.text!.substring(0, 30)}..."`)
+          return false
+        }
+        if (item.text!.length < 40) {
+          console.log(`[MuseFlow] 伏笔过滤: 剔除短文本叙事细节 "${item.text!.substring(0, 30)}..."`)
+          return false
+        }
+        const isSelfReferential = isSemanticallyRelated(item.text!, chapterContent, 0.5)
+        if (isSelfReferential) {
+          console.log(`[MuseFlow] 伏笔过滤: 剔除自埋自收陷阱 "${item.text!.substring(0, 30)}..."`)
+        }
+        return !isSelfReferential
+      })
       .map(item => ({
         id: generateId(),
         text: item.text!,

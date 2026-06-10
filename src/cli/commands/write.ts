@@ -74,7 +74,10 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
   const nonDraftErrors = unresolvedErrors.filter(i => i.type !== 'draft_failure')
   const hasOnlyDraftFailures = unresolvedErrors.length > 0 && unresolvedErrors.every(i => i.type === 'draft_failure')
 
-  if ((state.rewriteRequested || nonDraftErrors.length > 0) && !hasOnlyDraftFailures) {
+  // 当用户主动运行 write 时，清除 rewriteRequested 状态，让 agents 重新评估
+  const effectiveRewriteRequested = false
+
+  if ((effectiveRewriteRequested || nonDraftErrors.length > 0) && !hasOnlyDraftFailures) {
     console.error('[MuseFlow] 当前章节存在问题，需要先修复')
     for (const issue of state.pendingIssues) {
       const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'

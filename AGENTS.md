@@ -88,6 +88,12 @@ All agent prompts must follow these principles:
 3. **Configurable over Hard-coded**: Word-count requirements, genre conventions, and style rules must be read from `GenreSkill` / config, not baked into prompt strings.
 4. **No Story Spoilers**: Agents must not reference future plot points, character arcs, or twists from the outline when checking current-chapter content.
 
+## Code Architecture Rules
+
+1. **No Story-Specific Hardcoding**: Never hardcode character names, item names, locations, or plot-specific keywords in source code (e.g., `desc.includes('孙悟空')`, `desc.includes('木之灵物')`). These are temporary patches that break when writing different stories. Such logic belongs in prompts or configuration, not in code.
+2. **No Duplicate Filters**: Do not implement the same filtering/demotion logic in multiple places (e.g., both `write.ts` and `consistency.ts`). Centralize post-processing in the agent's `processOutput` method.
+3. **Fix Root Causes, Not Symptoms**: When an agent consistently misjudges a certain scenario, fix the agent's prompt or input context rather than adding hardcoded post-processing rules to downgrade specific outputs.
+
 ## Data Integrity Rules (Critical)
 
 1. **Never modify `books/` directory directly**: The `books/` directory contains runtime-generated story data (meta.json, chapters, checkpoints). Direct modification causes data inconsistency, breaks reproducibility, and hides real code defects. All data changes must be driven by code logic or CLI commands.

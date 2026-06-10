@@ -201,16 +201,94 @@ ${previousSummary}
         }
       }
       return { success: true, data }
-    } catch {
+    } catch (err) {
+      console.error('[MuseFlow] DEBUG: JSON parse failed')
+      const match = err instanceof Error ? err.message.match(/position (\d+)/) : null
+      const errorPos = match && match[1] ? parseInt(match[1]) : null
+      if (errorPos && errorPos > 0) {
+        const start = Math.max(0, errorPos - 200)
+        const end = Math.min(repaired.length, errorPos + 200)
+        console.error(`[MuseFlow] DEBUG: Problem area around position ${errorPos}:`)
+        console.error(repaired.substring(start, end))
+      }
+      console.error('[MuseFlow] DEBUG: Parse error:', err instanceof Error ? err.message : String(err))
       return { success: false, error: '无法解析规划数据：JSON 格式错误' }
     }
   }
 
   private repairJson(text: string): string {
-    return text
+    let repaired = text
       .replace(/[\u201C\u201D]/g, '"')
       .replace(/[\u2018\u2019]/g, "'")
       .replace(/,\s*([}\]])/g, '$1')
       .replace(/([\{,])\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*:/g, '$1"$2":')
+
+    // 修复单引号包裹的字符串（转为双引号）
+    repaired = repaired.replace(/'([^'\n]*?)'/g, '"$1"')
+
+    // 移除 JSON 中的注释（// 和 /* */）
+    repaired = repaired.replace(/\/\/.*$/gm, '')
+    repaired = repaired.replace(/\/\*[\s\S]*?\*\//g, '')
+
+    // 修复缺失的逗号：在对象/数组元素之间添加逗号
+    repaired = repaired.replace(/}(\s*){/g, '},$1{')
+    repaired = repaired.replace(/](\s*)\[/g, '],$1[')
+    repaired = repaired.replace(/"(\s*){/g, '",$1{')
+    repaired = repaired.replace(/}(\s*)"/g, '},$1"')
+
+    // 修复 undefined 值
+    repaired = repaired.replace(/: undefined/g, ': null')
+    repaired = repaired.replace(/: undefined,/g, ': null,')
+
+    // 修复 JSON 字符串值内部未转义的双引号
+    repaired = this.escapeInnerQuotes(repaired)
+
+    return repaired
+  }
+
+  private escapeInnerQuotes(json: string): string {
+    let result = ''
+    let inString = false
+    let escaped = false
+    let stringStart = -1
+
+    for (let i = 0; i < json.length; i++) {
+      const char = json[i]
+
+      if (inString) {
+        if (escaped) {
+          escaped = false
+          result += char
+        } else if (char === '\\') {
+          escaped = true
+          result += char
+        } else if (char === '"') {
+          // 检查这是否是字符串的结束引号
+          // 如果下一个非空白字符是 : , } ] 之一，则这是结束引号
+          let j = i + 1
+          while (j < json.length && /\s/.test(json[j]!)) j++
+          const nextChar = json[j]
+          if (nextChar === undefined || nextChar === ':' || nextChar === ',' || nextChar === '}' || nextChar === ']') {
+            inString = false
+            result += char
+          } else {
+            // 这是字符串内部的未转义引号，需要转义
+            result += '\\"'
+          }
+        } else {
+          result += char
+        }
+      } else {
+        if (char === '"') {
+          inString = true
+          stringStart = i
+          result += char
+        } else {
+          result += char
+        }
+      }
+    }
+
+    return result
   }
 }
