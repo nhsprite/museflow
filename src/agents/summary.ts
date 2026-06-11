@@ -62,6 +62,13 @@ export class SummaryAgent extends BaseAgent {
       }
     ],
     "mood": "本章整体氛围/情绪",
+    "supersededFacts": [
+      {
+        "subject": "被覆盖的事实主体（如某物品/角色）",
+        "oldFact": "本章中提到的、但已知被后续大纲覆盖的旧事实",
+        "reason": "被覆盖的原因（如'后续大纲已更新此设定'）"
+      }
+    ],
     "storyState": {
       "characterLocations": { "角色名": "当前所在地点" },
       "characterStatus": { "角色名": "当前状态（受伤/中毒/健康/情绪等）" },
@@ -86,6 +93,12 @@ export class SummaryAgent extends BaseAgent {
   <requirement>该角色对本章关键信息的反应/态度</requirement>
   <requirement>该角色做出的关键承诺或威胁</requirement>
 </character_facts_requirements>
+
+<superseded_facts_requirements>
+  <requirement>如果本章提到的某个"事实"已知被后续章节的大纲覆盖或更新（如某物品的位置、某个角色的身份等），请在 supersededFacts 中记录该旧事实</requirement>
+  <requirement>这有助于后续章节避免将旧事实当作当前有效信息来使用</requirement>
+  <example>如果本章说"法宝在东海"，但后续大纲已更新为"法宝在西山"，则记录 supersededFact: {subject: "法宝", oldFact: "法宝在东海", reason: "后续大纲已更新位置"}</example>
+</superseded_facts_requirements>
 
 <story_state_requirements>
   <requirement>characterLocations: 每个主要角色在本章结束时的所在位置</requirement>
@@ -124,7 +137,7 @@ export class SummaryAgent extends BaseAgent {
   }
 }
 
-  export function processSummaryOutput(output: AgentOutput): { summary: string; storyState?: import('../types/story-state.js').StoryState } | null {
+  export function processSummaryOutput(output: AgentOutput, chapterIndex?: number): { summary: string; storyState?: import('../types/story-state.js').StoryState } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
 
@@ -196,7 +209,24 @@ export class SummaryAgent extends BaseAgent {
 
   const storyState = extractStoryState()
 
+  const extractSupersededFacts = (): import('../types/story-state.js').SupersededFact[] | undefined => {
+    const raw = data['supersededFacts']
+    if (!Array.isArray(raw)) return undefined
+    return raw.filter((item): item is Record<string, unknown> => 
+      item && typeof item === 'object'
+    ).map((item, idx) => ({
+      subject: typeof item['subject'] === 'string' ? item['subject'] : `fact_${idx}`,
+      oldFact: typeof item['oldFact'] === 'string' ? item['oldFact'] : '',
+      reason: typeof item['reason'] === 'string' ? item['reason'] : '后续大纲已更新',
+      chapterIndex: chapterIndex ?? -1,
+    })).filter(item => item.oldFact.length > 0)
+  }
+
   if (storyState) {
+    const supersededFacts = extractSupersededFacts()
+    if (supersededFacts && supersededFacts.length > 0) {
+      storyState.supersededFacts = supersededFacts
+    }
     return { summary, storyState }
   }
 

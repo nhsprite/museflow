@@ -38,7 +38,7 @@ describe('SummaryAgent prompt', () => {
 
     const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain(chapterContent)
-    expect(userMessage).toContain('章节内容：')
+    expect(userMessage).toContain('<chapter_content>')
   })
 
   it('includes chapter title and index in the prompt', () => {
@@ -56,8 +56,8 @@ describe('SummaryAgent prompt', () => {
     })
 
     const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
-    expect(userMessage).toContain('章节标题：Test Title')
-    expect(userMessage).toContain('章节序号：第6章')
+    expect(userMessage).toContain('<title>Test Title</title>')
+    expect(userMessage).toContain('<number>第6章</number>')
   })
 
   it('shows empty content placeholder when chapterContent is undefined', () => {
@@ -76,7 +76,7 @@ describe('SummaryAgent prompt', () => {
 
     const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain('（无内容）')
-    expect(userMessage).toContain('章节标题：未知')
-    expect(userMessage).toContain('章节序号：未知')
+    expect(userMessage).toContain('<title>未知</title>')
+    expect(userMessage).toContain('<number>未知</number>')
   })
 })

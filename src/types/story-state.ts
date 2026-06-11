@@ -1,3 +1,10 @@
+export interface SupersededFact {
+  subject: string
+  oldFact: string
+  reason: string
+  chapterIndex: number
+}
+
 export interface StoryState {
   characterLocations: Record<string, string>
   characterStatus: Record<string, string>
@@ -6,4 +13,5 @@ export interface StoryState {
   revealedSecrets: string[]
   currentScene: string
   storyTime: string
+  supersededFacts?: SupersededFact[]
 }

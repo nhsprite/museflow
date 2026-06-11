@@ -282,10 +282,15 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       rewrittenChapters[i] = checkpointState.chapters[i] ?? null
     }
 
+    const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
+      f => f.createdAtChapter < rewriteIndex + 1
+    )
+
     workingState = {
       ...checkpointState,
       currentChapterIndex: rewriteIndex,
       chapters: rewrittenChapters,
+      foreshadowStack: cleanedForeshadowStack,
       pendingIssues: checkpointState.pendingIssues,
       rewriteApproved: userResponse,
       rewriteRequested: false,

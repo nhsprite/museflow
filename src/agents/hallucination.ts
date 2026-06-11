@@ -133,7 +133,7 @@ ${state.chapterContent || '（无内容）'}
       }>
     }
 
-    if (data.is_consistent === true && (!data.issues || data.issues.length === 0)) {
+    if (data.is_consistent === true) {
       return []
     }
 

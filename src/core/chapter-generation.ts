@@ -75,12 +75,17 @@ export async function executeChapterGeneration(
           workingState = { ...workingState, pendingIssues: [] }
         } else {
           if (workingState.rewriteApproved) {
-            console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
-            workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
-            const planResult = await plan_chapter(workingState)
-            workingState = { ...workingState, ...planResult }
+            if (hasStructuralIssues) {
+              console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
+              workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
+            } else {
+              console.log('[MuseFlow] 检测到局部问题，将使用现有计划重写...')
+              workingState = { ...workingState, pendingIssues: errorIssues }
+            }
           } else {
             workingState = { ...workingState, pendingIssues: [] }
+          }
+          if (!workingState.chapterPlan) {
             const planResult = await plan_chapter(workingState)
             workingState = { ...workingState, ...planResult }
           }
@@ -89,9 +94,11 @@ export async function executeChapterGeneration(
           workingState = { ...workingState, pendingIssues: [] }
         }
       } else {
-        workingState = { ...workingState, chapterPlan: null, pendingIssues: [] }
-        const planResult = await plan_chapter(workingState)
-        workingState = { ...workingState, ...planResult }
+        workingState = { ...workingState, pendingIssues: [] }
+        if (!workingState.chapterPlan) {
+          const planResult = await plan_chapter(workingState)
+          workingState = { ...workingState, ...planResult }
+        }
         const draftResult = await draft_chapter(workingState)
         workingState = { ...workingState, ...draftResult }
         workingState = { ...workingState, pendingIssues: [] }
@@ -166,6 +173,24 @@ export async function executeChapterGeneration(
         break
       }
 
+      const MAX_ISSUES_PER_TYPE = 3
+      const issueGroups = new Map<string, typeof workingState.pendingIssues>()
+      for (const issue of workingState.pendingIssues) {
+        const list = issueGroups.get(issue.type) ?? []
+        list.push(issue)
+        issueGroups.set(issue.type, list)
+      }
+      const dedupedIssues: typeof workingState.pendingIssues = []
+      for (const [type, issues] of issueGroups) {
+        if (issues.length <= MAX_ISSUES_PER_TYPE) {
+          dedupedIssues.push(...issues)
+        } else {
+          console.warn(`[MuseFlow] 检测到 ${type} 类型有 ${issues.length} 个问题，只保留前 ${MAX_ISSUES_PER_TYPE} 个`)
+          dedupedIssues.push(...issues.slice(0, MAX_ISSUES_PER_TYPE))
+        }
+      }
+      workingState = { ...workingState, pendingIssues: dedupedIssues }
+
       if (rewriteAttempts < maxRewriteAttempts) {
         console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
         workingState.rewriteApproved = true
@@ -206,6 +231,7 @@ export async function executeChapterGeneration(
           currentChapterIndex: workingState.currentChapterIndex,
           chapters: workingState.chapters,
           chapterSummaries: workingState.chapterSummaries,
+          storyState: workingState.storyState,
         }
       )
       return workingState
@@ -228,6 +254,7 @@ export async function executeChapterGeneration(
         currentChapterIndex: workingState.currentChapterIndex,
         chapters: workingState.chapters,
         chapterSummaries: workingState.chapterSummaries,
+        storyState: workingState.storyState,
       }
     )
     await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)
@@ -250,6 +277,7 @@ export async function executeChapterGeneration(
         currentChapterIndex: workingState.currentChapterIndex,
         chapters: workingState.chapters,
         chapterSummaries: workingState.chapterSummaries,
+        storyState: workingState.storyState,
       }
     )
     throw err

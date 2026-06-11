@@ -107,13 +107,27 @@ export async function continueStory(
   const snapshot = await graph.getState(config)
   const checkpointState = snapshot.values as ReducedGraphState
 
-  // 从 meta.json 恢复最新的 storyState，因为 checkpoint 中的 storyState 可能是空的或旧的
-  const persistedStoryState = getStoryState(storyId)
-  if (persistedStoryState && Object.keys(persistedStoryState.characterStatus || {}).length > 0) {
-    checkpointState.storyState = persistedStoryState
-  }
-
   const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
+  const isRewrite = currentChapterIndex !== undefined
+
+  const checkpointHasState = checkpointState.storyState &&
+    (Object.keys(checkpointState.storyState.characterStatus || {}).length > 0 ||
+     Object.keys(checkpointState.storyState.characterLocations || {}).length > 0)
+
+  if (!checkpointHasState && isRewrite && targetIndex > 1) {
+    console.log('[MuseFlow] Checkpoint storyState 为空，且为重写模式。清理可能过时的角色位置信息...')
+    const emptyState = createEmptyStoryState()
+    checkpointState.storyState = {
+      ...emptyState,
+      revealedSecrets: checkpointState.storyState?.revealedSecrets || [],
+      ...(checkpointState.storyState?.supersededFacts ? { supersededFacts: checkpointState.storyState.supersededFacts } : {}),
+    }
+  } else {
+    const persistedStoryState = getStoryState(storyId)
+    if (persistedStoryState && Object.keys(persistedStoryState.characterStatus || {}).length > 0) {
+      checkpointState.storyState = persistedStoryState
+    }
+  }
 
   const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
   for (let i = 0; i < targetIndex; i++) {

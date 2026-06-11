@@ -55,6 +55,15 @@ export class ConsistencyAgent extends BaseAgent {
     ${state.storyState || '（暂无状态记录）'}
   </story_state>
 
+  <superseded_facts>
+    以下事实已被后续大纲覆盖或更新，不应视为矛盾：
+    ${state.supersededFacts || '（无）'}
+    
+    判定规则：
+    - 如果当前章节与上述 supersededFacts 中的旧事实冲突 → 不要报 error（这是大纲演进导致的正常差异）
+    - 只有当角色对已确立的新事实表现出矛盾态度时，才报 error
+  </superseded_facts>
+
   <foreshadows>
     <active>
       ${activeForeshadows.length > 0
@@ -118,6 +127,19 @@ export class ConsistencyAgent extends BaseAgent {
     判定标准：
     - 如果本章明确给出了解释（无论这个解释是通过回忆、对话还是旁白），说明角色状态变化的原因 → 不要报 error
     - 如果本章完全没有解释，角色状态突然改变且没有任何说明 → 报 error
+  </rule>
+
+  <rule type="data_source_priority">
+    数据来源优先级（非常重要）：
+    1. storyState（故事当前状态）是角色位置、物品状态、已揭示秘密的**最高权威**。如果 timelineSnapshot 或 chapter summaries 中的记录与 storyState 冲突，以 storyState 为准。
+    2. outline（大纲）是未来章节事实规划的**最高权威**。如果 outline 在第N章更新了某个设定（如揭示新的地点、修正之前的线索），而前面章节的摘要有不同的记录，这是正常的情节演进，不是矛盾。
+    3. timelineSnapshot 和 chapter summaries 只是历史章节的压缩记录，可能包含已被覆盖或修正的旧认知。不要将它们视为不可违背的事实。
+    
+    判定跨章节矛盾时：
+    - 如果当前章节与 storyState 冲突 → 报 error（这是真正的状态矛盾）
+    - 如果当前章节与 outline 冲突 → 报 error（偏离大纲）
+    - 如果当前章节与 timelineSnapshot/chapter summaries 冲突，但与 storyState 和 outline 一致 → 不要报 error（这是大纲演进或状态更新导致的正常差异）
+    - 只有当角色对已被 storyState/outline 确立的事实表现出矛盾态度时，才报 error
   </rule>
 
   <rule type="outline_evolution">
@@ -187,7 +209,7 @@ export class ConsistencyAgent extends BaseAgent {
       }>
     }
 
-    if (data.is_consistent === true && (!data.issues || data.issues.length === 0)) {
+    if (data.is_consistent === true) {
       return []
     }
 

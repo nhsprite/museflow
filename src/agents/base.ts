@@ -107,6 +107,7 @@ export interface AgentState {
   }
   chapterPlan?: ChapterPlan
   storyState?: string
+  supersededFacts?: string
 }
 
 export interface AgentOutput {

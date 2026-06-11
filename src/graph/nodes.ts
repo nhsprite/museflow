@@ -372,7 +372,10 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
-  const storyStateStr = state.storyState ? formatStoryState(state.storyState) : ''
+  const reconciledState = state.storyState && outlineItem?.description
+    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
+    : state.storyState
+  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
   const agentState: AgentState = {
     idea: state.idea,
@@ -514,7 +517,6 @@ function buildSentenceFixes(
 
   return sentenceFixes
 }
-
 async function runSentenceFix(
   agent: FixAgent,
   state: ReducedGraphState,
@@ -527,6 +529,7 @@ async function runSentenceFix(
   timelineSnapshot: string
 ): Promise<Partial<ReducedGraphState>> {
   const affectedParagraphs = new Set(sentenceFixes.map(s => s.paragraphIndex))
+
   const contextIndices = new Set<number>()
   for (const idx of affectedParagraphs) {
     if (idx > 0) contextIndices.add(idx - 1)
@@ -539,6 +542,11 @@ async function runSentenceFix(
   const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
   const context = contextParagraphs.join('\n\n')
 
+  const reconciledState = state.storyState && outlineItem?.description
+    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
+    : state.storyState
+  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -548,6 +556,7 @@ async function runSentenceFix(
     chapterContent: existingContent,
     previousChapters,
     timelineSnapshot,
+    ...(storyStateStr ? { storyState: storyStateStr } : {}),
     sentenceFix: {
       sentences: sentenceFixes,
       context,
@@ -649,6 +658,11 @@ async function runParagraphFix(
   const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
   const context = contextParagraphs.join('\n\n')
 
+  const reconciledState = state.storyState && outlineItem?.description
+    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
+    : state.storyState
+  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -658,6 +672,7 @@ async function runParagraphFix(
     chapterContent: existingContent,
     previousChapters,
     timelineSnapshot,
+    ...(storyStateStr ? { storyState: storyStateStr } : {}),
     paragraphFix: {
       paragraphs: paragraphFixes,
       context,
@@ -716,6 +731,11 @@ async function runLegacyFix(
   timelineSnapshot: string
 ): Promise<Partial<ReducedGraphState>> {
   const worldContent = state.world?.content
+  const reconciledState = state.storyState && outlineItem?.description
+    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
+    : state.storyState
+  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -725,6 +745,7 @@ async function runLegacyFix(
     chapterContent: existingContent,
     previousChapters,
     timelineSnapshot,
+    ...(storyStateStr ? { storyState: storyStateStr } : {}),
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
@@ -864,7 +885,7 @@ export function extractIssueKeywords(issue: { description: string; location?: st
   }
 
   const unique = [...new Set(keywords)]
-  return unique.slice(0, 50)
+  return unique.slice(0, 35)
 }
 
 export function findAffectedParagraphs(paragraphs: string[], issues: Array<{ description: string; location?: string }>): number[] {
@@ -1230,6 +1251,17 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
+  const outlineItem = state.outline[chapterIndex]
+  const reconciledState = state.storyState && outlineItem?.description
+    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
+    : state.storyState
+  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+
+  const supersededFacts = state.storyState?.supersededFacts ?? []
+  const supersededFactsStr = supersededFacts.length > 0
+    ? supersededFacts.map(f => `- [${f.subject}] ${f.oldFact}（原因：${f.reason}）`).join('\n')
+    : '（无）'
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -1242,7 +1274,8 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
     chapterIndex,
     timelineSnapshot,
     foreshadowStack: state.foreshadowStack,
-    storyState: state.storyState ? formatStoryState(state.storyState) : '',
+    storyState: storyStateStr,
+    supersededFacts: supersededFactsStr,
   }
 
   const output = await agent.run(agentState)
@@ -1323,7 +1356,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
       }
       try {
         const summaryOutput = await summaryAgent.run(summaryState)
-        const processed = processSummaryOutput(summaryOutput)
+        const processed = processSummaryOutput(summaryOutput, chapterIndex)
         if (processed) {
           summary = processed.summary
           chapter.summary = summary
@@ -1531,7 +1564,17 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     }
   }
 
-  return {
+  const mergedSuperseded = [...(base.supersededFacts ?? [])]
+  for (const fact of delta.supersededFacts ?? []) {
+    const isDuplicate = mergedSuperseded.some(
+      existing => existing.subject === fact.subject && existing.oldFact === fact.oldFact
+    )
+    if (!isDuplicate) {
+      mergedSuperseded.push(fact)
+    }
+  }
+
+  const result: StoryState = {
     characterLocations: mergedLocations,
     characterStatus: mergedStatus,
     keyItemsLocation: mergedItems,
@@ -1540,6 +1583,117 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     currentScene: delta.currentScene || base.currentScene,
     storyTime: delta.storyTime || base.storyTime,
   }
+
+  if (mergedSuperseded.length > 0) {
+    result.supersededFacts = mergedSuperseded
+  }
+
+  return result
+}
+
+function buildCharacterAliasMap(characters: Array<{ name: string }>): Map<string, string> {
+  const aliasToFull = new Map<string, string>()
+  const fullNames = characters.map(c => c.name).filter(Boolean).sort((a, b) => b.length - a.length)
+
+  for (const fullName of fullNames) {
+    aliasToFull.set(fullName, fullName)
+
+    if (fullName.length >= 3) {
+      const lastTwo = fullName.slice(-2)
+      if (!aliasToFull.has(lastTwo)) {
+        const isAmbiguous = fullNames.some(other => other !== fullName && other.includes(lastTwo))
+        if (!isAmbiguous) {
+          aliasToFull.set(lastTwo, fullName)
+        }
+      }
+    }
+
+    if (fullName.length >= 4) {
+      const lastThree = fullName.slice(-3)
+      if (!aliasToFull.has(lastThree)) {
+        const isAmbiguous = fullNames.some(other => other !== fullName && other.includes(lastThree))
+        if (!isAmbiguous) {
+          aliasToFull.set(lastThree, fullName)
+        }
+      }
+    }
+  }
+
+  return aliasToFull
+}
+
+function reconcileStoryState(
+  storyState: StoryState,
+  outline: string,
+  characters: Array<{ name: string }> = []
+): StoryState {
+  const reconciled: StoryState = {
+    characterLocations: {},
+    characterStatus: {},
+    keyItemsLocation: { ...storyState.keyItemsLocation },
+    activePlots: [...storyState.activePlots],
+    revealedSecrets: [],
+    currentScene: storyState.currentScene,
+    storyTime: storyState.storyTime,
+    ...(storyState.supersededFacts ? { supersededFacts: storyState.supersededFacts } : {}),
+  }
+
+  const aliasMap = buildCharacterAliasMap(characters)
+
+  const statusMap = new Map<string, string>()
+  for (const [char, status] of Object.entries(storyState.characterStatus)) {
+    const normalized = aliasMap.get(char) || char
+    statusMap.set(normalized, status)
+  }
+  reconciled.characterStatus = Object.fromEntries(statusMap)
+
+  const outlineWords = new Set(
+    outline.split(/\s+|，|。|！|？|、|；|\n/).filter(w => w.length >= 2)
+  )
+
+  const locMap = new Map<string, string>()
+  for (const [char, loc] of Object.entries(storyState.characterLocations)) {
+    const normalized = aliasMap.get(char) || char
+    
+    // 检查角色位置是否过时：如果大纲提到角色在新位置，清除旧位置
+    const locWords = loc.split(/\s+|，|。|！|？|、|；|\n/).filter(w => w.length >= 2)
+    const overlap = locWords.filter(w => outlineWords.has(w))
+    const overlapRatio = locWords.length > 0 ? overlap.length / locWords.length : 0
+    
+    // 如果角色位置与大纲有30%以上重叠，说明大纲也提到了这个位置，保留
+    // 如果角色位置与大纲完全无关（如旧章节的位置），且大纲暗示角色已移动，则清除
+    if (overlapRatio < 0.1 && outline.length > 10) {
+      // 大纲存在但角色位置与大纲无关 → 可能是过时位置
+      // 检查大纲是否提到该角色
+      const characterInOutline = outline.includes(normalized) || 
+        Array.from(aliasMap.entries()).some(([alias, canonical]) => 
+          canonical === normalized && outline.includes(alias)
+        )
+      
+      if (characterInOutline) {
+        console.log(`[MuseFlow] Reconciling: clearing outdated location for ${normalized}: "${loc}" (not mentioned in outline)`)
+        continue
+      }
+    }
+    
+    locMap.set(normalized, loc)
+  }
+  reconciled.characterLocations = Object.fromEntries(locMap)
+
+  for (const secret of storyState.revealedSecrets) {
+    const secretWords = secret.split(/\s+|，|。|！|？|、|；|\n/).filter(w => w.length >= 2)
+    const overlap = secretWords.filter(w => outlineWords.has(w))
+    const overlapRatio = secretWords.length > 0 ? overlap.length / secretWords.length : 0
+
+    if (overlapRatio >= 0.3) {
+      console.log(`[MuseFlow] Reconciling: skipping outdated secret with ${Math.round(overlapRatio * 100)}% outline overlap: "${secret.substring(0, 50)}..."`)
+      continue
+    }
+
+    reconciled.revealedSecrets.push(secret)
+  }
+
+  return reconciled
 }
 
 function formatStoryState(storyState: StoryState): string {
@@ -1580,6 +1734,13 @@ function formatStoryState(storyState: StoryState): string {
     lines.push('【已揭示的秘密】')
     for (const secret of storyState.revealedSecrets) {
       lines.push(`  - ${secret}`)
+    }
+  }
+
+  if (storyState.supersededFacts && storyState.supersededFacts.length > 0) {
+    lines.push('【已被覆盖的旧事实】')
+    for (const fact of storyState.supersededFacts) {
+      lines.push(`  - [${fact.subject}] ${fact.oldFact}（原因：${fact.reason}）`)
     }
   }
 

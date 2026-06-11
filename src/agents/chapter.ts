@@ -50,6 +50,15 @@ ${state.storyState}
 </story_state>`
       : ''
 
+    const outlineComplianceSection = `<outline_compliance>
+<mandatory>【大纲遵循 - 强制要求】</mandatory>
+- 本章只能呈现大纲中明确列出的情节点，不得擅自添加大纲未提及的新情节、新场景或新角色
+- 如果大纲中某角色被描述为"暗中跟踪"、"暗中观察"或类似定位，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
+- 如果大纲中指定了某个守护者/神明的身份（如"西王母"），不得擅自改为"弟子"、"使者"或其他替代身份
+- 不得擅自增加大纲未提及的考验、试炼、关卡等情节
+- 不得擅自改变大纲中明确指定的角色关系（如"暗中护法"不得变为"正式入队"）
+</outline_compliance>`
+
     const issuesSection = state.issues && state.issues.length > 0
       ? `<issues>
 <important>【重要】本章需要修复的问题：</important>
@@ -173,6 +182,8 @@ ${keyEventsSection}
 ${storyStateSection}
 
 ${planSection}
+
+${outlineComplianceSection}
 
 ${issuesSection}
 
