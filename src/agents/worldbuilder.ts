@@ -9,15 +9,22 @@ export class WorldbuilderAgent extends BaseAgent {
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const worldbuildingPrompt = genre?.worldbuildingPrompt ??
-      `请为以下故事构建世界观设定。
-故事简介：{idea}
-总章节数：{totalChapters}
+      `<task>
+  请为以下故事构建世界观设定。
+</task>
 
-请以以下JSON格式返回（title 为必填字段，不可省略）：
-{
-  "title": "书名",
-  "world": "世界观详细设定内容"
-}`
+<context>
+  <story_idea>{idea}</story_idea>
+  <total_chapters>{totalChapters}</total_chapters>
+</context>
+
+<output_format>
+  请以以下JSON格式返回（title 为必填字段，不可省略）：
+  {
+    "title": "书名",
+    "world": "世界观详细设定内容"
+  }
+</output_format>`
 
     const userContent = this.fillTemplate(worldbuildingPrompt, {
       idea: state.idea,
@@ -25,7 +32,7 @@ export class WorldbuilderAgent extends BaseAgent {
     })
 
     return [
-      this.systemMessage('你是一位资深的世界架构师，擅长构建细腻、真实且富有深度的世界观。'),
+      this.systemMessage('<role>你是一位资深的世界架构师，擅长构建细腻、真实且富有深度的世界观。</role>'),
       this.userMessage(userContent),
     ]
   }

@@ -149,39 +149,40 @@ ${wd.cultivationSystem ? `- 修炼体系：${wd.cultivationSystem}` : ''}
 - 世界观特色：${wd.worldFeatures.join('、')}`
       : ''
 
-    const userContent = `根据以下故事设定，创建主要人物角色。
+    const userContent = `<task>
+  根据以下故事设定，创建主要人物角色。
+</task>
 
-${titleLine}
-故事简介：${state.idea}
-${worldDirSection}
-${state.world ? `世界观设定：\n${state.world}` : ''}
+<context>
+  ${titleLine ? `<title>${state.title}</title>` : ''}
+  <story_idea>${state.idea}</story_idea>
+  ${worldDirSection ? `<world_direction>\n${worldDirSection}\n</world_direction>` : ''}
+  ${state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''}
+</context>
 
-请为故事创建 3-8 个主要人物，每个角色需要包含：
-1. 姓名
-2. 角色定位（主角/反派/配角等）
-3. 性格特点
-4. 背景故事
-5. 在故事中的目标或动机
-6. 与其他角色的关系
-7. 对话风格（如：沉稳内敛、泼辣直爽、儒雅文静、憨厚朴实、阴险狡诈等）
+<requirements>
+  <requirement>为故事创建 3-8 个主要人物</requirement>
+  <requirement>每个角色需要包含：姓名、角色定位（主角/反派/配角等）、性格特点、背景故事、在故事中的目标或动机、与其他角色的关系、对话风格</requirement>
+  <requirement>请以 JSON 数组格式输出</requirement>
+</requirements>
 
-请以 JSON 数组格式输出，示例：
-[
-  {
-    "姓名": "张三",
-    "角色定位": "主角",
-    "性格特点": "沉稳内敛",
-    "背景故事": "...
-    "在故事中的目标或动机": "...",
-    "与其他角色的关系": "...",
-    "对话风格": "儒雅文静"
-  }
-]
-${formatReminder ?? ''}
-`
+<example>
+  [
+    {
+      "姓名": "张三",
+      "角色定位": "主角",
+      "性格特点": "沉稳内敛",
+      "背景故事": "...",
+      "在故事中的目标或动机": "...",
+      "与其他角色的关系": "...",
+      "对话风格": "儒雅文静"
+    }
+  ]
+</example>
+${formatReminder ?? ''}`
 
     const messages: import('../model/provider.js').Message[] = [
-      this.systemMessage('你是一位擅长人物塑造的作家，擅长创造立体、真实、有记忆点的人物角色。请严格按照要求的 JSON 数组格式输出，不要添加任何额外的解释文字。'),
+      this.systemMessage('<role>你是一位擅长人物塑造的作家，擅长创造立体、真实、有记忆点的人物角色。</role>\n<requirement>请严格按照要求的 JSON 数组格式输出，不要添加任何额外的解释文字。</requirement>'),
       this.userMessage(userContent),
     ]
     return messages

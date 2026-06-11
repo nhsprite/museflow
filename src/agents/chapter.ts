@@ -21,35 +21,42 @@ export class ChapterAgent extends BaseAgent {
     const previousSummary = state.previousChapters || '（这是第一章）'
 
     const timelineSection = state.timelineSnapshot
-      ? `上一章结束时的状态：
+      ? `<timeline_state>
+上一章结束时的状态：
 ${state.timelineSnapshot}
 
-请在继续写作时保持与上述状态的一致性。`
+请在继续写作时保持与上述状态的一致性。</timeline_state>`
       : ''
 
     const keyEventsSection = state.keyEventsTimeline
-      ? `【重要 - 已发生的关键事件】以下事件已在前面章节中发生，后续章节必须承认并遵循这些事实，不可遗漏、遗忘或矛盾：
+      ? `<key_events>
+<important>【重要 - 已发生的关键事件】以下事件已在前面章节中发生，后续章节必须承认并遵循这些事实，不可遗漏、遗忘或矛盾：</important>
 ${state.keyEventsTimeline}
 
-【强制要求】以上关键事件是已确立的叙事事实，本章写作时必须保持一致。如果本章涉及这些事件的后续发展，必须给出合理的因果衔接，不可凭空改变事件结果。`
+<mandatory>【强制要求】以上关键事件是已确立的叙事事实，本章写作时必须保持一致。如果本章涉及这些事件的后续发展，必须给出合理的因果衔接，不可凭空改变事件结果。</mandatory>
+</key_events>`
       : ''
 
     const storyStateSection = state.storyState
-      ? `【故事当前状态 - 必须严格保持】
+      ? `<story_state>
+<mandatory>【故事当前状态 - 必须严格保持】</mandatory>
 ${state.storyState}
 
-【强制要求】以上状态是截至上一章结束时已确立的事实。本章写作时必须：
+<mandatory>【强制要求】以上状态是截至上一章结束时已确立的事实。本章写作时必须：
 - 角色位置：如果角色位置发生变化，必须有合理的移动过程描写，不能瞬间转移
 - 角色状态：如果角色处于受伤/中毒/虚弱等状态，本章必须承认这些状态，除非有明确的恢复描写
 - 关键物品：物品的位置和持有者必须与前文一致，转移时必须有明确交接过程
-- 故事时间：时间推进必须符合逻辑，不能跳回过去`
+- 故事时间：时间推进必须符合逻辑，不能跳回过去</mandatory>
+</story_state>`
       : ''
 
     const issuesSection = state.issues && state.issues.length > 0
-      ? `【重要】本章需要修复的问题：
+      ? `<issues>
+<important>【重要】本章需要修复的问题：</important>
 ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
 
-【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。`
+<important>【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。</important>
+</issues>`
       : ''
 
     const currentChapterIndex = (state.chapterIndex ?? 0) + 1
@@ -66,20 +73,24 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
     )
 
     const foreshadowSection = activeForeshadows.length > 0
-      ? `【伏笔回收提醒】
-${overdueForeshadows.length > 0 ? `⚠️ 已逾期伏笔（必须在本章回收）：
+      ? `<foreshadow_reminder>
+<title>【伏笔回收提醒】</title>
+${overdueForeshadows.length > 0 ? `<overdue>⚠️ 已逾期伏笔（必须在本章回收）：
 ${overdueForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，已逾期${currentChapterIndex - f.expectedFulfillChapter}章）`).join('\n')}
 
-【强制要求】以上逾期伏笔已严重超期，必须在本章明确回收。如果本章无法自然回收，请通过角色回忆、对话揭示或场景呼应的方式处理，绝不可继续拖延。\n\n` : ''}${urgentForeshadows.length > 0 ? `🔔 即将到期伏笔（建议在本章回收）：
+<mandatory>【强制要求】以上逾期伏笔已严重超期，必须在本章明确回收。如果本章无法自然回收，请通过角色回忆、对话揭示或场景呼应的方式处理，绝不可继续拖延。</mandatory></overdue>\n\n` : ''}${urgentForeshadows.length > 0 ? `<urgent>🔔 即将到期伏笔（建议在本章回收）：
 ${urgentForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}
-
-` : ''}${normalForeshadows.length > 0 ? `⏳ 正常伏笔（后续章节回收）：
-${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}\n\n` : ''}请注意在写作时自然地呼应或揭示需要回收的伏笔。`
+</urgent>\n\n` : ''}${normalForeshadows.length > 0 ? `<normal>⏳ 正常伏笔（后续章节回收）：
+${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}
+</normal>\n\n` : ''}请注意在写作时自然地呼应或揭示需要回收的伏笔。
+</foreshadow_reminder>`
       : ''
 
     const existingChapterSection = state.chapterContent
-      ? `【当前章节正文】（请在原文基础上修改，保留好的部分，修正问题）：
-${state.chapterContent}`
+      ? `<existing_chapter>
+<instruction>【当前章节正文】（请在原文基础上修改，保留好的部分，修正问题）：</instruction>
+${state.chapterContent}
+</existing_chapter>`
       : ''
 
     const mainCharacterName = state.characters
@@ -87,8 +98,10 @@ ${state.chapterContent}`
       : '（未设定主角）'
 
     const planSection = state.chapterPlan
-      ? `【章节写作规划】（必须严格遵循以下结构）：
-${JSON.stringify(state.chapterPlan, null, 2)}`
+      ? `<chapter_plan>
+<instruction>【章节写作规划】（必须严格遵循以下结构）：</instruction>
+${JSON.stringify(state.chapterPlan, null, 2)}
+</chapter_plan>`
       : ''
 
     const outlineKeyPoints = this.extractOutlineKeyPoints(chapterInfo.description)
@@ -96,40 +109,60 @@ ${JSON.stringify(state.chapterPlan, null, 2)}`
 
     const remainingChapters = state.totalChapters - chapterIndex - 1
     const closingReminder = remainingChapters === 0
-      ? `【完结期提示】这是最后一章，必须完成以下任务：
+      ? `<closing_phase>
+<title>【完结期提示】</title>
+<content>这是最后一章，必须完成以下任务：
 - 回收所有主要伏笔，不得遗留未解决的悬念
 - 给出明确的结局（人物命运、冲突结果、世界状态）
-- 避免仓促收尾，给读者完整的收束感`
+- 避免仓促收尾，给读者完整的收束感</content>
+</closing_phase>`
       : remainingChapters === 1
-        ? `【冲突期提示】还有最后一章就完结了，本章必须：
+        ? `<closing_phase>
+<title>【冲突期提示】</title>
+<content>还有最后一章就完结了，本章必须：
 - 推进最终对决/高潮冲突到临界点
 - 回收至少 60% 的主要伏笔
-- 为结局做好所有铺垫，不要在最后一章引入新线索`
+- 为结局做好所有铺垫，不要在最后一章引入新线索</content>
+</closing_phase>`
         : remainingChapters <= 3
-          ? `【铺垫期提示】还有 ${remainingChapters + 1} 章完结，请注意：
+          ? `<closing_phase>
+<title>【铺垫期提示】</title>
+<content>还有 ${remainingChapters + 1} 章完结，请注意：
 - 开始加速主线节奏，减少无关支线
 - 为主要冲突的最终爆发积蓄张力
-- 有选择地回收部分伏笔，保留核心悬念到结局`
+- 有选择地回收部分伏笔，保留核心悬念到结局</content>
+</closing_phase>`
           : ''
 
-    const userContent = `请撰写第 ${displayChapterNumber} 章的正文内容。
+    const userContent = `<task>
+<instruction>请撰写第 ${displayChapterNumber} 章的正文内容。</instruction>
 
-【重要】本章主角姓名是"${mainCharacterName}"，主角的姓名在整章中必须保持一致，不得擅自更改为主角起其他名字！
+<main_character>
+<important>【重要】本章主角姓名是"${mainCharacterName}"，主角的姓名在整章中必须保持一致，不得擅自更改为主角起其他名字！</important>
+</main_character>
 
-【必须严格遵循】本章大纲：
-标题：${chapterInfo.title}
-核心事件：${chapterInfo.description}
+<chapter_outline>
+<requirement>【必须严格遵循】本章大纲：</requirement>
+<title>标题：${chapterInfo.title}</title>
+<description>核心事件：${chapterInfo.description}</description>
 
-【重要】大纲中的每个情节点都必须完整呈现！如果大纲中提到"与此同时"、"另外"、"并且"等连接的多个事件，必须在章节中呈现所有事件，不可遗漏任何情节点！
+<important>【重要】大纲中的每个情节点都必须完整呈现！如果大纲中提到"与此同时"、"另外"、"并且"等连接的多个事件，必须在章节中呈现所有事件，不可遗漏任何情节点！</important>
+</chapter_outline>
 
-【必须严格遵循】世界观设定：
+<world_setting>
+<requirement>【必须严格遵循】世界观设定：</requirement>
 ${state.world || '（尚未构建）'}
+</world_setting>
 
-【必须严格遵循】人物设定：
+<character_setting>
+<requirement>【必须严格遵循】人物设定：</requirement>
 ${state.characters || '（尚未创建）'}
+</character_setting>
 
+<previous_summary>
 前几章摘要：
 ${previousSummary}
+</previous_summary>
 
 ${chapterSupplement}
 
@@ -147,7 +180,8 @@ ${foreshadowSection}
 
 ${closingReminder ? closingReminder + '\n\n' : ''}${existingChapterSection}
 
-【输出格式要求 - 必须严格遵守】
+<output_format>
+<requirement>【输出格式要求 - 必须严格遵守】</requirement>
 你的输出必须分为两个部分，用以下标记分隔：
 
 === PRE_WRITE_CHECK ===
@@ -156,8 +190,9 @@ ${closingReminder ? closingReminder + '\n\n' : ''}${existingChapterSection}
 === CHAPTER_CONTENT ===
 （正文内容，从这里开始写小说正文）
 
-【第一部分：PRE_WRITE_CHECK - 写正文前必须先完成】
-在写正文之前，请先输出预写对齐检查表，逐条确认本章如何落实大纲要求。
+<pre_write_check_section>
+<title>【第一部分：PRE_WRITE_CHECK - 写正文前必须先完成】</title>
+<content>在写正文之前，请先输出预写对齐检查表，逐条确认本章如何落实大纲要求。
 
 必须包含以下检查项（以 Markdown 表格形式输出）：
 
@@ -177,56 +212,68 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
 - [ ] 没有遗漏任何大纲要求
 - [ ] 没有发现与大纲矛盾的执行计划
 
-【重要】PRE_WRITE_CHECK 完成后，才能开始写正文。PRE_WRITE_CHECK 中的计划必须与正文完全一致，正文必须严格遵循 PRE_WRITE_CHECK 中确认的执行计划。
+<important>【重要】PRE_WRITE_CHECK 完成后，才能开始写正文。PRE_WRITE_CHECK 中的计划必须与正文完全一致，正文必须严格遵循 PRE_WRITE_CHECK 中确认的执行计划。</important>
+</content>
+</pre_write_check_section>
 
-【第二部分：CHAPTER_CONTENT - 正文写作要求】
-0. 【必须】正文开头必须包含章节标题，格式为：
+<chapter_content_section>
+<title>【第二部分：CHAPTER_CONTENT - 正文写作要求】</title>
+<content>
+<rule id="0"><mandatory>【必须】</mandatory>正文开头必须包含章节标题，格式为：
    # 第X章 章节标题
    或
    ## 第X章：章节标题
-   标题必须与大纲中的章节标题一致，不得省略。
-1. 【必须】严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现
-2. 【必须】主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字
-3. 【必须】物品名称、功法名称等必须与大纲完全一致
-4. 【必须】时间线必须清晰连贯：
+   标题必须与大纲中的章节标题一致，不得省略。</rule>
+<rule id="1"><mandatory>【必须】</mandatory>严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现</rule>
+<rule id="2"><mandatory>【必须】</mandatory>主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字</rule>
+<rule id="3"><mandatory>【必须】</mandatory>物品名称、功法名称等必须与大纲完全一致</rule>
+<rule id="4"><mandatory>【必须】</mandatory>时间线必须清晰连贯：
    - 时间跨度必须符合大纲要求（如"高烧持续三日"必须描写三日，不能只写一夜）
    - 时间跳跃必须明确标注（如"三日后""次日清晨""又过了两天"）
-   - 不能出现时间回退或逻辑矛盾（如先写"烧退了"，后又写"仍在发烧"）
-5. 【必须】关键台词必须原样出现：
+   - 不能出现时间回退或逻辑矛盾（如先写"烧退了"，后又写"仍在发烧"）</rule>
+<rule id="5"><mandatory>【必须】</mandatory>关键台词必须原样出现：
    - 大纲中明确要求的台词（如大纲标注的特定对话）必须一字不差地出现
-   - 不能擅自改写为意思相近但措辞不同的句子
-6. 【必须】叙述视角保持一致（第三人称限制性视角），避免出现视角跳跃
-7. 【必须】因果关系明确：前一事件的结果必须自然导致后一事件，不能生硬跳转
-8. 【必须】信息一致性：本章内所有描述必须自洽，不能前后矛盾
-9. 【必须】禁止 AI 惯用腔调，具体包括：
+   - 不能擅自改写为意思相近但措辞不同的句子</rule>
+<rule id="6"><mandatory>【必须】</mandatory>叙述视角保持一致（第三人称限制性视角），避免出现视角跳跃</rule>
+<rule id="7"><mandatory>【必须】</mandatory>因果关系明确：前一事件的结果必须自然导致后一事件，不能生硬跳转</rule>
+<rule id="8"><mandatory>【必须】</mandatory>信息一致性：本章内所有描述必须自洽，不能前后矛盾</rule>
+<rule id="9"><mandatory>【必须】</mandatory>禁止 AI 惯用腔调，具体包括：
    - 禁止总结性开头：不得以"值得一提的是"、"不难发现"、"众所周知"、"值得注意的是"等句式开头段落
    - 禁止机械过渡：不得使用"让我们回到"、"接下来"、"与此同时"等说教性过渡
    - 禁止抽象概括：不得用"这个故事告诉我们"、"从这件事可以看出"等作者跳出来总结的句式
-   - 必须用具体的人物动作、感官细节或场景变化来推动叙事，替代抽象的概括和评价
-10. 注重人物对话和心理描写
-11. 适时埋下伏笔，为后续章节留下悬念
-12. 【必须】每章字数要求：
+   - 必须用具体的人物动作、感官细节或场景变化来推动叙事，替代抽象的概括和评价</rule>
+<rule id="10">注重人物对话和心理描写</rule>
+<rule id="11">适时埋下伏笔，为后续章节留下悬念</rule>
+<rule id="12"><mandatory>【必须】</mandatory>每章字数要求：
     - 每章字数应均匀分布，避免出现过短章节
     - 如果本章字数明显少于其他章节，必须扩充内容直至篇幅均衡
-    - 严禁用几句话草率收尾，每章都必须有充实的情节展开
-13. 【必须】章节结尾要求：
+    - 严禁用几句话草率收尾，每章都必须有充实的情节展开</rule>
+<rule id="13"><mandatory>【必须】</mandatory>章节结尾要求：
     - 章节结尾必须是情节的自然收束，不得使用任何显式的章节结束标记
     - 禁止在结尾添加总结性诗句、对联、套语或任何形式的"本章完"标注
-    - 结尾应当留给读者余韵，而非刻意宣告叙事中断
-14. 【必须】跨章节衔接要求：
+    - 结尾应当留给读者余韵，而非刻意宣告叙事中断</rule>
+<rule id="14"><mandatory>【必须】</mandatory>跨章节衔接要求：
     - 本章结尾的动作、对话或场景，不得与上一章结尾重复
     - 禁止连续两章以相同角色做相同或高度相似的事情作为结尾
-    - 本章开头应当自然承接上一章的结尾，但不得简单重复上一章最后一段的内容
-15. 【必须】时间线一致性：
+    - 本章开头应当自然承接上一章的结尾，但不得简单重复上一章最后一段的内容</rule>
+<rule id="15"><mandatory>【必须】</mandatory>时间线一致性：
     - 角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的
     - 严禁角色将尚未发生的事件描述为已发生的回忆
-    - 如果角色提及未来事件，必须使用前瞻性的措辞（如"将要"、"等待"），且必须是在明确的预言、梦境或超现实场景中
-16. 以自然流畅的段落叙述为主
+    - 如果角色提及未来事件，必须使用前瞻性的措辞（如"将要"、"等待"），且必须是在明确的预言、梦境或超现实场景中</rule>
+<rule id="16">以自然流畅的段落叙述为主</rule>
+</content>
+</chapter_content_section>
 
-请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === CHAPTER_CONTENT === 部分。`
+请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === CHAPTER_CONTENT === 部分。
+</output_format>
+</task>`
 
     return [
-      this.systemMessage('你是一位专业的小说作家，擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进。在动笔前，你必须先完成预写对齐检查，确认每个大纲要求都有明确的执行计划，然后严格按照该计划撰写正文。'),
+      this.systemMessage(`<system>
+<role>专业小说作家</role>
+<capability>擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进</capability>
+<requirement>在动笔前，你必须先完成预写对齐检查，确认每个大纲要求都有明确的执行计划，然后严格按照该计划撰写正文</requirement>
+</system>`),
       this.userMessage(userContent),
     ]
   }

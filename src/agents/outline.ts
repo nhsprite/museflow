@@ -36,20 +36,24 @@ ${worldDirSection ? '\n' + worldDirSection : ''}
       totalChapters: state.totalChapters,
     })
 
-    const context = `
-${state.world ? `世界观设定：\n${state.world}` : ''}
+    const context = `<context>
+  ${state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''}
+  <characters>
+    ${state.characters || '（尚未创建）'}
+  </characters>
+</context>
 
-人物设定：
-${state.characters || '（尚未创建）'}
+<task>
+  ${userContent}
+</task>
 
-${userContent}
-
-重要提醒：
-1. 必须严格生成 exactly ${state.totalChapters} 个章节，不能多也不能少
-2. 必须以 JSON 数组格式输出，每个章节是独立对象，包含 number、title、description 字段`
+<requirements>
+  <requirement>必须严格生成 exactly ${state.totalChapters} 个章节，不能多也不能少</requirement>
+  <requirement>必须以 JSON 数组格式输出，每个章节是独立对象，包含 number、title、description 字段</requirement>
+</requirements>`
 
     return [
-      this.systemMessage('你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。\n\n重要：请务必以 JSON 数组格式输出大纲，每个章节必须是独立的对象，包含以下字段：\n- number：章节编号（数字）\n- title：章节标题（字符串）\n- description：本章核心事件描述（字符串）\n\n示例格式：\n[{"number": 1, "title": "第一章标题", "description": "核心事件..."}, ...]'),
+      this.systemMessage('<role>你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。</role>\n<output_requirement>请务必以 JSON 数组格式输出大纲，每个章节必须是独立的对象，包含以下字段：\n- number：章节编号（数字）\n- title：章节标题（字符串）\n- description：本章核心事件描述（字符串）</output_requirement>\n<example>[{"number": 1, "title": "第一章标题", "description": "核心事件..."}, ...]</example>'),
       this.userMessage(context),
     ]
   }
@@ -144,26 +148,28 @@ ${userContent}
       ? state.outline.split('\n\n').filter((_, i) => i !== chapterIndex).join('\n\n')
       : ''
 
-    const context = `
-书名：${state.title || '（无标题）'}
-故事简介：${state.idea}
+    const context = `<context>
+  <book_title>${state.title || '（无标题）'}</book_title>
+  <story_idea>${state.idea}</story_idea>
+  ${state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''}
+  <characters>
+    ${state.characters || '（尚未创建）'}
+  </characters>
+  <other_outlines>
+    ${otherOutlines || '（无其他章节）'}
+  </other_outlines>
+</context>
 
-${state.world ? `世界观设定：\n${state.world}` : ''}
-
-人物设定：
-${state.characters || '（尚未创建）'}
-
-其他章节大纲：
-${otherOutlines || '（无其他章节）'}
-
-请仅为第 ${displayNum} 章重新生成大纲，要求：
-1. 保持与前后章节的逻辑连贯
-2. 符合故事整体风格和节奏
-3. 输出格式：JSON对象，包含 number、title、description 字段
-4. 只输出第 ${displayNum} 章的大纲，不要输出其他章节`
+<task>
+  请仅为第 ${displayNum} 章重新生成大纲，要求：
+  <requirement>保持与前后章节的逻辑连贯</requirement>
+  <requirement>符合故事整体风格和节奏</requirement>
+  <requirement>输出格式：JSON对象，包含 number、title、description 字段</requirement>
+  <requirement>只输出第 ${displayNum} 章的大纲，不要输出其他章节</requirement>
+</task>`
 
     const messages = [
-      this.systemMessage('你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。\n\n重要：只需输出单个章节的大纲，以 JSON 格式返回，包含字段：\n- number：章节编号（数字）\n- title：章节标题（字符串）\n- description：本章核心事件描述（字符串）\n\n示例：{"number": 1, "title": "章节标题", "description": "本章核心事件描述"}'),
+      this.systemMessage('<role>你是一位擅长故事结构的大纲设计师，擅长构建有节奏感、情节递进清晰的故事大纲。</role>\n<output_requirement>只需输出单个章节的大纲，以 JSON 格式返回，包含字段：\n- number：章节编号（数字）\n- title：章节标题（字符串）\n- description：本章核心事件描述（字符串）</output_requirement>\n<example>{"number": 1, "title": "章节标题", "description": "本章核心事件描述"}</example>'),
       this.userMessage(context),
     ]
 
