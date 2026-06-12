@@ -59,6 +59,7 @@ describe('ChapterPlannerAgent issues integration', () => {
         severity: 'error',
         description: '大纲中的关键台词在正文中完全没有出现',
         location: '第三段',
+        suggestion: '将关键台词补回第三段并保持原文措辞',
       },
     ]
 
@@ -82,6 +83,7 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).toContain('[outline_violation] 缺少大纲要求的情节点：地铁规划公布')
     expect(userMessage).toContain('[outline_deviation] 大纲中的关键台词在正文中完全没有出现')
     expect(userMessage).toContain('位置: 第三段')
+    expect(userMessage).toContain('建议: 将关键台词补回第三段并保持原文措辞')
     expect(userMessage).toContain('每个遗漏的大纲情节点都在 sections 中明确体现')
     expect(userMessage).toContain('每个未落实的要求都在 outlineCheck 中标记为 fulfilled')
   })

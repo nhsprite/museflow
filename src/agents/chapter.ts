@@ -62,7 +62,7 @@ ${state.storyState}
     const issuesSection = state.issues && state.issues.length > 0
       ? `<issues>
 <important>【重要】本章需要修复的问题：</important>
-${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}`).join('\n')}
+${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}${issue.suggestion ? `\n   建议: ${issue.suggestion}` : ''}`).join('\n')}
 
 <important>【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。</important>
 </issues>`

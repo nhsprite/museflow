@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
 import type { AgentState } from '../../src/agents/base.ts'
+import type { Issue } from '../../src/types/agent.ts'
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 
@@ -43,5 +44,40 @@ describe('ChapterAgent chapter numbering', () => {
     expect(messages[1]?.content).toContain('=== CHAPTER_CONTENT ===')
     expect(messages[1]?.content).toContain('破庙惊梦')
     expect(messages[1]?.content).not.toContain('第 0 章')
+  })
+
+  it('includes issue suggestions in rewrite prompts', () => {
+    const agent = new TestableChapterAgent()
+
+    const issues: Issue[] = [
+      {
+        id: 'issue-1',
+        type: 'consistency',
+        severity: 'error',
+        description: '六耳猕猴结局与大纲冲突',
+        location: '章节结尾',
+        suggestion: '保持六耳猕猴伏法，不要改写为皈依入队',
+      },
+    ]
+
+    const messages = agent.exposePrompt({
+      idea: '一个少年踏上修仙路',
+      genre: 'xianxia',
+      totalChapters: 3,
+      world: '玄元界',
+      characters: '【林玄】少年',
+      outline: '第1章：破庙惊梦\n少年在破庙中醒来',
+      previousChapters: '',
+      chapterContent: '已有正文',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      issues,
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('[consistency] 六耳猕猴结局与大纲冲突')
+    expect(userMessage).toContain('位置: 章节结尾')
+    expect(userMessage).toContain('建议: 保持六耳猕猴伏法，不要改写为皈依入队')
   })
 })
