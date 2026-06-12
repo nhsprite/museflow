@@ -94,6 +94,7 @@ vi.mock('../../src/graph/novel.graph.js', () => ({
 vi.mock('../../src/utils/paths.js', () => ({
   getOutputsDir: vi.fn().mockReturnValue('/tmp/books'),
   getStoryOutputDirWithTitle: vi.fn(),
+  getChapterFilePath: vi.fn().mockImplementation((outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`),
 }))
 
 vi.mock('../../src/genres/registry.js', () => ({
@@ -256,7 +257,7 @@ describe('rewrite command state consistency', () => {
       lastTimelineSnapshot: null,
     })
 
-    await rewrite('story-1', {}).catch(() => {})
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
     const updateStateCalls = updateStateMock.mock.calls
     expect(updateStateCalls.length).toBeGreaterThan(0)
@@ -304,7 +305,7 @@ describe('rewrite command state consistency', () => {
       lastTimelineSnapshot: null,
     })
 
-    await rewrite('story-1', {}).catch(() => {})
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
     const targetLog = logSpy.mock.calls.find(
       call => String(call[0]).includes('目标章节:')
@@ -352,7 +353,7 @@ describe('rewrite command state consistency', () => {
       lastTimelineSnapshot: null,
     })
 
-    await rewrite('story-1', {}).catch(() => {})
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
     const targetLog = logSpy.mock.calls.find(
       call => String(call[0]).includes('目标章节:')

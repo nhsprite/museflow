@@ -115,6 +115,7 @@ vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockRetu
 vi.mock('../../src/utils/paths.js', () => ({
   getOutputsDir: vi.fn().mockReturnValue('/tmp/books'),
   getStoryOutputDirWithTitle: vi.fn(),
+  getChapterFilePath: vi.fn().mockImplementation((outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`),
 }))
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('test-id') }))
 
