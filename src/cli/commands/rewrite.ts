@@ -9,6 +9,7 @@ import { deleteChapterContent } from '../../storage/filesystem/writer.js'
 import { getStoryState } from '../../storage/database/dao/story-state.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
+import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
 
 interface RewriteOptions {
@@ -91,10 +92,15 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     }
   }
 
-  await handleRewrite(storyId, true, targetChapterIndex)
+  await handleRewrite(storyId, true, targetChapterIndex, state.pendingIssues)
 }
 
-async function handleRewrite(storyId: string, userResponse: boolean, targetChapterIndex?: number): Promise<void> {
+async function handleRewrite(
+  storyId: string,
+  userResponse: boolean,
+  targetChapterIndex?: number,
+  retryIssues: Issue[] = []
+): Promise<void> {
   const updateStatus = (status: StoryStatus) => {
     updateStoryStatus(storyId, status)
   }
@@ -108,7 +114,7 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
   try {
     const result = await withSpinner(
       `正在重写第 ${chapterNum}/${totalChapters} 章...`,
-      () => rewriteChapter(storyId, userResponse, targetChapterIndex),
+      () => rewriteChapter(storyId, userResponse, targetChapterIndex, retryIssues),
       `✅ 第 ${chapterNum} 章重写完成`,
       (result) => !result.rewriteRequested
     )
@@ -182,7 +188,12 @@ async function handleRewrite(storyId: string, userResponse: boolean, targetChapt
   }
 }
 
-async function rewriteChapter(storyId: string, userResponse: boolean, targetChapterIndex?: number): Promise<ReducedGraphState> {
+async function rewriteChapter(
+  storyId: string,
+  userResponse: boolean,
+  targetChapterIndex?: number,
+  retryIssues: Issue[] = []
+): Promise<ReducedGraphState> {
   console.log('[MuseFlow] 查找输出目录...')
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
@@ -254,7 +265,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       chapters: rewrittenChapters,
       chapterSummaries: cleanedSummaries,
       foreshadowStack: cleanedForeshadowStack,
-      pendingIssues: [],
+      pendingIssues: retryIssues.length > 0 ? retryIssues : checkpointState.pendingIssues,
       rewriteApproved: userResponse,
       rewriteRequested: false,
       isWriting: true,
@@ -291,7 +302,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       currentChapterIndex: rewriteIndex,
       chapters: rewrittenChapters,
       foreshadowStack: cleanedForeshadowStack,
-      pendingIssues: checkpointState.pendingIssues,
+      pendingIssues: retryIssues.length > 0 ? retryIssues : checkpointState.pendingIssues,
       rewriteApproved: userResponse,
       rewriteRequested: false,
       isWriting: true,
@@ -306,7 +317,7 @@ async function rewriteChapter(storyId: string, userResponse: boolean, targetChap
       breakOnErrors: true,
       maxRewriteAttempts: 3,
       enableRevalidation: true,
-      enableStructuralBranching: false,
+      enableStructuralBranching: true,
     })
     console.log('[MuseFlow] executeChapterGeneration 完成')
 
