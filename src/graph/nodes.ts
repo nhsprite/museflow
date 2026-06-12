@@ -1251,11 +1251,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
-  const outlineItem = state.outline[chapterIndex]
-  const reconciledState = state.storyState && outlineItem?.description
-    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
-    : state.storyState
-  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+  const storyStateStr = state.storyState ? formatStoryState(state.storyState) : ''
 
   const supersededFacts = state.storyState?.supersededFacts ?? []
   const supersededFactsStr = supersededFacts.length > 0
