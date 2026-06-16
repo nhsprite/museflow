@@ -34,6 +34,7 @@ export interface StoryMeta {
     outputDir: string
     createdAt: number
     updatedAt: number
+    outlineStrategy?: 'layered' | 'legacy'
   }
   world: {
     id: string

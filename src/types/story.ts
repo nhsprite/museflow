@@ -36,6 +36,7 @@ export interface StoryCreateInput {
   genre: string
   totalChapters: number
   provider?: string
+  outlineStrategy?: 'layered' | 'legacy'
 }
 
 export interface StoryConfig {

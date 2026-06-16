@@ -12,13 +12,22 @@ interface StartOptions {
   genre: string
   title?: string
   provider?: string
+  outlineStrategy?: 'layered' | 'legacy'
   yes?: boolean
 }
 
 const MAX_REGENERATE_ATTEMPTS = 3
 
+export function parseOutlineStrategy(value: string): 'layered' | 'legacy' {
+  if (value !== 'layered' && value !== 'legacy') {
+    console.error('[MuseFlow] 错误: --outline-strategy 必须是 layered 或 legacy')
+    process.exit(1)
+  }
+  return value
+}
+
 export async function start(options: StartOptions): Promise<void> {
-  const { idea, chapters, genre, provider, yes } = options
+  const { idea, chapters, genre, provider, outlineStrategy, yes } = options
 
   console.log('[MuseFlow] 开始创建故事...')
   console.log(`  简介: ${idea}`)
@@ -82,6 +91,7 @@ export async function start(options: StartOptions): Promise<void> {
     provider: provider || 'openai',
     title: selectedOption.title,
     worldDirection: selectedOption.worldDirection,
+    ...(outlineStrategy ? { outlineStrategy } : {}),
   })
 
   console.log(`[MuseFlow] 故事已创建，ID: ${story.id}`)
