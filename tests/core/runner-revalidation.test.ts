@@ -12,6 +12,12 @@ const getForeshadowAlerts = vi.fn().mockReturnValue([])
 const saveStoryState = vi.fn()
 const getStoryState = vi.fn().mockReturnValue(null)
 const updateStoryStatus = vi.fn()
+const chapterPlannerRun = vi.fn().mockResolvedValue({
+  success: true,
+  data: {
+    sections: [{ title: 'Section 1', events: [], characters: [] }],
+  },
+})
 
 const mockExistsSync = vi.fn().mockReturnValue(true)
 const mockReaddirSync = vi.fn().mockReturnValue(['test-story-story-1'])
@@ -137,12 +143,7 @@ vi.mock('../../src/agents/index.js', () => ({
   },
   ChapterPlannerAgent: class {
     async run() {
-      return {
-        success: true,
-        data: {
-          sections: [{ title: 'Section 1', events: [], characters: [] }],
-        },
-      }
+      return chapterPlannerRun()
     }
   },
   QualityAgent: class {},
@@ -205,6 +206,12 @@ vi.mock('../../src/core/pipeline.js', () => ({
 describe('runner revalidation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    chapterPlannerRun.mockResolvedValue({
+      success: true,
+      data: {
+        sections: [{ title: 'Section 1', events: [], characters: [] }],
+      },
+    })
     pipelineCallCount = 0
     mockPipelineResults = []
     mockGraph.getState.mockResolvedValue({
@@ -330,5 +337,32 @@ describe('runner revalidation', () => {
     expect(pipelineCallCount).toBe(3)
     expect(result.pendingIssues.some((i: { severity: string }) => i.severity === 'error')).toBe(true)
     expect(result.rewriteRequested).toBe(true)
+  })
+
+  it('temporarily replans rewrite chapters when adjacent outlines need bridging', async () => {
+    const { continueStory } = await import('../../src/core/runner.js')
+
+    const stateWithOldPlan = createBaseGraphState({
+      outline: [
+        { number: 29, title: '真假美猴王', description: '六耳猕猴伏法，真宝玉获救。' },
+        { number: 30, title: '三界求援', description: '如来佛祖现身，以无上神通辨别六耳猕猴。' },
+      ],
+      totalChapters: 2,
+      chapters: [null, null],
+      currentChapterIndex: 0,
+      pendingIssues: [{ id: 'e1', type: 'quality', severity: 'error', description: 'local quality issue' }],
+      chapterPlan: {
+        sections: [{ title: 'Old incompatible plan', summary: 'old', events: [], characters: [] }],
+      },
+    })
+
+    mockGraph.getState.mockResolvedValue({ values: stateWithOldPlan })
+    mockPipelineResults = [
+      { state: createBaseGraphState({ outline: stateWithOldPlan.outline, totalChapters: 2, chapters: [null, null], pendingIssues: [] }), hasErrors: false },
+    ]
+
+    await continueStory('story-1', true, 0)
+
+    expect(chapterPlannerRun).toHaveBeenCalledTimes(1)
   })
 })

@@ -16,6 +16,7 @@ import {
   auto_fix_warnings,
   finalize_chapter,
 } from '../graph/nodes.js'
+import { shouldForceTemporaryReplan } from '../utils/outline-bridge.js'
 
 export interface ExecuteChapterOptions {
   breakOnErrors?: boolean
@@ -50,14 +51,20 @@ export async function executeChapterGeneration(
       }
 
       if (enableStructuralBranching) {
-        const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue', 'consistency']
-        const hasStructuralIssues = workingState.pendingIssues.some(
+        const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue']
+        const needsTemporaryReplan = shouldForceTemporaryReplan(workingState.outline, targetIndex)
+        const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
+        const hasStructuralIssueFromValidators = workingState.pendingIssues.some(
           i => i.severity === 'error' && structuralIssueTypes.includes(i.type)
         )
+        const hasStructuralIssues = hasStructuralIssueFromValidators || (needsTemporaryReplan && rewriteAttempts === 1)
         const hasLocalIssues = workingState.pendingIssues.some(
           i => i.severity === 'error' && !structuralIssueTypes.includes(i.type)
         )
-        const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
+        if (needsTemporaryReplan && workingState.chapterPlan) {
+          console.log('[MuseFlow] 检测到跨章节大纲桥接冲突，将临时重新规划本章...')
+          workingState = { ...workingState, chapterPlan: null }
+        }
 
         if (workingState.rewriteApproved && hasStructuralIssues && !hasLocalIssues) {
           console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
