@@ -40,6 +40,7 @@ import { getStoryOutputDirWithTitle } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getCheckpointer } from './checkpointer.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
+import { buildOutlineBridgeHint } from '../utils/outline-bridge.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -319,7 +320,7 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    outline: outlineItem ? `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}` : state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n'),
+    outline: formatChapterOutlineForAgent(state, chapterIndex),
     previousChapters,
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
@@ -358,6 +359,17 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
   return { chapterPlan }
 }
 
+function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: number): string {
+  const outlineItem = state.outline[chapterIndex]
+  if (!outlineItem) {
+    return state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n')
+  }
+  const bridgeHint = buildOutlineBridgeHint(state.outline, chapterIndex)
+  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, bridgeHint]
+    .filter(part => part.trim().length > 0)
+    .join('\n')
+}
+
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent()
   const chapterIndex = state.currentChapterIndex
@@ -383,7 +395,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    outline: outlineItem ? `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}` : state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n'),
+    outline: formatChapterOutlineForAgent(state, chapterIndex),
     previousChapters,
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
@@ -1298,7 +1310,7 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
     genre: state.genre,
     totalChapters: state.totalChapters,
     chapterIndex,
-    outline: `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}\n${outlineItem.description}`,
+    outline: formatChapterOutlineForAgent(state, chapterIndex),
     ...(content ? { chapterContent: content } : {}),
   }
 
@@ -1650,28 +1662,6 @@ function reconcileStoryState(
   const locMap = new Map<string, string>()
   for (const [char, loc] of Object.entries(storyState.characterLocations)) {
     const normalized = aliasMap.get(char) || char
-    
-    // 检查角色位置是否过时：如果大纲提到角色在新位置，清除旧位置
-    const locWords = loc.split(/\s+|，|。|！|？|、|；|\n/).filter(w => w.length >= 2)
-    const overlap = locWords.filter(w => outlineWords.has(w))
-    const overlapRatio = locWords.length > 0 ? overlap.length / locWords.length : 0
-    
-    // 如果角色位置与大纲有30%以上重叠，说明大纲也提到了这个位置，保留
-    // 如果角色位置与大纲完全无关（如旧章节的位置），且大纲暗示角色已移动，则清除
-    if (overlapRatio < 0.1 && outline.length > 10) {
-      // 大纲存在但角色位置与大纲无关 → 可能是过时位置
-      // 检查大纲是否提到该角色
-      const characterInOutline = outline.includes(normalized) || 
-        Array.from(aliasMap.entries()).some(([alias, canonical]) => 
-          canonical === normalized && outline.includes(alias)
-        )
-      
-      if (characterInOutline) {
-        console.log(`[MuseFlow] Reconciling: clearing outdated location for ${normalized}: "${loc}" (not mentioned in outline)`)
-        continue
-      }
-    }
-    
     locMap.set(normalized, loc)
   }
   reconciled.characterLocations = Object.fromEntries(locMap)
