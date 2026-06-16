@@ -40,6 +40,7 @@ import { getStoryOutputDirWithTitle } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getCheckpointer } from './checkpointer.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
+import { expandOutlineForChapter } from '../core/outline-expander.js'
 import { buildOutlineBridgeHint } from '../utils/outline-bridge.js'
 import { buildNextChapterBoundaryHint } from '../utils/outline-compatibility.js'
 
@@ -373,14 +374,14 @@ export async function plan_chapter_with_override(
   return runPlanChapter(state, outlineOverride)
 }
 
-function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: number): string {
+function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: number, extraHints: string[] = []): string {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
     return state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n')
   }
   const bridgeHint = buildOutlineBridgeHint(state.outline, chapterIndex)
   const nextChapterBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
-  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, bridgeHint, nextChapterBoundaryHint]
+  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, bridgeHint, nextChapterBoundaryHint, ...extraHints]
     .filter(part => part.trim().length > 0)
     .join('\n')
 }
@@ -390,6 +391,9 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
   const worldContent = state.world?.content
+
+  const { chapterPlan, boundaryHints } = await expandOutlineForChapter(state, chapterIndex)
+  state = { ...state, chapterPlan }
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
@@ -410,7 +414,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    outline: formatChapterOutlineForAgent(state, chapterIndex),
+    outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
     previousChapters,
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
