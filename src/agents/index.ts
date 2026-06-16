@@ -1,7 +1,6 @@
 export { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 export { WorldbuilderAgent } from './worldbuilder.js'
 export { CharacterAgent } from './character.js'
-export { OutlineAgent } from './outline.js'
 export { HighLevelOutlineAgent } from './high-level-outline.js'
 export { ChapterAgent } from './chapter.js'
 export { ChapterPlannerAgent } from './chapter-planner.js'

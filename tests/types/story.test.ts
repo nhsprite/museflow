@@ -11,11 +11,11 @@ describe('StoryConfig outlineStrategy', () => {
     expect(config.outlineStrategy).toBe('layered')
   })
 
-  it('defaults to legacy when omitted', () => {
+  it('is optional', () => {
     const config: StoryConfig = {
       provider: 'openai',
       model: 'gpt-4o',
     }
-    expect(config.outlineStrategy ?? 'legacy').toBe('legacy')
+    expect(config.outlineStrategy).toBeUndefined()
   })
 })

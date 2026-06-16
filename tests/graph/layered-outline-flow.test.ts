@@ -12,14 +12,6 @@ vi.mock('../../src/core/outline-expander.js', () => ({
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
   CharacterAgent: class {},
-  OutlineAgent: class {
-    async run() {
-      return { success: true, data: [{ number: 1, title: 'legacy', description: 'detailed description' }] }
-    }
-    processOutput() {
-      return [{ number: 1, title: 'legacy', description: 'detailed description' }]
-    }
-  },
   HighLevelOutlineAgent: class {
     async run() {
       return highLevelOutlineRunMock()
@@ -110,25 +102,11 @@ describe('layered outline flow', () => {
     expect(expandOutlineMock).toHaveBeenCalledWith(baseState, 0)
   })
 
-  describe('create_outline strategy', () => {
-    it('uses legacy OutlineAgent by default', async () => {
+  describe('create_outline', () => {
+    it('always uses HighLevelOutlineAgent', async () => {
       const { create_outline } = await import('../../src/graph/nodes.js')
 
       const result = await create_outline(baseState)
-
-      expect(result.outline).toHaveLength(1)
-      expect(result.outline![0]!.title).toBe('legacy')
-    })
-
-    it('uses HighLevelOutlineAgent when outlineStrategy is layered', async () => {
-      const { create_outline } = await import('../../src/graph/nodes.js')
-
-      const layeredState = {
-        ...baseState,
-        story: { ...baseState.story, outlineStrategy: 'layered' as const },
-      }
-
-      const result = await create_outline(layeredState)
 
       expect(highLevelOutlineRunMock).toHaveBeenCalledTimes(1)
       expect(result.outline).toHaveLength(2)

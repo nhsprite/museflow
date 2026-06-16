@@ -26,7 +26,7 @@ export interface Story {
   outputDir: string
   createdAt: number
   updatedAt: number
-  outlineStrategy?: 'layered' | 'legacy'
+  outlineStrategy?: 'layered'
 }
 
 export interface StoryCreateInput {
@@ -36,7 +36,7 @@ export interface StoryCreateInput {
   genre: string
   totalChapters: number
   provider?: string
-  outlineStrategy?: 'layered' | 'legacy'
+  outlineStrategy?: 'layered'
 }
 
 export interface StoryConfig {
@@ -44,5 +44,5 @@ export interface StoryConfig {
   model: string
   apiKey?: string
   baseUrl?: string
-  outlineStrategy?: 'layered' | 'legacy'
+  outlineStrategy?: 'layered'
 }
