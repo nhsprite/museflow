@@ -306,10 +306,12 @@ export async function validate_outline(state: ReducedGraphState): Promise<Partia
   return { pendingIssues: [...state.pendingIssues, ...issues] }
 }
 
-export async function plan_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+async function runPlanChapter(
+  state: ReducedGraphState,
+  outlineOverride?: string
+): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterPlannerAgent()
   const chapterIndex = state.currentChapterIndex
-  const outlineItem = state.outline[chapterIndex]
   const worldContent = state.world?.content
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
@@ -321,7 +323,7 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    outline: formatChapterOutlineForAgent(state, chapterIndex),
+    outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
     previousChapters,
     chapterIndex,
     chapterSummaries: state.chapterSummaries,
@@ -358,6 +360,17 @@ export async function plan_chapter(state: ReducedGraphState): Promise<Partial<Re
   console.log('')
 
   return { chapterPlan }
+}
+
+export async function plan_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+  return runPlanChapter(state)
+}
+
+export async function plan_chapter_with_override(
+  state: ReducedGraphState,
+  outlineOverride: string
+): Promise<Partial<ReducedGraphState>> {
+  return runPlanChapter(state, outlineOverride)
 }
 
 function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: number): string {
