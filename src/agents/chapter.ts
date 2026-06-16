@@ -143,6 +143,8 @@ ${JSON.stringify(state.chapterPlan, null, 2)}
 </closing_phase>`
           : ''
 
+    const factVerificationSection = this.buildFactVerificationSection(state)
+
     const userContent = `<task>
 <instruction>请撰写第 ${displayChapterNumber} 章的正文内容。</instruction>
 
@@ -181,6 +183,8 @@ ${keyEventsSection}
 
 ${storyStateSection}
 
+${factVerificationSection}
+
 ${planSection}
 
 ${outlineComplianceSection}
@@ -212,10 +216,14 @@ ${closingReminder ? closingReminder + '\n\n' : ''}${existingChapterSection}
 ${outlineKeyPoints.map((point, i) => `| 大纲情节点${i + 1} | 大纲 | ${point} | （请填写：本章如何呈现该情节点） | （请填写：第几段） |`).join('\n')}
 ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`).join('\n')}
 | 关键台词 | 大纲 | （如有大纲要求的台词，请列出） | （请填写：由谁说、在什么场景说） | （请填写） |
+| 事实核查 | 权威事实 | 本章涉及的事实是否已核对？ | （请填写：核对结果） | （请填写） |
 | 时间线 | 大纲/规划 | （如有时间要求，请列出） | （请填写：时间如何推进） | （请填写） |
 | 人物出场 | 大纲/规划 | （列出必须出场的人物） | （请填写：各自承担什么功能） | （请填写） |
 
 在表格之后，必须输出以下自检清单：
+- [ ] 所有涉及物品来源、角色关系、世界规则的描述都与已确立事实一致
+- [ ] 没有 invent 新的事实
+- [ ] 如果大纲有新设定，已明确标注并与旧事实区分
 - [ ] 大纲中的每个情节点都已在本章找到对应呈现方式
 - [ ] 章节规划中的每个段落都有明确的展开计划
 - [ ] 关键台词已标注说话人和场景
@@ -301,6 +309,48 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
       return [description.trim()]
     }
     return sentences
+  }
+
+  private buildFactVerificationSection(state: Required<AgentState>): string {
+    const storyState = state.storyState
+    if (!storyState) {
+      return ''
+    }
+
+    const extractSection = (label: string, content: string): string | null => {
+      const pattern = new RegExp(`【${label}】\\n([\\s\\S]*?)(?=【|$)`)
+      const match = content.match(pattern)
+      return match && match[1] ? match[1].trim() : null
+    }
+
+    const revealedSecrets = extractSection('已揭示的秘密', storyState)
+    const supersededFacts = extractSection('已被覆盖的旧事实', storyState)
+    const characterLocations = extractSection('角色位置', storyState)
+    const characterStatuses = extractSection('角色状态', storyState)
+    const keyItems = extractSection('关键物品', storyState)
+
+    const facts: string[] = []
+    if (characterLocations) {
+      facts.push(`<established_locations>\n【角色位置】\n${characterLocations}\n</established_locations>`)
+    }
+    if (characterStatuses) {
+      facts.push(`<established_statuses>\n【角色状态】\n${characterStatuses}\n</established_statuses>`)
+    }
+    if (keyItems) {
+      facts.push(`<established_items>\n【关键物品】\n${keyItems}\n</established_items>`)
+    }
+    if (revealedSecrets) {
+      facts.push(`<established_secrets>\n【已揭示的秘密】\n${revealedSecrets}\n</established_secrets>`)
+    }
+    if (supersededFacts) {
+      facts.push(`<superseded_facts>\n【已被覆盖的旧事实】\n${supersededFacts}\n</superseded_facts>`)
+    }
+
+    if (facts.length === 0) {
+      return ''
+    }
+
+    return `<canonical_facts>\n<mandatory>【事实核查 - 写正文前必须完成】</mandatory>\n以下是截至上一章结束时已确立的权威事实。本章涉及以下主题时，必须与这些事实保持一致：\n\n${facts.join('\n\n')}\n\n<mandatory>【强制要求】\n- 涉及物品来源、制造者、材质时，必须与上述事实一致\n- 涉及角色关系、身份、起源时，必须与上述事实一致\n- 涉及角色位置、状态时，必须与上述事实一致\n- 涉及世界设定、规则、历史时，必须与上述事实一致\n- 如果大纲引入新设定与已确立事实冲突，必须标注为"大纲新设定"并说明区别\n- 严禁 invent 新的事实来支持情节</mandatory>\n</canonical_facts>`
   }
 
   private extractChapterOutline(outline: string, chapterIndex: number): { title: string; description: string } {
