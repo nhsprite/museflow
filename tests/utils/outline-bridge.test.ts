@@ -17,6 +17,33 @@ describe('buildOutlineBridgeHint', () => {
     expect(hint).toContain('第30章')
   })
 
+  it('adds a backward bridge when previous chapter ended an entity that current chapter must still resolve', () => {
+    const outline = [
+      { number: 29, title: '真假美猴王', description: '六耳猕猴伏法，真宝玉获救。' },
+      { number: 30, title: '三界求援', description: '各路神仙齐聚辨别六耳猕猴真伪。' },
+    ]
+
+    const hint = buildOutlineBridgeHint(outline, 1)
+
+    expect(hint).toContain('<outline_bridge>')
+    expect(hint).toContain('伏法')
+    expect(hint).toContain('本章不得重复处理或重新展开')
+    expect(hint).toContain('第29章')
+    expect(hint).toContain('第30章')
+  })
+
+  it('detects backward bridge with 伏妖 terminal keyword', () => {
+    const outline = [
+      { number: 29, title: '真假美猴王', description: '六耳猕猴伏妖于金钵之下。' },
+      { number: 30, title: '三界求援', description: '各路神仙齐聚辨别六耳猕猴真伪。' },
+    ]
+
+    const hint = buildOutlineBridgeHint(outline, 1)
+
+    expect(hint).toContain('<outline_bridge>')
+    expect(hint).toContain('伏妖')
+  })
+
   it('does not add a bridge for non-conflicting adjacent chapters', () => {
     const outline = [
       { number: 1, title: '启程', description: '主角离开家乡。' },
@@ -24,6 +51,7 @@ describe('buildOutlineBridgeHint', () => {
     ]
 
     expect(buildOutlineBridgeHint(outline, 0)).toBe('')
+    expect(buildOutlineBridgeHint(outline, 1)).toBe('')
   })
 
   it('forces temporary replanning when an outline bridge is needed', () => {
@@ -35,6 +63,15 @@ describe('buildOutlineBridgeHint', () => {
     expect(shouldForceTemporaryReplan(outline, 0)).toBe(true)
   })
 
+  it('forces temporary replanning for backward bridge conflicts', () => {
+    const outline = [
+      { number: 29, title: '真假美猴王', description: '六耳猕猴伏法，真宝玉获救。' },
+      { number: 30, title: '三界求援', description: '如来佛祖现身，以无上神通辨别六耳猕猴。' },
+    ]
+
+    expect(shouldForceTemporaryReplan(outline, 1)).toBe(true)
+  })
+
   it('does not force temporary replanning when no bridge is needed', () => {
     const outline = [
       { number: 1, title: '启程', description: '主角离开家乡。' },
@@ -42,5 +79,6 @@ describe('buildOutlineBridgeHint', () => {
     ]
 
     expect(shouldForceTemporaryReplan(outline, 0)).toBe(false)
+    expect(shouldForceTemporaryReplan(outline, 1)).toBe(false)
   })
 })

@@ -2,6 +2,7 @@ import type { ReducedGraphState } from '../graph/state.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { buildNovelGraph } from '../graph/novel.graph.js'
 import type { getCheckpointer } from '../graph/checkpointer.js'
+import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import {
   plan_chapter,
@@ -25,6 +26,43 @@ export interface ExecuteChapterOptions {
   enableStructuralBranching?: boolean
 }
 
+const STRUCTURAL_ISSUE_TYPES = new Set([
+  'outline_violation',
+  'outline_deviation',
+  'timeline_mismatch',
+  'logic_issue',
+])
+
+const CROSS_CHAPTER_MARKERS = [
+  /上一章/,
+  /前[一二三四五六七八九十\d]+章/,
+  /第\s*[一二三四五六七八九十\d]+\s*章/,
+  /story_state/,
+  /已确认事实/,
+  /已确立/,
+  /既定事实/,
+  /大纲第\s*[一二三四五六七八九十\d]+\s*章/,
+]
+
+export function isStructuralIssue(issue: Issue): boolean {
+  if (STRUCTURAL_ISSUE_TYPES.has(issue.type)) {
+    return true
+  }
+
+  if (issue.type === 'consistency' || issue.type === 'hallucination') {
+    const text = `${issue.description} ${issue.location || ''}`
+    if (CROSS_CHAPTER_MARKERS.some(pattern => pattern.test(text))) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function isLocalIssue(issue: Issue): boolean {
+  return issue.severity === 'error' && !isStructuralIssue(issue)
+}
+
 export async function executeChapterGeneration(
   storyId: string,
   outputDir: string,
@@ -42,6 +80,8 @@ export async function executeChapterGeneration(
 
   const targetIndex = workingState.currentChapterIndex
   let rewriteAttempts = 0
+  let previousErrorCount = 0
+  let forceStructuralRewrite = false
 
   try {
     while (rewriteAttempts < maxRewriteAttempts) {
@@ -50,16 +90,24 @@ export async function executeChapterGeneration(
         console.log(`[MuseFlow] 第 ${rewriteAttempts}/${maxRewriteAttempts} 次尝试...`)
       }
 
+      if (forceStructuralRewrite) {
+        if (workingState.chapterPlan) {
+          console.log('[MuseFlow] 上轮修复未收敛，将强制完整重写...')
+          workingState = { ...workingState, chapterPlan: null }
+        }
+      }
+      const structuralOverride = forceStructuralRewrite
+      forceStructuralRewrite = false
+
       if (enableStructuralBranching) {
-        const structuralIssueTypes = ['outline_violation', 'outline_deviation', 'timeline_mismatch', 'logic_issue']
         const needsTemporaryReplan = shouldForceTemporaryReplan(workingState.outline, targetIndex)
         const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
         const hasStructuralIssueFromValidators = workingState.pendingIssues.some(
-          i => i.severity === 'error' && structuralIssueTypes.includes(i.type)
+          i => i.severity === 'error' && isStructuralIssue(i)
         )
-        const hasStructuralIssues = hasStructuralIssueFromValidators || (needsTemporaryReplan && rewriteAttempts === 1)
+        const hasStructuralIssues = hasStructuralIssueFromValidators || (needsTemporaryReplan && rewriteAttempts === 1) || structuralOverride
         const hasLocalIssues = workingState.pendingIssues.some(
-          i => i.severity === 'error' && !structuralIssueTypes.includes(i.type)
+          i => i.severity === 'error' && isLocalIssue(i)
         )
         if (needsTemporaryReplan && workingState.chapterPlan) {
           console.log('[MuseFlow] 检测到跨章节大纲桥接冲突，将临时重新规划本章...')
@@ -197,6 +245,13 @@ export async function executeChapterGeneration(
         }
       }
       workingState = { ...workingState, pendingIssues: dedupedIssues }
+
+      const errorCountAfterDedup = workingState.pendingIssues.filter(i => i.severity === 'error').length
+      if (rewriteAttempts > 1 && errorCountAfterDedup > previousErrorCount) {
+        console.log(`[MuseFlow] 检测到问题数量上升（${previousErrorCount} -> ${errorCountAfterDedup}），修复未收敛，下次尝试将强制完整重写...`)
+        forceStructuralRewrite = true
+      }
+      previousErrorCount = errorCountAfterDedup
 
       if (rewriteAttempts < maxRewriteAttempts) {
         console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)

@@ -100,7 +100,7 @@ describe('executeChapterGeneration outline bridge retries', () => {
     expect(fixChapterMock).toHaveBeenCalledTimes(1)
   })
 
-  it('uses fix mode for consistency errors on retry instead of replanning', async () => {
+  it('uses fix mode for local consistency errors on retry instead of replanning', async () => {
     autoFixWarningsMock
       .mockReset()
       .mockResolvedValueOnce({
@@ -127,6 +127,84 @@ describe('executeChapterGeneration outline bridge retries', () => {
     )
 
     expect(planChapterMock).toHaveBeenCalledTimes(1)
+    expect(fixChapterMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses full rewrite for cross-chapter consistency errors that reference previous chapters', async () => {
+    autoFixWarningsMock
+      .mockReset()
+      .mockResolvedValueOnce({
+        pendingIssues: [{
+          id: 'issue-1',
+          type: 'consistency',
+          severity: 'error' as const,
+          description: '第29章中六耳猕猴已被封入锦囊，本章却写他被如来降伏',
+        }],
+      })
+      .mockResolvedValueOnce({ pendingIssues: [] })
+
+    const { executeChapterGeneration } = await import('../../src/core/chapter-generation.js')
+    const graph = { updateState: vi.fn().mockResolvedValue(undefined) }
+    const checkpointer = { saveChapterCheckpoint: vi.fn().mockResolvedValue(undefined) }
+
+    await executeChapterGeneration(
+      'story-1',
+      '/tmp/story',
+      baseState,
+      graph as never,
+      checkpointer as never,
+      { maxRewriteAttempts: 2, enableRevalidation: false, enableStructuralBranching: true }
+    )
+
+    expect(planChapterMock).toHaveBeenCalledTimes(2)
+    expect(draftChapterMock).toHaveBeenCalledTimes(2)
+    expect(fixChapterMock).toHaveBeenCalledTimes(0)
+  })
+
+  it('escalates to full rewrite when paragraph fix increases error count', async () => {
+    autoFixWarningsMock
+      .mockReset()
+      .mockResolvedValueOnce({
+        pendingIssues: [{
+          id: 'issue-1',
+          type: 'quality',
+          severity: 'error' as const,
+          description: '局部用词重复',
+        }],
+      })
+      .mockResolvedValueOnce({
+        pendingIssues: [
+          {
+            id: 'issue-1',
+            type: 'quality',
+            severity: 'error' as const,
+            description: '局部用词重复',
+          },
+          {
+            id: 'issue-2',
+            type: 'quality',
+            severity: 'error' as const,
+            description: '新增局部节奏问题',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ pendingIssues: [] })
+
+    const { executeChapterGeneration } = await import('../../src/core/chapter-generation.js')
+    const graph = { updateState: vi.fn().mockResolvedValue(undefined) }
+    const checkpointer = { saveChapterCheckpoint: vi.fn().mockResolvedValue(undefined) }
+
+    await executeChapterGeneration(
+      'story-1',
+      '/tmp/story',
+      baseState,
+      graph as never,
+      checkpointer as never,
+      { maxRewriteAttempts: 3, enableRevalidation: false, enableStructuralBranching: true }
+    )
+
+    expect(planChapterMock).toHaveBeenCalledTimes(2)
+    expect(draftChapterMock).toHaveBeenCalledTimes(2)
     expect(fixChapterMock).toHaveBeenCalledTimes(1)
   })
 })

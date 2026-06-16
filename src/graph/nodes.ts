@@ -41,6 +41,7 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getCheckpointer } from './checkpointer.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
 import { buildOutlineBridgeHint } from '../utils/outline-bridge.js'
+import { buildNextChapterBoundaryHint } from '../utils/outline-compatibility.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -365,7 +366,8 @@ function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: nu
     return state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n')
   }
   const bridgeHint = buildOutlineBridgeHint(state.outline, chapterIndex)
-  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, bridgeHint]
+  const nextChapterBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
+  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, bridgeHint, nextChapterBoundaryHint]
     .filter(part => part.trim().length > 0)
     .join('\n')
 }
@@ -485,6 +487,14 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
 
   if (affectedIndices.length === 0) {
     console.log('[MuseFlow] 未能定位到问题所在段落，将使用全文修复模式')
+    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
+  }
+
+  const AFFECTED_PARAGRAPH_RATIO_THRESHOLD = 0.4
+  const AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD = 20
+  const affectedRatio = paragraphs.length > 0 ? affectedIndices.length / paragraphs.length : 0
+  if (affectedIndices.length > AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD || affectedRatio > AFFECTED_PARAGRAPH_RATIO_THRESHOLD) {
+    console.log(`[MuseFlow] 问题涉及 ${affectedIndices.length}/${paragraphs.length} 个段落（占比 ${Math.round(affectedRatio * 100)}%），超过修复阈值，转为完整重写`)
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
   }
 
