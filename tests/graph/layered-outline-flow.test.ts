@@ -3,6 +3,7 @@ import type { ReducedGraphState } from '../../src/graph/state.js'
 
 const expandOutlineMock = vi.fn()
 const runAgentMock = vi.fn()
+const highLevelOutlineRunMock = vi.fn()
 
 vi.mock('../../src/core/outline-expander.js', () => ({
   expandOutlineForChapter: expandOutlineMock,
@@ -11,8 +12,19 @@ vi.mock('../../src/core/outline-expander.js', () => ({
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
   CharacterAgent: class {},
-  OutlineAgent: class {},
-  HighLevelOutlineAgent: class {},
+  OutlineAgent: class {
+    async run() {
+      return { success: true, data: [{ number: 1, title: 'legacy', description: 'detailed description' }] }
+    }
+    processOutput() {
+      return [{ number: 1, title: 'legacy', description: 'detailed description' }]
+    }
+  },
+  HighLevelOutlineAgent: class {
+    async run() {
+      return highLevelOutlineRunMock()
+    }
+  },
   ChapterAgent: class {
     async run() {
       return { content: runAgentMock() }
@@ -32,6 +44,12 @@ vi.mock('../../src/agents/index.js', () => ({
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeChapterContent: vi.fn().mockResolvedValue(undefined),
   readChapterContent: vi.fn().mockResolvedValue(null),
+  writeOutlineContent: vi.fn().mockResolvedValue(undefined),
+  writeStoryBible: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../src/storage/database/dao/chapter.js', () => ({
+  saveOutline: vi.fn(),
 }))
 
 vi.mock('../../src/genres/registry.js', () => ({
@@ -73,6 +91,15 @@ describe('layered outline flow', () => {
       boundaryHints: [],
     })
     runAgentMock.mockReturnValue('chapter content')
+    highLevelOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        chapters: [
+          { number: 1, title: '启程', description: '主角离开家乡。' },
+          { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        ],
+      },
+    })
   })
 
   it('calls expandOutlineForChapter before drafting', async () => {
@@ -81,5 +108,31 @@ describe('layered outline flow', () => {
     await draft_chapter(baseState)
 
     expect(expandOutlineMock).toHaveBeenCalledWith(baseState, 0)
+  })
+
+  describe('create_outline strategy', () => {
+    it('uses legacy OutlineAgent by default', async () => {
+      const { create_outline } = await import('../../src/graph/nodes.js')
+
+      const result = await create_outline(baseState)
+
+      expect(result.outline).toHaveLength(1)
+      expect(result.outline![0]!.title).toBe('legacy')
+    })
+
+    it('uses HighLevelOutlineAgent when outlineStrategy is layered', async () => {
+      const { create_outline } = await import('../../src/graph/nodes.js')
+
+      const layeredState = {
+        ...baseState,
+        story: { ...baseState.story, outlineStrategy: 'layered' as const },
+      }
+
+      const result = await create_outline(layeredState)
+
+      expect(highLevelOutlineRunMock).toHaveBeenCalledTimes(1)
+      expect(result.outline).toHaveLength(2)
+      expect(result.outline![0]!.description.length).toBeLessThanOrEqual(60)
+    })
   })
 })

@@ -5,6 +5,7 @@ import {
   WorldbuilderAgent,
   CharacterAgent,
   OutlineAgent,
+  HighLevelOutlineAgent,
   ChapterAgent,
   ChapterPlannerAgent,
   QualityAgent,
@@ -47,6 +48,7 @@ import { buildNextChapterBoundaryHint } from '../utils/outline-compatibility.js'
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
 let outlineAgent: OutlineAgent | null = null
+let highLevelOutlineAgent: HighLevelOutlineAgent | null = null
 let chapterAgent: ChapterAgent | null = null
 let chapterPlannerAgent: ChapterPlannerAgent | null = null
 let qualityAgent: QualityAgent | null = null
@@ -68,6 +70,11 @@ function getCharacterAgent(): CharacterAgent {
 function getOutlineAgent(): OutlineAgent {
   if (!outlineAgent) outlineAgent = new OutlineAgent()
   return outlineAgent
+}
+
+function getHighLevelOutlineAgent(): HighLevelOutlineAgent {
+  if (!highLevelOutlineAgent) highLevelOutlineAgent = new HighLevelOutlineAgent()
+  return highLevelOutlineAgent
 }
 
 function getChapterAgent(): ChapterAgent {
@@ -213,8 +220,42 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
 }
 
 export async function create_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const agent = getOutlineAgent()
   const worldContent = state.world?.content
+  const useLayered = state.story.outlineStrategy === 'layered'
+
+  if (useLayered) {
+    const agent = getHighLevelOutlineAgent()
+    const agentState: AgentState = {
+      idea: state.idea,
+      genre: state.genre,
+      totalChapters: state.totalChapters,
+      title: state.story.title,
+      ...(state.story.worldDirection ? { worldDirection: state.story.worldDirection } : {}),
+      ...(worldContent ? { world: worldContent } : {}),
+      characters: charactersToString(state.characters),
+    }
+
+    const output = await agent.run(agentState)
+    const chapters = (output.data as { chapters: ReducedGraphState['outline'] } | undefined)?.chapters ?? []
+
+    if (chapters.length === 0) {
+      throw new Error('[MuseFlow] 错误：高层次大纲解析失败')
+    }
+
+    saveOutline(state.story.id, chapters)
+    await writeOutlineContent(state.story.outputDir, state.story.title, chapters)
+    await writeStoryBible(
+      state.story.outputDir,
+      state.story,
+      worldContent || '',
+      state.characters,
+      chapters,
+    )
+
+    return { outline: chapters }
+  }
+
+  const agent = getOutlineAgent()
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
