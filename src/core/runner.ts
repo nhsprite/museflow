@@ -9,6 +9,7 @@ import { createEmptyStoryState, getStoryState } from '../storage/database/dao/st
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { executeChapterGeneration } from './chapter-generation.js'
 import { getWorld } from '../storage/database/dao/world.js'
+import { resolveOutlineStrategy } from '../utils/outline-strategy.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -106,6 +107,11 @@ export async function continueStory(
 
   const snapshot = await graph.getState(config)
   const checkpointState = snapshot.values as ReducedGraphState
+
+  checkpointState.story.outlineStrategy = resolveOutlineStrategy(
+    checkpointState.story,
+    checkpointState.outline
+  )
 
   const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
   const isRewrite = currentChapterIndex !== undefined
