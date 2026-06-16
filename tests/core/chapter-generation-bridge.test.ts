@@ -1,20 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 
-const planChapterMock = vi.fn()
-const draftChapterMock = vi.fn()
-const fixChapterMock = vi.fn()
-const validateChapterMock = vi.fn()
-const qualityPassMock = vi.fn()
-const detectForeshadowingMock = vi.fn()
-const detectHallucinationMock = vi.fn()
-const detectConsistencyMock = vi.fn()
-const verifyOutlineComplianceMock = vi.fn()
-const autoFixWarningsMock = vi.fn()
-const finalizeChapterMock = vi.fn()
+const {
+  planChapterWithOverrideMock,
+  draftChapterMock,
+  fixChapterMock,
+  validateChapterMock,
+  qualityPassMock,
+  detectForeshadowingMock,
+  detectHallucinationMock,
+  detectConsistencyMock,
+  verifyOutlineComplianceMock,
+  autoFixWarningsMock,
+  finalizeChapterMock,
+} = vi.hoisted(() => ({
+  planChapterWithOverrideMock: vi.fn(),
+  draftChapterMock: vi.fn(),
+  fixChapterMock: vi.fn(),
+  validateChapterMock: vi.fn(),
+  qualityPassMock: vi.fn(),
+  detectForeshadowingMock: vi.fn(),
+  detectHallucinationMock: vi.fn(),
+  detectConsistencyMock: vi.fn(),
+  verifyOutlineComplianceMock: vi.fn(),
+  autoFixWarningsMock: vi.fn(),
+  finalizeChapterMock: vi.fn(),
+}))
 
 vi.mock('../../src/graph/nodes.js', () => ({
-  plan_chapter: planChapterMock,
+  plan_chapter_with_override: planChapterWithOverrideMock,
   draft_chapter: draftChapterMock,
   fix_chapter: fixChapterMock,
   validate_chapter: validateChapterMock,
@@ -59,8 +73,8 @@ const baseState: ReducedGraphState = {
 describe('executeChapterGeneration outline bridge retries', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    planChapterMock.mockResolvedValue({ chapterPlan: { sections: [] } })
-    draftChapterMock.mockResolvedValue({ chapters: baseState.chapters })
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
+    draftChapterMock.mockResolvedValue({ chapters: baseState.chapters, chapterPlan: { sections: [] } })
     fixChapterMock.mockResolvedValue({ chapters: baseState.chapters })
     validateChapterMock.mockResolvedValue({})
     qualityPassMock.mockResolvedValue({})
@@ -95,7 +109,7 @@ describe('executeChapterGeneration outline bridge retries', () => {
       { maxRewriteAttempts: 2, enableRevalidation: false, enableStructuralBranching: true }
     )
 
-    expect(planChapterMock).toHaveBeenCalledTimes(1)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
     expect(draftChapterMock).toHaveBeenCalledTimes(1)
     expect(fixChapterMock).toHaveBeenCalledTimes(1)
   })
@@ -126,7 +140,7 @@ describe('executeChapterGeneration outline bridge retries', () => {
       { maxRewriteAttempts: 2, enableRevalidation: false, enableStructuralBranching: true }
     )
 
-    expect(planChapterMock).toHaveBeenCalledTimes(1)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
     expect(fixChapterMock).toHaveBeenCalledTimes(1)
   })
 
@@ -156,7 +170,7 @@ describe('executeChapterGeneration outline bridge retries', () => {
       { maxRewriteAttempts: 2, enableRevalidation: false, enableStructuralBranching: true }
     )
 
-    expect(planChapterMock).toHaveBeenCalledTimes(2)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(0)
     expect(draftChapterMock).toHaveBeenCalledTimes(2)
     expect(fixChapterMock).toHaveBeenCalledTimes(0)
   })
@@ -203,7 +217,7 @@ describe('executeChapterGeneration outline bridge retries', () => {
       { maxRewriteAttempts: 3, enableRevalidation: false, enableStructuralBranching: true }
     )
 
-    expect(planChapterMock).toHaveBeenCalledTimes(2)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
     expect(draftChapterMock).toHaveBeenCalledTimes(2)
     expect(fixChapterMock).toHaveBeenCalledTimes(1)
   })

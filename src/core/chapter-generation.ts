@@ -5,7 +5,6 @@ import type { getCheckpointer } from '../graph/checkpointer.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import {
-  plan_chapter,
   draft_chapter,
   fix_chapter,
   validate_chapter,
@@ -17,6 +16,7 @@ import {
   auto_fix_warnings,
   finalize_chapter,
 } from '../graph/nodes.js'
+import { expandOutlineForChapter } from './outline-expander.js'
 import { shouldForceTemporaryReplan } from '../utils/outline-bridge.js'
 
 export interface ExecuteChapterOptions {
@@ -117,14 +117,16 @@ export async function executeChapterGeneration(
         if (workingState.rewriteApproved && hasStructuralIssues && !hasLocalIssues) {
           console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
           workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
-          const planResult = await plan_chapter(workingState)
-          workingState = { ...workingState, ...planResult }
           const draftResult = await draft_chapter(workingState)
           workingState = { ...workingState, ...draftResult }
           workingState = { ...workingState, pendingIssues: [] }
         } else if (workingState.rewriteApproved && hasLocalIssues && !hasStructuralIssues) {
           console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
           workingState = { ...workingState, pendingIssues: errorIssues }
+          if (!workingState.chapterPlan) {
+            const { chapterPlan } = await expandOutlineForChapter(workingState, targetIndex)
+            workingState = { ...workingState, chapterPlan }
+          }
           const fixResult = await fix_chapter(workingState)
           workingState = { ...workingState, ...fixResult }
           workingState = { ...workingState, pendingIssues: [] }
@@ -140,20 +142,12 @@ export async function executeChapterGeneration(
           } else {
             workingState = { ...workingState, pendingIssues: [] }
           }
-          if (!workingState.chapterPlan) {
-            const planResult = await plan_chapter(workingState)
-            workingState = { ...workingState, ...planResult }
-          }
           const draftResult = await draft_chapter(workingState)
           workingState = { ...workingState, ...draftResult }
           workingState = { ...workingState, pendingIssues: [] }
         }
       } else {
         workingState = { ...workingState, pendingIssues: [] }
-        if (!workingState.chapterPlan) {
-          const planResult = await plan_chapter(workingState)
-          workingState = { ...workingState, ...planResult }
-        }
         const draftResult = await draft_chapter(workingState)
         workingState = { ...workingState, ...draftResult }
         workingState = { ...workingState, pendingIssues: [] }

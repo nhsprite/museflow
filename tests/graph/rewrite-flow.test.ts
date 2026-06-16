@@ -14,9 +14,29 @@ vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
   CharacterAgent: class {},
   OutlineAgent: class {},
+  HighLevelOutlineAgent: class {},
   ChapterAgent: class {
     async run() {
       return { content: mockChapterContentValue }
+    }
+  },
+  ChapterPlannerAgent: class {
+    async run() {
+      return {
+        success: true,
+        data: {
+          sections: [{
+            title: 'Section 1',
+            summary: 'summary',
+            wordCount: 100,
+            events: ['event'],
+            characters: ['character'],
+            timeMark: 'now',
+          }],
+          timeline: [],
+          outlineCheck: [],
+        },
+      }
     }
   },
   QualityAgent: class {},
