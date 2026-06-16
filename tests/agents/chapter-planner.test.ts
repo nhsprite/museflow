@@ -131,4 +131,31 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).toContain('2. [outline_violation] 问题 B')
     expect(userMessage).toContain('3. [timeline_mismatch] 问题 C')
   })
+
+  it('forbids inventing new facts to reconcile prior-chapter contradictions', () => {
+    const agent = new TestableChapterPlannerAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '',
+      outline: '第2章：追查真相\n主角继续调查上一章遗留的问题',
+      previousChapters: '前文摘要中存在两个地点来源记录不一致。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      issues: [{
+        id: 'issue-1',
+        type: 'consistency',
+        severity: 'error',
+        description: '前文设定存在互相冲突的来源记录',
+      }],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('不得为了修补前文矛盾而发明新事实')
+    expect(userMessage).toContain('不得让角色说出其未在前文获得的信息')
+  })
 })
