@@ -29,7 +29,6 @@ export interface ExecuteChapterOptions {
 
 const STRUCTURAL_ISSUE_TYPES = new Set([
   'outline_violation',
-  'outline_deviation',
   'timeline_mismatch',
   'logic_issue',
 ])
@@ -45,9 +44,25 @@ const CROSS_CHAPTER_MARKERS = [
   /大纲第\s*[一二三四五六七八九十\d]+\s*章/,
 ]
 
+function calculateIssueSimilarity(prev: string[], curr: string[]): number {
+  if (prev.length === 0 || curr.length === 0) return 0
+  const prevSet = new Set(prev)
+  const currSet = new Set(curr)
+  let intersection = 0
+  for (const item of currSet) {
+    if (prevSet.has(item)) intersection++
+  }
+  return intersection / Math.max(prevSet.size, currSet.size)
+}
+
 export function isStructuralIssue(issue: Issue): boolean {
   if (STRUCTURAL_ISSUE_TYPES.has(issue.type)) {
     return true
+  }
+
+  if (issue.type === 'outline_deviation') {
+    const text = `${issue.description} ${issue.location || ''}`
+    return /缺少|完全缺失|核心事件|严重偏离|完全忽略|未出现/.test(text)
   }
 
   if (issue.type === 'consistency' || issue.type === 'hallucination') {
@@ -94,9 +109,10 @@ export async function executeChapterGeneration(
   } = options
 
   const targetIndex = workingState.currentChapterIndex
-  let rewriteAttempts = 0
-  let previousErrorCount = 0
-  let forceStructuralRewrite = false
+    let rewriteAttempts = 0
+    let previousErrorCount = 0
+    let previousErrorDescriptions: string[] = []
+    let forceStructuralRewrite = false
 
   try {
     while (rewriteAttempts < maxRewriteAttempts) {
@@ -250,14 +266,42 @@ export async function executeChapterGeneration(
       workingState = { ...workingState, pendingIssues: dedupedIssues }
 
       const errorCountAfterDedup = workingState.pendingIssues.filter(i => i.severity === 'error').length
-      if (rewriteAttempts > 1 && errorCountAfterDedup > previousErrorCount) {
-        console.log(`[MuseFlow] 检测到问题数量上升（${previousErrorCount} -> ${errorCountAfterDedup}），修复未收敛，下次尝试将强制完整重写...`)
-        forceStructuralRewrite = true
+      const currentErrorDescriptions = workingState.pendingIssues
+        .filter(i => i.severity === 'error')
+        .map(i => `${i.type}:${i.description}`)
+      const similarity = calculateIssueSimilarity(previousErrorDescriptions, currentErrorDescriptions)
+
+      const interpretiveIssuePattern = /提前.*(?:剧透|揭示)|看破.*说破|感应.*反应|选择性感应|表达方式|性格驱动/
+      let currentRemainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+      const onlyInterpretiveErrors = currentRemainingErrors.length > 0 && currentRemainingErrors.every(i =>
+        interpretiveIssuePattern.test(i.description) || interpretiveIssuePattern.test(i.location || '')
+      )
+
+      if (rewriteAttempts > 1) {
+        if (errorCountAfterDedup > previousErrorCount) {
+          console.log(`[MuseFlow] 检测到问题数量上升（${previousErrorCount} -> ${errorCountAfterDedup}），修复未收敛，下次尝试将强制完整重写...`)
+          forceStructuralRewrite = true
+        } else if (similarity >= 0.5 && errorCountAfterDedup > 0) {
+          console.log(`[MuseFlow] 检测到问题高度重复（相似度 ${Math.round(similarity * 100)}%），修复未收敛，将保留全部问题反馈并强制完整重写...`)
+          forceStructuralRewrite = true
+          workingState = { ...workingState, pendingIssues: workingState.pendingIssues }
+        } else if (onlyInterpretiveErrors && rewriteAttempts >= maxRewriteAttempts - 1) {
+          console.log(`[MuseFlow] 剩余 ${currentRemainingErrors.length} 个问题均为解释性一致性问题，自动降级为 warning 以完成本章...`)
+          workingState = {
+            ...workingState,
+            pendingIssues: workingState.pendingIssues.map(i =>
+              i.severity === 'error' && (interpretiveIssuePattern.test(i.description) || interpretiveIssuePattern.test(i.location || ''))
+                ? { ...i, severity: 'warning' as const }
+                : i
+            ),
+          }
+          currentRemainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+        }
       }
       previousErrorCount = errorCountAfterDedup
+      previousErrorDescriptions = currentErrorDescriptions
 
-      const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
-      if (remainingErrors.length === 0) {
+      if (currentRemainingErrors.length === 0) {
         break
       }
 
@@ -265,8 +309,8 @@ export async function executeChapterGeneration(
         console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
         workingState.rewriteApproved = true
       } else {
-        console.error(`[MuseFlow] 已达到最大重写次数 (${maxRewriteAttempts})，仍有 ${remainingErrors.length} 个未修复的严重问题：`)
-        for (const err of remainingErrors) {
+        console.error(`[MuseFlow] 已达到最大重写次数 (${maxRewriteAttempts})，仍有 ${currentRemainingErrors.length} 个未修复的严重问题：`)
+        for (const err of currentRemainingErrors) {
           const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
           console.error(`  ${icon} [${err.type}] ${err.description}`)
           if (err.location) {
@@ -284,8 +328,8 @@ export async function executeChapterGeneration(
       }
     }
 
-    const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
-    if (remainingErrors.length > 0) {
+    const finalRemainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+    if (finalRemainingErrors.length > 0) {
       workingState = {
         ...workingState,
         rewriteRequested: true,

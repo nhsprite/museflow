@@ -13,12 +13,22 @@ describe('isStructuralIssue', () => {
     expect(isStructuralIssue(issue)).toBe(true)
   })
 
-  it('returns true for outline deviation issues', () => {
+  it('returns false for generic outline deviation issues', () => {
     const issue: Issue = {
       id: '1',
       type: 'outline_deviation',
       severity: 'error',
       description: '偏离大纲',
+    }
+    expect(isStructuralIssue(issue)).toBe(false)
+  })
+
+  it('returns true for outline deviation issues involving missing core events', () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'outline_deviation',
+      severity: 'error',
+      description: '缺少核心事件：主角未出现',
     }
     expect(isStructuralIssue(issue)).toBe(true)
   })

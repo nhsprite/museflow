@@ -672,6 +672,7 @@ async function runSentenceFix(
   }
 
   content = deduplicateSentences(content)
+  content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const now = Date.now()
@@ -771,6 +772,7 @@ async function runParagraphFix(
   }
 
   content = deduplicateSentences(content)
+  content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const now = Date.now()
@@ -836,6 +838,7 @@ async function runLegacyFix(
     throw new Error(`第 ${chapterIndex + 1} 章重写后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
   }
   content = deduplicateSentences(content)
+  content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const now = Date.now()
@@ -1130,6 +1133,37 @@ export function deduplicateSentences(text: string): string {
   return finalText
 }
 
+export function deduplicateParagraphBlocks(text: string): string {
+  const paragraphs = splitIntoParagraphs(text)
+  if (paragraphs.length < 2) return text
+
+  const BLOCK_MIN_CHARS = 30
+  const seenBlocks = new Set<string>()
+  const result: string[] = []
+  let removedCount = 0
+
+  for (const paragraph of paragraphs) {
+    const trimmed = paragraph.trim()
+    if (trimmed.length < BLOCK_MIN_CHARS) {
+      result.push(paragraph)
+      continue
+    }
+
+    const normalized = trimmed.replace(/\s+/g, '')
+    if (seenBlocks.has(normalized)) {
+      removedCount++
+      continue
+    }
+    seenBlocks.add(normalized)
+    result.push(paragraph)
+  }
+
+  if (removedCount > 0) {
+    console.log(`[MuseFlow] 自动清理 ${removedCount} 个重复段落`)
+  }
+  return result.join('\n\n')
+}
+
 function countChineseWords(text: string): number {
   const chineseChars = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
   const englishWords = (text.match(/[a-zA-Z]+/g) ?? []).length
@@ -1372,6 +1406,8 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
     genre: state.genre,
     totalChapters: state.totalChapters,
     chapterIndex,
+    title: state.story.title,
+    characters: charactersToString(state.characters),
     outline: formatChapterOutlineForAgent(state, chapterIndex),
     ...(content ? { chapterContent: content } : {}),
   }
