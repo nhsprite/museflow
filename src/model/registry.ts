@@ -33,6 +33,35 @@ function withStructuredFallback(provider: ModelProvider): ModelProvider {
 
 type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string; temperature?: number; maxTokens?: number }
 
+const DEFAULT_FETCH_TIMEOUT_MS = 900000
+
+async function fetchWithRetry(url: string, init: RequestInit, retries = 3): Promise<Response> {
+  let lastError: Error | undefined
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(url, init)
+      if (res.status >= 500 && res.status < 600) {
+        throw new Error(`Server error: ${res.status}`)
+      }
+      return res
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      const isRecoverable =
+        lastError.message.includes('fetch failed') ||
+        lastError.message.includes('Server error') ||
+        lastError.name === 'AbortError' ||
+        lastError.message.includes('timeout')
+      if (!isRecoverable || attempt === retries - 1) {
+        throw lastError
+      }
+      const delay = 1000 * 2 ** attempt
+      logger.debug(`API fetch failed (attempt ${attempt + 1}/${retries}): ${lastError.message}. Retrying in ${delay}ms`)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+  throw lastError ?? new Error('Unknown fetch error')
+}
+
 class OpenAICompatibleProvider implements ModelProvider {
   constructor(private cfg: ProviderConfig) {}
 
@@ -40,11 +69,11 @@ class OpenAICompatibleProvider implements ModelProvider {
     const apiKey = this.cfg.apiKey ?? process.env.OPENAI_API_KEY ?? ''
     const baseUrl = this.cfg.baseUrl ?? 'https://api.openai.com/v1'
     const model = this.cfg.model ?? 'gpt-4o'
-    const res = await fetch(`${baseUrl}/chat/completions`, {
+    const res = await fetchWithRetry(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7, max_tokens: this.cfg.maxTokens ?? 32768 }),
-      signal: AbortSignal.timeout(600000),
+      signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`API error: ${res.status}`)
     const json = await res.json() as { choices: { message: { content: string } }[] }
@@ -55,7 +84,7 @@ class OpenAICompatibleProvider implements ModelProvider {
     const apiKey = this.cfg.apiKey ?? process.env.OPENAI_API_KEY ?? ''
     const baseUrl = this.cfg.baseUrl ?? 'https://api.openai.com/v1'
     const model = this.cfg.model ?? 'gpt-4o'
-    const res = await fetch(`${baseUrl}/chat/completions`, {
+    const res = await fetchWithRetry(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -72,7 +101,7 @@ class OpenAICompatibleProvider implements ModelProvider {
           },
         },
       }),
-      signal: AbortSignal.timeout(600000),
+      signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`API error: ${res.status}`)
     const json = await res.json() as { choices: { message: { content: string } }[] }
@@ -98,7 +127,7 @@ class AnthropicCompatibleProvider implements ModelProvider {
     if (system) {
       body.system = system
     }
-    const res = await fetch(`${baseUrl}/v1/messages`, {
+    const res = await fetchWithRetry(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -107,7 +136,7 @@ class AnthropicCompatibleProvider implements ModelProvider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(600000),
+      signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`)
     const json = await res.json() as { content: { type: string; text: string }[] }
@@ -138,7 +167,7 @@ class AnthropicCompatibleProvider implements ModelProvider {
       body.system = system
     }
 
-    const res = await fetch(`${baseUrl}/v1/messages`, {
+    const res = await fetchWithRetry(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -147,7 +176,7 @@ class AnthropicCompatibleProvider implements ModelProvider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(600000),
+      signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`)
     const json = await res.json() as {
