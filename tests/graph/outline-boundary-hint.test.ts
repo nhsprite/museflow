@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildNextChapterBoundaryHint } from '../../src/utils/outline-compatibility.ts'
+import { buildNextChapterBoundaryHint } from '../../src/utils/outline-boundary.ts'
 
 describe('buildNextChapterBoundaryHint integration with chapter agent outline', () => {
   it('injects boundary hint into formatted outline for current chapter', () => {

@@ -280,6 +280,13 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
     - 角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的
     - 严禁角色将尚未发生的事件描述为已发生的回忆
     - 如果角色提及未来事件，必须使用前瞻性的措辞（如"将要"、"等待"），且必须是在明确的预言、梦境或超现实场景中</rule>
+<rule id="15a"><mandatory>【必须】</mandatory>本章新设定与伏笔边界：
+    - 本章首次引入的新设定、新身份、新背景属于正常叙事推进，不是"伏笔提前泄露"
+    - 只有当本章明确揭示了前序章节中已埋下并标注为"待后续回收"的具体悬念时，才构成伏笔提前泄露
+    - 不要为了让角色"知道"而凭空补充前序未明确交代的细节；如果大纲要求本章揭示新信息，请通过角色对话、感知、他人告知等合理方式呈现</rule>
+<rule id="15b"><mandatory>【必须】</mandatory>关键物品状态一致性：
+    - 如果"故事当前状态"中记录了某物品的状态（如"沉寂"、"活跃"、"受损"），本章必须承认该状态
+    - 若本章需要改变物品状态，必须有明确的触发事件和过程描写，不能瞬间切换</rule>
 <rule id="16">以自然流畅的段落叙述为主</rule>
 </content>
 </chapter_content_section>
@@ -329,6 +336,7 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
     const characterLocations = extractSection('角色位置', storyState)
     const characterStatuses = extractSection('角色状态', storyState)
     const keyItems = extractSection('关键物品', storyState)
+    const keyItemStates = extractSection('关键物品状态', storyState)
 
     const facts: string[] = []
     if (characterLocations) {
@@ -338,7 +346,7 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
       facts.push(`<established_statuses>\n【角色状态】\n${characterStatuses}\n</established_statuses>`)
     }
     if (keyItems) {
-      facts.push(`<established_items>\n【关键物品】\n${keyItems}\n</established_items>`)
+      facts.push(`<established_items>\n【关键物品】\n${keyItems}\n${keyItemStates ? `【关键物品状态】\n${keyItemStates}\n` : ''}</established_items>`)
     }
     if (revealedSecrets) {
       facts.push(`<established_secrets>\n【已揭示的秘密】\n${revealedSecrets}\n</established_secrets>`)

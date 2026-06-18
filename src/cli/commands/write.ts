@@ -1,31 +1,21 @@
-import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
+import { updateStoryStatus } from '../../storage/database/dao/story.js'
 import { continueStory, getState } from '../../core/runner.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
-import type { StoryStatus } from '../../types/story.js'
+import type { StoryStatus, Story } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { toDisplayChapterNumber, printChapterOutline } from '../../utils/chapter-display.js'
 import { getChapterFilePath, getOutputsDir } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { readFile as readFileAsync } from 'node:fs/promises'
+import { requireStoryState } from '../utils/story-loader.js'
 
 interface WriteOptions {
   storyId: string
 }
 
 export async function write(storyId: string, _options: WriteOptions): Promise<void> {
-  await initStoryDb()
-  const story = getStory(storyId)
-  if (!story) {
-    console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
-    process.exit(1)
-  }
-
-  const state = await getState(storyId)
-  if (!state) {
-    console.error('[MuseFlow] 错误: 无法获取故事状态，请先运行 start')
-    process.exit(1)
-  }
+  const { story, state } = await requireStoryState(storyId)
 
   const hasChaptersOnDisk = checkExistingChapters(story.outputDir)
 
@@ -64,10 +54,10 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
     console.log(`  当前章节: ${startChapterIndex + 1}/${state.totalChapters}\n`)
   }
 
-  await handleWrite(storyId, state, startChapterIndex)
+  await handleWrite(story, state, startChapterIndex)
 }
 
-async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
+async function handleWrite(story: Story, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
   if (!state) return
 
   const unresolvedErrors = state.pendingIssues.filter(i => i.severity === 'error')
@@ -87,7 +77,7 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
       }
     }
     console.error(`\n当前章节存在严重问题，需要重写：`)
-    console.error(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+    console.error(`   museflow rewrite ${story.id}  # 彻底重写\n`)
     process.exit(1)
   }
 
@@ -103,7 +93,7 @@ async function handleWrite(storyId: string, state: Awaited<ReturnType<typeof get
     return
   }
 
-  await executeWrite(storyId, state, chapterIndex)
+  await executeWrite(story.id, state, chapterIndex)
 }
 
 async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
@@ -172,17 +162,14 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
     }
 
     // Show file path
-    const story = getStory(storyId)
-    if (story) {
-      const chapterPath = getChapterFilePath(story.outputDir, writtenIndex + 1)
-      console.log(`📁 文件：${chapterPath}`)
+    const chapterPath = getChapterFilePath(state.story.outputDir, writtenIndex + 1)
+    console.log(`📁 文件：${chapterPath}`)
 
-      // Show word count if file exists
-      if (existsSync(chapterPath)) {
-        const content = await readFileAsync(chapterPath, 'utf-8')
-        const wordCount = countChineseWords(content)
-        console.log(`📝 字数：约 ${wordCount} 字`)
-      }
+    // Show word count if file exists
+    if (existsSync(chapterPath)) {
+      const content = await readFileAsync(chapterPath, 'utf-8')
+      const wordCount = countChineseWords(content)
+      console.log(`📝 字数：约 ${wordCount} 字`)
     }
 
     if (errors.length > 0) {

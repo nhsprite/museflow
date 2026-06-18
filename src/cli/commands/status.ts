@@ -1,4 +1,4 @@
-import { getStory } from '../../storage/database/dao/story.js'
+import { requireStory } from '../utils/story-loader.js'
 import { getState } from '../../core/runner.js'
 
 import { getForeshadowAlerts, formatForeshadowAlerts } from '../../graph/state.js'
@@ -52,11 +52,7 @@ export async function status(storyId?: string): Promise<void> {
     process.exit(1)
   }
 
-  const story = getStory(storyId)
-  if (!story) {
-    console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
-    process.exit(1)
-  }
+  const story = await requireStory(storyId)
 
   const state = await getState(storyId)
 

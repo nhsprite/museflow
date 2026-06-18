@@ -41,6 +41,12 @@ vi.mock('../../src/graph/nodes.js', () => ({
   finalize_chapter: finalizeChapterMock,
 }))
 
+vi.mock('../../src/storage/filesystem/writer.js', () => ({
+  readChapterContent: vi.fn().mockResolvedValue('existing chapter content'),
+  writeChapterContent: vi.fn(),
+  deleteChapterContent: vi.fn(),
+}))
+
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('generated-id') }))
 
 const baseState: ReducedGraphState = {
@@ -144,7 +150,7 @@ describe('executeChapterGeneration outline bridge retries', () => {
     expect(fixChapterMock).toHaveBeenCalledTimes(1)
   })
 
-  it('uses full rewrite for cross-chapter consistency errors that reference previous chapters', async () => {
+  it('uses targeted fix for cross-chapter consistency errors that reference previous chapters', async () => {
     autoFixWarningsMock
       .mockReset()
       .mockResolvedValueOnce({
@@ -170,9 +176,9 @@ describe('executeChapterGeneration outline bridge retries', () => {
       { maxRewriteAttempts: 2, enableRevalidation: false, enableStructuralBranching: true }
     )
 
-    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(0)
-    expect(draftChapterMock).toHaveBeenCalledTimes(2)
-    expect(fixChapterMock).toHaveBeenCalledTimes(0)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+    expect(draftChapterMock).toHaveBeenCalledTimes(1)
+    expect(fixChapterMock).toHaveBeenCalledTimes(1)
   })
 
   it('escalates to full rewrite when paragraph fix increases error count', async () => {

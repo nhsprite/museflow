@@ -9,6 +9,7 @@ const loadConfigMock = vi.fn()
 
 vi.mock('../../src/storage/database/dao/story.ts', () => ({
   getStory: getStoryMock,
+  initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../src/core/runner.ts', () => ({

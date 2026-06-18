@@ -19,6 +19,7 @@ export function createEmptyStoryState(): StoryState {
     characterLocations: {},
     characterStatus: {},
     keyItemsLocation: {},
+    keyItemsState: {},
     activePlots: [],
     revealedSecrets: [],
     currentScene: '',

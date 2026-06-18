@@ -7,6 +7,7 @@ const getStateMock = vi.fn<() => Promise<ReducedGraphState | null>>()
 
 vi.mock('../../src/storage/database/dao/story.ts', () => ({
   getStory: getStoryMock,
+  initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../src/core/runner.ts', () => ({

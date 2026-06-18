@@ -1,7 +1,10 @@
 import type { ReducedGraphState } from '../graph/state.js'
 import { plan_chapter_with_override } from '../graph/nodes.js'
-import { buildNextChapterBoundaryHint, findRedundantOutlineEvents } from '../utils/outline-compatibility.js'
-import { buildOutlineBridgeHint } from '../utils/outline-bridge.js'
+import {
+  buildOutlineBridgeHint,
+  buildNextChapterBoundaryHint,
+  findRedundantOutlineEvents,
+} from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 
@@ -45,6 +48,34 @@ export async function expandOutlineForChapter(
   const planResult = await plan_chapter_with_override(planState, formattedOutline)
   if (!planResult.chapterPlan) {
     throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
+  }
+
+  console.log(`[MuseFlow] 已动态展开第 ${outlineItem.number} 章详细大纲`)
+  if (planResult.chapterPlan.sections.length > 0) {
+    console.log('📋 章节规划：')
+    for (const section of planResult.chapterPlan.sections) {
+      const wordCount = section.wordCount ?? 0
+      const events = section.events ?? []
+      const characters = section.characters ?? []
+      console.log(`  ${section.title}（约${wordCount}字）`)
+      if (events.length > 0) {
+        console.log(`    事件：${events.join('、')}`)
+      }
+      if (characters.length > 0) {
+        console.log(`    人物：${characters.join('、')}`)
+      }
+      if (section.timeMark) {
+        console.log(`    时间：${section.timeMark}`)
+      }
+    }
+  }
+
+  if (boundaryHints.length > 0) {
+    console.log('[MuseFlow] 边界约束：')
+    for (const hint of boundaryHints) {
+      const summary = hint.replace(/\s+/g, ' ').slice(0, 80)
+      console.log(`  ${summary}${hint.length > 80 ? '...' : ''}`)
+    }
   }
 
   return {

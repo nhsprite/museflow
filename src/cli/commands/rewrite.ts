@@ -1,4 +1,4 @@
-import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
+import { updateStoryStatus } from '../../storage/database/dao/story.js'
 import { getState, getGraph, getOutputDirFromStoryId } from '../../core/runner.js'
 import { executeChapterGeneration } from '../../core/chapter-generation.js'
 import type { StoryStatus } from '../../types/story.js'
@@ -11,6 +11,7 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
+import { requireStoryState } from '../utils/story-loader.js'
 
 interface RewriteOptions {
   storyId: string
@@ -18,24 +19,9 @@ interface RewriteOptions {
 }
 
 export async function rewrite(storyId: string, options: RewriteOptions): Promise<void> {
-  console.log('[MuseFlow] 初始化数据库...')
-  await initStoryDb()
-  console.log('[MuseFlow] 查找故事...')
-  const story = getStory(storyId)
-  if (!story) {
-    console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
-    process.exit(1)
-  }
-
   const targetChapter = options.chapter ? parseInt(options.chapter, 10) : null
 
-  console.log('[MuseFlow] 加载故事状态...')
-  const state = await getState(storyId)
-  if (!state) {
-    console.error('[MuseFlow] 错误: 无法获取故事状态，请先运行 start')
-    process.exit(1)
-  }
-  console.log('[MuseFlow] 状态加载完成')
+  const { story, state } = await requireStoryState(storyId)
 
   if (targetChapter !== null) {
     if (targetChapter < 1 || targetChapter > state.totalChapters) {

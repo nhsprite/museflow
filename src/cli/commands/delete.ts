@@ -1,4 +1,5 @@
-import { deleteStory, getStory } from '../../storage/database/dao/story.js'
+import { deleteStory } from '../../storage/database/dao/story.js'
+import { requireStory } from '../utils/story-loader.js'
 
 interface DeleteOptions {
   force?: boolean
@@ -11,11 +12,7 @@ export async function del(storyId: string, options?: DeleteOptions): Promise<voi
     process.exit(1)
   }
 
-  const story = getStory(storyId)
-  if (!story) {
-    console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
-    process.exit(1)
-  }
+  const story = await requireStory(storyId)
 
   if (!options?.force) {
     console.log(`[MuseFlow] 即将删除书籍: ${story.title || '(未命名)'}`)

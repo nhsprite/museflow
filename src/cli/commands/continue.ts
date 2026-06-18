@@ -1,7 +1,8 @@
-import { getStory, updateStoryStatus, initStoryDb } from '../../storage/database/dao/story.js'
+import { updateStoryStatus } from '../../storage/database/dao/story.js'
 import { continueStory, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
+import { requireStoryState } from '../utils/story-loader.js'
 
 interface ContinueOptions {
   storyId: string
@@ -12,18 +13,7 @@ interface ContinueOptions {
 export async function cont(storyId: string, options: ContinueOptions): Promise<void> {
   const { yes, no } = options
 
-  await initStoryDb()
-  const story = getStory(storyId)
-  if (!story) {
-    console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
-    process.exit(1)
-  }
-
-  const state = await getState(storyId)
-  if (!state) {
-    console.error('[MuseFlow] 错误: 无法获取故事状态，请先运行 start')
-    process.exit(1)
-  }
+  const { story, state } = await requireStoryState(storyId)
 
   if (state.currentChapterIndex >= state.totalChapters) {
     console.log(`[MuseFlow] 故事已完成: ${story.title}`)

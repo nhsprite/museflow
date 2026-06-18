@@ -1,4 +1,4 @@
-import { getStory } from '../../storage/database/dao/story.js'
+import { requireStory } from '../utils/story-loader.js'
 import { getState } from '../../core/runner.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { loadConfig } from '../../config/store.js'
@@ -13,11 +13,7 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
     process.exit(1)
   }
 
-  const story = getStory(storyId)
-  if (!story) {
-    console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
-    process.exit(1)
-  }
+  const story = await requireStory(storyId)
 
   const state = await getState(storyId)
   const genre = getGenreSkill(story.genre)

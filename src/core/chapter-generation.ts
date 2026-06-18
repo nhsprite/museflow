@@ -4,6 +4,7 @@ import type { buildNovelGraph } from '../graph/novel.graph.js'
 import type { getCheckpointer } from '../graph/checkpointer.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
+import { readChapterContent } from '../storage/filesystem/writer.js'
 import {
   draft_chapter,
   fix_chapter,
@@ -17,7 +18,7 @@ import {
   finalize_chapter,
 } from '../graph/nodes.js'
 import { expandOutlineForChapter } from './outline-expander.js'
-import { shouldForceTemporaryReplan } from '../utils/outline-bridge.js'
+import { shouldForceTemporaryReplan } from '../utils/outline-boundary.js'
 
 export interface ExecuteChapterOptions {
   breakOnErrors?: boolean
@@ -63,6 +64,20 @@ function isLocalIssue(issue: Issue): boolean {
   return issue.severity === 'error' && !isStructuralIssue(issue)
 }
 
+async function runDraftPhase(state: ReducedGraphState): Promise<ReducedGraphState> {
+  const draftResult = await draft_chapter(state)
+  return { ...state, ...draftResult, pendingIssues: [] }
+}
+
+async function runFixPhase(state: ReducedGraphState): Promise<ReducedGraphState> {
+  if (!state.chapterPlan) {
+    const { chapterPlan } = await expandOutlineForChapter(state, state.currentChapterIndex)
+    state = { ...state, chapterPlan }
+  }
+  const fixResult = await fix_chapter(state)
+  return { ...state, ...fixResult, pendingIssues: [] }
+}
+
 export async function executeChapterGeneration(
   storyId: string,
   outputDir: string,
@@ -90,67 +105,61 @@ export async function executeChapterGeneration(
         console.log(`[MuseFlow] 第 ${rewriteAttempts}/${maxRewriteAttempts} 次尝试...`)
       }
 
-      if (forceStructuralRewrite) {
-        if (workingState.chapterPlan) {
-          console.log('[MuseFlow] 上轮修复未收敛，将强制完整重写...')
-          workingState = { ...workingState, chapterPlan: null }
-        }
-      }
       const structuralOverride = forceStructuralRewrite
+      if (structuralOverride && workingState.chapterPlan) {
+        console.log('[MuseFlow] 上轮修复未收敛，将强制完整重写...')
+        workingState = { ...workingState, chapterPlan: null }
+      }
       forceStructuralRewrite = false
 
       if (enableStructuralBranching) {
         const needsTemporaryReplan = shouldForceTemporaryReplan(workingState.outline, targetIndex)
-        const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
-        const hasStructuralIssueFromValidators = workingState.pendingIssues.some(
-          i => i.severity === 'error' && isStructuralIssue(i)
-        )
-        const hasStructuralIssues = hasStructuralIssueFromValidators || (needsTemporaryReplan && rewriteAttempts === 1) || structuralOverride
-        const hasLocalIssues = workingState.pendingIssues.some(
-          i => i.severity === 'error' && isLocalIssue(i)
-        )
         if (needsTemporaryReplan && workingState.chapterPlan) {
           console.log('[MuseFlow] 检测到跨章节大纲桥接冲突，将临时重新规划本章...')
           workingState = { ...workingState, chapterPlan: null }
         }
 
-        if (workingState.rewriteApproved && hasStructuralIssues && !hasLocalIssues) {
-          console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
-          workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
-          const draftResult = await draft_chapter(workingState)
-          workingState = { ...workingState, ...draftResult }
-          workingState = { ...workingState, pendingIssues: [] }
-        } else if (workingState.rewriteApproved && hasLocalIssues && !hasStructuralIssues) {
-          console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
-          workingState = { ...workingState, pendingIssues: errorIssues }
-          if (!workingState.chapterPlan) {
-            const { chapterPlan } = await expandOutlineForChapter(workingState, targetIndex)
-            workingState = { ...workingState, chapterPlan }
-          }
-          const fixResult = await fix_chapter(workingState)
-          workingState = { ...workingState, ...fixResult }
-          workingState = { ...workingState, pendingIssues: [] }
-        } else {
-          if (workingState.rewriteApproved) {
-            if (hasStructuralIssues) {
-              console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
-              workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
-            } else {
-              console.log('[MuseFlow] 检测到局部问题，将使用现有计划重写...')
-              workingState = { ...workingState, pendingIssues: errorIssues }
-            }
+        if (workingState.rewriteApproved) {
+          const errorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
+          const chapterFileExists = await readChapterContent(outputDir, targetIndex + 1).then(c => c !== null)
+
+          if (!chapterFileExists) {
+            console.log(`[MuseFlow] 第 ${targetIndex + 1} 章文件不存在，跳过修复模式，直接重新起草...`)
+            workingState = await runDraftPhase({ ...workingState, pendingIssues: errorIssues })
           } else {
-            workingState = { ...workingState, pendingIssues: [] }
+            const hasStructural = errorIssues.some(isStructuralIssue) || structuralOverride
+            const hasLocal = errorIssues.some(i => isLocalIssue(i))
+            const onlyCrossChapter = errorIssues.every(i => i.type === 'consistency' || i.type === 'hallucination')
+
+            if (hasStructural && !hasLocal) {
+              if (onlyCrossChapter && !structuralOverride) {
+                console.log('[MuseFlow] 一致性/幻觉问题优先使用段落级修复，避免直接完整重写...')
+                workingState = await runFixPhase({ ...workingState, pendingIssues: errorIssues })
+              } else {
+                console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
+                workingState = await runDraftPhase({ ...workingState, chapterPlan: null, pendingIssues: errorIssues })
+              }
+            } else if (!hasStructural && hasLocal) {
+              console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
+              workingState = await runFixPhase({ ...workingState, pendingIssues: errorIssues })
+            } else {
+              if (hasStructural) {
+                console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
+                workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
+              } else if (hasLocal) {
+                console.log('[MuseFlow] 检测到局部问题，将使用现有计划重写...')
+                workingState = { ...workingState, pendingIssues: errorIssues }
+              } else {
+                workingState = { ...workingState, pendingIssues: [] }
+              }
+              workingState = await runDraftPhase(workingState)
+            }
           }
-          const draftResult = await draft_chapter(workingState)
-          workingState = { ...workingState, ...draftResult }
-          workingState = { ...workingState, pendingIssues: [] }
+        } else {
+          workingState = await runDraftPhase({ ...workingState, pendingIssues: [] })
         }
       } else {
-        workingState = { ...workingState, pendingIssues: [] }
-        const draftResult = await draft_chapter(workingState)
-        workingState = { ...workingState, ...draftResult }
-        workingState = { ...workingState, pendingIssues: [] }
+        workingState = await runDraftPhase({ ...workingState, pendingIssues: [] })
       }
 
       const { runChapterPipeline } = await import('./pipeline.js')
@@ -247,11 +256,15 @@ export async function executeChapterGeneration(
       }
       previousErrorCount = errorCountAfterDedup
 
+      const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+      if (remainingErrors.length === 0) {
+        break
+      }
+
       if (rewriteAttempts < maxRewriteAttempts) {
         console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
         workingState.rewriteApproved = true
       } else {
-        const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
         console.error(`[MuseFlow] 已达到最大重写次数 (${maxRewriteAttempts})，仍有 ${remainingErrors.length} 个未修复的严重问题：`)
         for (const err of remainingErrors) {
           const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'

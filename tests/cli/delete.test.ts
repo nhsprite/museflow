@@ -7,6 +7,7 @@ const deleteStoryMock = vi.fn<() => boolean>()
 vi.mock('../../src/storage/database/dao/story.ts', () => ({
   getStory: getStoryMock,
   deleteStory: deleteStoryMock,
+  initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
 
 function createStory(id: string, title: string): Story {

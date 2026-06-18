@@ -1,4 +1,4 @@
-import { getStory, initStoryDb } from '../../storage/database/dao/story.js'
+import { getStory } from '../../storage/database/dao/story.js'
 import { getState } from '../../core/runner.js'
 import { readChapterContent, listChapterFiles } from '../../storage/filesystem/writer.js'
 import { writeFile, readFile, mkdir } from 'node:fs/promises'
@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { networkInterfaces } from 'node:os'
 import QRCode from 'qrcode'
+import { requireStoryState } from '../utils/story-loader.js'
 
 interface ExportOptions {
   storyId: string
@@ -74,18 +75,7 @@ async function startDownloadServer(filePath: string, fileName: string): Promise<
 }
 
 export async function exportStory(storyId: string, _options: ExportOptions): Promise<void> {
-  await initStoryDb()
-  const story = getStory(storyId)
-  if (!story) {
-    console.error(`[MuseFlow] 错误: 故事 "${storyId}" 不存在`)
-    process.exit(1)
-  }
-
-  const state = await getState(storyId)
-  if (!state) {
-    console.error('[MuseFlow] 错误: 无法获取故事状态')
-    process.exit(1)
-  }
+  const { story, state } = await requireStoryState(storyId)
 
   const storyDir = story.outputDir
   const exportDir = resolve('output')
