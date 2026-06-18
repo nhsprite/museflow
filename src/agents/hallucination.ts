@@ -66,6 +66,7 @@ ${state.chapterContent || '（无内容）'}
 <dimensions>
   【幻觉检测维度】
   1. **世界规则冲突**：描述与已建立的世界规则（如魔法体系、科技水平、地理设定）相悖的内容
+  1b. **战力体系冲突**：角色的实战表现与其已确立的境界、修为、状态严重不符；低境界角色在没有明确解释的情况下与高境界角色长时间势均力敌；角色在虚弱/未恢复状态下展现出全盛战力
   2. **人物性格冲突**：人物言行与其已建立的性格特点不符
   3. **事实矛盾**：与前文已确立的事实相矛盾
   4. **不可能发生**：基于已建立规则，某些事件不可能发生
@@ -137,7 +138,13 @@ ${state.chapterContent || '（无内容）'}
       return []
     }
 
-    return (data.issues || []).map(issue => {
+    const withdrawnPattern = /撤回|不成立|不构成严重矛盾|此条不成立|重新审视后|不构成.*矛盾|不视为/i
+    const activeIssues = (data.issues || []).filter(issue => {
+      const desc = `${issue.description ?? ''} ${issue.suggestion ?? ''}`
+      return !withdrawnPattern.test(desc)
+    })
+
+    return activeIssues.map(issue => {
       const result: Issue = {
         id: generateId(),
         type: 'hallucination',

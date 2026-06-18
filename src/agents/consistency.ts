@@ -132,6 +132,21 @@ export class ConsistencyAgent extends BaseAgent {
       - "伏笔提前剧透"仅指：当前章节明确揭示了前序章节中已埋下并标注为"待后续回收"的具体悬念。
       - 如果大纲中当前章节本身就包含身份揭露、真相揭示等内容，本章进行这些揭示是合规的，不要报 error。
       - 本章中出现的对未来章节的模糊预感、隐喻、梦境，只要没有明确揭示后续大纲的具体秘密，不要报 error。
+      - **重要**：角色通过自身经历、对话或合理推理在本章自然得出的信息，即使与后续大纲暗合，也不得视为"提前剧透"。只有当本章明确解释了前序埋下的具体悬念时，才构成剧透。
+    </rule>
+
+    <rule type="character_reaction_scope">
+      角色反应的选择性：
+      - 角色对某个信息或刺激有反应，而对另一个信息或刺激没有反应，属于人物刻画和注意力聚焦，不一定构成矛盾。
+      - 只有当角色**必须**知道/感应某事（基于前文明确 establish 的能力或义务），且本章中完全无视并因此导致剧情断裂时，才报 error。
+      - 如果角色的感知能力（如葬花灵根）在本章被描述为对特定对象有感应，但没有被描述为对所有相关对象都有感应，不要因选择性反应而报 error。
+    </rule>
+
+    <rule type="expression_vs_knowledge">
+      区分"角色知道某事"与"角色是否表达出来"：
+      - 角色已经知道某事，但选择大声说出来、嘲讽、质问，属于性格驱动的表达方式，不是 knowledge 矛盾。
+      - 只有当角色对某事的认知本身前后矛盾（前章不知道，本章却知道；或前章否认，本章却断言）时，才报 error。
+      - 角色对同一事实的不同情绪反应或表达方式，不应视为 consistency 错误。
     </rule>
 
     <rule type="outline_visibility">
@@ -162,13 +177,21 @@ export class ConsistencyAgent extends BaseAgent {
     - 只有当角色对已被 storyState/outline 确立的事实表现出矛盾态度时，才报 error
   </rule>
 
-  <rule type="outline_evolution">
-    故事大纲在不同章节可能会揭示新的地点、新的线索或修正之前的认知。大纲层面的信息更新是正常的情节推进，不应视为矛盾。
-    只有当角色对已确立的事实表现出矛盾态度（如角色已明确知道某信息，本章却表现得像第一次听说）时，才构成 consistency error。
-    如果本章中某角色获得了新的信息（如通过占卜、感应、他人告知），并因此更新了认知，这是正常叙事推进，不要报 error。
-    不要因为"本章揭示了新的地点/线索，与前面章节中的模糊描述不同"而报 error。重点检查角色是否对新信息表现出不合理的矛盾态度。
+  <rule type="addressing_consistency">
+    人物称呼一致性：检查角色对彼此的称呼是否与前文已建立的称呼习惯一致。如果本章中某角色突然用新的称呼指代另一角色，且没有明确交代原因，报 error。
   </rule>
-</supplementary_rules>
+
+  <rule type="item_origin_consistency">
+    关键物品来源一致性：如果本章中角色使用了一件关键物品（尤其是武器、法宝、重要道具），而该物品在前文中尚未明确出现或回归，本章又没有交代其来源或回归过程，则报 error。
+  </rule>
+
+  <rule type="future_information_boundary">
+    未来信息边界：角色不得在本章明确提及或确认尚未发生的事件，除非处于明确的预言、梦境或超现实场景中。如果角色提前计算章节进度、提前揭示未来章节的核心反派或核心事件，且没有合理的知识来源铺垫，报 error。
+  </rule>
+
+  <rule type="core_actor_consistency">
+    大纲核心动作执行者一致性：如果大纲明确指出某个动作由特定角色完成，本章必须让该角色作为核心执行者。如果核心动作被改由其他角色主导完成，报 error。
+  </rule>
 
 <severity_levels>
   <error>以下严重逻辑矛盾：跨章节的角色知识/对话矛盾、时间线严重矛盾、关键信息前后矛盾、因果关系完全断裂、必须回收的伏笔未回收、伏笔被提前剧透、伏笔回收方向矛盾、结构化状态矛盾。报 error 前请确认：该问题确实会让读者产生困惑，而不是作者刻意留下的叙事张力或 gradual revelation。</error>
@@ -235,8 +258,14 @@ export class ConsistencyAgent extends BaseAgent {
 
     const rawIssues = data.issues || []
     console.log(`[MuseFlow] DEBUG: Raw consistency issues count: ${rawIssues.length}`)
+
+    const withdrawnPattern = /撤回|不成立|不构成严重矛盾|此条不成立|重新审视后|不构成.*矛盾|不视为/i
+    const activeIssues = rawIssues.filter(issue => {
+      const desc = `${issue.description ?? ''} ${issue.suggestion ?? ''}`
+      return !withdrawnPattern.test(desc)
+    })
     
-    return rawIssues.map(issue => {
+    return activeIssues.map(issue => {
       const result: Issue = {
         id: generateId(),
         type: 'consistency',

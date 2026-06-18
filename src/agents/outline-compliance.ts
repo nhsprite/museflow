@@ -16,10 +16,14 @@ export class OutlineComplianceAgent extends BaseAgent {
 
     const userContent = `<instruction>
   请检查以下章节是否严格遵循了大纲要求。
-  你是一位极其严格的故事结构审核员，负责确保每个章节都严格遵循既定的大纲。你对偏离大纲的行为保持零容忍态度。你必须逐条检查大纲中的每个情节点，绝不能遗漏任何要求。
+  你是一位故事结构审核员。你的职责是确保章节**核心事件**与大纲一致，同时允许作者在概括性描述上进行合理的细节演绎。不要对大纲中的概括性措辞（如"四人"、"暗藏杀机"、"埋下伏笔"）做过度字面化解读。
 </instruction>
 
 <context>
+  <story_title>${state.title || '（未命名）'}</story_title>
+  <characters>
+    ${state.characters || '（暂无人物设定）'}
+  </characters>
   <outline>
     ${outlineItem}
   </outline>
@@ -29,45 +33,45 @@ export class OutlineComplianceAgent extends BaseAgent {
 </context>
 
 <checklist>
-  <check_item id="1" name="核心事件逐条检查">
-    <step>将大纲描述拆分为独立的情节点（以句号、分号或"并且"/"同时"/"然后"等连接词为界）</step>
-    <step>对每个情节点，检查正文中是否有对应的内容</step>
-    <step>如果大纲提到多个事件（如"A发生，并且B发生"），必须检查A和B是否都出现</step>
+  <check_item id="1" name="核心事件检查">
+    <step>识别大纲中的核心事件（用句号、分号分隔）</step>
+    <step>检查每个核心事件是否在正文中有对应体现</step>
+    <step>允许作者在概括性描述基础上补充细节，只要不与核心事件冲突</step>
   </check_item>
 
   <check_item id="2" name="时间线检查">
     <step>大纲中明确的时间要求（如"三日后""次日""凌晨"）是否在正文中精确体现</step>
-    <step>正文的时间跨度是否与大纲一致（不能只写"过了一夜"代替"过了三日"）</step>
+    <step>正文的时间跨度是否与大纲一致</step>
     <step>事件顺序是否与大纲一致</step>
   </check_item>
 
   <check_item id="3" name="关键台词检查">
     <step>大纲中提到的具体台词是否在正文中原样出现</step>
     <step>台词的说话人是否正确</step>
-    <step>不能将大纲要求的特定台词改写为意思相近但措辞不同的句子</step>
   </check_item>
 
   <check_item id="4" name="情节偏离检查">
-    <step>是否有大纲之外的额外情节？</step>
-    <step>额外情节是否冲淡核心事件的叙事重心？</step>
-    <step>是否遗漏了大纲要求的关键事件？</step>
+    <step>是否有与大纲核心事件相矛盾的额外情节？</step>
+    <step>额外情节是否严重冲淡核心事件的叙事重心？</step>
+    <step>是否遗漏了大纲要求的核心事件？</step>
   </check_item>
 
   <check_item id="5" name="人物行为检查">
     <step>人物出场顺序是否与大纲一致</step>
     <step>人物行为是否符合大纲描述</step>
-    <step>是否有大纲未提及的人物出现并占据过多篇幅？</step>
+    <step>是否有大纲未提及的人物占据核心事件的主导地位？</step>
   </check_item>
 
   <check_item id="6" name="逻辑连贯性">
     <step>章节内部时间线是否连贯</step>
     <step>因果关系是否合理</step>
-    <step>是否有前后矛盾（如先写病好了，后面又写还在生病）</step>
+    <step>是否有前后矛盾</step>
   </check_item>
 </checklist>
 
 <output_format>
-  请输出 JSON 格式的检查结果：
+  如果章节整体合规，请返回 {"is_compliant": true, "event_checks": [...], "deviations": [], "summary": "..."}。
+  如果存在与核心事件相矛盾的偏离，才返回 {"is_compliant": false, ...}。
   {
     "is_compliant": true或false,
     "event_checks": [
@@ -128,6 +132,10 @@ export class OutlineComplianceAgent extends BaseAgent {
         suggestion?: string
       }>
       summary?: string
+    }
+
+    if (data.is_compliant === true) {
+      return { issues: [], isCompliant: true }
     }
 
     const issues: Issue[] = []
