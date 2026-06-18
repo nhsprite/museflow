@@ -41,8 +41,7 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getCheckpointer } from './checkpointer.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
 import { expandOutlineForChapter } from '../core/outline-expander.js'
-import { buildOutlineBridgeHint } from '../utils/outline-bridge.js'
-import { buildNextChapterBoundaryHint } from '../utils/outline-compatibility.js'
+import { buildOutlineBridgeHint, buildNextChapterBoundaryHint } from '../utils/outline-boundary.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -385,6 +384,34 @@ function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: nu
     .join('\n')
 }
 
+/**
+ * 为一致性检查 agent 构造大纲上下文。
+ * 一致性检查只能看到当前章节及之前章节的完整内容，以及下一章标题作为边界提示。
+ * 绝不能暴露后续章节的具体剧情，否则 agent 会把当前章节的正常推进误判为"提前剧透"。
+ */
+function buildConsistencyOutlineContext(state: ReducedGraphState, chapterIndex: number): string {
+  const currentDisplay = chapterIndex + 1
+  const lines: string[] = []
+
+  for (let i = 0; i < state.outline.length; i++) {
+    const item = state.outline[i]
+    if (!item) continue
+    const display = toDisplayChapterNumber(i)
+    if (i <= chapterIndex) {
+      lines.push(`第${display}章：${item.title}`)
+      if (item.description) {
+        lines.push(item.description)
+      }
+    } else if (i === chapterIndex + 1) {
+      lines.push(`第${display}章：${item.title}（下一章标题，仅作边界提示）`)
+    } else {
+      lines.push(`第${display}章：[后续章节内容已隐藏]`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent()
   const chapterIndex = state.currentChapterIndex
@@ -506,10 +533,19 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
   }
 
-  const AFFECTED_PARAGRAPH_RATIO_THRESHOLD = 0.4
-  const AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD = 20
+  const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
+  // 对仅包含 warning 的主观质量/一致性问题，使用更宽松的阈值，避免为分散的
+  // 风格建议触发昂贵的完整重写；对 error 级别问题保持严格阈值。
+  const AFFECTED_PARAGRAPH_RATIO_THRESHOLD = hasErrors ? 0.4 : 0.65
+  const AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD = hasErrors ? 20 : 35
+  const isConsistencyOrHallucination = state.pendingIssues.every(
+    i => i.type === 'consistency' || i.type === 'hallucination'
+  )
   const affectedRatio = paragraphs.length > 0 ? affectedIndices.length / paragraphs.length : 0
-  if (affectedIndices.length > AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD || affectedRatio > AFFECTED_PARAGRAPH_RATIO_THRESHOLD) {
+  if (
+    !isConsistencyOrHallucination &&
+    (affectedIndices.length > AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD || affectedRatio > AFFECTED_PARAGRAPH_RATIO_THRESHOLD)
+  ) {
     console.log(`[MuseFlow] 问题涉及 ${affectedIndices.length}/${paragraphs.length} 个段落（占比 ${Math.round(affectedRatio * 100)}%），超过修复阈值，转为完整重写`)
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
   }
@@ -1296,21 +1332,21 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
     ? supersededFacts.map(f => `- [${f.subject}] ${f.oldFact}（原因：${f.reason}）`).join('\n')
     : '（无）'
 
-  const agentState: AgentState = {
-    idea: state.idea,
-    genre: state.genre,
-    totalChapters: state.totalChapters,
-    ...(state.world?.content ? { world: state.world.content } : {}),
-    characters: charactersToString(state.characters),
-    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
-    ...(content ? { chapterContent: content } : {}),
-    chapterSummaries: state.chapterSummaries,
-    chapterIndex,
-    timelineSnapshot,
-    foreshadowStack: state.foreshadowStack,
-    storyState: storyStateStr,
-    supersededFacts: supersededFactsStr,
-  }
+    const agentState: AgentState = {
+      idea: state.idea,
+      genre: state.genre,
+      totalChapters: state.totalChapters,
+      ...(state.world?.content ? { world: state.world.content } : {}),
+      characters: charactersToString(state.characters),
+      outline: buildConsistencyOutlineContext(state, chapterIndex),
+      ...(content ? { chapterContent: content } : {}),
+      chapterSummaries: state.chapterSummaries,
+      chapterIndex,
+      timelineSnapshot,
+      foreshadowStack: state.foreshadowStack,
+      storyState: storyStateStr,
+      supersededFacts: supersededFactsStr,
+    }
 
   const output = await agent.run(agentState)
   const issues = agent.processOutput(output)
@@ -1388,12 +1424,27 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
         ...(state.outline[chapterIndex]?.title ? { chapterTitle: state.outline[chapterIndex].title } : {}),
         chapterIndex,
       }
-      try {
-        const summaryOutput = await summaryAgent.run(summaryState)
-        const processed = processSummaryOutput(summaryOutput, chapterIndex)
-        if (processed) {
+
+      const MAX_SUMMARY_RETRIES = 2
+      let summarySuccess = false
+      for (let attempt = 0; attempt <= MAX_SUMMARY_RETRIES; attempt++) {
+        if (attempt > 0) {
+          console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成失败，第 ${attempt}/${MAX_SUMMARY_RETRIES} 次重试...`)
+        }
+        try {
+          const summaryOutput = await summaryAgent.run(summaryState)
+          if (!summaryOutput.success) {
+            console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
+            continue
+          }
+          const processed = processSummaryOutput(summaryOutput, chapterIndex)
+          if (!processed || !processed.summary) {
+            console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
+            continue
+          }
           summary = processed.summary
           chapter.summary = summary
+          summarySuccess = true
 
           if (processed.storyState) {
             const existing = getStoryState(state.story.id)
@@ -1401,9 +1452,14 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
             saveStoryState(state.story.id, updatedStoryState)
             console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`)
           }
+          break
+        } catch (err) {
+          console.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`, err)
         }
-      } catch (err) {
-        console.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败:`, err)
+      }
+
+      if (!summarySuccess) {
+        console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，将在无摘要状态下标记本章完成。后续一致性检查可能受影响。`)
       }
     }
 
@@ -1584,6 +1640,13 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     }
   }
 
+  const mergedItemStates = { ...base.keyItemsState }
+  for (const [item, state] of Object.entries(delta.keyItemsState ?? {})) {
+    if (state && state !== '同前') {
+      mergedItemStates[item] = state
+    }
+  }
+
   const mergedPlots = [...base.activePlots]
   for (const plot of delta.activePlots) {
     if (plot && !mergedPlots.includes(plot)) {
@@ -1612,6 +1675,7 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     characterLocations: mergedLocations,
     characterStatus: mergedStatus,
     keyItemsLocation: mergedItems,
+    keyItemsState: mergedItemStates,
     activePlots: mergedPlots,
     revealedSecrets: mergedSecrets,
     currentScene: delta.currentScene || base.currentScene,
@@ -1665,6 +1729,7 @@ function reconcileStoryState(
     characterLocations: {},
     characterStatus: {},
     keyItemsLocation: { ...storyState.keyItemsLocation },
+    keyItemsState: { ...storyState.keyItemsState },
     activePlots: [...storyState.activePlots],
     revealedSecrets: [],
     currentScene: storyState.currentScene,
@@ -1732,6 +1797,14 @@ function formatStoryState(storyState: StoryState): string {
     lines.push('【关键物品】')
     for (const [item, loc] of items) {
       lines.push(`  ${item}：${loc}`)
+    }
+  }
+
+  const itemStates = Object.entries(storyState.keyItemsState ?? {})
+  if (itemStates.length > 0) {
+    lines.push('【关键物品状态】')
+    for (const [item, state] of itemStates) {
+      lines.push(`  ${item}：${state}`)
     }
   }
 

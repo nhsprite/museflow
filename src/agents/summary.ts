@@ -1,5 +1,6 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Message } from '../model/provider.js'
+import { extractJsonBlock, repairMalformedJson } from '../model/provider.js'
 
 export class SummaryAgent extends BaseAgent {
   constructor() {
@@ -73,6 +74,7 @@ export class SummaryAgent extends BaseAgent {
       "characterLocations": { "角色名": "当前所在地点" },
       "characterStatus": { "角色名": "当前状态（受伤/中毒/健康/情绪等）" },
       "keyItemsLocation": { "物品名": "当前位置或持有者" },
+      "keyItemsState": { "物品名": "当前状态（活跃/沉寂/受损/充能中/封印等）" },
       "activePlots": ["进行中情节线"],
       "revealedSecrets": ["本章新揭示的秘密"],
       "currentScene": "本章主要场景",
@@ -104,6 +106,7 @@ export class SummaryAgent extends BaseAgent {
   <requirement>characterLocations: 每个主要角色在本章结束时的所在位置</requirement>
   <requirement>characterStatus: 每个主要角色的身体状况、情绪状态、能力状态等</requirement>
   <requirement>keyItemsLocation: 关键物品在本章结束时的位置或持有者（如果物品位置发生变化，必须记录新位置）</requirement>
+  <requirement>keyItemsState: 关键物品在本章结束时的状态（如"活跃/沉寂/受损/充能中/封印"）。如果物品状态发生变化，必须记录新状态</requirement>
   <requirement>activePlots: 本章结束时尚未完结的情节线</requirement>
   <requirement>revealedSecrets: 本章中新揭示的秘密或真相（之前未揭示的）</requirement>
   <requirement>currentScene: 本章主要发生的场景/地点</requirement>
@@ -123,16 +126,15 @@ export class SummaryAgent extends BaseAgent {
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
-    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
-    if (codeBlockMatch) {
-      try {
-        return { success: true, data: JSON.parse(codeBlockMatch[1]!.trim()) }
-      } catch { }
-    }
+    const jsonText = extractJsonBlock(trimmed)
     try {
-      return { success: true, data: JSON.parse(trimmed) }
+      return { success: true, data: JSON.parse(jsonText) }
     } catch {
-      return { success: false, error: 'JSON解析失败' }
+      try {
+        return { success: true, data: JSON.parse(repairMalformedJson(jsonText)) }
+      } catch {
+        return { success: false, error: 'JSON解析失败' }
+      }
     }
   }
 }
@@ -190,6 +192,7 @@ export class SummaryAgent extends BaseAgent {
       characterLocations: toRecord(s['characterLocations']),
       characterStatus: toRecord(s['characterStatus']),
       keyItemsLocation: toRecord(s['keyItemsLocation']),
+      keyItemsState: toRecord(s['keyItemsState']),
       activePlots: toStringArray(s['activePlots']),
       revealedSecrets: toStringArray(s['revealedSecrets']),
       currentScene: typeof s['currentScene'] === 'string' ? s['currentScene'] : '',

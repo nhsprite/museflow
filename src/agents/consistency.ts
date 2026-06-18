@@ -21,6 +21,7 @@ export class ConsistencyAgent extends BaseAgent {
     const userContent = `<instruction>
   你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。
   请严格遵循以下标准：只有真正让读者困惑的逻辑矛盾才报 error，一般性不一致报 warning，建议性意见报 info。请严格控制 error 数量。
+  特别注意：不要因措辞不同、合理情绪反应或本章正常引入的新信息而误报 error。
 </instruction>
 
 <scope>
@@ -117,8 +118,27 @@ export class ConsistencyAgent extends BaseAgent {
   </dimension>
 </check_dimensions>
 
-<supplementary_rules>
-  <rule type="chapter_explanation">
+  <supplementary_rules>
+    <rule type="knowledge_vs_reaction">
+      区分"已知事实"与"对事实的反应/措辞"：
+      - 如果角色在前章已经知道某个事实（如自己的使命、身份），本章中对该事实产生情绪反应（震惊、沉思、感慨）是正常的人物刻画，不要报 error。
+      - 如果本章只是用不同的措辞表达与前章相同的概念（如"以泪还恩"与"还泪之人"指同一回事），不要报 error。
+      - 只有当角色对某个事实的认知本身发生矛盾（前章明确不知道，本章却表现得像已知道；或前章已否认，本章却断言为真）时，才报 error。
+    </rule>
+
+    <rule type="foreshadowing_boundary">
+      区分"伏笔提前剧透"与"本章正常引入新信息"：
+      - 本章首次引入的新设定、新身份、新场景、新对话属于正常叙事推进，不是"提前剧透"。
+      - "伏笔提前剧透"仅指：当前章节明确揭示了前序章节中已埋下并标注为"待后续回收"的具体悬念。
+      - 如果大纲中当前章节本身就包含身份揭露、真相揭示等内容，本章进行这些揭示是合规的，不要报 error。
+      - 本章中出现的对未来章节的模糊预感、隐喻、梦境，只要没有明确揭示后续大纲的具体秘密，不要报 error。
+    </rule>
+
+    <rule type="outline_visibility">
+      大纲可见性说明：你看到的 outline 仅包含当前章节及之前章节的完整内容，以及下一章的标题。后续章节的具体剧情对你不可见。因此，你不应以"后续大纲会如何揭示"为由判定当前章节剧透。
+    </rule>
+
+    <rule type="chapter_explanation">
     当前章节可以通过以下方式补充前面章节缺失的铺垫，这些情况不应视为剧情断裂：
     - 回忆/倒叙：本章开头用回忆补充说明"昨夜发生了X事件"
     - 角色对话揭示：本章中角色说"三日前我已安排人手..."
@@ -151,13 +171,13 @@ export class ConsistencyAgent extends BaseAgent {
 </supplementary_rules>
 
 <severity_levels>
-  <error>以下严重逻辑矛盾：跨章节的角色知识/对话矛盾、时间线严重矛盾、关键信息前后矛盾、因果关系完全断裂、必须回收的伏笔未回收、伏笔被提前剧透、伏笔回收方向矛盾、结构化状态矛盾</error>
-  <warning>一般性不一致：细节描述有轻微出入、时间标记不够明确、表述歧义、前面章节缺少铺垫但本章已补充说明、伏笔回收方式可以更好</warning>
+  <error>以下严重逻辑矛盾：跨章节的角色知识/对话矛盾、时间线严重矛盾、关键信息前后矛盾、因果关系完全断裂、必须回收的伏笔未回收、伏笔被提前剧透、伏笔回收方向矛盾、结构化状态矛盾。报 error 前请确认：该问题确实会让读者产生困惑，而不是作者刻意留下的叙事张力或 gradual revelation。</error>
+  <warning>一般性不一致：细节描述有轻微出入、时间标记不够明确、表述歧义、前面章节缺少铺垫但本章已补充说明、伏笔回收方式可以更好、角色对新信息的反应/联想存在多种解读可能</warning>
   <info>建议性意见：可以加强因果关联、可以补充过渡段落、可以改进伏笔回收的冲击力</info>
 </severity_levels>
 
 <output_format>
-  请输出 JSON 格式的检测结果：
+  请输出 JSON 格式的检测结果。注意：每个 issue 的 type 字段必须固定为字符串 "consistency"，不要写成 "quality" 或其他类型：
   {
     "is_consistent": true,
     "issues": [

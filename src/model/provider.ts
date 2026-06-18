@@ -25,7 +25,7 @@ export function getNonSystemMessages(messages: Message[]): Array<{ role: 'user' 
     .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 }
 
-function repairMalformedJson(raw: string): string {
+export function repairMalformedJson(raw: string): string {
   return raw
     .replace(/```json?/g, '')
     .replace(/```/g, '')
@@ -34,7 +34,7 @@ function repairMalformedJson(raw: string): string {
     .replace(/'([^']*)'/g, '"$1"')
 }
 
-function extractJsonBlock(raw: string): string {
+export function extractJsonBlock(raw: string): string {
   const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
   if (codeBlockMatch) {
     return codeBlockMatch[1]!.trim()
