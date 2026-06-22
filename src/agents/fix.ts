@@ -216,9 +216,22 @@ ${existingChapterSection}
   <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述。例如：如果前文已确立"某物在某地"，修复时不可改为"该物在另一处"；如果前文角色"虚弱无力"，修复时不可改为"精力充沛"</constraint>
 </constraints>
 
-<output>
+<output_format>
   请输出修复后的完整第 ${displayChapterNumber} 章正文。
-</output>`
+
+  必须严格使用以下格式：
+
+  === FIXED_CHAPTER ===
+  # 第${displayChapterNumber}章 章节标题
+  （正文内容，段落之间用空行分隔）
+  === END_FIXED_CHAPTER ===
+
+  注意：
+  - 正文必须从 "# 第${displayChapterNumber}章" 开始
+  - 不要输出任何 "问题分析"、"修复建议"、"修改方案" 等非正文内容
+  - 不要输出预写检查表、自检清单、Markdown 表格等辅助内容
+  - 只输出小说正文本身
+</output_format>`
 
     return [
       this.systemMessage('你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'),
@@ -227,11 +240,24 @@ ${existingChapterSection}
   }
 
   protected parse(content: string): AgentOutput {
+    const markerStart = '=== FIXED_CHAPTER ==='
+    const markerEnd = '=== END_FIXED_CHAPTER ==='
+    let extractedContent: string
+
+    const startIndex = content.indexOf(markerStart)
+    if (startIndex !== -1) {
+      const endIndex = content.indexOf(markerEnd, startIndex + markerStart.length)
+      const sliceEnd = endIndex !== -1 ? endIndex : content.length
+      extractedContent = content.slice(startIndex + markerStart.length, sliceEnd).trim()
+    } else {
+      extractedContent = content.trim()
+    }
+
     const sentencePattern = /【段落\s*(\d+)\s*·\s*第\s*(\d+)\s*句】\n([\s\S]*?)(?=\n【段落\s*\d+\s*·|$)/g
     const modifiedSentences: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> = []
 
     let sentenceMatch
-    while ((sentenceMatch = sentencePattern.exec(content)) !== null) {
+    while ((sentenceMatch = sentencePattern.exec(extractedContent)) !== null) {
       const paragraphIndex = parseInt(sentenceMatch[1] ?? '0', 10)
       const sentenceIndex = parseInt(sentenceMatch[2] ?? '0', 10) - 1
       const sentenceContent = (sentenceMatch[3] ?? '').trim()
@@ -239,24 +265,24 @@ ${existingChapterSection}
     }
 
     if (modifiedSentences.length > 0) {
-      return { success: true, content, data: { modifiedSentences } }
+      return { success: true, content: extractedContent, data: { modifiedSentences } }
     }
 
     const paragraphPattern = /【段落\s*(\d+)】\n([\s\S]*?)(?=\n【段落\s*\d+】|$)/g
     const modifiedParagraphs: Array<{ index: number; content: string }> = []
 
     let match
-    while ((match = paragraphPattern.exec(content)) !== null) {
+    while ((match = paragraphPattern.exec(extractedContent)) !== null) {
       const index = parseInt(match[1] ?? '0', 10)
       const paragraphContent = (match[2] ?? '').trim()
       modifiedParagraphs.push({ index, content: paragraphContent })
     }
 
     if (modifiedParagraphs.length > 0) {
-      return { success: true, content, data: { modifiedParagraphs } }
+      return { success: true, content: extractedContent, data: { modifiedParagraphs } }
     }
 
-    return { success: true, content }
+    return { success: true, content: extractedContent }
   }
 
   processOutput(output: AgentOutput, _storyId: string, _chapterIndex: number): ChapterMeta {
