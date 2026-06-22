@@ -528,8 +528,25 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     )
   }
 
+  // Only patch consistency/hallucination warnings or quality warnings with explicit locations.
+  // Abstract quality/style warnings are not suitable for paragraph/sentence-level patching.
+  const pendingIssues = state.pendingIssues
+  const hasPatchableIssues = pendingIssues.some(issue => {
+    if (issue.severity !== 'warning') return true
+    if (issue.type === 'consistency' || issue.type === 'hallucination') return true
+    if (issue.type === 'quality' && issue.location) {
+      return /第\s*\d+\s*[段节]|段落\s*\d+|第\s*\d+\s*句/.test(issue.location)
+    }
+    return false
+  })
+
+  if (!hasPatchableIssues) {
+    console.log('[MuseFlow] 当前警告不适合段落/句子级修复，跳过 fix agent')
+    return { chapters: state.chapters }
+  }
+
   const paragraphs = splitIntoParagraphs(existingContent)
-  const affectedIndices = findAffectedParagraphs(paragraphs, state.pendingIssues)
+  const affectedIndices = findAffectedParagraphs(paragraphs, pendingIssues)
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
@@ -539,12 +556,12 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
   }
 
-  const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
+  const hasErrors = pendingIssues.some(i => i.severity === 'error')
   // 对仅包含 warning 的主观质量/一致性问题，使用更宽松的阈值，避免为分散的
   // 风格建议触发昂贵的完整重写；对 error 级别问题保持严格阈值。
   const AFFECTED_PARAGRAPH_RATIO_THRESHOLD = hasErrors ? 0.4 : 0.65
   const AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD = hasErrors ? 20 : 35
-  const isConsistencyOrHallucination = state.pendingIssues.every(
+  const isConsistencyOrHallucination = pendingIssues.every(
     i => i.type === 'consistency' || i.type === 'hallucination'
   )
   const affectedRatio = paragraphs.length > 0 ? affectedIndices.length / paragraphs.length : 0
@@ -556,7 +573,7 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
   }
 
-  const sentenceFixes = buildSentenceFixes(paragraphs, affectedIndices, state.pendingIssues)
+  const sentenceFixes = buildSentenceFixes(paragraphs, affectedIndices, pendingIssues)
 
   if (sentenceFixes.length > 0 && sentenceFixes.length <= 5) {
     console.log(`[MuseFlow] 定位到 ${sentenceFixes.length} 个需修改的句子，使用句子级精准修复`)
