@@ -109,10 +109,10 @@ export async function executeChapterGeneration(
   } = options
 
   const targetIndex = workingState.currentChapterIndex
-    let rewriteAttempts = 0
-    let previousErrorCount = 0
-    let previousErrorDescriptions: string[] = []
-    let forceStructuralRewrite = false
+  let rewriteAttempts = 0
+  let previousRawErrorCount = 0
+  let previousErrorDescriptions: string[] = []
+  let forceStructuralRewrite = false
 
   try {
     while (rewriteAttempts < maxRewriteAttempts) {
@@ -280,6 +280,7 @@ export async function executeChapterGeneration(
       workingState = { ...workingState, pendingIssues: dedupedIssues }
 
       const errorCountAfterDedup = workingState.pendingIssues.filter(i => i.severity === 'error').length
+      const currentRawErrorCount = workingState.pendingIssues.filter(i => i.severity === 'error').length
       const currentErrorDescriptions = workingState.pendingIssues
         .filter(i => i.severity === 'error')
         .map(i => `${i.type}:${i.description}`)
@@ -292,8 +293,8 @@ export async function executeChapterGeneration(
       )
 
       if (rewriteAttempts > 1) {
-        if (errorCountAfterDedup > previousErrorCount) {
-          console.log(`[MuseFlow] 检测到问题数量上升（${previousErrorCount} -> ${errorCountAfterDedup}），修复未收敛，下次尝试将强制完整重写...`)
+        if (currentRawErrorCount > previousRawErrorCount) {
+          console.log(`[MuseFlow] 检测到问题数量上升（${previousRawErrorCount} -> ${currentRawErrorCount}），修复未收敛，下次尝试将强制完整重写...`)
           forceStructuralRewrite = true
         } else if (similarity >= 0.5 && errorCountAfterDedup > 0) {
           console.log(`[MuseFlow] 检测到问题高度重复（相似度 ${Math.round(similarity * 100)}%），修复未收敛，将保留全部问题反馈并强制完整重写...`)
@@ -312,7 +313,7 @@ export async function executeChapterGeneration(
           currentRemainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
         }
       }
-      previousErrorCount = errorCountAfterDedup
+      previousRawErrorCount = currentRawErrorCount
       previousErrorDescriptions = currentErrorDescriptions
 
       if (currentRemainingErrors.length === 0) {
