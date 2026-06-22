@@ -339,6 +339,12 @@ async function runPlanChapter(
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
+  const outlineItem = state.outline[chapterIndex]
+  const reconciledState = state.storyState && outlineItem?.description
+    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
+    : state.storyState
+  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -351,6 +357,7 @@ async function runPlanChapter(
     chapterSummaries: state.chapterSummaries,
     timelineSnapshot,
     foreshadowStack: state.foreshadowStack,
+    ...(storyStateStr ? { storyState: storyStateStr } : {}),
     ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
   }
 
@@ -550,10 +557,11 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
+  const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
 
   if (affectedIndices.length === 0) {
     console.log('[MuseFlow] 未能定位到问题所在段落，将使用全文修复模式')
-    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
+    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
   }
 
   const hasErrors = pendingIssues.some(i => i.severity === 'error')
@@ -570,18 +578,18 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     (affectedIndices.length > AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD || affectedRatio > AFFECTED_PARAGRAPH_RATIO_THRESHOLD)
   ) {
     console.log(`[MuseFlow] 问题涉及 ${affectedIndices.length}/${paragraphs.length} 个段落（占比 ${Math.round(affectedRatio * 100)}%），超过修复阈值，转为完整重写`)
-    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
+    return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
   }
 
   const sentenceFixes = buildSentenceFixes(paragraphs, affectedIndices, pendingIssues)
 
   if (sentenceFixes.length > 0 && sentenceFixes.length <= 5) {
     console.log(`[MuseFlow] 定位到 ${sentenceFixes.length} 个需修改的句子，使用句子级精准修复`)
-    return await runSentenceFix(agent, state, existingContent, paragraphs, sentenceFixes, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
+    return await runSentenceFix(agent, state, existingContent, paragraphs, sentenceFixes, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
   }
 
   console.log(`[MuseFlow] 定位到 ${affectedIndices.length} 个需修改的段落，使用段落级修复`)
-  return await runParagraphFix(agent, state, existingContent, paragraphs, affectedIndices, chapterIndex, outlineItem, previousChapters, timelineSnapshot)
+  return await runParagraphFix(agent, state, existingContent, paragraphs, affectedIndices, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
 }
 
 function buildSentenceFixes(
@@ -623,7 +631,8 @@ async function runSentenceFix(
   chapterIndex: number,
   outlineItem: { description?: string } | undefined,
   previousChapters: string,
-  timelineSnapshot: string
+  timelineSnapshot: string,
+  nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
   const affectedParagraphs = new Set(sentenceFixes.map(s => s.paragraphIndex))
 
@@ -654,6 +663,7 @@ async function runSentenceFix(
     previousChapters,
     timelineSnapshot,
     ...(storyStateStr ? { storyState: storyStateStr } : {}),
+    ...(nextBoundaryHint ? { nextChapterBoundary: nextBoundaryHint } : {}),
     sentenceFix: {
       sentences: sentenceFixes,
       context,
@@ -727,7 +737,8 @@ async function runParagraphFix(
   chapterIndex: number,
   outlineItem: { description?: string } | undefined,
   previousChapters: string,
-  timelineSnapshot: string
+  timelineSnapshot: string,
+  nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
   const paragraphFixes = affectedIndices.map(idx => {
     const paragraphContent = paragraphs[idx]
@@ -771,6 +782,7 @@ async function runParagraphFix(
     previousChapters,
     timelineSnapshot,
     ...(storyStateStr ? { storyState: storyStateStr } : {}),
+    ...(nextBoundaryHint ? { nextChapterBoundary: nextBoundaryHint } : {}),
     paragraphFix: {
       paragraphs: paragraphFixes,
       context,
@@ -827,7 +839,8 @@ export async function runLegacyFix(
   chapterIndex: number,
   outlineItem: { description?: string } | undefined,
   previousChapters: string,
-  timelineSnapshot: string
+  timelineSnapshot: string,
+  nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
   const worldContent = state.world?.content
   const reconciledState = state.storyState && outlineItem?.description
@@ -846,6 +859,7 @@ export async function runLegacyFix(
     timelineSnapshot,
     ...(storyStateStr ? { storyState: storyStateStr } : {}),
     ...(worldContent ? { world: worldContent } : {}),
+    ...(nextBoundaryHint ? { nextChapterBoundary: nextBoundaryHint } : {}),
     characters: charactersToString(state.characters),
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
   }

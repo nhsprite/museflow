@@ -158,4 +158,62 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).toContain('不得为了修补前文矛盾而发明新事实')
     expect(userMessage).toContain('不得让角色说出其未在前文获得的信息')
   })
+
+  it('includes storyState and time anchor guidance when provided', () => {
+    const agent = new TestableChapterPlannerAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '',
+      outline: '第2章：追查真相\n主角继续调查上一章遗留的问题',
+      previousChapters: '第1章：主角发现线索。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '【故事时间】\n第三天傍晚',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('【上一章结束时间】')
+    expect(userMessage).toContain('第三天傍晚')
+    expect(userMessage).toContain('chapterTimeAnchor')
+    expect(userMessage).toContain('本章时间锚点')
+  })
+
+  it('parses chapterTimeAnchor from planner JSON output', async () => {
+    mockChat.mockResolvedValueOnce(JSON.stringify({
+      sections: [
+        {
+          title: '开头',
+          summary: '主角醒来',
+          wordCount: 500,
+          events: ['主角醒来'],
+          characters: ['主角'],
+          timeMark: '三日后',
+        },
+      ],
+      timeline: [{ event: '主角醒来', time: '三日后', notes: '' }],
+      outlineCheck: [{ requirement: '主角醒来', fulfilled: true, section: '开头' }],
+      chapterTimeAnchor: '三日后（跨越三日）',
+    }))
+
+    const agent = new TestableChapterPlannerAgent()
+    const output = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 1,
+      outline: '第1章：主角醒来',
+      previousChapters: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    expect(output.success).toBe(true)
+    const data = output.data as { chapterTimeAnchor?: string }
+    expect(data.chapterTimeAnchor).toBe('三日后（跨越三日）')
+  })
 })

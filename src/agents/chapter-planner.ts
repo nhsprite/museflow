@@ -35,6 +35,10 @@ export class ChapterPlannerAgent extends BaseAgent {
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
+    const storyStateSection = state.storyState
+      ? `【上一章结束时间】\n${state.storyState}\n\n请根据本章大纲，判断本章叙事应该从何时开始。如果本章只是正常继续推进，chapterTimeAnchor 等于上一章结束时间；如果本章需要回溯、倒叙或跨越一段时间，请在 chapterTimeAnchor 中明确说明。`
+      : '（暂无上一章状态）'
+
     const characterOmissionIssues = state.issues?.filter(i =>
       i.type === 'consistency' &&
       (i.description.includes('角色遗漏') || i.description.includes('未提及') || i.description.includes('未出现'))
@@ -84,6 +88,8 @@ ${state.characters || '（尚未创建）'}
 前几章摘要：
 ${previousSummary}
 </previous_summary>
+
+${storyStateSection}
 </context>
 
 <instruction>
@@ -121,6 +127,14 @@ ${previousSummary}
    - 衔接段落只能承接已知事实，不得为了修补前文矛盾而发明新事实、新来源、新因果或新设定
    - 不得让角色说出其未在前文获得的信息；如果当前资料不足以解释，只能保持模糊或待解
    - 示例：某角色长期处于某种特殊状态后在本章出现 → 增加一段回忆说明状态变化过程
+
+7. 【本章时间锚点 - 必须输出】
+   在输出 JSON 的根级别增加字段 "chapterTimeAnchor"（字符串）。
+   规则：
+   - 如果本章从上一章结束时间继续推进：chapterTimeAnchor = 上一章结束时间（或写"继续推进：{storyTime}"）。
+   - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日卯时（回溯覆盖第5章后三日）"）。
+   - 如果无法判断：chapterTimeAnchor = "未指定"。
+   - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。
 </instruction>
 
 <output_format>
@@ -149,7 +163,8 @@ ${previousSummary}
       "fulfilled": true或false,
       "section": "对应段落标题"
     }
-  ]
+  ],
+  "chapterTimeAnchor": "本章叙事起点时间"
 }
 </output_format>
 
