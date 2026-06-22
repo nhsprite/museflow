@@ -40,34 +40,39 @@ export async function expandOutlineForChapter(
       : '',
   ].filter(part => part.length > 0).join('\n')
 
-  const planState: ReducedGraphState = {
-    ...state,
-    currentChapterIndex: chapterIndex,
-  }
+  let chapterPlan = state.chapterPlan
+  if (!chapterPlan) {
+    const planState: ReducedGraphState = {
+      ...state,
+      currentChapterIndex: chapterIndex,
+    }
 
-  const planResult = await plan_chapter_with_override(planState, formattedOutline)
-  if (!planResult.chapterPlan) {
-    throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
+    const planResult = await plan_chapter_with_override(planState, formattedOutline)
+    if (!planResult.chapterPlan) {
+      throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
+    }
+    chapterPlan = planResult.chapterPlan
   }
 
   console.log(`[MuseFlow] 已动态展开第 ${outlineItem.number} 章详细大纲`)
-  if (planResult.chapterPlan.sections.length > 0) {
-    console.log('📋 章节规划：')
-    for (const section of planResult.chapterPlan.sections) {
-      const wordCount = section.wordCount ?? 0
-      const events = section.events ?? []
-      const characters = section.characters ?? []
-      console.log(`  ${section.title}（约${wordCount}字）`)
-      if (events.length > 0) {
-        console.log(`    事件：${events.join('、')}`)
+
+  if (chapterPlan.sections.length > 0) {
+    console.log('\n📋 章节规划：')
+    for (let i = 0; i < chapterPlan.sections.length; i++) {
+      const section = chapterPlan.sections[i]
+      if (!section) continue
+      console.log(`  ${i + 1}. ${section.title || '未命名'}${section.wordCount ? `（约${section.wordCount}字）` : ''}`)
+      if (section.events && section.events.length > 0) {
+        console.log(`     事件：${section.events.join('、')}`)
       }
-      if (characters.length > 0) {
-        console.log(`    人物：${characters.join('、')}`)
+      if (section.characters && section.characters.length > 0) {
+        console.log(`     人物：${section.characters.join('、')}`)
       }
       if (section.timeMark) {
-        console.log(`    时间：${section.timeMark}`)
+        console.log(`     时间：${section.timeMark}`)
       }
     }
+    console.log('')
   }
 
   if (boundaryHints.length > 0) {
@@ -79,7 +84,7 @@ export async function expandOutlineForChapter(
   }
 
   return {
-    chapterPlan: planResult.chapterPlan,
+    chapterPlan,
     boundaryHints,
   }
 }
