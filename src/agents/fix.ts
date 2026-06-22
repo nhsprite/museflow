@@ -2,6 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import { AI_PHRASE_PROHIBITIONS, FIX_OUTPUT_RULES, FACT_CONSISTENCY_RULES } from './prompt-fragments.js'
 
 export class FixAgent extends BaseAgent {
   constructor() {
@@ -21,6 +22,13 @@ export class FixAgent extends BaseAgent {
     }
 
     return this.buildLegacyPrompt(state, displayChapterNumber)
+  }
+
+  private buildBoundarySection(state: Required<AgentState>): string {
+    if (!state.nextChapterBoundary) return ''
+    return `<next_chapter_boundary>
+${state.nextChapterBoundary}
+</next_chapter_boundary>`
   }
 
   private buildSentencePrompt(state: Required<AgentState>, displayChapterNumber: string): import('../model/provider.js').Message[] {
@@ -46,9 +54,10 @@ export class FixAgent extends BaseAgent {
       ? `<story_state>\n${state.storyState}\n</story_state>`
       : ''
 
+    const boundarySection = this.buildBoundarySection(state)
+
     const userContent = `<instruction>
   请对第 ${displayChapterNumber} 章的指定句子进行精准修复。
-  你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的句子。你绝对不可以修改未指定的句子，不可以添加新句子，不可以删除句子。你只能修改标记为【段落 N · 第 M 句】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。
 </instruction>
 
 ${issuesSection}
@@ -58,6 +67,8 @@ ${previousChaptersSection}
 ${timelineSection}
 
 ${storyStateSection}
+
+${boundarySection}
 
 <context>
   ${context}
@@ -73,13 +84,15 @@ ${sentencesSection}
   <constraint>修改时必须彻底替换原句，绝不允许原句和新句同时存在</constraint>
   <constraint>不得引入新的角色、地点、物品、时间线或因果关系</constraint>
   <constraint>保持原文的语言风格、叙事节奏和人物语气</constraint>
-  <constraint>消除 AI 痕迹：如原句包含"值得一提的是"、"不难发现"等 AI 惯用句式，必须用具体动作或感官细节替代，不能用另一个 AI 句式替换</constraint>
+  ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后通读段落，确保没有句子重复出现</constraint>
   <constraint priority="critical">修复时必须对照"前几章摘要"和"角色状态与时间线"，确保不引入与前文矛盾的描述。例如：如果前文已确立"某物在某地"，修复时不可改为"该物在另一处"</constraint>
+  <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
   <constraint>你不需要输出完整章节或完整段落，只需要输出修改后的句子</constraint>
 </constraints>
 
 <output_format>
+  ${FIX_OUTPUT_RULES}
   对每个需要修改的句子，按以下格式输出：
   【段落 N · 第 M 句】
   [修改后的句子内容]
@@ -119,9 +132,10 @@ ${sentencesSection}
       ? `<story_state>\n${state.storyState}\n</story_state>`
       : ''
 
+    const boundarySection = this.buildBoundarySection(state)
+
     const userContent = `<instruction>
   请对第 ${displayChapterNumber} 章的指定段落进行精准修复。
-  你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的段落。你绝对不可以修改未指定的段落，不可以添加新段落，不可以删除段落。你只能修改标记为【需要修改的段落】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。
 </instruction>
 
 ${issuesSection}
@@ -131,6 +145,8 @@ ${previousChaptersSection}
 ${timelineSection}
 
 ${storyStateSection}
+
+${boundarySection}
 
 <context>
   ${context}
@@ -147,13 +163,16 @@ ${paragraphsSection}
   <constraint>修改时必须彻底替换原句，绝不允许原句和新句同时存在</constraint>
   <constraint>不得引入新的角色、地点、物品、时间线或因果关系</constraint>
   <constraint>保持原文的语言风格、叙事节奏和人物语气</constraint>
-  <constraint>消除 AI 痕迹：如段落中包含"值得一提的是"、"不难发现"等 AI 惯用句式，必须用具体动作或感官细节替代，不能用另一个 AI 句式替换</constraint>
+  ${AI_PHRASE_PROHIBITIONS}
+  ${FACT_CONSISTENCY_RULES}
   <constraint>修改后通读段落，确保没有句子重复出现</constraint>
   <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述。例如：如果前文已确立"某物在某地"，修复时不可改为"该物在另一处"；如果状态记录显示角色"虚弱无力"，修复时不可改为"精力充沛"</constraint>
+  <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
   <constraint>你不需要输出完整章节，只需要输出修改后的段落</constraint>
 </constraints>
 
 <output_format>
+  ${FIX_OUTPUT_RULES}
   对每个需要修改的段落，按以下格式输出：
   【段落 N】
   [修改后的段落内容]
@@ -190,9 +209,10 @@ ${paragraphsSection}
       ? `<story_state>\n${state.storyState}\n</story_state>`
       : ''
 
+    const boundarySection = this.buildBoundarySection(state)
+
     const userContent = `<instruction>
   请对第 ${displayChapterNumber} 章进行针对性修复。
-  你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。
 </instruction>
 
 ${issuesSection}
@@ -203,6 +223,8 @@ ${timelineSection}
 
 ${storyStateSection}
 
+${boundarySection}
+
 ${existingChapterSection}
 
 <constraints>
@@ -211,12 +233,14 @@ ${existingChapterSection}
   <constraint>宁可少改，不要多改</constraint>
   <constraint>不得引入新的角色、地点、物品、时间线或因果关系</constraint>
   <constraint>用"替换"而非"追加"：修改时必须彻底删除原句，用新句替代</constraint>
-  <constraint>消除 AI 痕迹：如原文包含"值得一提的是"、"不难发现"等 AI 惯用句式，必须用具体动作或感官细节替代</constraint>
+  ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后确保没有任何句子重复出现</constraint>
   <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述。例如：如果前文已确立"某物在某地"，修复时不可改为"该物在另一处"；如果前文角色"虚弱无力"，修复时不可改为"精力充沛"</constraint>
+  <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
 </constraints>
 
 <output_format>
+  ${FIX_OUTPUT_RULES}
   请输出修复后的完整第 ${displayChapterNumber} 章正文。
 
   必须严格使用以下格式：
@@ -228,8 +252,6 @@ ${existingChapterSection}
 
   注意：
   - 正文必须从 "# 第${displayChapterNumber}章" 开始
-  - 不要输出任何 "问题分析"、"修复建议"、"修改方案" 等非正文内容
-  - 不要输出预写检查表、自检清单、Markdown 表格等辅助内容
   - 只输出小说正文本身
 </output_format>`
 
