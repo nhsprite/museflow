@@ -189,6 +189,8 @@ export async function executeChapterGeneration(
         validationAttempts++
 
         const isRevalidation = validationAttempts > 1
+        const warningsBeforePipeline = workingState.pendingIssues.filter(i => i.severity === 'warning')
+
         const pipelineResult = await runChapterPipeline(workingState, [
           { node: validate_chapter, label: isRevalidation ? `检查字数(重验${validationAttempts - 1})` : '检查字数' },
           { node: quality_pass, label: isRevalidation ? `质量检查(重验${validationAttempts - 1})` : '质量检查' },
@@ -200,6 +202,18 @@ export async function executeChapterGeneration(
         ], { showProgress: !isRevalidation, breakOnErrors })
 
         workingState = pipelineResult.state
+
+        // Preserve quality warnings that auto_fix_warnings filtered out as non-patchable.
+        const warningsAfterPipeline = workingState.pendingIssues.filter(i => i.severity === 'warning')
+        const missingQualityWarnings = warningsBeforePipeline.filter(
+          before => before.type === 'quality' && !warningsAfterPipeline.some(after => after.id === before.id)
+        )
+        if (missingQualityWarnings.length > 0) {
+          workingState = {
+            ...workingState,
+            pendingIssues: [...workingState.pendingIssues, ...missingQualityWarnings],
+          }
+        }
 
         if (pipelineResult.hasErrors) {
           hadPipelineErrors = true
