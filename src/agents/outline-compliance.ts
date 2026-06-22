@@ -94,7 +94,9 @@ export class OutlineComplianceAgent extends BaseAgent {
 </output_format>`
 
     return [
-      this.systemMessage(`你是一位极其严格的故事结构审核员，负责确保每个章节都严格遵循既定的大纲。你对偏离大纲的行为保持零容忍态度。你必须逐条检查大纲中的每个情节点，绝不能遗漏任何要求。`),
+      this.systemMessage(`你是一位极其严格的故事结构审核员，负责确保每个章节都严格遵循既定的大纲。你对偏离大纲的行为保持零容忍态度。你必须逐条检查大纲中的每个情节点，绝不能遗漏任何要求。
+
+特别注意：本章只能包含当前大纲要求的事件。你必须对照下一章大纲，判断本章是否把下一章才应出现的核心结果（如对方的明确回应、条件交换、真相揭示、事件收束等）提前完成。如果本章提前落地了下一章的核心结果，必须判为 outline_violation。`),
       this.userMessage(userContent),
     ]
   }
