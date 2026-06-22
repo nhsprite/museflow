@@ -30,11 +30,12 @@ ${state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''}
 
 ${state.characters ? `<characters>\n${state.characters}\n</characters>` : ''}
 
-<requirements>
+  <requirements>
 - 每章只写 1–2 句话，控制在 30–60 字
 - 只描述核心转折或关键事件，不写具体细节、对话或场景执行
 - 不要把后续章节的事件提前解决；如果某章暂时制服敌人，请明确为"暂时""待后续处置"
 - 相邻章节之间不应重复处理同一核心事件
+- 章节描述中不要出现英文双引号（"），否则会导致 JSON 解析失败；如需强调词语，请使用中文引号（「」）或书名号（《》）
 - 输出 JSON 格式：
   {
     "chapters": [
@@ -51,14 +52,39 @@ ${state.characters ? `<characters>\n${state.characters}\n</characters>` : ''}
 
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
+    const baseError = (message: string, error?: unknown): AgentOutput => ({
+      success: false,
+      content,
+      error: error instanceof Error ? `${message}: ${error.message}` : message,
+    })
+
+    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    if (codeBlockMatch) {
+      try {
+        const data = JSON.parse(codeBlockMatch[1]!.trim()) as HighLevelOutlineData
+        if (!Array.isArray(data.chapters)) {
+          return baseError('大纲格式错误：chapters 不是数组')
+        }
+        const chapters = data.chapters.map(ch => ({
+          id: generateId(),
+          number: ch.number,
+          title: ch.title,
+          description: ch.description,
+        }))
+        return { success: true, data: { chapters } }
+      } catch (err) {
+        return baseError('无法解析大纲：JSON 代码块格式错误', err)
+      }
+    }
+
     const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
-      return { success: false, error: '无法解析大纲：未找到 JSON 格式' }
+      return baseError('无法解析大纲：未找到 JSON 格式')
     }
     try {
       const data = JSON.parse(jsonMatch[0]) as HighLevelOutlineData
       if (!Array.isArray(data.chapters)) {
-        return { success: false, error: '大纲格式错误：chapters 不是数组' }
+        return baseError('大纲格式错误：chapters 不是数组')
       }
       const chapters = data.chapters.map(ch => ({
         id: generateId(),
@@ -67,8 +93,8 @@ ${state.characters ? `<characters>\n${state.characters}\n</characters>` : ''}
         description: ch.description,
       }))
       return { success: true, data: { chapters } }
-    } catch {
-      return { success: false, error: '无法解析大纲：JSON 格式错误' }
+    } catch (err) {
+      return baseError('无法解析大纲：JSON 格式错误', err)
     }
   }
 }
