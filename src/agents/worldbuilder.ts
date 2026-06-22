@@ -50,15 +50,19 @@ export class WorldbuilderAgent extends BaseAgent {
     }
 
     const jsonMatch = trimmed.match(/\{[\s\S]*?\}/)
-    if (!jsonMatch) {
-      return { success: false, error: '无法解析世界观数据：未找到 JSON 格式' }
+    if (jsonMatch) {
+      try {
+        const data = JSON.parse(jsonMatch[0])
+        return { success: true, data }
+      } catch {
+      }
     }
-    try {
-      const data = JSON.parse(jsonMatch[0])
-      return { success: true, data }
-    } catch {
-      return { success: false, error: '无法解析世界观数据：JSON 格式错误' }
+
+    if (trimmed.length > 0) {
+      return { success: true, data: { title: '', world: trimmed } }
     }
+
+    return { success: false, error: '无法解析世界观数据：未找到 JSON 格式' }
   }
 
   processOutput(output: AgentOutput, storyId: string): WorldContent | null {

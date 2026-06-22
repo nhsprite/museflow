@@ -20,18 +20,18 @@ describe('WorldbuilderAgent parse', () => {
     mockChat.mockClear()
   })
 
-  it('returns success:false when AI returns garbage with no JSON', () => {
+  it('returns success:true with fallback when AI returns garbage with no JSON', () => {
     const agent = new TestableWorldbuilderAgent()
     const result = agent.exposeParse('我不是洗衣精')
-    expect(result.success).toBe(false)
-    expect(result.error).toBeDefined()
+    expect(result.success).toBe(true)
+    expect((result.data as { world?: string }).world).toBe('我不是洗衣精')
   })
 
-  it('returns success:false when JSON is malformed', () => {
+  it('returns success:true with fallback when JSON is malformed', () => {
     const agent = new TestableWorldbuilderAgent()
     const result = agent.exposeParse('{"title": "测试", world: "内容"}')
-    expect(result.success).toBe(false)
-    expect(result.error).toBeDefined()
+    expect(result.success).toBe(true)
+    expect((result.data as { world?: string }).world).toContain('"title": "测试"')
   })
 
   it('returns success:true with data when JSON is valid', () => {
@@ -46,5 +46,19 @@ describe('WorldbuilderAgent parse', () => {
     const result = agent.exposeParse('以下是世界观设定：\n{"title": "书名", "world": "内容"}\n结束')
     expect(result.success).toBe(true)
     expect(result.data).toEqual({ title: '书名', world: '内容' })
+  })
+
+  it('falls back to using markdown prose as world content', () => {
+    const agent = new TestableWorldbuilderAgent()
+    const result = agent.exposeParse('# 世界观设定文档\n\n## 背景\n民国北平...')
+    expect(result.success).toBe(true)
+    expect((result.data as { world?: string }).world).toContain('民国北平')
+  })
+
+  it('returns success:false for empty AI output', () => {
+    const agent = new TestableWorldbuilderAgent()
+    const result = agent.exposeParse('')
+    expect(result.success).toBe(false)
+    expect(result.error).toBeDefined()
   })
 })
