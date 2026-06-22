@@ -135,4 +135,44 @@ describe('ChapterAgent chapter numbering', () => {
     const userMessage = messages[1]?.content ?? ''
     expect(userMessage).not.toContain('<canonical_facts>')
   })
+
+  it('includes chapterTimeAnchor when provided in chapterPlan', () => {
+    const agent = new TestableChapterAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【苏半城】主角',
+      outline: '第2章：茶楼暗访\n三日期限内展开调查',
+      previousChapters: '第1章：主角会见亲王，获三日期限。',
+      chapterContent: '',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '【上一章结束时间】\n出殡后第三日午时',
+      chapterPlan: {
+        sections: [
+          {
+            title: '第一日',
+            summary: '主角开始调查',
+            wordCount: 1000,
+            events: ['开始调查'],
+            characters: ['苏半城'],
+            timeMark: '三日期限第一日',
+          },
+        ],
+        timeline: [{ event: '开始调查', time: '第一日', notes: '' }],
+        outlineCheck: [],
+        chapterTimeAnchor: '三日期限第一日卯时（回溯覆盖第5章后三日）',
+      },
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('本章时间锚点')
+    expect(userMessage).toContain('三日期限第一日卯时')
+    expect(userMessage).toContain('本章允许采用回忆、倒叙或跨日叙事')
+    expect(userMessage).toContain('上一章结束时间')
+  })
 })

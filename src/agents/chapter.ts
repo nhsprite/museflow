@@ -4,6 +4,16 @@ import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from './chapter-planner.js'
+import {
+  AI_PHRASE_PROHIBITIONS,
+  TIMELINE_RULES,
+  FACT_CONSISTENCY_RULES,
+  POWER_SYSTEM_RULES,
+  CROSS_CHAPTER_CONTINUITY_RULES,
+  FORESHADOW_BOUNDARY_RULES,
+  CHAPTER_OUTPUT_RULES,
+  buildCanonicalFactsSection,
+} from './prompt-fragments.js'
 
 export class ChapterAgent extends BaseAgent {
   constructor() {
@@ -39,14 +49,12 @@ ${state.keyEventsTimeline}
 
     const storyStateSection = state.storyState
       ? `<story_state>
-<mandatory>【故事当前状态 - 必须严格保持】</mandatory>
+<mandatory>【上一章结束时间 - 叙事参考起点】</mandatory>
 ${state.storyState}
 
-<mandatory>【强制要求】以上状态是截至上一章结束时已确立的事实。本章写作时必须：
-- 角色位置：如果角色位置发生变化，必须有合理的移动过程描写，不能瞬间转移
-- 角色状态：如果角色处于受伤/中毒/虚弱等状态，本章必须承认这些状态，除非有明确的恢复描写
-- 关键物品：物品的位置和持有者必须与前文一致，转移时必须有明确交接过程
-- 故事时间：时间推进必须符合逻辑，不能跳回过去</mandatory>
+${FACT_CONSISTENCY_RULES}
+
+<note>本章可以根据大纲需要采用回忆、倒叙或跨日叙事。只要本章内部时间推进逻辑自洽，且不违背本章时间锚点，不视为与上一章结束时间矛盾。</note>
 </story_state>`
       : ''
 
@@ -54,7 +62,6 @@ ${state.storyState}
 <mandatory>【大纲遵循 - 强制要求】</mandatory>
 - 本章只能呈现大纲中明确列出的情节点，不得擅自添加大纲未提及的新情节、新场景或新角色
 - 如果大纲中某角色被描述为"暗中跟踪"、"暗中观察"或类似定位，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
-- 如果大纲中指定了某个守护者/神明的身份（如"西王母"），不得擅自改为"弟子"、"使者"或其他替代身份
 - 不得擅自增加大纲未提及的考验、试炼、关卡等情节
 - 不得擅自改变大纲中明确指定的角色关系（如"暗中护法"不得变为"正式入队"）
 - 如果大纲中出现"后续章节边界提示"或"跨章节边界冲突"，必须严格遵守其中的强制要求：不要把后续章节的核心事件提前解决、不要重复处理前章已解决的事件
@@ -101,6 +108,16 @@ ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expect
 <instruction>【当前章节正文】（请在原文基础上修改，保留好的部分，修正问题）：</instruction>
 ${state.chapterContent}
 </existing_chapter>`
+      : ''
+
+    const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor || state.chapterTimeAnchor
+    const timeAnchorSection = chapterTimeAnchor
+      ? `<chapter_time_anchor>
+<mandatory>【本章时间锚点 - 必须以此作为本章叙事起点】</mandatory>
+本章叙事从以下时间点开始：${chapterTimeAnchor}
+
+<important>本章允许采用回忆、倒叙或跨日叙事，只要时间推进逻辑自洽，且与本章时间锚点一致。不要因上一章结束时间而限制本章的时间范围。</important>
+</chapter_time_anchor>`
       : ''
 
     const mainCharacterName = state.characters
@@ -184,6 +201,8 @@ ${keyEventsSection}
 
 ${storyStateSection}
 
+${timeAnchorSection}
+
 ${factVerificationSection}
 
 ${planSection}
@@ -239,60 +258,28 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
 <chapter_content_section>
 <title>【第二部分：CHAPTER_CONTENT - 正文写作要求】</title>
 <content>
-<rule id="0"><mandatory>【必须】</mandatory>正文开头必须包含章节标题，格式为：
-   # 第X章 章节标题
-   或
-   ## 第X章：章节标题
-   标题必须与大纲中的章节标题一致，不得省略。</rule>
+${CHAPTER_OUTPUT_RULES}
 <rule id="1"><mandatory>【必须】</mandatory>严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现</rule>
 <rule id="2"><mandatory>【必须】</mandatory>主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字</rule>
-<rule id="3"><mandatory>【必须】</mandatory>物品名称、功法名称等必须与大纲完全一致</rule>
-<rule id="4"><mandatory>【必须】</mandatory>时间线必须清晰连贯：
-   - 时间跨度必须符合大纲要求（如"高烧持续三日"必须描写三日，不能只写一夜）
-   - 时间跳跃必须明确标注（如"三日后""次日清晨""又过了两天"）
-   - 不能出现时间回退或逻辑矛盾（如先写"烧退了"，后又写"仍在发烧"）</rule>
+<rule id="3"><mandatory>【必须】</mandatory>物品名称、技能/功法名称等必须与大纲完全一致</rule>
+${TIMELINE_RULES}
 <rule id="5"><mandatory>【必须】</mandatory>关键台词必须原样出现：
-   - 大纲中明确要求的台词（如大纲标注的特定对话）必须一字不差地出现
+   - 大纲中明确要求的台词必须一字不差地出现
    - 不能擅自改写为意思相近但措辞不同的句子</rule>
 <rule id="6"><mandatory>【必须】</mandatory>叙述视角保持一致（第三人称限制性视角），避免出现视角跳跃</rule>
 <rule id="7"><mandatory>【必须】</mandatory>因果关系明确：前一事件的结果必须自然导致后一事件，不能生硬跳转</rule>
 <rule id="8"><mandatory>【必须】</mandatory>信息一致性：本章内所有描述必须自洽，不能前后矛盾</rule>
-<rule id="9"><mandatory>【必须】</mandatory>禁止 AI 惯用腔调，具体包括：
-   - 禁止总结性开头：不得以"值得一提的是"、"不难发现"、"众所周知"、"值得注意的是"等句式开头段落
-   - 禁止机械过渡：不得使用"让我们回到"、"接下来"、"与此同时"等说教性过渡
-   - 禁止抽象概括：不得用"这个故事告诉我们"、"从这件事可以看出"等作者跳出来总结的句式
-   - 必须用具体的人物动作、感官细节或场景变化来推动叙事，替代抽象的概括和评价</rule>
+${AI_PHRASE_PROHIBITIONS}
 <rule id="10">注重人物对话和心理描写</rule>
 <rule id="11">适时埋下伏笔，为后续章节留下悬念</rule>
 <rule id="12"><mandatory>【必须】</mandatory>每章字数要求：
-    - 每章字数应均匀分布，避免出现过短章节
-    - 如果本章字数明显少于其他章节，必须扩充内容直至篇幅均衡
-    - 严禁用几句话草率收尾，每章都必须有充实的情节展开</rule>
-<rule id="13"><mandatory>【必须】</mandatory>章节结尾要求：
-    - 章节结尾必须是情节的自然收束，不得使用任何显式的章节结束标记
-    - 禁止在结尾添加总结性诗句、对联、套语或任何形式的"本章完"标注
-    - 结尾应当留给读者余韵，而非刻意宣告叙事中断</rule>
-<rule id="14"><mandatory>【必须】</mandatory>跨章节衔接要求：
-    - 本章结尾的动作、对话或场景，不得与上一章结尾重复
-    - 禁止连续两章以相同角色做相同或高度相似的事情作为结尾
-    - 本章开头应当自然承接上一章的结尾，但不得简单重复上一章最后一段的内容</rule>
-<rule id="15"><mandatory>【必须】</mandatory>时间线一致性：
-    - 角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的
-    - 严禁角色将尚未发生的事件描述为已发生的回忆
-    - 如果角色提及未来事件，必须使用前瞻性的措辞（如"将要"、"等待"），且必须是在明确的预言、梦境或超现实场景中</rule>
-<rule id="15a"><mandatory>【必须】</mandatory>本章新设定与伏笔边界：
-    - 本章首次引入的新设定、新身份、新背景属于正常叙事推进，不是"伏笔提前泄露"
-    - 只有当本章明确揭示了前序章节中已埋下并标注为"待后续回收"的具体悬念时，才构成伏笔提前泄露
-    - 不要为了让角色"知道"而凭空补充前序未明确交代的细节；如果大纲要求本章揭示新信息，请通过角色对话、感知、他人告知等合理方式呈现</rule>
-<rule id="15b"><mandatory>【必须】</mandatory>本章内所有事实一致性：
-    - 角色位置、状态、物品持有者必须与"故事当前状态"保持一致；发生变化时必须有明确过程
-    - 关键物品在同一时刻只能由唯一持有者持有，转移必须通过"递、接、取、放、披、解"等明确动作完成
-    - 角色称呼、已揭示秘密、未来信息边界等需与前面章节建立的事实保持一致</rule>
-<rule id="15c"><mandatory>【必须】</mandatory>战力体系一致性：
-    - 角色实战表现必须与其境界、修为、状态保持一致
-    - 虚弱/未恢复状态的角色不得展现全盛期持续战斗力
-    - 低境界角色与高境界角色交手时，必须明确给出能支撑的理由（地形、法宝、对方留手等），不能默认势均力敌
-    - 大纲中"大战三百回合"等描述应理解为"长时间缠斗、难以速胜"</rule>
+     - 每章字数应均匀分布，避免出现过短章节
+     - 如果本章字数明显少于其他章节，必须扩充内容直至篇幅均衡
+     - 严禁用几句话草率收尾，每章都必须有充实的情节展开</rule>
+${CROSS_CHAPTER_CONTINUITY_RULES}
+${FACT_CONSISTENCY_RULES}
+${FORESHADOW_BOUNDARY_RULES}
+${POWER_SYSTEM_RULES}
 <rule id="16">以自然流畅的段落叙述为主</rule>
 </content>
 </chapter_content_section>
@@ -346,26 +333,22 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
 
     const facts: string[] = []
     if (characterLocations) {
-      facts.push(`<established_locations>\n【角色位置】\n${characterLocations}\n</established_locations>`)
+      facts.push(`【角色位置】\n${characterLocations}`)
     }
     if (characterStatuses) {
-      facts.push(`<established_statuses>\n【角色状态】\n${characterStatuses}\n</established_statuses>`)
+      facts.push(`【角色状态】\n${characterStatuses}`)
     }
     if (keyItems) {
-      facts.push(`<established_items>\n【关键物品】\n${keyItems}\n${keyItemStates ? `【关键物品状态】\n${keyItemStates}\n` : ''}</established_items>`)
+      facts.push(`【关键物品】\n${keyItems}\n${keyItemStates ? `【关键物品状态】\n${keyItemStates}\n` : ''}`)
     }
     if (revealedSecrets) {
-      facts.push(`<established_secrets>\n【已揭示的秘密】\n${revealedSecrets}\n</established_secrets>`)
+      facts.push(`【已揭示的秘密】\n${revealedSecrets}`)
     }
     if (supersededFacts) {
-      facts.push(`<superseded_facts>\n【已被覆盖的旧事实】\n${supersededFacts}\n</superseded_facts>`)
+      facts.push(`【已被覆盖的旧事实】\n${supersededFacts}`)
     }
 
-    if (facts.length === 0) {
-      return ''
-    }
-
-    return `<canonical_facts>\n<mandatory>【事实核查 - 写正文前必须完成】</mandatory>\n以下是截至上一章结束时已确立的权威事实。本章涉及以下主题时，必须与这些事实保持一致：\n\n${facts.join('\n\n')}\n\n<mandatory>【强制要求】\n- 涉及物品来源、制造者、材质时，必须与上述事实一致\n- 涉及角色关系、身份、起源时，必须与上述事实一致\n- 涉及角色位置、状态时，必须与上述事实一致\n- 涉及世界设定、规则、历史时，必须与上述事实一致\n- 如果大纲引入新设定与已确立事实冲突，必须标注为"大纲新设定"并说明区别\n- 严禁 invent 新的事实来支持情节</mandatory>\n</canonical_facts>`
+    return buildCanonicalFactsSection(facts)
   }
 
   private extractChapterOutline(outline: string, chapterIndex: number): { title: string; description: string } {

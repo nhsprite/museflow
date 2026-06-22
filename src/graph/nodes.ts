@@ -447,6 +447,8 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     : state.storyState
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
+  const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -461,6 +463,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     keyEventsTimeline,
     foreshadowStack: state.foreshadowStack,
     storyState: storyStateStr,
+    chapterTimeAnchor,
     ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
@@ -1946,7 +1949,7 @@ function formatStoryState(storyState: StoryState): string {
   }
 
   if (storyState.storyTime) {
-    lines.push(`【故事时间】${storyState.storyTime}`)
+    lines.push(`【上一章结束时间】${storyState.storyTime}`)
   }
 
   return lines.length > 0 ? lines.join('\n') : '（暂无状态记录）'
