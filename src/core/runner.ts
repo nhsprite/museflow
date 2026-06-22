@@ -143,6 +143,7 @@ export async function continueStory(
     currentChapterIndex: targetIndex,
     chapters: rewrittenChapters,
     pendingIssues: cleanedPendingIssues,
+    chapterTimeAnchor: undefined,
     rewriteApproved: userResponse ?? false,
     rewriteRequested: false,
     isWriting: true,

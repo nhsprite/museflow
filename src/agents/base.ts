@@ -105,11 +105,11 @@ export interface AgentState {
     sentences: SentenceFix[]
     context: string
   }
-  chapterPlan?: ChapterPlan
-  storyState?: string
-  chapterTimeAnchor?: string
-  supersededFacts?: string
-  nextChapterBoundary?: string
+  chapterPlan?: ChapterPlan | undefined
+  storyState?: string | undefined
+  chapterTimeAnchor?: string | undefined
+  supersededFacts?: string | undefined
+  nextChapterBoundary?: string | undefined
 }
 
 export interface AgentOutput {

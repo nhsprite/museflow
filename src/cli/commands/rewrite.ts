@@ -251,6 +251,7 @@ async function rewriteChapter(
       chapters: rewrittenChapters,
       chapterSummaries: cleanedSummaries,
       foreshadowStack: cleanedForeshadowStack,
+      chapterTimeAnchor: undefined,
       pendingIssues: retryIssues.length > 0 ? retryIssues : checkpointState.pendingIssues,
       rewriteApproved: userResponse,
       rewriteRequested: false,
@@ -288,12 +289,12 @@ async function rewriteChapter(
       currentChapterIndex: rewriteIndex,
       chapters: rewrittenChapters,
       foreshadowStack: cleanedForeshadowStack,
+      chapterTimeAnchor: undefined,
       pendingIssues: retryIssues.length > 0 ? retryIssues : checkpointState.pendingIssues,
       rewriteApproved: userResponse,
       rewriteRequested: false,
       isWriting: true,
       writeOneChapterOnly: true,
-      chapterPlan: null,
     }
   }
 
