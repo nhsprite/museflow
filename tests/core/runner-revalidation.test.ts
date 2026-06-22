@@ -185,9 +185,10 @@ vi.mock('../../src/agents/index.js', () => ({
   }),
   FixAgent: class {
     async run() {
+      const fixedContent = '# 第1章 测试章节\n\n' + '测试正文内容。'.repeat(600)
       return {
         success: true,
-        content: 'fixed content',
+        content: `=== FIXED_CHAPTER ===\n${fixedContent}\n=== END_FIXED_CHAPTER ===`,
         data: { modifiedParagraphs: [] },
       }
     }
