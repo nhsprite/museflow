@@ -36,6 +36,7 @@ import {
 } from '../utils/summary-compressor.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../storage/database/dao/story.js'
 import { getGenreSkill } from '../genres/registry.js'
+import { validateFixedChapterContent } from '../utils/chapter-content-validation.js'
 import { getStoryOutputDirWithTitle } from '../utils/paths.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getCheckpointer } from './checkpointer.js'
@@ -224,24 +225,46 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
     characters: charactersToString(state.characters),
   }
 
-  const output = await agent.run(agentState)
-  const chapters = (output.data as { chapters: ReducedGraphState['outline'] } | undefined)?.chapters ?? []
+  const maxRetries = 2
+  let lastOutput: import('../agents/base.js').AgentOutput | null = null
 
-  if (chapters.length === 0) {
-    throw new Error('[MuseFlow] 错误：高层次大纲解析失败')
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      console.warn(`[MuseFlow] 章节大纲解析失败，第 ${attempt}/${maxRetries} 次重试...`)
+    }
+
+    const output = await agent.run(agentState)
+    lastOutput = output
+    const chapters = (output.data as { chapters: ReducedGraphState['outline'] } | undefined)?.chapters ?? []
+
+    if (chapters.length > 0) {
+      if (attempt > 0) {
+        console.log(`[MuseFlow] 章节大纲重试成功，共生成 ${chapters.length} 章`)
+      }
+      saveOutline(state.story.id, chapters)
+      await writeOutlineContent(state.story.outputDir, state.story.title, chapters)
+      await writeStoryBible(
+        state.story.outputDir,
+        state.story,
+        worldContent || '',
+        state.characters,
+        chapters,
+      )
+      return { outline: chapters }
+    }
+
+    if (!output.success && output.content) {
+      console.warn(`[MuseFlow] 第 ${attempt + 1} 次章节大纲原始输出（前 500 字符）：`)
+      console.warn(output.content.slice(0, 500))
+    }
   }
 
-  saveOutline(state.story.id, chapters)
-  await writeOutlineContent(state.story.outputDir, state.story.title, chapters)
-  await writeStoryBible(
-    state.story.outputDir,
-    state.story,
-    worldContent || '',
-    state.characters,
-    chapters,
-  )
-
-  return { outline: chapters }
+  console.error('[MuseFlow] 错误：章节大纲生成失败，已达到最大重试次数')
+  if (lastOutput?.content) {
+    console.error('[MuseFlow] 最后一次原始输出（前 1000 字符）：')
+    console.error(lastOutput.content.slice(0, 1000))
+  }
+  throw new Error('[MuseFlow] 错误：章节大纲生成失败，请检查 AI 输出或重试')
 }
 
 export async function validate_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -340,23 +363,6 @@ async function runPlanChapter(
   }
 
   const chapterPlan = output.data as import('../agents/chapter-planner.js').ChapterPlan
-
-  console.log('\n📋 章节规划：')
-  for (let i = 0; i < chapterPlan.sections.length; i++) {
-    const section = chapterPlan.sections[i]
-    if (!section) continue
-    console.log(`  ${i + 1}. ${section.title || '未命名'}${section.wordCount ? `（约${section.wordCount}字）` : ''}`)
-    if (section.events && section.events.length > 0) {
-      console.log(`     事件：${section.events.join('、')}`)
-    }
-    if (section.characters && section.characters.length > 0) {
-      console.log(`     人物：${section.characters.join('、')}`)
-    }
-    if (section.timeMark) {
-      console.log(`     时间：${section.timeMark}`)
-    }
-  }
-  console.log('')
 
   return { chapterPlan }
 }
@@ -797,7 +803,7 @@ async function runParagraphFix(
   }
 }
 
-async function runLegacyFix(
+export async function runLegacyFix(
   agent: FixAgent,
   state: ReducedGraphState,
   existingContent: string,
@@ -837,6 +843,22 @@ async function runLegacyFix(
   if (!content || content.trim().length === 0) {
     throw new Error(`第 ${chapterIndex + 1} 章重写后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
   }
+
+  const genre = getGenreSkill(state.genre)
+  const min = genre?.chapterWordCountMin ?? 1500
+  const max = genre?.chapterWordCountMax ?? 8000
+
+  const validation = validateFixedChapterContent(content, {
+    chapterIndex,
+    minWordCount: min,
+    maxWordCount: max,
+  })
+
+  if (!validation.valid) {
+    throw new Error(`第 ${chapterIndex + 1} 章重写后内容校验失败：${validation.error}`)
+  }
+
+  content = validation.content ?? content
   content = deduplicateSentences(content)
   content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
