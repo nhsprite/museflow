@@ -1422,6 +1422,8 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
     ? supersededFacts.map(f => `- [${f.subject}] ${f.oldFact}（原因：${f.reason}）`).join('\n')
     : '（无）'
 
+  const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor
+
     const agentState: AgentState = {
       idea: state.idea,
       genre: state.genre,
@@ -1435,6 +1437,8 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
       timelineSnapshot,
       foreshadowStack: state.foreshadowStack,
       storyState: storyStateStr,
+      chapterPlan: state.chapterPlan ?? undefined,
+      chapterTimeAnchor,
       supersededFacts: supersededFactsStr,
     }
 

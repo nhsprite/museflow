@@ -2,6 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
+import { TIMELINE_RULES, FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS } from './prompt-fragments.js'
 
 export class ConsistencyAgent extends BaseAgent {
   constructor() {
@@ -20,7 +21,7 @@ export class ConsistencyAgent extends BaseAgent {
 
     const userContent = `<instruction>
   你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。
-  请严格遵循以下标准：只有真正让读者困惑的逻辑矛盾才报 error，一般性不一致报 warning，建议性意见报 info。请严格控制 error 数量。
+  ${SEVERITY_INSTRUCTIONS}
   特别注意：不要因措辞不同、合理情绪反应或本章正常引入的新信息而误报 error。
 </instruction>
 
@@ -53,8 +54,16 @@ export class ConsistencyAgent extends BaseAgent {
   </chapter_summaries>
 
   <story_state>
+    【上一章结束时间参考】
     ${state.storyState || '（暂无状态记录）'}
   </story_state>
+
+  <chapter_time_anchor>
+    <mandatory>【本章时间锚点 - 判断时间推进的原点】</mandatory>
+    ${state.chapterPlan?.chapterTimeAnchor || state.chapterTimeAnchor || '（未指定，默认以本章自身时间线为准）'}
+
+    <important>以本章时间锚点作为判断时间推进是否合理的依据。本章允许采用回忆、倒叙或跨日叙事，只要与本章时间锚点一致，不视为与上一章结束时间矛盾。</important>
+  </chapter_time_anchor>
 
   <superseded_facts>
     以下事实已被后续大纲覆盖或更新，不应视为矛盾：
@@ -86,60 +95,51 @@ export class ConsistencyAgent extends BaseAgent {
   ${state.chapterContent || '（无内容）'}
 </content_to_check>
 
-<check_dimensions>
-  <dimension name="time" priority="high">事件时间顺序是否合理，是否存在时间跳跃未标注、同一时间点发生矛盾事件等问题</dimension>
-  <dimension name="space" priority="high">人物移动、位置变化是否连贯</dimension>
-  <dimension name="causality" priority="high">事件因果关系是否合理</dimension>
-  <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫（如欺骗、试探），否则视为矛盾</dimension>
-  <dimension name="timeline_anchor" priority="critical">
-    角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的、或在超现实场景（如预言、梦境、幻象）中看到的。
-    严禁角色将尚未发生的事件描述为已发生的回忆。
-    如果角色提及未来事件，必须使用前瞻性的措辞，且必须是在明确的超现实场景中。
-    特别注意：涉及非线性叙事（如闪回、预言、多重时间线）时，必须严格区分"已发生的回忆"和"未发生的预示"。
-  </dimension>
-  <dimension name="dialogue" priority="critical">角色说过的话是否前后矛盾。前一章角色亲口说的内容，本章不能自相矛盾</dimension>
-  <dimension name="information" priority="high">关键信息（物品、消息、秘密）的传递和知悉情况是否前后一致</dimension>
-  <dimension name="foreshadowing" priority="critical">
-    必须回收的伏笔：检查上述"必须在本章回收"和"已逾期"的伏笔是否在本章得到回收。如果未回收，报 error
-    伏笔提前剧透：检查本章是否提前泄露了尚未到期的伏笔内容
-    伏笔回收一致性：如果本章回收了某个伏笔，检查回收内容是否与埋下时的暗示方向一致
-    正常伏笔：检查"正常伏笔"是否被不当地提前揭示
-    重要区分 - 本章新设情节 vs 伏笔：本章首次引入的新情节、新场景、新描写是本章的正常叙事推进，不应被视为"已埋伏笔的提前泄露"或"伏笔自指"。只有当本章揭示了之前章节明确埋下的悬念时，才构成伏笔回收。
-  </dimension>
-  <dimension name="pace" priority="medium">本章节奏是否与整体故事节奏一致</dimension>
-  <dimension name="structured_state" priority="critical">
-    对照"故事当前状态"检查以下方面：
-    角色位置一致性：角色当前位置是否与"故事当前状态"中的记录一致。如果位置变化，必须有合理的移动过程
-    角色状态一致性：角色的身体状态、情绪状态是否与记录一致。如果状态变化，必须有明确的恢复描写
-    物品位置一致性：关键物品的当前位置/持有者是否与记录一致。物品转移时必须有明确的交接过程
-    情节推进一致性：本章的情节发展是否遵循"进行中的情节"列表，不应无故中断或偏离
-    秘密揭示一致性：本章新揭示的秘密是否已经被记录在"已揭示的秘密"中，或是否属于合理的新揭示
-    时间推进一致性：故事时间是否合理推进，不能倒退或与"故事当前状态"中的时间标记矛盾
-  </dimension>
-</check_dimensions>
+  <check_dimensions>
+    <dimension name="time" priority="high">事件时间顺序是否合理，是否存在时间跳跃未标注、同一时间点发生矛盾事件等问题</dimension>
+    <dimension name="space" priority="high">人物移动、位置变化是否连贯</dimension>
+    <dimension name="causality" priority="high">事件因果关系是否合理</dimension>
+    <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫（如欺骗、试探），否则视为矛盾</dimension>
+    <dimension name="timeline_anchor" priority="critical">
+      角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的、或在超现实场景（如预言、梦境、幻象）中看到的。
+      严禁角色将尚未发生的事件描述为已发生的回忆。
+      如果角色提及未来事件，必须使用前瞻性的措辞，且必须是在明确的超现实场景中。
+      特别注意：涉及非线性叙事（如闪回、预言、多重时间线）时，必须严格区分"已发生的回忆"和"未发生的预示"。
+    </dimension>
+    <dimension name="dialogue" priority="critical">角色说过的话是否前后矛盾。前一章角色亲口说的内容，本章不能自相矛盾</dimension>
+    <dimension name="information" priority="high">关键信息（物品、消息、秘密）的传递和知悉情况是否前后一致</dimension>
+    <dimension name="foreshadowing" priority="critical">
+      必须回收的伏笔：检查上述"必须在本章回收"和"已逾期"的伏笔是否在本章得到回收。如果未回收，报 error
+      伏笔提前剧透：检查本章是否提前泄露了尚未到期的伏笔内容
+      伏笔回收一致性：如果本章回收了某个伏笔，检查回收内容是否与埋下时的暗示方向一致
+      正常伏笔：检查"正常伏笔"是否被不当地提前揭示
+      ${FORESHADOW_BOUNDARY_RULES}
+    </dimension>
+    <dimension name="pace" priority="medium">本章节奏是否与整体故事节奏一致</dimension>
+    <dimension name="structured_state" priority="critical">
+      ${FACT_CONSISTENCY_RULES}
+      情节推进一致性：本章的情节发展是否遵循"进行中的情节"列表，不应无故中断或偏离
+      秘密揭示一致性：本章新揭示的秘密是否已经被记录在"已揭示的秘密"中，或是否属于合理的新揭示
+      时间推进一致性：故事时间是否合理推进，不能倒退或与"故事当前状态"中的时间标记矛盾
+    </dimension>
+    <dimension name="power_system" priority="high">${POWER_SYSTEM_RULES}</dimension>
+  </check_dimensions>
 
   <supplementary_rules>
     <rule type="knowledge_vs_reaction">
       区分"已知事实"与"对事实的反应/措辞"：
       - 如果角色在前章已经知道某个事实（如自己的使命、身份），本章中对该事实产生情绪反应（震惊、沉思、感慨）是正常的人物刻画，不要报 error。
-      - 如果本章只是用不同的措辞表达与前章相同的概念（如"以泪还恩"与"还泪之人"指同一回事），不要报 error。
+      - 如果本章只是用不同的措辞表达与前章相同的概念，不要报 error。
       - 只有当角色对某个事实的认知本身发生矛盾（前章明确不知道，本章却表现得像已知道；或前章已否认，本章却断言为真）时，才报 error。
     </rule>
 
-    <rule type="foreshadowing_boundary">
-      区分"伏笔提前剧透"与"本章正常引入新信息"：
-      - 本章首次引入的新设定、新身份、新场景、新对话属于正常叙事推进，不是"提前剧透"。
-      - "伏笔提前剧透"仅指：当前章节明确揭示了前序章节中已埋下并标注为"待后续回收"的具体悬念。
-      - 如果大纲中当前章节本身就包含身份揭露、真相揭示等内容，本章进行这些揭示是合规的，不要报 error。
-      - 本章中出现的对未来章节的模糊预感、隐喻、梦境，只要没有明确揭示后续大纲的具体秘密，不要报 error。
-      - **重要**：角色通过自身经历、对话或合理推理在本章自然得出的信息，即使与后续大纲暗合，也不得视为"提前剧透"。只有当本章明确解释了前序埋下的具体悬念时，才构成剧透。
-    </rule>
+    ${FORESHADOW_BOUNDARY_RULES}
 
     <rule type="character_reaction_scope">
       角色反应的选择性：
       - 角色对某个信息或刺激有反应，而对另一个信息或刺激没有反应，属于人物刻画和注意力聚焦，不一定构成矛盾。
       - 只有当角色**必须**知道/感应某事（基于前文明确 establish 的能力或义务），且本章中完全无视并因此导致剧情断裂时，才报 error。
-      - 如果角色的感知能力（如葬花灵根）在本章被描述为对特定对象有感应，但没有被描述为对所有相关对象都有感应，不要因选择性反应而报 error。
+      - 如果角色的感知能力在本章被描述为对特定对象有感应，但没有被描述为对所有相关对象都有感应，不要因选择性反应而报 error。
     </rule>
 
     <rule type="expression_vs_knowledge">
@@ -166,14 +166,16 @@ export class ConsistencyAgent extends BaseAgent {
 
   <rule type="data_source_priority">
     数据来源优先级（非常重要）：
-    1. storyState（故事当前状态）是角色位置、物品状态、已揭示秘密的**最高权威**。如果 timelineSnapshot 或 chapter summaries 中的记录与 storyState 冲突，以 storyState 为准。
-    2. outline（大纲）是未来章节事实规划的**最高权威**。如果 outline 在第N章更新了某个设定（如揭示新的地点、修正之前的线索），而前面章节的摘要有不同的记录，这是正常的情节演进，不是矛盾。
-    3. timelineSnapshot 和 chapter summaries 只是历史章节的压缩记录，可能包含已被覆盖或修正的旧认知。不要将它们视为不可违背的事实。
+    1. chapterTimeAnchor（本章时间锚点）是本章时间推进的最高权威。如果本章有明确的 chapterTimeAnchor，以它判断时间是否合理，而不是以 storyState.storyTime。
+    2. storyState（上一章结束时间参考）是角色位置、物品状态、已揭示秘密的最高权威，但不是本章唯一时间原点。
+    3. outline（大纲）是未来章节事实规划的最高权威。
+    4. timelineSnapshot 和 chapter summaries 是历史章节的压缩记录，可能包含已被覆盖或修正的旧认知。
     
     判定跨章节矛盾时：
-    - 如果当前章节与 storyState 冲突 → 报 error（这是真正的状态矛盾）
-    - 如果当前章节与 outline 冲突 → 报 error（偏离大纲）
-    - 如果当前章节与 timelineSnapshot/chapter summaries 冲突，但与 storyState 和 outline 一致 → 不要报 error（这是大纲演进或状态更新导致的正常差异）
+    - 如果当前章节与 chapterTimeAnchor 冲突 → 报 error
+    - 如果当前章节与 storyState 冲突，但与 chapterTimeAnchor 一致 → 不视为时间矛盾
+    - 如果当前章节与 storyState 冲突，且无 chapterTimeAnchor → 报 error
+    - 如果当前章节与 outline 冲突 → 报 error
     - 只有当角色对已被 storyState/outline 确立的事实表现出矛盾态度时，才报 error
   </rule>
 
@@ -218,7 +220,7 @@ export class ConsistencyAgent extends BaseAgent {
 </output_format>`
 
     return [
-      this.systemMessage('<role>你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。</role>\n<standard>只有真正让读者困惑的逻辑矛盾才报 error，一般性不一致报 warning，建议性意见报 info。请严格控制 error 数量。</standard>'),
+      this.systemMessage(`<role>你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。</role>\n<standard>${SEVERITY_INSTRUCTIONS}</standard>`),
       this.userMessage(userContent),
     ]
   }
