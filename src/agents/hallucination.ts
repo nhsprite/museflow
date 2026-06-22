@@ -1,6 +1,7 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
+import { POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, FORESHADOW_BOUNDARY_RULES } from './prompt-fragments.js'
 
 export class HallucinationAgent extends BaseAgent {
   constructor() {
@@ -66,15 +67,13 @@ ${state.chapterContent || '（无内容）'}
 <dimensions>
   【幻觉检测维度】
   1. **世界规则冲突**：描述与已建立的世界规则（如魔法体系、科技水平、地理设定）相悖的内容
-  1b. **战力体系冲突**：角色的实战表现与其已确立的境界、修为、状态严重不符；低境界角色在没有明确解释的情况下与高境界角色长时间势均力敌；角色在虚弱/未恢复状态下展现出全盛战力
-  2. **人物性格冲突**：人物言行与其已建立的性格特点不符
+  1b. **战力体系冲突**：${POWER_SYSTEM_RULES}
+   2. **人物性格冲突**：人物言行与其已建立的性格特点不符
   3. **事实矛盾**：与前文已确立的事实相矛盾
   4. **不可能发生**：基于已建立规则，某些事件不可能发生
   5. **未介绍元素**：使用到前文未介绍的人物、地点或物品
-     【重要】判断"未介绍元素"时，必须对照"已埋伏笔"列表：
-     - 如果该元素与某个已埋伏笔相关（如伏笔暗示了某个神秘人物/物品/地点，本章首次揭示其详情），则**不应**报为"未介绍元素"
-     - 如果该元素完全不在伏笔列表中，且前文从未提及，才报为"未介绍元素"
-     - 本章对伏笔的揭示如果与埋下时的暗示方向严重不符，报 error（如伏笔暗示是"盟友"，揭示却是"路人"）
+     ${FORESHADOW_BOUNDARY_RULES}
+     本章对伏笔的揭示如果与埋下时的暗示方向严重不符，报 error
 </dimensions>
 
 <important>
@@ -101,7 +100,7 @@ ${state.chapterContent || '（无内容）'}
 </output_format>`
 
     return [
-      this.systemMessage('你是一位严谨的世界观守护者。你的评审标准是：只有严重违反已建立设定的内容才报 error，轻微偏差报 warning，建议性意见报 info。请严格控制 error 数量。'),
+      this.systemMessage(`你是一位严谨的世界观守护者。${SEVERITY_INSTRUCTIONS}`),
       this.userMessage(userContent),
     ]
   }
