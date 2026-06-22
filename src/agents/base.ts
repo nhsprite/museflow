@@ -107,7 +107,9 @@ export interface AgentState {
   }
   chapterPlan?: ChapterPlan
   storyState?: string
+  chapterTimeAnchor?: string
   supersededFacts?: string
+  nextChapterBoundary?: string
 }
 
 export interface AgentOutput {

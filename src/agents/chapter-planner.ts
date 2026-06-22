@@ -20,6 +20,7 @@ export interface ChapterPlan {
     fulfilled: boolean
     section: string
   }>
+  chapterTimeAnchor?: string
 }
 
 export class ChapterPlannerAgent extends BaseAgent {

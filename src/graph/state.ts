@@ -118,6 +118,7 @@ export const GraphState = Annotation.Root({
   lastTimelineSnapshot: Annotation<string | null>,
   chapterPlan: Annotation<ChapterPlan | null>,
   storyState: Annotation<StoryState>,
+  chapterTimeAnchor: Annotation<string | undefined>,
   autoFixAttempts: Annotation<number>,
 })
 

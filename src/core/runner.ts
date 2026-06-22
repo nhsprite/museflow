@@ -75,6 +75,7 @@ export async function runStory(input: {
     lastTimelineSnapshot: null,
     chapterPlan: null,
     storyState: createEmptyStoryState(),
+    chapterTimeAnchor: undefined,
     autoFixAttempts: 0,
   }
 
