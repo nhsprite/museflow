@@ -1602,20 +1602,43 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
     return { autoFixAttempts: attempts, pendingIssues: state.pendingIssues }
   }
 
-  console.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${warnings.length} warning(s) (attempt ${attempts + 1}/3):\x1b[0m`)
-  for (const warning of warnings) {
+  // Only patch consistency/hallucination warnings or quality warnings with explicit locations.
+  const patchableWarnings = warnings.filter(issue => {
+    if (issue.type === 'consistency' || issue.type === 'hallucination') return true
+    if (issue.type === 'quality' && issue.location) {
+      return /第\s*\d+\s*[段节]|段落\s*\d+|第\s*\d+\s*句/.test(issue.location)
+    }
+    return false
+  })
+
+  if (patchableWarnings.length === 0) {
+    console.log('[MuseFlow] 当前警告不适合自动修复，保留至下一轮重写')
+    return { autoFixAttempts: attempts, pendingIssues: state.pendingIssues }
+  }
+
+  console.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${patchableWarnings.length} warning(s) (attempt ${attempts + 1}/3):\x1b[0m`)
+  for (const warning of patchableWarnings) {
     console.warn(`   \x1b[33m⚠️  [${warning.type}]\x1b[0m ${warning.description}`)
   }
 
-  const fixState: ReducedGraphState = { ...state, pendingIssues: warnings }
-  const fixResult = await fix_chapter(fixState)
+  const fixState: ReducedGraphState = { ...state, pendingIssues: patchableWarnings }
 
-  console.log(`\x1b[92m✔ [MuseFlow] Auto-fixed ${warnings.length} warning(s) (attempt ${attempts + 1}/3)\x1b[0m`)
+  try {
+    const fixResult = await fix_chapter(fixState)
+    console.log(`\x1b[92m✔ [MuseFlow] Auto-fixed ${patchableWarnings.length} warning(s) (attempt ${attempts + 1}/3)\x1b[0m`)
 
-  return {
-    ...fixResult,
-    pendingIssues: [],
-    autoFixAttempts: attempts + 1,
+    return {
+      ...fixResult,
+      pendingIssues: [],
+      autoFixAttempts: attempts + 1,
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn(`\x1b[93m[MuseFlow] 自动修复失败：${message}\x1b[0m`)
+    return {
+      autoFixAttempts: attempts + 1,
+      pendingIssues: state.pendingIssues,
+    }
   }
 }
 
