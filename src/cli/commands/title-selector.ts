@@ -32,7 +32,7 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
                 items: { type: 'string' },
                 description: '2-4个独特的世界观元素',
               },
-              cultivationSystem: { type: 'string', description: '修炼/魔法体系（可选）' },
+              cultivationSystem: { type: 'string', description: '特殊能力、力量或规则体系，如修炼、魔法、超自然规则等（可选）' },
             },
             required: ['coreConflict', 'worldFeatures'],
           },
@@ -72,9 +72,9 @@ function getGenreConstraints(genre: string): string {
 
 function getConditionalCultivation(genre: string): string {
   if (genre === 'xianxia' || genre === 'fantasy') {
-    return '- 每个候选方案可包含 cultivationSystem 字段描述修炼/魔法体系'
+    return '- 每个候选方案可包含 cultivationSystem 字段描述修炼/魔法体系；若该方案无体系，请将此字段留空，不要把规则描述写入此字段'
   }
-  return ''
+  return '- 每个候选方案可包含 cultivationSystem 字段描述该题材下的特殊能力、力量或规则体系（如恐怖题材中的诅咒规则、科幻题材中的技术体系等）。若该方案没有此类体系，请将此字段留空，相关细节请放入 worldFeatures'
 }
 
 export async function generateTitleOptions(
@@ -112,10 +112,10 @@ export async function generateTitleOptions(
   return parsed.options
 }
 
-export async function selectTitleOption(options: TitleOption[]): Promise<TitleOption> {
+export async function selectTitleOption(options: TitleOption[], genre: string = 'default'): Promise<TitleOption> {
   const choices: Array<{ name: string; value: number } | InstanceType<typeof inquirer.Separator>> = [
     ...options.map((opt, index) => ({
-      name: formatOptionForDisplay(opt, index + 1),
+      name: formatOptionForDisplay(opt, index + 1, genre),
       value: index,
     })),
     new inquirer.Separator(),
@@ -147,9 +147,11 @@ export async function selectTitleOption(options: TitleOption[]): Promise<TitleOp
   return selected
 }
 
-function formatOptionForDisplay(option: TitleOption, number: number): string {
+function formatOptionForDisplay(option: TitleOption, number: number, genre?: string): string {
   const features = option.worldDirection.worldFeatures.join('、')
-  const cultivation = option.worldDirection.cultivationSystem
-  const cultivationLine = cultivation ? `修炼体系：${cultivation} | ` : ''
-  return `${number}. ${option.title} | ${cultivationLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
+  const powerSystem = option.worldDirection.cultivationSystem?.trim()
+  const isEmptyPowerSystem = !powerSystem || powerSystem === '无' || powerSystem.startsWith('无体系')
+  const powerLabel = genre === 'xianxia' || genre === 'fantasy' ? '修炼体系' : '规则体系'
+  const powerLine = !isEmptyPowerSystem ? `${powerLabel}：${powerSystem} | ` : ''
+  return `${number}. ${option.title} | ${powerLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
 }

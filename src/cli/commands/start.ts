@@ -55,7 +55,7 @@ export async function start(options: StartOptions): Promise<void> {
         console.log('[MuseFlow] 非交互模式 - 自动选择第一个选项\n')
         selectedOption = titleOptions[0]!
       } else {
-        selectedOption = await selectTitleOption(titleOptions)
+        selectedOption = await selectTitleOption(titleOptions, genre)
       }
     } catch (err) {
       if (err instanceof Error && err.message === 'REGENERATE') {

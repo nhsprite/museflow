@@ -125,7 +125,7 @@ describe('title-selector', () => {
       expect(result.title).toBe('《逆天改命》')
     })
 
-    it('passes a rawlist question array to inquirer.prompt', async () => {
+    it('displays "修炼体系" label for xianxia genre', async () => {
       const options: TitleOption[] = [
         {
           title: '《逆天改命》',
@@ -137,16 +137,52 @@ describe('title-selector', () => {
         },
       ]
 
-      await selectTitleOption(options)
+      await selectTitleOption(options, 'xianxia')
 
-      expect(inquirer.default.prompt).toHaveBeenCalledWith([
-        expect.objectContaining({
-          type: 'rawlist',
-          name: 'selectedIndex',
-          message: '请选择书名和世界观方向：',
-          pageSize: 10,
-        }),
-      ])
+      const promptArg = vi.mocked(inquirer.default.prompt).mock.calls[0]?.[0]
+      const question = promptArg?.[0]
+      expect(question?.choices?.[0]?.name).toContain('修炼体系：凡境→灵境→仙境')
+    })
+
+    it('hides power system line when cultivationSystem is empty or starts with "无体系"', async () => {
+      const options: TitleOption[] = [
+        {
+          title: '《血符京华》',
+          worldDirection: {
+            cultivationSystem: '无体系，萨满巫术以血祭反噬',
+            coreConflict: '复仇唤醒血脉诅咒',
+            worldFeatures: ['咒道', '阴兵'],
+          },
+        },
+      ]
+
+      await selectTitleOption(options, 'horror')
+
+      const promptArg = vi.mocked(inquirer.default.prompt).mock.calls[0]?.[0]
+      const question = promptArg?.[0]
+      expect(question?.choices?.[0]?.name).not.toContain('规则体系')
+      expect(question?.choices?.[0]?.name).not.toContain('修炼体系')
+      expect(question?.choices?.[0]?.name).toContain('核心冲突：复仇唤醒血脉诅咒')
+    })
+
+    it('displays "规则体系" label for non-xianxia/fantasy genres when system is present', async () => {
+      const options: TitleOption[] = [
+        {
+          title: '《诅咒规则》',
+          worldDirection: {
+            cultivationSystem: '血咒需至亲之血为引，每次反噬心智',
+            coreConflict: '复仇唤醒血脉诅咒',
+            worldFeatures: ['咒道', '阴兵'],
+          },
+        },
+      ]
+
+      await selectTitleOption(options, 'horror')
+
+      const promptArg = vi.mocked(inquirer.default.prompt).mock.calls[0]?.[0]
+      const question = promptArg?.[0]
+      expect(question?.choices?.[0]?.name).toContain('规则体系：血咒需至亲之血为引，每次反噬心智')
+      expect(question?.choices?.[0]?.name).not.toContain('修炼体系')
     })
 
     it('uses an inquirer separator before the regenerate option', async () => {
