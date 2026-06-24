@@ -28,6 +28,24 @@ describe('sanitizeStoryState', () => {
     expect(report.removedCharacters).toContain('陆廷樑')
   })
 
+  it('keeps established characters when preserveExisting is true', () => {
+    const state: StoryState = {
+      characterLocations: { 苏半城: '正房', 亲王: '王府' },
+      characterStatus: { 苏半城: '冷静', 亲王: '阴沉' },
+      keyItemsLocation: {},
+      keyItemsState: {},
+      activePlots: [],
+      revealedSecrets: [],
+      pendingTasks: [],
+      currentScene: '',
+      storyTime: '',
+    }
+    const report = sanitizeStoryState(state, characters, { preserveExisting: true })
+    expect(report.state.characterLocations).toEqual({ 苏半城: '正房', 亲王: '王府' })
+    expect(report.state.characterStatus).toEqual({ 苏半城: '冷静', 亲王: '阴沉' })
+    expect(report.removedCharacters).toEqual([])
+  })
+
   it('detects conflicting item locations', () => {
     const state: StoryState = {
       characterLocations: {},

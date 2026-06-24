@@ -275,7 +275,7 @@ export function processSummaryOutput(
   let storyState = extractStoryState()
 
   if (storyState && characters && characters.length > 0) {
-    const report = sanitizeStoryState(storyState, characters)
+    const report = sanitizeStoryState(storyState, characters, { preserveExisting: true })
     if (report.removedCharacters.length > 0) {
       console.warn(`[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`)
     }

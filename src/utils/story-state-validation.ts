@@ -9,14 +9,22 @@ function canonicalizeItemName(name: string): string {
 export function sanitizeStoryState(
   state: StoryState,
   characters: Character[],
+  options?: { preserveExisting?: boolean },
 ): SanitizationReport {
   const whitelist = buildCharacterWhitelist(characters)
+
+  const establishedNames = options?.preserveExisting
+    ? new Set([
+        ...Object.keys(state.characterLocations),
+        ...Object.keys(state.characterStatus),
+      ])
+    : new Set<string>()
 
   const removedCharactersSet = new Set<string>()
 
   const characterLocations: Record<string, string> = {}
   for (const [name, location] of Object.entries(state.characterLocations)) {
-    if (whitelist.isOfficial(name)) {
+    if (whitelist.isOfficial(name) || establishedNames.has(name)) {
       characterLocations[name] = location
     } else {
       removedCharactersSet.add(name)
@@ -25,7 +33,7 @@ export function sanitizeStoryState(
 
   const characterStatus: Record<string, string> = {}
   for (const [name, status] of Object.entries(state.characterStatus)) {
-    if (whitelist.isOfficial(name)) {
+    if (whitelist.isOfficial(name) || establishedNames.has(name)) {
       characterStatus[name] = status
     } else {
       removedCharactersSet.add(name)
