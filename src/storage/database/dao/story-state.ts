@@ -22,6 +22,7 @@ export function createEmptyStoryState(): StoryState {
     keyItemsState: {},
     activePlots: [],
     revealedSecrets: [],
+    pendingTasks: [],
     currentScene: '',
     storyTime: '',
   }

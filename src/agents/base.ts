@@ -7,6 +7,7 @@ import type { Issue } from '../types/agent.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import type { ChapterPlan } from './chapter-planner.js'
 import type { StoryState } from '../types/story-state.js'
+import type { Character } from '../types/character.js'
 import { logger } from '../utils/logger.js'
 
 export abstract class BaseAgent {
@@ -110,6 +111,8 @@ export interface AgentState {
   chapterTimeAnchor?: string | undefined
   supersededFacts?: string | undefined
   nextChapterBoundary?: string | undefined
+  verifiedConstraints?: string[]
+  charactersList?: Character[]
 }
 
 export interface AgentOutput {

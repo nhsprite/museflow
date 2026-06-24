@@ -79,4 +79,22 @@ describe('SummaryAgent prompt', () => {
     expect(userMessage).toContain('<title>未知</title>')
     expect(userMessage).toContain('<number>未知</number>')
   })
+
+  it('includes official character whitelist in prompt', () => {
+    const agent = new TestableSummaryAgent()
+    const messages = agent.exposePrompt({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterContent: '苏半城在房中。',
+      chapterTitle: 'Test',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      charactersList: [{ id: '1', storyId: 's', name: '苏半城', description: '主角', createdAt: 1 }],
+    })
+    const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
+    expect(userMessage).toContain('<official_characters>')
+    expect(userMessage).toContain('苏半城')
+  })
 })

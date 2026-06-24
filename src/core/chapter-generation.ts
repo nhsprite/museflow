@@ -19,6 +19,7 @@ import {
 } from '../graph/nodes.js'
 import { expandOutlineForChapter } from './outline-expander.js'
 import { shouldForceTemporaryReplan } from '../utils/outline-boundary.js'
+import { deduplicateIssuesSemantically, issueFingerprint } from '../utils/issue-deduplication.js'
 
 export interface ExecuteChapterOptions {
   breakOnErrors?: boolean
@@ -44,13 +45,36 @@ const CROSS_CHAPTER_MARKERS = [
   /大纲第\s*[一二三四五六七八九十\d]+\s*章/,
 ]
 
-function calculateIssueSimilarity(prev: string[], curr: string[]): number {
+const PENDING_TASK_MARKERS = [
+  /未执行.*差事/,
+  /未领受.*差事/,
+  /无故搁置/,
+  /已确立的差事/,
+  /未出现.*差事/,
+]
+
+function isInventedCharacterIssue(issue: Issue): boolean {
+  const text = `${issue.description} ${issue.location ?? ''}`
+  return /invent|虚构|编造|未在角色|不在官方角色|非官方角色|新角色/.test(text)
+}
+
+function isItemLocationConflictIssue(issue: Issue): boolean {
+  const text = `${issue.description} ${issue.location ?? ''}`
+  return /位置矛盾|位置冲突|物品位置|storyState|关键物品.*矛盾/.test(text)
+}
+
+function isTaskConsistencyIssue(issue: Issue): boolean {
+  return issue.type === 'consistency' &&
+    PENDING_TASK_MARKERS.some(pattern => pattern.test(issue.description))
+}
+
+function calculateIssueSetSimilarity(prev: Issue[], curr: Issue[]): number {
   if (prev.length === 0 || curr.length === 0) return 0
-  const prevSet = new Set(prev)
-  const currSet = new Set(curr)
+  const prevSet = new Set(prev.map(issueFingerprint))
+  const currSet = new Set(curr.map(issueFingerprint))
   let intersection = 0
-  for (const item of currSet) {
-    if (prevSet.has(item)) intersection++
+  for (const fp of currSet) {
+    if (prevSet.has(fp)) intersection++
   }
   return intersection / Math.max(prevSet.size, currSet.size)
 }
@@ -111,8 +135,9 @@ export async function executeChapterGeneration(
   const targetIndex = workingState.currentChapterIndex
   let rewriteAttempts = 0
   let previousRawErrorCount = 0
-  let previousErrorDescriptions: string[] = []
+  let previousIssues: Issue[] = []
   let forceStructuralRewrite = false
+  let verifiedConstraints = workingState.verifiedConstraints ?? []
 
   try {
     while (rewriteAttempts < maxRewriteAttempts) {
@@ -141,41 +166,46 @@ export async function executeChapterGeneration(
 
           if (!chapterFileExists) {
             console.log(`[MuseFlow] 第 ${targetIndex + 1} 章文件不存在，跳过修复模式，直接重新起草...`)
-            workingState = await runDraftPhase({ ...workingState, pendingIssues: errorIssues })
+            workingState = await runDraftPhase({ ...workingState, pendingIssues: errorIssues, verifiedConstraints })
           } else {
             const hasStructural = errorIssues.some(isStructuralIssue) || structuralOverride
             const hasLocal = errorIssues.some(i => isLocalIssue(i))
             const onlyCrossChapter = errorIssues.every(i => i.type === 'consistency' || i.type === 'hallucination')
+            const hasTaskConsistency = errorIssues.some(isTaskConsistencyIssue)
 
-            if (hasStructural && !hasLocal) {
+            if (hasTaskConsistency) {
+              console.log('[MuseFlow] 检测到跨章节差事一致性错误，将清空计划并重新规划...')
+              workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues, verifiedConstraints }
+              workingState = await runDraftPhase(workingState)
+            } else if (hasStructural && !hasLocal) {
               if (onlyCrossChapter && !structuralOverride) {
                 console.log('[MuseFlow] 一致性/幻觉问题优先使用段落级修复，避免直接完整重写...')
-                workingState = await runFixPhase({ ...workingState, pendingIssues: errorIssues })
+                workingState = await runFixPhase({ ...workingState, pendingIssues: errorIssues, verifiedConstraints })
               } else {
                 console.log('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
-                workingState = await runDraftPhase({ ...workingState, chapterPlan: null, pendingIssues: errorIssues })
+                workingState = await runDraftPhase({ ...workingState, chapterPlan: null, pendingIssues: errorIssues, verifiedConstraints })
               }
             } else if (!hasStructural && hasLocal) {
               console.log('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
-              workingState = await runFixPhase({ ...workingState, pendingIssues: errorIssues })
+              workingState = await runFixPhase({ ...workingState, pendingIssues: errorIssues, verifiedConstraints })
             } else {
               if (hasStructural) {
                 console.log('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
-                workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues }
+                workingState = { ...workingState, chapterPlan: null, pendingIssues: errorIssues, verifiedConstraints }
               } else if (hasLocal) {
                 console.log('[MuseFlow] 检测到局部问题，将使用现有计划重写...')
-                workingState = { ...workingState, pendingIssues: errorIssues }
+                workingState = { ...workingState, pendingIssues: errorIssues, verifiedConstraints }
               } else {
-                workingState = { ...workingState, pendingIssues: [] }
+                workingState = { ...workingState, pendingIssues: [], verifiedConstraints }
               }
               workingState = await runDraftPhase(workingState)
             }
           }
         } else {
-          workingState = await runDraftPhase({ ...workingState, pendingIssues: [] })
+          workingState = await runDraftPhase({ ...workingState, pendingIssues: [], verifiedConstraints })
         }
       } else {
-        workingState = await runDraftPhase({ ...workingState, pendingIssues: [] })
+        workingState = await runDraftPhase({ ...workingState, pendingIssues: [], verifiedConstraints })
       }
 
       const { runChapterPipeline } = await import('./pipeline.js')
@@ -261,7 +291,9 @@ export async function executeChapterGeneration(
         break
       }
 
-      const MAX_ISSUES_PER_TYPE = 3
+      workingState = { ...workingState, pendingIssues: deduplicateIssuesSemantically(workingState.pendingIssues) }
+
+      const MAX_NON_ERROR_ISSUES_PER_TYPE = 3
       const issueGroups = new Map<string, typeof workingState.pendingIssues>()
       for (const issue of workingState.pendingIssues) {
         const list = issueGroups.get(issue.type) ?? []
@@ -270,21 +302,39 @@ export async function executeChapterGeneration(
       }
       const dedupedIssues: typeof workingState.pendingIssues = []
       for (const [type, issues] of issueGroups) {
-        if (issues.length <= MAX_ISSUES_PER_TYPE) {
-          dedupedIssues.push(...issues)
+        const errors = issues.filter(i => i.severity === 'error')
+        const nonErrors = issues.filter(i => i.severity !== 'error')
+        dedupedIssues.push(...errors)
+        if (nonErrors.length <= MAX_NON_ERROR_ISSUES_PER_TYPE) {
+          dedupedIssues.push(...nonErrors)
         } else {
-          console.warn(`[MuseFlow] 检测到 ${type} 类型有 ${issues.length} 个问题，只保留前 ${MAX_ISSUES_PER_TYPE} 个`)
-          dedupedIssues.push(...issues.slice(0, MAX_ISSUES_PER_TYPE))
+          console.warn(`[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留前 ${MAX_NON_ERROR_ISSUES_PER_TYPE} 个`)
+          dedupedIssues.push(...nonErrors.slice(0, MAX_NON_ERROR_ISSUES_PER_TYPE))
         }
       }
       workingState = { ...workingState, pendingIssues: dedupedIssues }
 
       const errorCountAfterDedup = workingState.pendingIssues.filter(i => i.severity === 'error').length
       const currentRawErrorCount = workingState.pendingIssues.filter(i => i.severity === 'error').length
-      const currentErrorDescriptions = workingState.pendingIssues
-        .filter(i => i.severity === 'error')
-        .map(i => `${i.type}:${i.description}`)
-      const similarity = calculateIssueSimilarity(previousErrorDescriptions, currentErrorDescriptions)
+      const currentErrorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
+      const similarity = calculateIssueSetSimilarity(previousIssues.filter(i => i.severity === 'error'), currentErrorIssues)
+
+      const resolvedIssues = previousIssues.filter(prev =>
+        !workingState.pendingIssues.some(curr =>
+          curr.type === prev.type && curr.description === prev.description
+        )
+      )
+      if (resolvedIssues.length > 0) {
+        const newConstraints = resolvedIssues.map(issue =>
+          `[${issue.type}] ${issue.description}${issue.location ? `（位置：${issue.location}）` : ''}${issue.suggestion ? `；修复方向：${issue.suggestion}` : ''}`
+        )
+        verifiedConstraints = [...verifiedConstraints, ...newConstraints]
+        console.log(`[MuseFlow] 本轮已解决 ${resolvedIssues.length} 个问题，已记录为后续规划约束`)
+        for (const constraint of newConstraints) {
+          console.log(`  ✓ ${constraint.substring(0, 120)}${constraint.length > 120 ? '...' : ''}`)
+        }
+      }
+      workingState = { ...workingState, verifiedConstraints }
 
       const interpretiveIssuePattern = /提前.*(?:剧透|揭示)|看破.*说破|感应.*反应|选择性感应|表达方式|性格驱动/
       let currentRemainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
@@ -314,7 +364,7 @@ export async function executeChapterGeneration(
         }
       }
       previousRawErrorCount = currentRawErrorCount
-      previousErrorDescriptions = currentErrorDescriptions
+      previousIssues = [...workingState.pendingIssues]
 
       if (currentRemainingErrors.length === 0) {
         break
@@ -339,6 +389,29 @@ export async function executeChapterGeneration(
         const diagnosis = await diagnoseStoryState(workingState, outputDir)
         printDiagnosis(diagnosis)
 
+        const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+        const stateCorruptionSignals = remainingErrors.filter(
+          i => isInventedCharacterIssue(i) || isItemLocationConflictIssue(i)
+        )
+        if (
+          rewriteAttempts >= maxRewriteAttempts &&
+          remainingErrors.length > 0 &&
+          stateCorruptionSignals.length / remainingErrors.length >= 0.5
+        ) {
+          workingState = {
+            ...workingState,
+            pendingIssues: [
+              ...workingState.pendingIssues,
+              {
+                id: 'state-corruption',
+                type: 'state_corruption',
+                severity: 'error' as const,
+                description: `连续 ${maxRewriteAttempts} 次重写后，剩余错误仍集中于上游状态污染（虚构角色、错误亲属关系或物品位置矛盾）。建议先修复 meta.json / storyState 后再运行 rewrite。`,
+              },
+            ],
+          }
+        }
+
         break
       }
     }
@@ -350,18 +423,19 @@ export async function executeChapterGeneration(
         rewriteRequested: true,
         rewriteApproved: false,
       }
-      await graph.updateState(
-        { configurable: { thread_id: storyId, outputDir } },
-        {
-          rewriteApproved: false,
-          rewriteRequested: true,
-          pendingIssues: workingState.pendingIssues,
-          currentChapterIndex: workingState.currentChapterIndex,
-          chapters: workingState.chapters,
-          chapterSummaries: workingState.chapterSummaries,
-          storyState: workingState.storyState,
-        }
-      )
+    await graph.updateState(
+      { configurable: { thread_id: storyId, outputDir } },
+      {
+        rewriteApproved: false,
+        rewriteRequested: true,
+        pendingIssues: workingState.pendingIssues,
+        currentChapterIndex: workingState.currentChapterIndex,
+        chapters: workingState.chapters,
+        chapterSummaries: workingState.chapterSummaries,
+        storyState: workingState.storyState,
+        verifiedConstraints: workingState.verifiedConstraints,
+      }
+    )
       return workingState
     }
 
@@ -383,6 +457,7 @@ export async function executeChapterGeneration(
         chapters: workingState.chapters,
         chapterSummaries: workingState.chapterSummaries,
         storyState: workingState.storyState,
+        verifiedConstraints: workingState.verifiedConstraints,
       }
     )
     await checkpointer.saveChapterCheckpoint(outputDir, targetIndex + 1)
@@ -406,6 +481,7 @@ export async function executeChapterGeneration(
         chapters: workingState.chapters,
         chapterSummaries: workingState.chapterSummaries,
         storyState: workingState.storyState,
+        verifiedConstraints: workingState.verifiedConstraints,
       }
     )
     throw err

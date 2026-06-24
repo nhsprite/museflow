@@ -120,6 +120,7 @@ export const GraphState = Annotation.Root({
   storyState: Annotation<StoryState>,
   chapterTimeAnchor: Annotation<string | undefined>,
   autoFixAttempts: Annotation<number>,
+  verifiedConstraints: Annotation<string[]>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

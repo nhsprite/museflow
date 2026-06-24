@@ -5,6 +5,16 @@ export interface SupersededFact {
   chapterIndex: number
 }
 
+export interface PendingTask {
+  id: string
+  assignee: string
+  description: string
+  createdChapter: number
+  dueChapter?: number | undefined
+  dueTime?: string | undefined
+  status: 'pending' | 'done' | 'postponed' | 'superseded'
+}
+
 export interface StoryState {
   characterLocations: Record<string, string>
   characterStatus: Record<string, string>
@@ -12,7 +22,15 @@ export interface StoryState {
   keyItemsState: Record<string, string>
   activePlots: string[]
   revealedSecrets: string[]
+  pendingTasks: PendingTask[]
   currentScene: string
   storyTime: string
   supersededFacts?: SupersededFact[]
+}
+
+export interface SanitizationReport {
+  state: StoryState
+  removedCharacters: string[]
+  itemLocationConflicts: Array<{ item: string; locations: string[] }>
+  removedFacts: string[]
 }

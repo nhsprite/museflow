@@ -90,3 +90,26 @@ ${facts.join('\n\n')}
 - 严禁 invent 新的事实来支持情节</mandatory>
 </canonical_facts>`
 }
+
+export const OFFICIAL_CHARACTER_RULES = `<official_character_rules>
+<mandatory>【必须】只能使用官方角色</mandatory>
+- 本任务中 "官方角色" 指【人物设定】中明确列出的角色，以及世界观/大纲中明确命名的角色。
+- 严禁为故事 invent 新的角色名字、亲属称呼或身份。
+- 如果大纲要求"派人"、"某人"、"一名旧僚"等未指定身份的动作执行者，必须从官方角色中选择，或虚构一个不露名、不获得亲属关系、不进入 storyState 的龙套。
+- 角色之间的亲属关系（如"胞兄"、"族叔"、"小叔"）必须来自人物设定，不得自行添加。
+- 任何新角色如果要在正文中出现，必须先在大纲或人物设定中有依据；否则只能以"柜上伙计"、"轿夫"、"门房"等无名的功能性身份出现，且不得在 storyState 中留下记录。
+</official_character_rules>`
+
+export const FORESHADOW_DISCIPLINE_RULES = `<foreshadow_discipline_rules>
+<mandatory>【必须】不得提前揭示未到期的伏笔</mandatory>
+- 如果【伏笔回收提醒】中将某条信息标注为"正常伏笔（后续章节回收）"，本章只能埋下暗示、不能揭示其核心内容。
+- 严禁在本章把应在第 N 章才明确揭示的秘密（如全名、身份、具体地点、完整动机）提前摊开在正文或角色对话中。
+- 如果角色"似乎知道"某条未来信息，必须有明确的知识来源（他人告知、合理推断、亲眼目睹），不能凭空全知。
+</foreshadow_discipline_rules>`
+
+export const STATE_AUTHORITY_RULES = `<state_authority_rules>
+<mandatory>【必须】storyState 是最高事实权威，但只能记录真实来源</mandatory>
+- storyState 中的角色位置、状态、物品位置只能记录官方角色和本章明确发生转移的物品。
+- 禁止把 invented 角色、推测性身份、临时龙套写入 storyState。
+- 如果本章为某个物品提供了新的位置，必须同时确认旧位置记录已被覆盖或标记为 superseded。
+</state_authority_rules>`
