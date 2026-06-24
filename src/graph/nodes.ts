@@ -1434,6 +1434,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
       totalChapters: state.totalChapters,
       ...(state.world?.content ? { world: state.world.content } : {}),
       characters: charactersToString(state.characters),
+      charactersList: state.characters,
       outline: buildConsistencyOutlineContext(state, chapterIndex),
       ...(content ? { chapterContent: content } : {}),
       chapterSummaries: state.chapterSummaries,

@@ -2,7 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
-import { TIMELINE_RULES, FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS } from './prompt-fragments.js'
+import { TIMELINE_RULES, FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES } from './prompt-fragments.js'
 
 export class ConsistencyAgent extends BaseAgent {
   constructor() {
@@ -18,6 +18,13 @@ export class ConsistencyAgent extends BaseAgent {
     const mustFulfillForeshadows = activeForeshadows.filter(
       f => !f.fulfilledChapter && chapterIndex >= f.expectedFulfillChapter && chapterIndex <= f.expectedFulfillChapter + 1
     )
+
+    const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
+      ? `<official_characters>
+<mandatory>【必须】以下为本故事官方角色。本章出现的所有有名有姓、有亲属关系、有 POV 或持久身份的角色必须来自此列表：</mandatory>
+${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</official_characters>`
+      : ''
 
     const userContent = `<instruction>
   你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。
@@ -91,6 +98,10 @@ export class ConsistencyAgent extends BaseAgent {
       ${overdueForeshadows.map((f, i) => `  <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${chapterIndex}" overdue="${chapterIndex - f.expectedFulfillChapter}">${f.text}</item>`).join('\n')}
     </overdue>` : ''}
   </foreshadows>
+
+  ${characterWhitelistSection}
+
+  ${OFFICIAL_CHARACTER_RULES}
 </context>
 
 <content_to_check>
@@ -102,6 +113,12 @@ export class ConsistencyAgent extends BaseAgent {
     <dimension name="space" priority="high">人物移动、位置变化是否连贯</dimension>
     <dimension name="causality" priority="high">事件因果关系是否合理</dimension>
     <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫（如欺骗、试探），否则视为矛盾</dimension>
+    <dimension name="character_whitelist" priority="critical">
+      检查本章出现的所有有名有姓、有亲属关系、有 POV 或持续身份的角色是否都在【人物设定】官方角色列表中。
+      如果本章 introduces 新名字（如"苏孟祥"、"陆廷樑"），而人物设定中无此角色，报 error。
+      如果本章把某个官方角色冠以新的亲属关系（如称"胞兄"），而该关系未被人物设定或前文摘要确认，报 error。
+      临时龙套（柜上伙计、轿夫、门房等无名角色）不构成 invented character，前提是他们没有名字、没有亲属关系、不进入 storyState。
+    </dimension>
     <dimension name="timeline_anchor" priority="critical">
       角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的、或在超现实场景（如预言、梦境、幻象）中看到的。
       严禁角色将尚未发生的事件描述为已发生的回忆。
