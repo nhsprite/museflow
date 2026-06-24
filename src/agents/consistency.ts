@@ -115,7 +115,7 @@ ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.descriptio
     <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫（如欺骗、试探），否则视为矛盾</dimension>
     <dimension name="character_whitelist" priority="critical">
       检查本章出现的所有有名有姓、有亲属关系、有 POV 或持续身份的角色是否都在【人物设定】官方角色列表中。
-      如果本章 introduces 新名字（如"苏孟祥"、"陆廷樑"），而人物设定中无此角色，报 error。
+      如果本章 introduces 新名字（如"某个未登记的路人"、"某个未说明身份的亲戚"），而人物设定中无此角色，报 error。
       如果本章把某个官方角色冠以新的亲属关系（如称"胞兄"），而该关系未被人物设定或前文摘要确认，报 error。
       临时龙套（柜上伙计、轿夫、门房等无名角色）不构成 invented character，前提是他们没有名字、没有亲属关系、不进入 storyState。
     </dimension>

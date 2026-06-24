@@ -116,7 +116,7 @@ ${STATE_AUTHORITY_RULES}
 
   <character_identity_continuity>
   <requirement>描述角色身份时，必须沿用前文已建立的核心身份，不要因本章临时承担的任务而改变核心定位</requirement>
-  <requirement>例如：如果某角色在前文是"奶娘/仆妇"，本章即使协助整理妆奁、传话或跑腿，也应描述为"奶娘，本章临时协助整理妆奁"，而不是改写为"贴身侍从"或"丫鬟"</requirement>
+  <requirement>例如：如果某角色在前文是"助理"，本章即使临时帮忙整理文件、传话或跑腿，也应描述为"助理，本章临时协助整理文件"，而不是改写为"秘书"或"司机"</requirement>
   <requirement>核心身份变化必须基于明确的剧情事件（如被正式收房、被逐出府邸、身份揭露），不能因临时任务而变化</requirement>
   <requirement>如果本章确实发生了导致身份变化的事件，在 characterFacts 中明确标注，并在 summary 中说明变化原因</requirement>
   </character_identity_continuity>
@@ -140,7 +140,7 @@ ${STATE_AUTHORITY_RULES}
 <superseded_facts_requirements>
   <requirement>如果本章提到的某个"事实"已知被后续章节的大纲覆盖或更新（如某物品的位置、某个角色的身份等），请在 supersededFacts 中记录该旧事实</requirement>
   <requirement>这有助于后续章节避免将旧事实当作当前有效信息来使用</requirement>
-  <example>如果本章说"法宝在东海"，但后续大纲已更新为"法宝在西山"，则记录 supersededFact: {subject: "法宝", oldFact: "法宝在东海", reason: "后续大纲已更新位置"}</example>
+  <example>如果本章说"样本在实验室A"，但后续大纲已更新为"样本在实验室B"，则记录 supersededFact: {subject: "样本", oldFact: "样本在实验室A", reason: "后续大纲已更新位置"}</example>
 </superseded_facts_requirements>
 
   <story_state_requirements>
