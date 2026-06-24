@@ -25,11 +25,12 @@ export class ConsistencyAgent extends BaseAgent {
   特别注意：不要因措辞不同、合理情绪反应或本章正常引入的新信息而误报 error。
 </instruction>
 
-<scope>
+  <scope>
   你需要检测两类问题：
   <internal>当前章节内部的逻辑矛盾（时间、空间、因果）</internal>
   <cross_chapter>当前章节与前面章节之间的逻辑矛盾（角色知识、对话内容、事件描述、信息传递）</cross_chapter>
   <note>对于跨章节矛盾：如果当前章节的写法与前面章节已经确立的事实冲突，即使"问题看起来根源于前面章节"，也必须报告。这类跨章节角色知识矛盾是严重的叙事漏洞，必须被发现。</note>
+  <note type="pending_tasks">前章角色领受的差事属于"待办"而非"已发生事实"。本章如果明确推迟、改期或取消该差事，并有合理说明，不视为矛盾。只有当差事完全未出现、未解释，且已到截止时间时，才报 error。</note>
 </scope>
 
 <context>
@@ -63,6 +64,7 @@ export class ConsistencyAgent extends BaseAgent {
     ${state.chapterPlan?.chapterTimeAnchor || state.chapterTimeAnchor || '（未指定，默认以本章自身时间线为准）'}
 
     <important>以本章时间锚点作为判断时间推进是否合理的依据。本章允许采用回忆、倒叙或跨日叙事，只要与本章时间锚点一致，不视为与上一章结束时间矛盾。</important>
+    <important>如果本章时间锚点明确标注了"三日期限第 X 天"、"还剩 Y 天"等信息，正文中的倒计时表述必须与此一致。如有冲突，报 error。</important>
   </chapter_time_anchor>
 
   <superseded_facts>
@@ -131,6 +133,13 @@ export class ConsistencyAgent extends BaseAgent {
       - 如果角色在前章已经知道某个事实（如自己的使命、身份），本章中对该事实产生情绪反应（震惊、沉思、感慨）是正常的人物刻画，不要报 error。
       - 如果本章只是用不同的措辞表达与前章相同的概念，不要报 error。
       - 只有当角色对某个事实的认知本身发生矛盾（前章明确不知道，本章却表现得像已知道；或前章已否认，本章却断言为真）时，才报 error。
+    </rule>
+
+    <rule type="pending_tasks">
+      前章角色领受的差事属于"待办"而非"已发生事实"：
+      - 如果本章通过角色对话、旁白或规划说明该差事被推迟、取消、改期或已完成 → 不要报 consistency error。
+      - 只有当差事完全未出现、未解释，且本章时间已到截止日期时 → 才报 error。
+      - 判断是否有解释：检查本章是否有任何文字说明该差事"改日再办"、"已被其他事取代"、"不必办了"或"已办毕"。
     </rule>
 
     ${FORESHADOW_BOUNDARY_RULES}

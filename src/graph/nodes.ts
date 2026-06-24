@@ -345,21 +345,22 @@ async function runPlanChapter(
     : state.storyState
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
-  const agentState: AgentState = {
-    idea: state.idea,
-    genre: state.genre,
-    totalChapters: state.totalChapters,
-    ...(worldContent ? { world: worldContent } : {}),
-    characters: charactersToString(state.characters),
-    outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
-    previousChapters,
-    chapterIndex,
-    chapterSummaries: state.chapterSummaries,
-    timelineSnapshot,
-    foreshadowStack: state.foreshadowStack,
-    ...(storyStateStr ? { storyState: storyStateStr } : {}),
-    ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
-  }
+    const agentState: AgentState = {
+      idea: state.idea,
+      genre: state.genre,
+      totalChapters: state.totalChapters,
+      ...(worldContent ? { world: worldContent } : {}),
+      characters: charactersToString(state.characters),
+      outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
+      previousChapters,
+      chapterIndex,
+      chapterSummaries: state.chapterSummaries,
+      timelineSnapshot,
+      foreshadowStack: state.foreshadowStack,
+      ...(storyStateStr ? { storyState: storyStateStr } : {}),
+      ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
+      ...(state.verifiedConstraints && state.verifiedConstraints.length > 0 ? { verifiedConstraints: state.verifiedConstraints } : {}),
+    }
 
   const output = await agent.run(agentState)
 
@@ -1517,6 +1518,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
         genre: state.genre,
         totalChapters: state.totalChapters,
         chapterContent,
+        charactersList: state.characters,
         ...(state.outline[chapterIndex]?.title ? { chapterTitle: state.outline[chapterIndex].title } : {}),
         chapterIndex,
       }
@@ -1533,7 +1535,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
             console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
             continue
           }
-          const processed = processSummaryOutput(summaryOutput, chapterIndex)
+          const processed = processSummaryOutput(summaryOutput, chapterIndex, state.characters)
           if (!processed || !processed.summary) {
             console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
@@ -1790,6 +1792,8 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     }
   }
 
+  const mergedPendingTasks = mergePendingTasks(base.pendingTasks, delta.pendingTasks)
+
   const result: StoryState = {
     characterLocations: mergedLocations,
     characterStatus: mergedStatus,
@@ -1797,6 +1801,7 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     keyItemsState: mergedItemStates,
     activePlots: mergedPlots,
     revealedSecrets: mergedSecrets,
+    pendingTasks: mergedPendingTasks,
     currentScene: delta.currentScene || base.currentScene,
     storyTime: delta.storyTime || base.storyTime,
   }
@@ -1805,6 +1810,25 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     result.supersededFacts = mergedSuperseded
   }
 
+  return result
+}
+
+function mergePendingTasks(
+  existing: import('../types/story-state.js').PendingTask[],
+  delta: import('../types/story-state.js').PendingTask[]
+): import('../types/story-state.js').PendingTask[] {
+  const safeDelta = delta ?? []
+  const safeExisting = existing ?? []
+  if (safeDelta.length === 0) return safeExisting
+  const result = [...safeExisting]
+  for (const task of safeDelta) {
+    const index = result.findIndex(t => t.id === task.id || (t.assignee === task.assignee && t.description === task.description))
+    if (index >= 0) {
+      result[index] = { ...result[index], ...task }
+    } else {
+      result.push(task)
+    }
+  }
   return result
 }
 
@@ -1851,6 +1875,7 @@ function reconcileStoryState(
     keyItemsState: { ...storyState.keyItemsState },
     activePlots: [...storyState.activePlots],
     revealedSecrets: [],
+    pendingTasks: [...(storyState.pendingTasks ?? [])],
     currentScene: storyState.currentScene,
     storyTime: storyState.storyTime,
     ...(storyState.supersededFacts ? { supersededFacts: storyState.supersededFacts } : {}),
@@ -1938,6 +1963,15 @@ function formatStoryState(storyState: StoryState): string {
     lines.push('【已揭示的秘密】')
     for (const secret of storyState.revealedSecrets) {
       lines.push(`  - ${secret}`)
+    }
+  }
+
+  if ((storyState.pendingTasks?.length ?? 0) > 0) {
+    lines.push('【待办差事】')
+    for (const task of storyState.pendingTasks) {
+      const due = task.dueTime ?? (task.dueChapter ? `第${task.dueChapter}章前` : '未指定')
+      const statusLabel = task.status === 'done' ? '已完成' : task.status === 'postponed' ? '已推迟' : task.status === 'superseded' ? '已覆盖' : '待执行'
+      lines.push(`  - [${statusLabel}] ${task.assignee}：${task.description}（截止：${due}）`)
     }
   }
 

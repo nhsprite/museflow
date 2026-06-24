@@ -77,6 +77,7 @@ export async function runStory(input: {
     storyState: createEmptyStoryState(),
     chapterTimeAnchor: undefined,
     autoFixAttempts: 0,
+    verifiedConstraints: [],
   }
 
   const config: RunnableConfig = {

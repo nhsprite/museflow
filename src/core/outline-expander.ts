@@ -4,6 +4,7 @@ import {
   buildOutlineBridgeHint,
   buildNextChapterBoundaryHint,
   findRedundantOutlineEvents,
+  reconcileOutlineWithState,
 } from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
@@ -27,6 +28,7 @@ export async function expandOutlineForChapter(
   const bridgeHint = buildOutlineBridgeHint(state.outline, chapterIndex)
   const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
   const redundant = findRedundantOutlineEvents(state.outline, chapterIndex)
+  const pendingTasksHint = reconcileOutlineWithState(state, chapterIndex)
   const boundaryHints = [bridgeHint, nextBoundaryHint].filter(h => h.length > 0)
 
   const formattedOutline = [
@@ -35,6 +37,7 @@ export async function expandOutlineForChapter(
     nextItem ? `\n【后续章节边界】第${nextItem.number}章"${nextItem.title}"大纲：${nextItem.description}` : '',
     bridgeHint,
     nextBoundaryHint,
+    pendingTasksHint,
     redundant.length > 0
       ? `\n【修正要求】检测到相邻章节事件重叠：第${redundant[0]!.previousChapter}章已包含"${redundant[0]!.previousKeyword}"，本章不得重复处理该事件，请将其改写为余波、后续发展或新转折。`
       : '',
@@ -73,6 +76,17 @@ export async function expandOutlineForChapter(
       }
     }
     console.log('')
+  }
+
+  if (chapterPlan.chapterTimeAnchor) {
+    console.log(`[MuseFlow] 本章时间锚点：${chapterPlan.chapterTimeAnchor}`)
+  }
+
+  if (chapterPlan.taskResolutions && chapterPlan.taskResolutions.length > 0) {
+    console.log('[MuseFlow] 前章差事处理：')
+    for (const tr of chapterPlan.taskResolutions) {
+      console.log(`  - ${tr.assignee}：${tr.description} → ${tr.resolution}（${tr.reason}）`)
+    }
   }
 
   if (boundaryHints.length > 0) {

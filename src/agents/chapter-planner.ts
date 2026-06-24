@@ -20,6 +20,14 @@ export interface ChapterPlan {
     fulfilled: boolean
     section: string
   }>
+  taskResolutions?: Array<{
+    taskId: string
+    assignee: string
+    description: string
+    resolution: 'executed' | 'postponed' | 'superseded'
+    reason: string
+    section?: string
+  }>
   chapterTimeAnchor?: string
 }
 
@@ -64,6 +72,17 @@ ${characterOmissionIssues.map((issue, i) => `${i + 1}. ${issue.description}`).jo
 禁止方式：不得无视该角色，不得让其无故消失且不作任何交代。` : ''}`
       : ''
 
+    const verifiedConstraintsSection = state.verifiedConstraints && state.verifiedConstraints.length > 0
+      ? `【已验证约束 - 后续规划必须保持】
+以下约束来自前序重写轮次中已成功解决的问题。它们代表当前章节已被验证为正确的写法、事实或处理方向。本次规划与正文必须继续保持，不得推翻、改写或重新引入已被消除的矛盾：
+${state.verifiedConstraints.map((constraint, i) => `${i + 1}. ${constraint}`).join('\n')}
+
+【要求】
+- 如果某条约束涉及时间线、人物关系或关键物品状态，后续规划必须沿用该设定，不得与之矛盾
+- 如果某条约束涉及"不得提前推进到后续章节"，必须严格控制本章边界
+- 如果某条约束指出某些内容为"非本章核心事件"，应减少其篇幅，聚焦于本章大纲要求的核心事件`
+      : ''
+
     const userContent = `<task>请为第 ${displayChapterNumber} 章生成详细的写作规划。</task>
 
 <context>
@@ -73,6 +92,8 @@ ${outline}
 </outline>
 
 ${issuesSection}
+
+${verifiedConstraintsSection}
 
 <world>
 【必须严格遵循】世界观设定：
@@ -102,16 +123,23 @@ ${storyStateSection}
    - 涉及的事件（必须对应大纲中的情节点）
    - 出场人物
    - 时间标记（如"当天夜晚""三日后""凌晨寅时"等，必须明确）
-3. 列出完整的时间线，确保：
-   - 时间顺序正确，不能出现时间回退或跳跃未交代的情况
-   - 每个关键事件都有明确的时间标记
-   - 时间间隔符合大纲要求（如"高烧持续三日"必须真的跨越三日）
-4. 逐条检查大纲要求，确保：
-   - 大纲中的每个情节点都出现在规划中
-   - 大纲中提到的所有事件都有对应的段落
-   - 大纲中提到的关键台词必须原样保留
-   - 大纲中的时间要求（如"三日后""次日"）必须在时间线中体现
-5. 【角色完整性检查 - 必须执行】
+  3. 列出完整的时间线，确保：
+     - 时间顺序正确，不能出现时间回退或跳跃未交代的情况
+     - 每个关键事件都有明确的时间标记
+     - 时间间隔符合大纲要求（如"高烧持续三日"必须真的跨越三日）
+     - 如果本章涉及"三日期限"、"倒计时"、"截止日"等时间压力，必须在 timeline 中标注剩余时间
+  4. 逐条检查大纲要求，确保：
+     - 大纲中的每个情节点都出现在规划中
+     - 大纲中提到的所有事件都有对应的段落
+     - 大纲中提到的关键台词必须原样保留
+     - 大纲中的时间要求（如"三日后""次日"）必须在时间线中体现
+  5. 【前章遗留差事处理 - 必须执行】
+     - 如果上下文中的 <pending_tasks> 列出了前章遗留差事，必须为每条差事在 taskResolutions 中给出处理结论
+     - 处理方式只能是 executed（在本章执行）、postponed（明确推迟）、superseded（因大纲覆盖而取消）
+     - 对于 postponed，必须说明推迟到何时、原因是什么
+     - 对于 superseded，必须引用后续大纲的哪一条要求覆盖了该差事
+     - 禁止无任何说明地忽略前章差事
+  6. 【角色完整性检查 - 必须执行】
    - 扫描人物设定和前几章摘要，识别哪些角色已加入团队/组织或已成为常驻角色
    - 对于每个已加入的常驻角色，必须在本章规划中明确安排：
      a) 出场：在对应段落的 characters 列表中加入该角色
@@ -128,13 +156,15 @@ ${storyStateSection}
    - 不得让角色说出其未在前文获得的信息；如果当前资料不足以解释，只能保持模糊或待解
    - 示例：某角色长期处于某种特殊状态后在本章出现 → 增加一段回忆说明状态变化过程
 
-7. 【本章时间锚点 - 必须输出】
-   在输出 JSON 的根级别增加字段 "chapterTimeAnchor"（字符串）。
-   规则：
-   - 如果本章从上一章结束时间继续推进：chapterTimeAnchor = 上一章结束时间（或写"继续推进：{storyTime}"）。
-   - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日卯时（回溯覆盖第5章后三日）"）。
-   - 如果无法判断：chapterTimeAnchor = "未指定"。
-   - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。
+ 7. 【本章时间锚点 - 必须输出】
+    在输出 JSON 的根级别增加字段 "chapterTimeAnchor"（字符串）。
+    规则：
+    - 如果本章从上一章结束时间继续推进：chapterTimeAnchor = 上一章结束时间（或写"继续推进：{storyTime}"）。
+    - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日卯时（回溯覆盖第5章后三日）"）。
+    - 如果本章包含"三日期限"、"倒计时"等时间压力：chapterTimeAnchor 必须明确标注当前处于期限的第几天、还剩几天。
+    - 如果无法判断：chapterTimeAnchor = "未指定"。
+    - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。
+    - 所有 section 的 timeMark 必须相对于 chapterTimeAnchor 推进，严禁时间回退。
 </instruction>
 
 <output_format>
@@ -164,6 +194,16 @@ ${storyStateSection}
       "section": "对应段落标题"
     }
   ],
+  "taskResolutions": [
+    {
+      "taskId": "任务标识",
+      "assignee": "被指派的执行角色",
+      "description": "任务内容摘要",
+      "resolution": "executed|postponed|superseded",
+      "reason": "处理原因",
+      "section": "对应段落标题（如适用）"
+    }
+  ],
   "chapterTimeAnchor": "本章叙事起点时间"
 }
 </output_format>
@@ -175,6 +215,7 @@ ${storyStateSection}
 - 如果大纲要求"次日"发生某事，时间线必须显示"第一日→第二日"的过渡
 - 所有大纲情节点必须在 outlineCheck 中标记为 fulfilled: true
 - 所有已加入的常驻角色必须在 sections 或 timeline 中有明确交代，不得无故遗漏
+- 如果上下文提供了 <pending_tasks>，必须在 taskResolutions 中逐条回应，禁止遗漏
 </important>`
 
     return [

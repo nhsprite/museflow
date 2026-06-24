@@ -1,6 +1,10 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
+import type { Character } from '../types/character.js'
+import type { StoryState } from '../types/story-state.js'
 import type { Message } from '../model/provider.js'
 import { extractJsonBlock, repairMalformedJson } from '../model/provider.js'
+import { sanitizeStoryState } from '../utils/story-state-validation.js'
+import { OFFICIAL_CHARACTER_RULES, STATE_AUTHORITY_RULES } from './prompt-fragments.js'
 
 export class SummaryAgent extends BaseAgent {
   constructor() {
@@ -8,6 +12,12 @@ export class SummaryAgent extends BaseAgent {
   }
 
   protected buildPrompt(state: AgentState): Message[] {
+    const whitelistSection = state.charactersList && state.charactersList.length > 0
+      ? `<official_characters>
+${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</official_characters>`
+      : ''
+
     return [
       this.systemMessage('<role>你是一位故事结构分析专家，擅长从章节内容中提取关键信息。你必须提取所有角色的关键事实（说过的话、知道的信息、态度变化），以及角色位置、状态、物品追踪等结构化状态信息。</role>'),
       this.userMessage(`<task>
@@ -22,6 +32,10 @@ export class SummaryAgent extends BaseAgent {
 <chapter_content>
   ${state.chapterContent ?? '（无内容）'}
 </chapter_content>
+
+${whitelistSection}
+${OFFICIAL_CHARACTER_RULES}
+${STATE_AUTHORITY_RULES}
 
 <output_format>
   请提取并返回以下信息（JSON格式）：
@@ -77,6 +91,17 @@ export class SummaryAgent extends BaseAgent {
       "keyItemsState": { "物品名": "当前状态（活跃/沉寂/受损/充能中/封印等）" },
       "activePlots": ["进行中情节线"],
       "revealedSecrets": ["本章新揭示的秘密"],
+      "pendingTasks": [
+        {
+          "id": "任务唯一标识",
+          "assignee": "被指派的执行角色",
+          "description": "任务具体内容",
+          "createdChapter": 1,
+          "dueChapter": 2,
+          "dueTime": "故事内截止时间（可选）",
+          "status": "pending"
+        }
+      ],
       "currentScene": "本章主要场景",
       "storyTime": "故事内时间（如第三天傍晚）"
     }
@@ -89,12 +114,28 @@ export class SummaryAgent extends BaseAgent {
   <minor>仅对本章或极近期有参考价值，远距离可丢弃。例如：场景细节描写、临时情绪反应、次要角色互动</minor>
 </importance_criteria>
 
-<character_facts_requirements>
+  <character_identity_continuity>
+  <requirement>描述角色身份时，必须沿用前文已建立的核心身份，不要因本章临时承担的任务而改变核心定位</requirement>
+  <requirement>例如：如果某角色在前文是"奶娘/仆妇"，本章即使协助整理妆奁、传话或跑腿，也应描述为"奶娘，本章临时协助整理妆奁"，而不是改写为"贴身侍从"或"丫鬟"</requirement>
+  <requirement>核心身份变化必须基于明确的剧情事件（如被正式收房、被逐出府邸、身份揭露），不能因临时任务而变化</requirement>
+  <requirement>如果本章确实发生了导致身份变化的事件，在 characterFacts 中明确标注，并在 summary 中说明变化原因</requirement>
+  </character_identity_continuity>
+
+  <character_facts_requirements>
   对于每个有台词或明确行为描写的角色，提取：
   <requirement>该角色在本章中明确承认/知道的事实</requirement>
   <requirement>该角色对本章关键信息的反应/态度</requirement>
   <requirement>该角色做出的关键承诺或威胁</requirement>
 </character_facts_requirements>
+
+<pending_tasks_requirements>
+  <requirement>提取本章中角色领受的、需要在后续章节执行的差事或任务</requirement>
+  <requirement>包括"明日去某处"、"后日办某事"、"三日期限内完成"等明确行动指令</requirement>
+  <requirement>如果本章完成了前章遗留的差事，将其 status 标记为 "done"</requirement>
+  <requirement>如果本章推迟了前章遗留的差事，保持 status 为 "pending" 并更新 dueTime 或 dueChapter</requirement>
+  <requirement>如果后续大纲已覆盖某条差事，将其 status 标记为 "superseded"</requirement>
+  <requirement>每个 pending task 必须包含 assignee（执行者）和 description（具体内容）</requirement>
+</pending_tasks_requirements>
 
 <superseded_facts_requirements>
   <requirement>如果本章提到的某个"事实"已知被后续章节的大纲覆盖或更新（如某物品的位置、某个角色的身份等），请在 supersededFacts 中记录该旧事实</requirement>
@@ -102,13 +143,14 @@ export class SummaryAgent extends BaseAgent {
   <example>如果本章说"法宝在东海"，但后续大纲已更新为"法宝在西山"，则记录 supersededFact: {subject: "法宝", oldFact: "法宝在东海", reason: "后续大纲已更新位置"}</example>
 </superseded_facts_requirements>
 
-<story_state_requirements>
+  <story_state_requirements>
   <requirement>characterLocations: 每个主要角色在本章结束时的所在位置</requirement>
   <requirement>characterStatus: 每个主要角色的身体状况、情绪状态、能力状态等</requirement>
   <requirement>keyItemsLocation: 关键物品在本章结束时的位置或持有者（如果物品位置发生变化，必须记录新位置）</requirement>
   <requirement>keyItemsState: 关键物品在本章结束时的状态（如"活跃/沉寂/受损/充能中/封印"）。如果物品状态发生变化，必须记录新状态</requirement>
   <requirement>activePlots: 本章结束时尚未完结的情节线</requirement>
   <requirement>revealedSecrets: 本章中新揭示的秘密或真相（之前未揭示的）</requirement>
+  <requirement>pendingTasks: 本章中角色新领受的、或前章遗留并在本章状态发生变化的待办差事</requirement>
   <requirement>currentScene: 本章主要发生的场景/地点</requirement>
   <requirement>storyTime: 故事内的时间标记</requirement>
 </story_state_requirements>
@@ -139,7 +181,11 @@ export class SummaryAgent extends BaseAgent {
   }
 }
 
-  export function processSummaryOutput(output: AgentOutput, chapterIndex?: number): { summary: string; storyState?: import('../types/story-state.js').StoryState } | null {
+export function processSummaryOutput(
+  output: AgentOutput,
+  chapterIndex?: number,
+  characters?: Character[],
+): { summary: string; storyState?: StoryState } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
 
@@ -169,7 +215,7 @@ export class SummaryAgent extends BaseAgent {
     })
   }
 
-  const extractStoryState = (): import('../types/story-state.js').StoryState | undefined => {
+  const extractStoryState = (): StoryState | undefined => {
     const raw = data['storyState']
     if (!raw || typeof raw !== 'object') return undefined
     const s = raw as Record<string, unknown>
@@ -188,6 +234,21 @@ export class SummaryAgent extends BaseAgent {
       return val.filter((v): v is string => typeof v === 'string')
     }
 
+    const toPendingTasks = (val: unknown): import('../types/story-state.js').PendingTask[] => {
+      if (!Array.isArray(val)) return []
+      return val.filter((item): item is Record<string, unknown> =>
+        item && typeof item === 'object'
+      ).map((item, idx) => ({
+        id: typeof item['id'] === 'string' ? item['id'] : `task_${idx}`,
+        assignee: typeof item['assignee'] === 'string' ? item['assignee'] : '',
+        description: typeof item['description'] === 'string' ? item['description'] : '',
+        createdChapter: typeof item['createdChapter'] === 'number' ? item['createdChapter'] : (chapterIndex ?? -1),
+        dueChapter: typeof item['dueChapter'] === 'number' ? item['dueChapter'] : undefined,
+        dueTime: typeof item['dueTime'] === 'string' ? item['dueTime'] : undefined,
+        status: (typeof item['status'] === 'string' ? item['status'] : 'pending') as import('../types/story-state.js').PendingTask['status'],
+      })).filter(item => item.assignee.length > 0 && item.description.length > 0)
+    }
+
     return {
       characterLocations: toRecord(s['characterLocations']),
       characterStatus: toRecord(s['characterStatus']),
@@ -195,6 +256,7 @@ export class SummaryAgent extends BaseAgent {
       keyItemsState: toRecord(s['keyItemsState']),
       activePlots: toStringArray(s['activePlots']),
       revealedSecrets: toStringArray(s['revealedSecrets']),
+      pendingTasks: toPendingTasks(s['pendingTasks']),
       currentScene: typeof s['currentScene'] === 'string' ? s['currentScene'] : '',
       storyTime: typeof s['storyTime'] === 'string' ? s['storyTime'] : '',
     }
@@ -210,7 +272,18 @@ export class SummaryAgent extends BaseAgent {
     mood: data['mood'] ?? '',
   })
 
-  const storyState = extractStoryState()
+  let storyState = extractStoryState()
+
+  if (storyState && characters && characters.length > 0) {
+    const report = sanitizeStoryState(storyState, characters)
+    if (report.removedCharacters.length > 0) {
+      console.warn(`[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`)
+    }
+    if (report.itemLocationConflicts.length > 0) {
+      console.warn(`[MuseFlow] SummaryAgent 检测到物品位置冲突: ${report.itemLocationConflicts.map(c => c.item).join(', ')}`)
+    }
+    storyState = report.state
+  }
 
   const extractSupersededFacts = (): import('../types/story-state.js').SupersededFact[] | undefined => {
     const raw = data['supersededFacts']
