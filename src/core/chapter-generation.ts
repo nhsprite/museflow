@@ -19,6 +19,7 @@ import {
 } from '../graph/nodes.js'
 import { expandOutlineForChapter } from './outline-expander.js'
 import { shouldForceTemporaryReplan } from '../utils/outline-boundary.js'
+import { deduplicateIssuesSemantically, issueFingerprint } from '../utils/issue-deduplication.js'
 
 export interface ExecuteChapterOptions {
   breakOnErrors?: boolean
@@ -57,13 +58,13 @@ function isTaskConsistencyIssue(issue: Issue): boolean {
     PENDING_TASK_MARKERS.some(pattern => pattern.test(issue.description))
 }
 
-function calculateIssueSimilarity(prev: string[], curr: string[]): number {
+function calculateIssueSetSimilarity(prev: Issue[], curr: Issue[]): number {
   if (prev.length === 0 || curr.length === 0) return 0
-  const prevSet = new Set(prev)
-  const currSet = new Set(curr)
+  const prevSet = new Set(prev.map(issueFingerprint))
+  const currSet = new Set(curr.map(issueFingerprint))
   let intersection = 0
-  for (const item of currSet) {
-    if (prevSet.has(item)) intersection++
+  for (const fp of currSet) {
+    if (prevSet.has(fp)) intersection++
   }
   return intersection / Math.max(prevSet.size, currSet.size)
 }
@@ -124,7 +125,6 @@ export async function executeChapterGeneration(
   const targetIndex = workingState.currentChapterIndex
   let rewriteAttempts = 0
   let previousRawErrorCount = 0
-  let previousErrorDescriptions: string[] = []
   let previousIssues: Issue[] = []
   let forceStructuralRewrite = false
   let verifiedConstraints = workingState.verifiedConstraints ?? []
@@ -281,6 +281,8 @@ export async function executeChapterGeneration(
         break
       }
 
+      workingState = { ...workingState, pendingIssues: deduplicateIssuesSemantically(workingState.pendingIssues) }
+
       const MAX_NON_ERROR_ISSUES_PER_TYPE = 3
       const issueGroups = new Map<string, typeof workingState.pendingIssues>()
       for (const issue of workingState.pendingIssues) {
@@ -304,10 +306,8 @@ export async function executeChapterGeneration(
 
       const errorCountAfterDedup = workingState.pendingIssues.filter(i => i.severity === 'error').length
       const currentRawErrorCount = workingState.pendingIssues.filter(i => i.severity === 'error').length
-      const currentErrorDescriptions = workingState.pendingIssues
-        .filter(i => i.severity === 'error')
-        .map(i => `${i.type}:${i.description}`)
-      const similarity = calculateIssueSimilarity(previousErrorDescriptions, currentErrorDescriptions)
+      const currentErrorIssues = workingState.pendingIssues.filter(i => i.severity === 'error')
+      const similarity = calculateIssueSetSimilarity(previousIssues.filter(i => i.severity === 'error'), currentErrorIssues)
 
       const resolvedIssues = previousIssues.filter(prev =>
         !workingState.pendingIssues.some(curr =>
@@ -354,7 +354,6 @@ export async function executeChapterGeneration(
         }
       }
       previousRawErrorCount = currentRawErrorCount
-      previousErrorDescriptions = currentErrorDescriptions
       previousIssues = [...workingState.pendingIssues]
 
       if (currentRemainingErrors.length === 0) {
