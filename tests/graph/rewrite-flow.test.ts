@@ -40,7 +40,21 @@ vi.mock('../../src/agents/index.js', () => ({
     }
   },
   QualityAgent: class {},
-  ForeshadowingAgent: class {},
+  ForeshadowingAgent: class {
+    async run() {
+      return {
+        success: true,
+        data: {
+          new_foreshadows: [],
+          fulfilled_foreshadows: [],
+          overdue_foreshadows: [],
+        },
+      }
+    }
+    processOutput(_output: never, _chapterIndex: number, existingStack: never[]) {
+      return existingStack
+    }
+  },
   HallucinationAgent: class {},
   ConsistencyAgent: class {},
   OutlineComplianceAgent: class {},
@@ -224,5 +238,47 @@ describe('finalize_chapter guard against empty file', () => {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+  })
+})
+
+describe('detect_foreshadowing preserves current-chapter foreshadows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    readChapterContent.mockResolvedValue('old chapter content')
+  })
+
+  it('keeps a foreshadow created in the current chapter for future fulfillment', async () => {
+    const { detect_foreshadowing } = await import('../../src/graph/nodes.js')
+
+    const currentChapterForeshadow = {
+      id: 'fs-current',
+      text: '主角在旧货市场偶然买下的青铜戒指，表面刻着一行无人能识的古老铭文，将在未来揭示出一段尘封千年的宿命纠葛',
+      expectedFulfillChapter: 3,
+      createdAtChapter: 1,
+      createdAt: Date.now(),
+      status: 'planted' as const,
+      isExplicit: false,
+    }
+
+    const result = await detect_foreshadowing({
+      ...baseState,
+      currentChapterIndex: 0,
+      foreshadowStack: [currentChapterForeshadow],
+      chapters: [{
+        id: 'chapter-1',
+        storyId: 'story-1',
+        number: 1,
+        title: 'Chapter 1',
+        outline: 'Desc 1',
+        summary: null,
+        foreshadows: null,
+        status: 'drafting',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+    } as never)
+
+    expect(result.foreshadowStack).toHaveLength(1)
+    expect(result.foreshadowStack?.[0]?.text).toBe(currentChapterForeshadow.text)
   })
 })
