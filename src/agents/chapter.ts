@@ -12,6 +12,8 @@ import {
   CROSS_CHAPTER_CONTINUITY_RULES,
   FORESHADOW_BOUNDARY_RULES,
   CHAPTER_OUTPUT_RULES,
+  OFFICIAL_CHARACTER_RULES,
+  FORESHADOW_DISCIPLINE_RULES,
   buildCanonicalFactsSection,
 } from './prompt-fragments.js'
 
@@ -124,6 +126,13 @@ ${state.chapterContent}
       ? (state.characters.match(/^【([^】]+)】/m)?.[1] || '（未设定主角）')
       : '（未设定主角）'
 
+    const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
+      ? `<official_characters>
+<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表；任何不在此列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
+${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</official_characters>`
+      : ''
+
     const planSection = state.chapterPlan
       ? `<chapter_plan>
 <instruction>【章节写作规划】（必须严格遵循以下结构）：</instruction>
@@ -187,6 +196,8 @@ ${state.world || '（尚未构建）'}
 <requirement>【必须严格遵循】人物设定：</requirement>
 ${state.characters || '（尚未创建）'}
 </character_setting>
+
+${characterWhitelistSection}
 
 <previous_summary>
 前几章摘要：
@@ -281,6 +292,8 @@ ${FACT_CONSISTENCY_RULES}
 ${FORESHADOW_BOUNDARY_RULES}
 ${POWER_SYSTEM_RULES}
 <rule id="16">以自然流畅的段落叙述为主</rule>
+${OFFICIAL_CHARACTER_RULES}
+${FORESHADOW_DISCIPLINE_RULES}
 </content>
 </chapter_content_section>
 

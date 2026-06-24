@@ -1,5 +1,6 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES } from './prompt-fragments.js'
 
 export interface ChapterPlan {
   sections: Array<{
@@ -40,6 +41,13 @@ export class ChapterPlannerAgent extends BaseAgent {
     const chapterIndex = state.chapterIndex ?? 0
     const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
     const outline = state.outline || ''
+
+    const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
+      ? `<official_characters>
+<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表；任何不在此列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
+${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</official_characters>`
+      : ''
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
@@ -105,6 +113,8 @@ ${state.world || '（尚未构建）'}
 ${state.characters || '（尚未创建）'}
 </characters>
 
+${characterWhitelistSection}
+
 <previous_summary>
 前几章摘要：
 ${previousSummary}
@@ -165,6 +175,14 @@ ${storyStateSection}
     - 如果无法判断：chapterTimeAnchor = "未指定"。
     - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。
     - 所有 section 的 timeMark 必须相对于 chapterTimeAnchor 推进，严禁时间回退。
+  8. 【角色执行者规则 - 必须执行】
+     - 如果大纲中某动作执行者未指定具体人名（如"派人"、"某人"、"一名旧僚"），规划中必须：
+       1) 优先从官方角色中选择执行者；
+       2) 若官方角色均不适合，只能使用不露名、不进入 storyState 的临时龙套；
+       3) 禁止为该动作 invent 新的有名角色或亲属关系。
+
+${OFFICIAL_CHARACTER_RULES}
+${FORESHADOW_DISCIPLINE_RULES}
 </instruction>
 
 <output_format>
