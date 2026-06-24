@@ -43,6 +43,7 @@ import { getCheckpointer } from './checkpointer.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
 import { expandOutlineForChapter } from '../core/outline-expander.js'
 import { buildOutlineBridgeHint, buildNextChapterBoundaryHint } from '../utils/outline-boundary.js'
+import { buildCharacterWhitelist } from '../utils/character-whitelist.js'
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -1915,6 +1916,31 @@ function reconcileStoryState(
 
     reconciled.revealedSecrets.push(secret)
   }
+
+  const whitelist = buildCharacterWhitelist(characters as Character[])
+
+  const filterByWhitelist = (record: Record<string, string>): Record<string, string> => {
+    const result: Record<string, string> = {}
+    for (const [k, v] of Object.entries(record)) {
+      if (whitelist.isOfficial(k)) {
+        result[k] = v
+      } else {
+        console.warn(`[MuseFlow] reconcileStoryState: removing invented character "${k}"`)
+      }
+    }
+    return result
+  }
+
+  reconciled.characterLocations = filterByWhitelist(reconciled.characterLocations)
+  reconciled.characterStatus = filterByWhitelist(reconciled.characterStatus)
+
+  const inventedNames = Object.keys(storyState.characterLocations ?? {})
+    .concat(Object.keys(storyState.characterStatus ?? {}))
+    .filter(name => !whitelist.isOfficial(name))
+
+  const isClean = (text: string): boolean => !inventedNames.some(name => text.includes(name))
+  reconciled.activePlots = reconciled.activePlots.filter(isClean)
+  reconciled.revealedSecrets = reconciled.revealedSecrets.filter(isClean)
 
   return reconciled
 }
