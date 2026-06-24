@@ -53,6 +53,16 @@ const PENDING_TASK_MARKERS = [
   /未出现.*差事/,
 ]
 
+function isInventedCharacterIssue(issue: Issue): boolean {
+  const text = `${issue.description} ${issue.location ?? ''}`
+  return /invent|虚构|编造|未在角色|不在官方角色|非官方角色|新角色/.test(text)
+}
+
+function isItemLocationConflictIssue(issue: Issue): boolean {
+  const text = `${issue.description} ${issue.location ?? ''}`
+  return /位置矛盾|位置冲突|物品位置|storyState|关键物品.*矛盾/.test(text)
+}
+
 function isTaskConsistencyIssue(issue: Issue): boolean {
   return issue.type === 'consistency' &&
     PENDING_TASK_MARKERS.some(pattern => pattern.test(issue.description))
@@ -378,6 +388,29 @@ export async function executeChapterGeneration(
         const { diagnoseStoryState, printDiagnosis } = await import('./diagnose.js')
         const diagnosis = await diagnoseStoryState(workingState, outputDir)
         printDiagnosis(diagnosis)
+
+        const remainingErrors = workingState.pendingIssues.filter(i => i.severity === 'error')
+        const stateCorruptionSignals = remainingErrors.filter(
+          i => isInventedCharacterIssue(i) || isItemLocationConflictIssue(i)
+        )
+        if (
+          rewriteAttempts >= maxRewriteAttempts &&
+          remainingErrors.length > 0 &&
+          stateCorruptionSignals.length / remainingErrors.length >= 0.5
+        ) {
+          workingState = {
+            ...workingState,
+            pendingIssues: [
+              ...workingState.pendingIssues,
+              {
+                id: 'state-corruption',
+                type: 'state_corruption',
+                severity: 'error' as const,
+                description: `连续 ${maxRewriteAttempts} 次重写后，剩余错误仍集中于上游状态污染（虚构角色、错误亲属关系或物品位置矛盾）。建议先修复 meta.json / storyState 后再运行 rewrite。`,
+              },
+            ],
+          }
+        }
 
         break
       }
