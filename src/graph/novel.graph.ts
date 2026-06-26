@@ -56,8 +56,7 @@ export function buildNovelGraph() {
   })
 
   // Story creation path
-  b1.addEdge(START, 'route_mode')
-  b1.addConditionalEdges('route_mode', route_mode, {
+  b1.addConditionalEdges(START, route_mode, {
     build_world: 'build_world',
     prepare_chapter: 'prepare_chapter',
   })
