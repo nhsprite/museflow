@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
 import { deduplicateIssuesSemantically, issueFingerprint } from '../../utils/issue-deduplication.js'
@@ -33,7 +34,7 @@ function capNonErrorIssuesByType(issues: Issue[], maxNonErrorIssuesPerType: numb
     if (nonErrors.length <= maxNonErrorIssuesPerType) {
       dedupedIssues.push(...nonErrors)
     } else {
-      console.warn(`[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留前 ${maxNonErrorIssuesPerType} 个`)
+      logger.warn(`[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留前 ${maxNonErrorIssuesPerType} 个`)
       dedupedIssues.push(...nonErrors.slice(0, maxNonErrorIssuesPerType))
     }
   }
@@ -73,11 +74,11 @@ function updateVerifiedConstraints(
   let updatedConstraints = [...verifiedConstraints, ...newConstraints]
   if (updatedConstraints.length > maxVerifiedConstraints) {
     updatedConstraints = updatedConstraints.slice(-maxVerifiedConstraints)
-    console.warn(`[MuseFlow] verifiedConstraints 超过 ${maxVerifiedConstraints} 条，已保留最近 ${maxVerifiedConstraints} 条`)
+    logger.warn(`[MuseFlow] verifiedConstraints 超过 ${maxVerifiedConstraints} 条，已保留最近 ${maxVerifiedConstraints} 条`)
   }
-  console.log(`[MuseFlow] 本轮已解决 ${resolvedIssues.length} 个问题，已记录为后续规划约束`)
+  logger.info(`[MuseFlow] 本轮已解决 ${resolvedIssues.length} 个问题，已记录为后续规划约束`)
   for (const constraint of newConstraints) {
-    console.log(`  ✓ ${constraint.substring(0, 120)}${constraint.length > 120 ? '...' : ''}`)
+    logger.info(`  ✓ ${constraint.substring(0, 120)}${constraint.length > 120 ? '...' : ''}`)
   }
 
   return { verifiedConstraints: updatedConstraints, resolvedCount: resolvedIssues.length }
@@ -122,14 +123,14 @@ export function runConvergenceCheck(
 
   if (rewriteAttempts > 1) {
     if (currentRawErrorCount > previousRawErrorCount) {
-      console.log(`[MuseFlow] 检测到问题数量上升（${previousRawErrorCount} -> ${currentRawErrorCount}），修复未收敛，下次尝试将强制完整重写...`)
+      logger.info(`[MuseFlow] 检测到问题数量上升（${previousRawErrorCount} -> ${currentRawErrorCount}），修复未收敛，下次尝试将强制完整重写...`)
       forceStructuralRewrite = true
     } else if (similarity >= 0.5 && errorCountAfterDedup > 0) {
-      console.log(`[MuseFlow] 检测到问题高度重复（相似度 ${Math.round(similarity * 100)}%），修复未收敛，将保留全部问题反馈并强制完整重写...`)
+      logger.info(`[MuseFlow] 检测到问题高度重复（相似度 ${Math.round(similarity * 100)}%），修复未收敛，将保留全部问题反馈并强制完整重写...`)
       forceStructuralRewrite = true
       updatedState = { ...updatedState, pendingIssues: updatedState.pendingIssues }
     } else if (onlyInterpretiveErrors && rewriteAttempts >= maxRewriteAttempts - 1) {
-      console.log(`[MuseFlow] 剩余 ${currentRemainingErrors.length} 个问题均为解释性一致性问题，自动降级为 warning 以完成本章...`)
+      logger.info(`[MuseFlow] 剩余 ${currentRemainingErrors.length} 个问题均为解释性一致性问题，自动降级为 warning 以完成本章...`)
       updatedState = {
         ...updatedState,
         pendingIssues: downgradeInterpretiveErrors(updatedState.pendingIssues),

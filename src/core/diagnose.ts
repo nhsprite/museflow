@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import { readChapterContent } from '../storage/filesystem/writer.js'
 import { getChapterFilePath } from '../utils/paths.js'
@@ -131,35 +132,35 @@ function detectCrossChapterOutlineConflicts(
 export function printDiagnosis(result: DiagnosisResult): void {
   if (!result.hasIssues) return
 
-  console.error('\n' + '═'.repeat(60))
-  console.error('📋 失败原因分析')
-  console.error('═'.repeat(60))
-  console.error(`\n${result.summary}\n`)
+  logger.error('\n' + '═'.repeat(60))
+  logger.error('📋 失败原因分析')
+  logger.error('═'.repeat(60))
+  logger.error(`\n${result.summary}\n`)
 
   if (result.outlineIssues.length > 0) {
-    console.error('📝 大纲问题：')
-    result.outlineIssues.forEach(issue => console.error(`  ❌ ${issue}`))
-    console.error('')
+    logger.error('📝 大纲问题：')
+    result.outlineIssues.forEach(issue => logger.error(`  ❌ ${issue}`))
+    logger.error('')
   }
 
   if (result.foreshadowIssues.length > 0) {
-    console.error('🔍 伏笔问题：')
-    result.foreshadowIssues.forEach(issue => console.error(`  ❌ ${issue}`))
-    console.error('')
+    logger.error('🔍 伏笔问题：')
+    result.foreshadowIssues.forEach(issue => logger.error(`  ❌ ${issue}`))
+    logger.error('')
   }
 
   if (result.fileIssues.length > 0) {
-    console.error('📁 文件问题：')
-    result.fileIssues.forEach(issue => console.error(`  ❌ ${issue}`))
-    console.error('')
+    logger.error('📁 文件问题：')
+    result.fileIssues.forEach(issue => logger.error(`  ❌ ${issue}`))
+    logger.error('')
   }
 
   if (result.suggestions.length > 0) {
-    console.error('💡 修复建议：')
-    result.suggestions.forEach((suggestion, i) => console.error(`  ${i + 1}. ${suggestion}`))
-    console.error('')
+    logger.error('💡 修复建议：')
+    result.suggestions.forEach((suggestion, i) => logger.error(`  ${i + 1}. ${suggestion}`))
+    logger.error('')
   }
 
-  console.error('═'.repeat(60))
-  console.error('')
+  logger.error('═'.repeat(60))
+  logger.error('')
 }

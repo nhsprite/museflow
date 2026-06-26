@@ -3,7 +3,7 @@ import { getState, getGraph, getOutputDirFromStoryId } from '../../core/runner.j
 import { executeChapterGeneration } from '../../core/chapter-generation.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
-import { printChapterOutline } from '../../utils/chapter-display.js'
+import { printChapterOutline } from '../utils/chapter-display.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { deleteChapterContent } from '../../storage/filesystem/writer.js'
 import { getStoryState, isEmptyStoryState } from '../../storage/database/dao/story-state.js'

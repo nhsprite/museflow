@@ -1,3 +1,4 @@
+import { logger } from './logger.js'
 import type { Character } from '../types/character.js'
 import type { SanitizationReport, StoryState } from '../types/story-state.js'
 import { buildCharacterWhitelist } from './character-whitelist.js'
@@ -8,7 +9,7 @@ const DESCRIPTIVE_SUFFIXES = /[（(][^）)]*[）)]/g
 function canonicalizeItemName(name: string): string {
   let normalized = name
     .replace(DESCRIPTIVE_SUFFIXES, '')
-    .replace(/^[《〈「『【（\(\[\{\s]+|[》〉」』】）\)\]\}\s]+$/g, '')
+    .replace(/^[《〈「『【（\u005b\u007b\s]+|[》〉」』】）\u005d\u007d\s]+$/g, '')
     .trim()
 
   for (const unit of UNIT_WORDS) {
@@ -120,9 +121,9 @@ export function sanitizeStoryState(
 
   const ambiguous = detectAmbiguousItemNames({ ...state, keyItemsLocation })
   if (ambiguous.length > 0) {
-    console.warn('[MuseFlow] 检测到同一位置下多个歧义物品名：')
+    logger.warn('[MuseFlow] 检测到同一位置下多个歧义物品名：')
     for (const { location, items } of ambiguous) {
-      console.warn(`  位置 "${location}" 对应物品：${items.join(' / ')}`)
+      logger.warn(`  位置 "${location}" 对应物品：${items.join(' / ')}`)
     }
   }
 

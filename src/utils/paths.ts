@@ -12,7 +12,8 @@ export function slugify(title: string): string {
   return title
     .trim()
     .replace(/\s+/g, '_')
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
     .replace(/_{2,}/g, '_')
 }
 

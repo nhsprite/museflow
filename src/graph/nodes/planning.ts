@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import { getChapterPlannerAgent } from '../agent-factory.js'
@@ -27,9 +28,9 @@ async function runPlanChapter(
   if (reconciledState) {
     const report = sanitizeStoryState(reconciledState, state.characters, { preserveExisting: true, existingStoryState: state.storyState })
     if (report.itemLocationConflicts.length > 0) {
-      console.warn('[MuseFlow] 规划前检测到物品位置冲突：')
+      logger.warn('[MuseFlow] 规划前检测到物品位置冲突：')
       for (const conflict of report.itemLocationConflicts) {
-        console.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
+        logger.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
       }
     }
     reconciledState = report.state

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Character } from '../types/character.js'
 import type { StoryState } from '../types/story-state.js'
@@ -348,10 +349,10 @@ export function processSummaryOutput(
   if (storyState && characters && characters.length > 0) {
     const report = sanitizeStoryState(storyState, characters, { preserveExisting: true, existingStoryState })
     if (report.removedCharacters.length > 0) {
-      console.warn(`[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`)
+      logger.warn(`[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`)
     }
     if (report.itemLocationConflicts.length > 0) {
-      console.warn(`[MuseFlow] SummaryAgent 检测到物品位置冲突: ${report.itemLocationConflicts.map(c => c.item).join(', ')}`)
+      logger.warn(`[MuseFlow] SummaryAgent 检测到物品位置冲突: ${report.itemLocationConflicts.map(c => c.item).join(', ')}`)
     }
     storyState = report.state
   }

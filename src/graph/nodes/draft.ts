@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { ChapterMeta } from '../../types/chapter.js'
 import type { AgentState } from '../../agents/base.js'
@@ -36,9 +37,9 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   if (reconciledState) {
     const report = sanitizeStoryState(reconciledState, state.characters, { preserveExisting: true, existingStoryState: state.storyState })
     if (report.itemLocationConflicts.length > 0) {
-      console.warn('[MuseFlow] 起草前检测到物品位置冲突：')
+      logger.warn('[MuseFlow] 起草前检测到物品位置冲突：')
       for (const conflict of report.itemLocationConflicts) {
-        console.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
+        logger.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
       }
     }
     reconciledState = report.state
@@ -90,7 +91,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   const preWriteCheck = (output.data as { preWriteCheck?: string } | undefined)?.preWriteCheck
   if (!preWriteCheck) {
-    console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
+    logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
   }
 
   const trimmedContent = content.trim()

@@ -51,7 +51,7 @@ export async function writeOutlineContent(
   await ensureStoryDir(outputDir)
   const lines = [`# ${storyTitle || '故事大纲'}`, '', '---', '']
   for (const ch of outline) {
-    lines.push(`## 第${ch.number}章　${ch.title}`, '')
+    lines.push(`## 第${ch.number}章\u3000${ch.title}`, '')
     lines.push(ch.description, '')
     lines.push('', '---', '')
   }
@@ -172,7 +172,7 @@ export async function writeStoryBible(
   lines.push(`共 **${outline.length}** 章`)
   lines.push('')
   for (const ch of outline) {
-    lines.push(`### 第${ch.number}章　${ch.title}`)
+    lines.push(`### 第${ch.number}章\u3000${ch.title}`)
     lines.push(ch.description)
     lines.push('')
   }

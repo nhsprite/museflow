@@ -1,5 +1,5 @@
 import { updateStoryStatus } from '../../storage/database/dao/story.js'
-import { continueStory, getState } from '../../core/runner.js'
+import { continueStory } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { requireStoryState } from '../utils/story-loader.js'

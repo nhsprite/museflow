@@ -195,6 +195,7 @@ ${formatReminder ?? ''}`
       const data = JSON.parse(trimmed)
       return { success: true, data }
     } catch {
+      // ignore parse failure
     }
 
     const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
@@ -203,6 +204,7 @@ ${formatReminder ?? ''}`
         const data = JSON.parse(codeBlockMatch[1]!.trim())
         return { success: true, data }
       } catch {
+        // ignore parse failure
       }
     }
 

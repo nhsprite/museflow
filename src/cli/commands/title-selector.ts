@@ -122,7 +122,7 @@ export async function selectTitleOption(options: TitleOption[], genre: string = 
     { name: '重新生成选项', value: -1 },
   ]
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const answer = await (inquirer.prompt as any)([
     {
       type: 'rawlist',

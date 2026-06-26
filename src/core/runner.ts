@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js'
 import { buildNovelGraph } from '../graph/novel.graph.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
@@ -40,7 +41,7 @@ export function getOutputDirFromStoryId(storyId: string): string | undefined {
       }
     }
   } catch (err) {
-    console.error(`[MuseFlow] 查找故事目录时出错: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(`[MuseFlow] 查找故事目录时出错: ${err instanceof Error ? err.message : String(err)}`)
   }
   return undefined
 }
@@ -118,7 +119,7 @@ export async function continueStory(
   if (persistedStoryState && !isEmptyStoryState(persistedStoryState)) {
     checkpointState.storyState = persistedStoryState
   } else if (!checkpointHasState && isRewrite && targetIndex > 1) {
-    console.log('[MuseFlow] Checkpoint storyState 为空，且为重写模式。清理可能过时的角色位置信息...')
+    logger.info('[MuseFlow] Checkpoint storyState 为空，且为重写模式。清理可能过时的角色位置信息...')
     const emptyState = createEmptyStoryState()
     checkpointState.storyState = {
       ...emptyState,
@@ -189,7 +190,7 @@ export async function getState(storyId: string): Promise<ReducedGraphState | nul
 
     return graphState
   } catch (err) {
-    console.error(`[MuseFlow] 获取故事状态时出错: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(`[MuseFlow] 获取故事状态时出错: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
 }

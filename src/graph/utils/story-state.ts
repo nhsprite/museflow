@@ -1,15 +1,13 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { StoryState, CanonicalFact, PendingTask } from '../../types/story-state.js'
 import {
-  buildLayeredSummaries,
   filterCharacterFactsByImportance,
   filterKeyEventsByImportance,
   getImportanceThreshold,
   getCompressionLevel,
 } from '../../utils/summary-compressor.js'
 import { createEmptyStoryState } from '../../storage/database/dao/story-state.js'
-import { buildCharacterWhitelist } from '../../utils/character-whitelist.js'
-import type { Character } from '../../types/character.js'
 
 function formatCharacterFactEntries(
   entries: Array<{ character: string; facts: string[] }>,
@@ -301,14 +299,12 @@ export function reconcileStoryState(
     const overlapRatio = secretWords.length > 0 ? overlap.length / secretWords.length : 0
 
     if (overlapRatio >= 0.3) {
-      console.log(`[MuseFlow] Reconciling: skipping outdated secret with ${Math.round(overlapRatio * 100)}% outline overlap: "${secret.substring(0, 50)}..."`)
+      logger.info(`[MuseFlow] Reconciling: skipping outdated secret with ${Math.round(overlapRatio * 100)}% outline overlap: "${secret.substring(0, 50)}..."`)
       continue
     }
 
     reconciled.revealedSecrets.push(secret)
   }
-
-  const whitelist = buildCharacterWhitelist(characters as Character[])
 
   return reconciled
 }

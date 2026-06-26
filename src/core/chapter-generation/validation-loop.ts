@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { runChapterPipeline } from '../pipeline.js'
 
@@ -99,7 +100,7 @@ export async function runValidationLoop(
   if (!validationPassed && enableRevalidation && !hadPipelineErrors) {
     const remainingWarnings = workingState.pendingIssues.filter(i => i.severity === 'warning')
     if (remainingWarnings.length > 0) {
-      console.error(`[MuseFlow] 自动修复 ${MAX_VALIDATION_ATTEMPTS} 次后仍有 ${remainingWarnings.length} 个警告未解决`)
+      logger.error(`[MuseFlow] 自动修复 ${MAX_VALIDATION_ATTEMPTS} 次后仍有 ${remainingWarnings.length} 个警告未解决`)
       workingState = {
         ...workingState,
         pendingIssues: [

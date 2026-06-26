@@ -1,7 +1,6 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
-import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 
 export class OutlineComplianceAgent extends BaseAgent {
@@ -10,9 +9,6 @@ export class OutlineComplianceAgent extends BaseAgent {
   }
 
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
-    const chapterIndex = state.chapterIndex ?? 0
-    const displayNum = toDisplayChapterNumber(chapterIndex)
-
     const outlineItem = state.outline || ''
     const planningConfig = getChapterPlanningConfig(state.genre)
 

@@ -1,9 +1,9 @@
+import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
-import type { ChapterPlan } from './chapter-planner.js'
 import {
   AI_PHRASE_PROHIBITIONS,
   TIMELINE_RULES,
@@ -397,7 +397,6 @@ ${FORESHADOW_DISCIPLINE_RULES}
   }
 
   private extractChapterOutline(outline: string, chapterIndex: number): { title: string; description: string } {
-    const lines = outline.split('\n').filter(l => l.trim())
     const chapterPatterns = [
       new RegExp(`第\\s*${chapterIndex}\\s*章?[:：]?\\s*(.+)`),
       new RegExp(`第\\s*${chapterIndex}\\s*节?[:：]?\\s*(.+)`),
@@ -436,16 +435,16 @@ ${FORESHADOW_DISCIPLINE_RULES}
     if (standardContentMatch && standardContentMatch[1]) {
       extractedContent = standardContentMatch[1].trim()
     } else {
-      console.warn('[MuseFlow] 警告: 未检测到标准的 === CHAPTER_CONTENT === 标记，尝试智能截断...')
+      logger.warn('[MuseFlow] 警告: 未检测到标准的 === CHAPTER_CONTENT === 标记，尝试智能截断...')
       extractedContent = this.extractContentWithoutMarkers(content)
     }
 
     if (this.hasPreWriteCheckArtifacts(extractedContent)) {
-      console.warn('[MuseFlow] 警告: 正文中检测到检查表残留，执行清理...')
+      logger.warn('[MuseFlow] 警告: 正文中检测到检查表残留，执行清理...')
       extractedContent = this.truncateToChapterHeading(extractedContent)
     }
 
-    const chapterHeadingPattern = /^(#{1,2}\s+第\s*\d+\s*章[\s:：]|#{1,2}\s+第\s*\d+\s*部分[\s:：]|#{1,2}\s+\d+[\.、]\s+|#{1,2}\s+章节?\s*\d+)/m
+    const chapterHeadingPattern = /^(#{1,2}\s+第\s*\d+\s*章[\s:：]|#{1,2}\s+第\s*\d+\s*部分[\s:：]|#{1,2}\s+\d+[.、]\s+|#{1,2}\s+章节?\s*\d+)/m
     const headingMatch = extractedContent.match(chapterHeadingPattern)
     if (headingMatch && headingMatch.index !== undefined && headingMatch.index > 0) {
       const detectedPreWrite = extractedContent.slice(0, headingMatch.index).trim()
@@ -483,7 +482,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
       if (rawHeadingMatch && rawHeadingMatch.index !== undefined) {
         return rawContent.slice(rawHeadingMatch.index).trim()
       }
-      console.error('[MuseFlow] 错误: 无法分离检查表和正文，检查表可能已混入正文')
+      logger.error('[MuseFlow] 错误: 无法分离检查表和正文，检查表可能已混入正文')
       return rawContent.trim()
     }
 

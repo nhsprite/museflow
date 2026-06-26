@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ForeshadowItem } from '../graph/state.js'
 import { generateId } from '../utils/id.js'
@@ -177,16 +178,16 @@ export class ForeshadowingAgent extends BaseAgent {
         const normalizedItem = item.text!.replace(/[^\u4e00-\u9fff]/g, '')
         const normalizedChapter = chapterContent.replace(/[^\u4e00-\u9fff]/g, '')
         if (normalizedItem.length > 5 && normalizedChapter.includes(normalizedItem)) {
-          console.log(`[MuseFlow] 伏笔过滤: 剔除本章叙事内容 "${item.text!.substring(0, 30)}..."`)
+          logger.info(`[MuseFlow] 伏笔过滤: 剔除本章叙事内容 "${item.text!.substring(0, 30)}..."`)
           return false
         }
         if (item.text!.length < 40) {
-          console.log(`[MuseFlow] 伏笔过滤: 剔除短文本叙事细节 "${item.text!.substring(0, 30)}..."`)
+          logger.info(`[MuseFlow] 伏笔过滤: 剔除短文本叙事细节 "${item.text!.substring(0, 30)}..."`)
           return false
         }
         const isSelfReferential = isSemanticallyRelated(item.text!, chapterContent, 0.5)
         if (isSelfReferential) {
-          console.log(`[MuseFlow] 伏笔过滤: 剔除自埋自收陷阱 "${item.text!.substring(0, 30)}..."`)
+          logger.info(`[MuseFlow] 伏笔过滤: 剔除自埋自收陷阱 "${item.text!.substring(0, 30)}..."`)
         }
         return !isSelfReferential
       })
@@ -208,12 +209,12 @@ export class ForeshadowingAgent extends BaseAgent {
 
     const fulfilledCount = updatedStack.filter(item => item.fulfilledChapter && item.fulfilledChapter === currentChapter).length
     if (fulfilledCount > 0) {
-      console.log(`[MuseFlow] 伏笔回收: 本章回收 ${fulfilledCount} 个伏笔`)
+      logger.info(`[MuseFlow] 伏笔回收: 本章回收 ${fulfilledCount} 个伏笔`)
     }
 
     const overdueCount = updatedStack.filter(item => !item.fulfilledChapter && currentChapter > item.expectedFulfillChapter + 3).length
     if (overdueCount > 0) {
-      console.log(`[MuseFlow] 伏笔逾期: ${overdueCount} 个伏笔超过预期章节仍未回收，已自动标记`)
+      logger.info(`[MuseFlow] 伏笔逾期: ${overdueCount} 个伏笔超过预期章节仍未回收，已自动标记`)
     }
 
     const unfufilled = updatedStack.filter(item => !item.fulfilledChapter)

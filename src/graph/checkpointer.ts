@@ -67,6 +67,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
         const rec = JSON.parse(raw) as CheckpointRecord
         records.set(rec.checkpointId, rec)
       } catch {
+        // ignore corrupted checkpoint file
       }
     }
     return records
@@ -170,7 +171,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     config: RunnableConfig,
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
-    newVersions: ChannelVersions,
+    _newVersions: ChannelVersions,
   ): Promise<RunnableConfig> {
     const threadId = config.configurable?.thread_id as string | undefined
     const outputDir = config.configurable?.outputDir as string | undefined

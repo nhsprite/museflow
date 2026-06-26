@@ -2,7 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
-import { TIMELINE_RULES, FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES } from './prompt-fragments.js'
+import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES } from './prompt-fragments.js'
 
 export class ConsistencyAgent extends BaseAgent {
   constructor() {

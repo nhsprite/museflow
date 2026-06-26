@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import {
@@ -127,7 +128,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
     if (createdAt === currentChapter && content) {
       const isSelfReferential = isSemanticallyRelated(f.text, content, 0.5)
       if (isSelfReferential) {
-        console.log(`[MuseFlow] 伏笔清理: 移除自埋自收伏笔 "${f.text.substring(0, 30)}..."`)
+        logger.info(`[MuseFlow] 伏笔清理: 移除自埋自收伏笔 "${f.text.substring(0, 30)}..."`)
         return false
       }
     }
@@ -149,7 +150,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
 
   const finalStack = foreshadowStack.filter(f => {
     if (f.createdAtChapter === currentChapter && f.text.length < 40 && !f.fulfilledChapter) {
-      console.log(`[MuseFlow] 伏笔清理: 移除agent误判的短文本伏笔 "${f.text.substring(0, 30)}..."`)
+      logger.info(`[MuseFlow] 伏笔清理: 移除agent误判的短文本伏笔 "${f.text.substring(0, 30)}..."`)
       return false
     }
     return true
@@ -278,7 +279,7 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
 export async function request_rewrite(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const issues = state.pendingIssues.filter(i => i.severity === 'error')
   if (issues.length > 0) {
-    console.error('[MuseFlow] 严重问题需要重写:', issues)
+    logger.error('[MuseFlow] 严重问题需要重写:', issues)
   }
   return { rewriteRequested: true }
 }

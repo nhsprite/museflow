@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import {
@@ -46,7 +47,7 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
     return { world, story: { ...state.story, outputDir: newOutputDir, title: aiGeneratedTitle } }
   }
 
-  console.log(`[MuseFlow] 使用用户选择的书名：${existingTitle}`)
+  logger.info(`[MuseFlow] 使用用户选择的书名：${existingTitle}`)
   return { world, story: { ...state.story, title: existingTitle } }
 }
 
@@ -67,7 +68,7 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      console.warn(`[MuseFlow] 角色生成解析失败，第 ${attempt}/${maxRetries} 次重试...`)
+      logger.warn(`[MuseFlow] 角色生成解析失败，第 ${attempt}/${maxRetries} 次重试...`)
     }
 
     const output = await agent.run(agentState)
@@ -76,22 +77,22 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
 
     if (characters.length > 0) {
       if (attempt > 0) {
-        console.log(`[MuseFlow] 角色生成重试成功，共创建 ${characters.length} 个人物`)
+        logger.info(`[MuseFlow] 角色生成重试成功，共创建 ${characters.length} 个人物`)
       }
       saveCharacters(state.story.id, characters)
       return { characters }
     }
 
     if (!output.success && output.content) {
-      console.warn(`[MuseFlow] 第 ${attempt + 1} 次角色生成原始输出（前 500 字符）：`)
-      console.warn(output.content.slice(0, 500))
+      logger.warn(`[MuseFlow] 第 ${attempt + 1} 次角色生成原始输出（前 500 字符）：`)
+      logger.warn(output.content.slice(0, 500))
     }
   }
 
-  console.error('[MuseFlow] 错误：角色生成失败，已达到最大重试次数')
+  logger.error('[MuseFlow] 错误：角色生成失败，已达到最大重试次数')
   if (lastOutput?.content) {
-    console.error('[MuseFlow] 最后一次原始输出（前 1000 字符）：')
-    console.error(lastOutput.content.slice(0, 1000))
+    logger.error('[MuseFlow] 最后一次原始输出（前 1000 字符）：')
+    logger.error(lastOutput.content.slice(0, 1000))
   }
   throw new Error('[MuseFlow] 错误：角色生成失败，请检查 AI 输出或重试')
 }
@@ -114,7 +115,7 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      console.warn(`[MuseFlow] 章节大纲解析失败，第 ${attempt}/${maxRetries} 次重试...`)
+      logger.warn(`[MuseFlow] 章节大纲解析失败，第 ${attempt}/${maxRetries} 次重试...`)
     }
 
     const output = await agent.run(agentState)
@@ -123,7 +124,7 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
 
     if (chapters.length > 0) {
       if (attempt > 0) {
-        console.log(`[MuseFlow] 章节大纲重试成功，共生成 ${chapters.length} 章`)
+        logger.info(`[MuseFlow] 章节大纲重试成功，共生成 ${chapters.length} 章`)
       }
       saveOutline(state.story.id, chapters)
       await writeOutlineContent(state.story.outputDir, state.story.title, chapters)
@@ -138,15 +139,15 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
     }
 
     if (!output.success && output.content) {
-      console.warn(`[MuseFlow] 第 ${attempt + 1} 次章节大纲原始输出（前 500 字符）：`)
-      console.warn(output.content.slice(0, 500))
+      logger.warn(`[MuseFlow] 第 ${attempt + 1} 次章节大纲原始输出（前 500 字符）：`)
+      logger.warn(output.content.slice(0, 500))
     }
   }
 
-  console.error('[MuseFlow] 错误：章节大纲生成失败，已达到最大重试次数')
+  logger.error('[MuseFlow] 错误：章节大纲生成失败，已达到最大重试次数')
   if (lastOutput?.content) {
-    console.error('[MuseFlow] 最后一次原始输出（前 1000 字符）：')
-    console.error(lastOutput.content.slice(0, 1000))
+    logger.error('[MuseFlow] 最后一次原始输出（前 1000 字符）：')
+    logger.error(lastOutput.content.slice(0, 1000))
   }
   throw new Error('[MuseFlow] 错误：章节大纲生成失败，请检查 AI 输出或重试')
 }
@@ -187,26 +188,13 @@ export async function validate_outline(state: ReducedGraphState): Promise<Partia
     }
   }
 
-  for (let i = 1; i < outline.length; i++) {
-    const prev = outline[i - 1]
-    const curr = outline[i]
-    if (!prev || !curr) continue
-
-    const timePattern = /第([一二三四五六七八九十百\d]+)[章节]/g
-    const prevTimes = [...prev.description.matchAll(timePattern)].map(m => m[1])
-    const currTimes = [...curr.description.matchAll(timePattern)].map(m => m[1])
-
-    if (prevTimes.length > 0 && currTimes.length > 0) {
-    }
-  }
-
   if (issues.length > 0) {
-    console.warn(`\n[MuseFlow] 大纲校验发现 ${issues.length} 个问题：`)
+    logger.warn(`\n[MuseFlow] 大纲校验发现 ${issues.length} 个问题：`)
     for (const issue of issues) {
       const icon = issue.severity === 'error' ? '❌' : '⚠️'
-      console.warn(`  ${icon} [${issue.type}] ${issue.description}`)
+      logger.warn(`  ${icon} [${issue.type}] ${issue.description}`)
     }
-    console.warn('')
+    logger.warn('')
   }
 
   return { pendingIssues: [...state.pendingIssues, ...issues] }

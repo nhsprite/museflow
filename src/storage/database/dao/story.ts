@@ -103,6 +103,7 @@ export function listStories(): Story[] {
         stories.push(meta.story)
       }
     } catch {
+      // ignore unreadable meta file
     }
   }
 

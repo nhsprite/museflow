@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs'
 import { loadConfig, saveConfig } from '../../config/store.js'
 import { getProjectConfigFilePath, getGlobalConfigFilePath } from '../../utils/paths.js'
-import type { AppConfig } from '../../types/config.js'
 
 interface ConfigOptions {
   provider?: string

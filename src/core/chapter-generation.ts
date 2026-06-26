@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import type { Issue } from '../types/agent.js'
 import type { buildNovelGraph } from '../graph/novel.graph.js'
@@ -72,12 +73,12 @@ export async function executeChapterGeneration(
     while (rewriteAttempts < maxRewriteAttempts) {
       rewriteAttempts++
       if (rewriteAttempts > 1) {
-        console.log(`[MuseFlow] 第 ${rewriteAttempts}/${maxRewriteAttempts} 次尝试...`)
+        logger.info(`[MuseFlow] 第 ${rewriteAttempts}/${maxRewriteAttempts} 次尝试...`)
       }
 
       const structuralOverride = forceStructuralRewrite
       if (structuralOverride && workingState.chapterPlan) {
-        console.log('[MuseFlow] 上轮修复未收敛，将强制完整重写...')
+        logger.info('[MuseFlow] 上轮修复未收敛，将强制完整重写...')
         workingState = { ...workingState, chapterPlan: null }
       }
       forceStructuralRewrite = false
@@ -127,7 +128,7 @@ export async function executeChapterGeneration(
       }
 
       if (rewriteAttempts < maxRewriteAttempts) {
-        console.log(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
+        logger.info(`[MuseFlow] 将在第 ${rewriteAttempts + 1} 次尝试中修复上述问题...`)
         workingState.rewriteApproved = true
       } else {
         workingState = await handleMaxAttempts(storyId, outputDir, workingState, currentRemainingErrors, rewriteAttempts, maxRewriteAttempts)

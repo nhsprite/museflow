@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES } from './prompt-fragments.js'
@@ -329,23 +330,23 @@ ${FORESHADOW_DISCIPLINE_RULES}
       }
       const unfulfilled = data.outlineCheck.filter(c => !c.fulfilled)
       if (unfulfilled.length > 0) {
-        console.warn(`[MuseFlow] 规划警告：${unfulfilled.length} 项大纲要求未在规划中明确落实`)
+        logger.warn(`[MuseFlow] 规划警告：${unfulfilled.length} 项大纲要求未在规划中明确落实`)
         for (const u of unfulfilled) {
-          console.warn(`  - ${u.requirement}`)
+          logger.warn(`  - ${u.requirement}`)
         }
       }
       return { success: true, data }
     } catch (err) {
-      console.error('[MuseFlow] DEBUG: JSON parse failed')
+      logger.error('[MuseFlow] DEBUG: JSON parse failed')
       const match = err instanceof Error ? err.message.match(/position (\d+)/) : null
       const errorPos = match && match[1] ? parseInt(match[1]) : null
       if (errorPos && errorPos > 0) {
         const start = Math.max(0, errorPos - 200)
         const end = Math.min(repaired.length, errorPos + 200)
-        console.error(`[MuseFlow] DEBUG: Problem area around position ${errorPos}:`)
-        console.error(repaired.substring(start, end))
+        logger.error(`[MuseFlow] DEBUG: Problem area around position ${errorPos}:`)
+        logger.error(repaired.substring(start, end))
       }
-      console.error('[MuseFlow] DEBUG: Parse error:', err instanceof Error ? err.message : String(err))
+      logger.error('[MuseFlow] DEBUG: Parse error:', err instanceof Error ? err.message : String(err))
       return { success: false, error: '无法解析规划数据：JSON 格式错误' }
     }
   }
@@ -355,7 +356,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
       .replace(/[\u201C\u201D]/g, '"')
       .replace(/[\u2018\u2019]/g, "'")
       .replace(/,\s*([}\]])/g, '$1')
-      .replace(/([\{,])\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*:/g, '$1"$2":')
+      .replace(/([{,])\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*:/g, '$1"$2":')
 
     // 修复单引号包裹的字符串（转为双引号）
     repaired = repaired.replace(/'([^'\n]*?)'/g, '"$1"')
@@ -384,7 +385,6 @@ ${FORESHADOW_DISCIPLINE_RULES}
     let result = ''
     let inString = false
     let escaped = false
-    let stringStart = -1
 
     for (let i = 0; i < json.length; i++) {
       const char = json[i]
@@ -415,7 +415,6 @@ ${FORESHADOW_DISCIPLINE_RULES}
       } else {
         if (char === '"') {
           inString = true
-          stringStart = i
           result += char
         } else {
           result += char

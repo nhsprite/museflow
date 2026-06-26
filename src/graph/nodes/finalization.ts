@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import { getSummaryAgent } from '../agent-factory.js'
@@ -51,17 +52,17 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
       let summarySuccess = false
       for (let attempt = 0; attempt <= MAX_SUMMARY_RETRIES; attempt++) {
         if (attempt > 0) {
-          console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成失败，第 ${attempt}/${MAX_SUMMARY_RETRIES} 次重试...`)
+          logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成失败，第 ${attempt}/${MAX_SUMMARY_RETRIES} 次重试...`)
         }
         try {
           const summaryOutput = await summaryAgent.run(summaryState)
           if (!summaryOutput.success) {
-            console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
+            logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
             continue
           }
           const processed = processSummaryOutput(summaryOutput, chapterIndex, effectiveCharacters, state.storyState)
           if (!processed || !processed.summary) {
-            console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
+            logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
           }
           summary = processed.summary
@@ -72,16 +73,16 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
             const existing = getStoryState(state.story.id)
             updatedStoryState = mergeStoryState(existing, processed.storyState)
             saveStoryState(state.story.id, updatedStoryState)
-            console.log(`[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`)
+            logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`)
           }
           break
         } catch (err) {
-          console.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`, err)
+          logger.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`, err)
         }
       }
 
       if (!summarySuccess) {
-        console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，将在无摘要状态下标记本章完成。后续一致性检查可能受影响。`)
+        logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，将在无摘要状态下标记本章完成。后续一致性检查可能受影响。`)
       }
     }
 
@@ -103,7 +104,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     }
   }
 
-  const snapshot = appendTimelineSnapshot(state.story.id, {
+  void appendTimelineSnapshot(state.story.id, {
     chapterNumber: chapterIndex + 1,
     snapshotType: 'chapter_complete',
     currentChapterIndex: chapterIndex,
@@ -163,7 +164,7 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   const attempts = (state.autoFixAttempts || 0)
 
   if (attempts >= 3) {
-    console.warn(`\x1b[93m[MuseFlow] 自动修复已达最大尝试次数 (${attempts})，停止修复，保留 ${warnings.length} 个警告待处理\x1b[0m`)
+    logger.warn(`\x1b[93m[MuseFlow] 自动修复已达最大尝试次数 (${attempts})，停止修复，保留 ${warnings.length} 个警告待处理\x1b[0m`)
     return { autoFixAttempts: attempts, pendingIssues: state.pendingIssues }
   }
 
@@ -176,13 +177,13 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
   })
 
   if (patchableWarnings.length === 0) {
-    console.log('[MuseFlow] 当前警告不适合自动修复，保留至下一轮重写')
+    logger.info('[MuseFlow] 当前警告不适合自动修复，保留至下一轮重写')
     return { autoFixAttempts: attempts, pendingIssues: state.pendingIssues }
   }
 
-  console.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${patchableWarnings.length} warning(s) (attempt ${attempts + 1}/3):\x1b[0m`)
+  logger.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${patchableWarnings.length} warning(s) (attempt ${attempts + 1}/3):\x1b[0m`)
   for (const warning of patchableWarnings) {
-    console.warn(`   \x1b[33m⚠️  [${warning.type}]\x1b[0m ${warning.description}`)
+    logger.warn(`   \x1b[33m⚠️  [${warning.type}]\x1b[0m ${warning.description}`)
   }
 
   const { fix_chapter } = await import('./fix.js')
@@ -190,7 +191,7 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
 
   try {
     const fixResult = await fix_chapter(fixState)
-    console.log(`\x1b[92m✔ [MuseFlow] Auto-fixed ${patchableWarnings.length} warning(s) (attempt ${attempts + 1}/3)\x1b[0m`)
+    logger.info(`\x1b[92m✔ [MuseFlow] Auto-fixed ${patchableWarnings.length} warning(s) (attempt ${attempts + 1}/3)\x1b[0m`)
 
     return {
       ...fixResult,
@@ -199,7 +200,7 @@ export async function auto_fix_warnings(state: ReducedGraphState): Promise<Parti
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.warn(`\x1b[93m[MuseFlow] 自动修复失败：${message}\x1b[0m`)
+    logger.warn(`\x1b[93m[MuseFlow] 自动修复失败：${message}\x1b[0m`)
     return {
       autoFixAttempts: attempts + 1,
       pendingIssues: state.pendingIssues,

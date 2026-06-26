@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto'
-import { dirname, extname } from 'node:path'
 
 export function generateId(prefix: string = ''): string {
   const timestamp = Date.now().toString(36)

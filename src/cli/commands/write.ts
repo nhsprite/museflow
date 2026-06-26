@@ -3,8 +3,8 @@ import { continueStory, getState } from '../../core/runner.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import type { StoryStatus, Story } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
-import { toDisplayChapterNumber, printChapterOutline } from '../../utils/chapter-display.js'
-import { getChapterFilePath, getOutputsDir } from '../../utils/paths.js'
+import { printChapterOutline } from '../utils/chapter-display.js'
+import { getChapterFilePath } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { readFile as readFileAsync } from 'node:fs/promises'
@@ -114,7 +114,6 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
   }
 
   const chapterIndex = startChapterIndex
-  const outlineItem = state.outline[chapterIndex]
   const chapterNum = chapterIndex + 1
   const totalChapters = state.totalChapters
 

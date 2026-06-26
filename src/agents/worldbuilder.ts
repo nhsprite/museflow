@@ -46,6 +46,7 @@ export class WorldbuilderAgent extends BaseAgent {
         const data = JSON.parse(codeBlockMatch[1]!.trim())
         return { success: true, data }
       } catch {
+        // ignore parse failure
       }
     }
 
@@ -55,6 +56,7 @@ export class WorldbuilderAgent extends BaseAgent {
         const data = JSON.parse(jsonMatch[0])
         return { success: true, data }
       } catch {
+        // ignore parse failure
       }
     }
 

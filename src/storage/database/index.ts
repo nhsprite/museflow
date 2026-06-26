@@ -156,6 +156,7 @@ export function readMetaJsonSync(storyId: string): StoryMeta | null {
       }
     }
   } catch {
+    // ignore meta lookup errors
   }
 
   return null

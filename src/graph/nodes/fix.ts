@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { ChapterMeta } from '../../types/chapter.js'
 import type { AgentState } from '../../agents/base.js'
@@ -47,7 +48,7 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
   })
 
   if (!hasPatchableIssues) {
-    console.log('[MuseFlow] 当前警告不适合段落/句子级修复，跳过 fix agent')
+    logger.info('[MuseFlow] 当前警告不适合段落/句子级修复，跳过 fix agent')
     return { chapters: state.chapters }
   }
 
@@ -59,7 +60,7 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
   const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
 
   if (affectedIndices.length === 0) {
-    console.log('[MuseFlow] 未能定位到问题所在段落，将使用全文修复模式')
+    logger.info('[MuseFlow] 未能定位到问题所在段落，将使用全文修复模式')
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
   }
 
@@ -74,18 +75,18 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
     !isConsistencyOrHallucination &&
     (affectedIndices.length > AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD || affectedRatio > AFFECTED_PARAGRAPH_RATIO_THRESHOLD)
   ) {
-    console.log(`[MuseFlow] 问题涉及 ${affectedIndices.length}/${paragraphs.length} 个段落（占比 ${Math.round(affectedRatio * 100)}%），超过修复阈值，转为完整重写`)
+    logger.info(`[MuseFlow] 问题涉及 ${affectedIndices.length}/${paragraphs.length} 个段落（占比 ${Math.round(affectedRatio * 100)}%），超过修复阈值，转为完整重写`)
     return await runLegacyFix(agent, state, existingContent, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
   }
 
   const sentenceFixes = buildSentenceFixes(paragraphs, affectedIndices, pendingIssues)
 
   if (sentenceFixes.length > 0 && sentenceFixes.length <= 5) {
-    console.log(`[MuseFlow] 定位到 ${sentenceFixes.length} 个需修改的句子，使用句子级精准修复`)
+    logger.info(`[MuseFlow] 定位到 ${sentenceFixes.length} 个需修改的句子，使用句子级精准修复`)
     return await runSentenceFix(agent, state, existingContent, paragraphs, sentenceFixes, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
   }
 
-  console.log(`[MuseFlow] 定位到 ${affectedIndices.length} 个需修改的段落，使用段落级修复`)
+  logger.info(`[MuseFlow] 定位到 ${affectedIndices.length} 个需修改的段落，使用段落级修复`)
   return await runParagraphFix(agent, state, existingContent, paragraphs, affectedIndices, chapterIndex, outlineItem, previousChapters, timelineSnapshot, nextBoundaryHint)
 }
 
@@ -350,7 +351,6 @@ export async function runLegacyFix(
   timelineSnapshot: string,
   nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
-  const worldContent = state.world?.content
   const reconciledState = state.storyState && outlineItem?.description
     ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
     : state.storyState

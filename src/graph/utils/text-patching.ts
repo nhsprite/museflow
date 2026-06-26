@@ -1,3 +1,4 @@
+import { logger } from '../../utils/logger.js'
 export interface LocationInfo {
   paragraphIndex?: number
   sentenceIndex?: number
@@ -202,7 +203,7 @@ export function applyParagraphDiffProtection(
   const fixedParagraphs = splitIntoParagraphs(fixed)
 
   if (originalParagraphs.length !== fixedParagraphs.length) {
-    console.warn('[MuseFlow] 修复后段落数量变化，跳过段落保护')
+    logger.warn('[MuseFlow] 修复后段落数量变化，跳过段落保护')
     return fixed
   }
 
@@ -217,7 +218,7 @@ export function applyParagraphDiffProtection(
       continue
     }
     if (!allowedSet.has(i) && originalParagraph !== fixedParagraph) {
-      console.log(`[MuseFlow] 检测到无关段落 ${i} 被修改，已自动回退`)
+      logger.info(`[MuseFlow] 检测到无关段落 ${i} 被修改，已自动回退`)
       result.push(originalParagraph)
       revertedCount++
     } else {
@@ -226,7 +227,7 @@ export function applyParagraphDiffProtection(
   }
 
   if (revertedCount > 0) {
-    console.log(`[MuseFlow] 共回退 ${revertedCount} 个无关段落的修改`)
+    logger.info(`[MuseFlow] 共回退 ${revertedCount} 个无关段落的修改`)
   }
 
   return result.join('\n\n')
@@ -263,7 +264,7 @@ export function deduplicateSentences(text: string): string {
 
   const finalText = rebuilt.join('')
   if (removedCount > 0) {
-    console.log(`[MuseFlow] 自动清理 ${removedCount} 个重复句子`)
+    logger.info(`[MuseFlow] 自动清理 ${removedCount} 个重复句子`)
   }
   return finalText
 }
@@ -294,7 +295,7 @@ export function deduplicateParagraphBlocks(text: string): string {
   }
 
   if (removedCount > 0) {
-    console.log(`[MuseFlow] 自动清理 ${removedCount} 个重复段落`)
+    logger.info(`[MuseFlow] 自动清理 ${removedCount} 个重复段落`)
   }
   return result.join('\n\n')
 }

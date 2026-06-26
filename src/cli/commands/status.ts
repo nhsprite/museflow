@@ -3,7 +3,6 @@ import { getState } from '../../core/runner.js'
 
 import { getForeshadowAlerts, formatForeshadowAlerts } from '../../graph/state.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
-import { getOutputsDir } from '../../utils/paths.js'
 import { existsSync } from 'node:fs'
 
 interface ChapterIssue {
@@ -39,6 +38,7 @@ async function getChapterIssues(outputDir: string, totalChapters: number): Promi
         })
       }
     } catch {
+      // ignore unreadable checkpoint
     }
   }
 
@@ -99,7 +99,6 @@ export async function status(storyId?: string): Promise<void> {
       showIssues(warnings, '警告', '⚠️')
       showIssues(infos, '提示', 'ℹ️')
 
-      const outputDir = getOutputsDir()
       const storyDir = state.story?.outputDir
       if (storyDir && existsSync(storyDir)) {
         const chapterIssues = await getChapterIssues(storyDir, total)

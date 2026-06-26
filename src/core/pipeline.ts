@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js'
 import type { ReducedGraphState } from '../graph/state.js'
 
 export interface PipelineNode {
@@ -41,11 +42,12 @@ export async function runChapterPipeline(
       }
       spinner.startStepProgress(nodes.map(n => n.label))
     } catch {
+      // spinner not available, continue without progress UI
     }
   }
 
   for (let i = 0; i < nodes.length; i++) {
-    const { node, label, clearIssues } = nodes[i]!
+    const { node, clearIssues } = nodes[i]!
     const partial = await node(state)
     state = { ...state, ...partial }
 
@@ -61,9 +63,9 @@ export async function runChapterPipeline(
         }
         for (const err of errors) {
           const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-          console.error(`  ${icon} [${err.type}] ${err.description}`)
+          logger.error(`  ${icon} [${err.type}] ${err.description}`)
           if (err.location) {
-            console.error(`     位置: ${err.location}`)
+            logger.error(`     位置: ${err.location}`)
           }
         }
         hasErrors = true
