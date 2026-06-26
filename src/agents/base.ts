@@ -114,6 +114,7 @@ export interface AgentState {
   charactersList?: Character[]
   outlineCharacters?: Character[]
   establishedCharacters?: Character[]
+  stateConflicts?: string
 }
 
 export interface AgentOutput {

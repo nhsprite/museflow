@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStructuralIssue } from '../../src/core/chapter-generation.js'
+import { isStructuralIssue } from '../../src/core/chapter-generation/issue-classifier.js'
 import type { Issue } from '../../src/types/agent.js'
 
 describe('isStructuralIssue', () => {

@@ -25,12 +25,6 @@ const mockReadFileSync = vi.fn().mockReturnValue(JSON.stringify({
   story: { id: 'story-1', outputDir: '/tmp/test' }
 }))
 
-let mockPipelineResults: Array<{
-  state: Record<string, unknown>
-  hasErrors: boolean
-}> = []
-let pipelineCallCount = 0
-
 function createBaseGraphState(overrides: Record<string, unknown> = {}) {
   return {
     story: { id: 'story-1', title: 'Test', outputDir: '/tmp/test' },
@@ -67,6 +61,7 @@ const mockGraph = {
     values: createBaseGraphState(),
   }),
   updateState: vi.fn().mockResolvedValue(undefined),
+  invoke: vi.fn().mockResolvedValue(createBaseGraphState({ currentChapterIndex: 1 })),
 }
 
 vi.mock(import('node:fs'), async (importOriginal) => {
@@ -195,175 +190,75 @@ vi.mock('../../src/agents/index.js', () => ({
   },
 }))
 
-vi.mock('../../src/core/pipeline.js', () => ({
-  runChapterPipeline: vi.fn().mockImplementation((state: Record<string, unknown>) => {
-    const mockResult = mockPipelineResults[pipelineCallCount]
-    const result = mockResult || { state: { ...state, pendingIssues: [] }, hasErrors: false }
-    pipelineCallCount++
-    return Promise.resolve(result)
-  }),
-}))
 
 describe('runner revalidation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    chapterPlannerRun.mockResolvedValue({
-      success: true,
-      data: {
-        sections: [{ title: 'Section 1', events: [], characters: [] }],
-      },
-    })
-    pipelineCallCount = 0
-    mockPipelineResults = []
     mockGraph.getState.mockResolvedValue({
       values: createBaseGraphState(),
     })
+    mockGraph.invoke.mockResolvedValue(createBaseGraphState({ currentChapterIndex: 1 }))
   })
 
-  it('passes on first try when no warnings', async () => {
+  it('invokes the chapter-writing graph and returns its final state', async () => {
     const { continueStory } = await import('../../src/core/runner.js')
 
-    mockPipelineResults = [
-      {
-        state: createBaseGraphState({ pendingIssues: [], autoFixAttempts: 0 }),
-        hasErrors: false,
-      },
-    ]
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({ currentChapterIndex: 1, pendingIssues: [] })
+    )
 
     const result = await continueStory('story-1')
 
-    expect(pipelineCallCount).toBe(1)
+    expect(mockGraph.invoke).toHaveBeenCalledTimes(1)
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
+    expect(invokedState.isWriting).toBe(true)
+    expect(invokedState.writeOneChapterOnly).toBe(true)
+    expect(result.currentChapterIndex).toBe(1)
     expect(result.pendingIssues).toEqual([])
     expect(result.rewriteRequested).toBe(false)
   })
 
-  it('re-validates after auto-fix when warnings are fixed', async () => {
+  it('propagates rewriteRequested when the graph returns broken state', async () => {
     const { continueStory } = await import('../../src/core/runner.js')
 
-    mockPipelineResults = [
-      {
-        state: createBaseGraphState({
-          pendingIssues: [],
-          autoFixAttempts: 1,
-        }),
-        hasErrors: false,
-      },
-      {
-        state: createBaseGraphState({
-          pendingIssues: [],
-          autoFixAttempts: 0,
-        }),
-        hasErrors: false,
-      },
-    ]
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({
+        currentChapterIndex: 0,
+        rewriteRequested: true,
+        pendingIssues: [{ id: 'e1', type: 'quality', severity: 'error', description: 'error' }],
+      })
+    )
 
     const result = await continueStory('story-1')
 
-    expect(pipelineCallCount).toBe(2)
-    expect(result.pendingIssues).toEqual([])
-    expect(result.rewriteRequested).toBe(false)
-  })
-
-  it('re-validates up to 3 times when warnings persist', async () => {
-    const { continueStory } = await import('../../src/core/runner.js')
-
-    const warningState = createBaseGraphState({
-      pendingIssues: [{ id: 'w1', type: 'hallucination', severity: 'warning', description: 'test' }],
-      autoFixAttempts: 3,
-    })
-
-    mockPipelineResults = [
-      { state: createBaseGraphState({ pendingIssues: [], autoFixAttempts: 1 }), hasErrors: false },
-      { state: createBaseGraphState({ pendingIssues: [], autoFixAttempts: 2 }), hasErrors: false },
-      { state: warningState, hasErrors: false },
-      { state: warningState, hasErrors: false },
-      { state: warningState, hasErrors: false },
-      { state: warningState, hasErrors: false },
-      { state: warningState, hasErrors: false },
-      { state: warningState, hasErrors: false },
-      { state: warningState, hasErrors: false },
-      { state: warningState, hasErrors: false },
-    ]
-
-    const result = await continueStory('story-1')
-
-    expect(pipelineCallCount).toBeGreaterThanOrEqual(3)
-    expect(result.pendingIssues.some((i: { severity: string }) => i.severity === 'error')).toBe(true)
+    expect(mockGraph.invoke).toHaveBeenCalledTimes(1)
     expect(result.rewriteRequested).toBe(true)
-  })
-
-  it('stops early if re-validation finds no issues after auto-fix', async () => {
-    const { continueStory } = await import('../../src/core/runner.js')
-
-    mockPipelineResults = [
-      { state: createBaseGraphState({ pendingIssues: [], autoFixAttempts: 1 }), hasErrors: false },
-      { state: createBaseGraphState({ pendingIssues: [], autoFixAttempts: 0 }), hasErrors: false },
-    ]
-
-    const result = await continueStory('story-1')
-
-    expect(pipelineCallCount).toBe(2)
-    expect(result.pendingIssues).toEqual([])
-  })
-
-  it('breaks inner loop when validation finds errors', async () => {
-    const { continueStory } = await import('../../src/core/runner.js')
-
-    mockPipelineResults = [
-      {
-        state: createBaseGraphState({
-          pendingIssues: [{ id: 'e1', type: 'quality', severity: 'error', description: 'error' }],
-          autoFixAttempts: 0,
-        }),
-        hasErrors: true,
-      },
-      {
-        state: createBaseGraphState({
-          pendingIssues: [{ id: 'e1', type: 'quality', severity: 'error', description: 'error' }],
-          autoFixAttempts: 0,
-        }),
-        hasErrors: true,
-      },
-      {
-        state: createBaseGraphState({
-          pendingIssues: [{ id: 'e1', type: 'quality', severity: 'error', description: 'error' }],
-          autoFixAttempts: 0,
-        }),
-        hasErrors: true,
-      },
-    ]
-
-    const result = await continueStory('story-1')
-
-    expect(pipelineCallCount).toBe(3)
     expect(result.pendingIssues.some((i: { severity: string }) => i.severity === 'error')).toBe(true)
-    expect(result.rewriteRequested).toBe(true)
   })
 
-  it('temporarily replans rewrite chapters when adjacent outlines need bridging', async () => {
+  it('passes userResponse as rewriteApproved to the graph', async () => {
     const { continueStory } = await import('../../src/core/runner.js')
 
-    const stateWithOldPlan = createBaseGraphState({
-      outline: [
-        { number: 29, title: '真假美猴王', description: '六耳猕猴伏法，真宝玉获救。' },
-        { number: 30, title: '三界求援', description: '如来佛祖现身，以无上神通辨别六耳猕猴。' },
-      ],
-      totalChapters: 2,
-      chapters: [null, null],
-      currentChapterIndex: 0,
-      pendingIssues: [{ id: 'e1', type: 'quality', severity: 'error', description: 'local quality issue' }],
-      chapterPlan: {
-        sections: [{ title: 'Old incompatible plan', summary: 'old', events: [], characters: [] }],
-      },
-    })
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({ currentChapterIndex: 1, pendingIssues: [] })
+    )
 
-    mockGraph.getState.mockResolvedValue({ values: stateWithOldPlan })
-    mockPipelineResults = [
-      { state: createBaseGraphState({ outline: stateWithOldPlan.outline, totalChapters: 2, chapters: [null, null], pendingIssues: [] }), hasErrors: false },
-    ]
+    await continueStory('story-1', true)
 
-    await continueStory('story-1', true, 0)
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
+    expect(invokedState.rewriteApproved).toBe(true)
+  })
 
-    expect(chapterPlannerRun).toHaveBeenCalledTimes(1)
+  it('uses the supplied currentChapterIndex as the target chapter', async () => {
+    const { continueStory } = await import('../../src/core/runner.js')
+
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({ currentChapterIndex: 2, pendingIssues: [] })
+    )
+
+    await continueStory('story-1', undefined, 2)
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
+    expect(invokedState.currentChapterIndex).toBe(2)
   })
 })

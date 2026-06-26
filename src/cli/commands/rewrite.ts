@@ -1,13 +1,10 @@
 import { updateStoryStatus } from '../../storage/database/dao/story.js'
-import { getState, getGraph, getOutputDirFromStoryId } from '../../core/runner.js'
-import { executeChapterGeneration } from '../../core/chapter-generation.js'
+import { getState, getGraph, getOutputDirFromStoryId, runChapterGraph } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
 import { printChapterOutline } from '../utils/chapter-display.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { deleteChapterContent } from '../../storage/filesystem/writer.js'
-import { getStoryState, isEmptyStoryState } from '../../storage/database/dao/story-state.js'
-import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
@@ -185,6 +182,41 @@ function isForeshadowLikelyPolluted(item: ReducedGraphState['foreshadowStack'][n
   return false
 }
 
+async function loadRewriteBaseState(
+  storyId: string,
+  outputDir: string,
+  targetChapterIndex?: number
+): Promise<ReducedGraphState> {
+  const graph = getGraph()
+  const checkpointer = getCheckpointer()
+
+  if (targetChapterIndex === undefined) {
+    await checkpointer.clearPendingWrites(outputDir)
+    const snapshot = await graph.getState({ configurable: { thread_id: storyId, outputDir } })
+    return snapshot.values as ReducedGraphState
+  }
+
+  let checkpointId: string | undefined
+  const prevCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex)
+  if (prevCheckpoint) {
+    checkpointId = prevCheckpoint.checkpointId
+    console.log(`[MuseFlow] 已恢复第 ${targetChapterIndex} 章完成时的状态`)
+  } else {
+    const sameCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex + 1)
+    if (sameCheckpoint) {
+      checkpointId = sameCheckpoint.checkpointId
+      console.log(`[MuseFlow] 未找到第 ${targetChapterIndex} 章的 checkpoint，已恢复第 ${targetChapterIndex + 1} 章完成时的状态（将清理该章状态）`)
+    } else {
+      console.log('[MuseFlow] 未找到相关 checkpoint，将从当前状态继续')
+    }
+  }
+
+  const snapshot = await graph.getState({
+    configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
+  })
+  return snapshot.values as ReducedGraphState
+}
+
 async function rewriteChapter(
   storyId: string,
   userResponse: boolean,
@@ -199,133 +231,61 @@ async function rewriteChapter(
 
   console.log('[MuseFlow] 初始化 checkpoint 和 graph...')
   const checkpointer = getCheckpointer()
-  const graph = getGraph()
 
-  let config: RunnableConfig = {
-    configurable: { thread_id: storyId, outputDir, checkpoint_dir: outputDir },
+  console.log('[MuseFlow] 加载 graph state...')
+  const checkpointState = await loadRewriteBaseState(storyId, outputDir, targetChapterIndex)
+  console.log('[MuseFlow] graph state 加载完成')
+
+  const rewriteIndex = targetChapterIndex ?? (checkpointState.currentChapterIndex > 0 ? checkpointState.currentChapterIndex : 0)
+
+  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
+  for (let i = 0; i < rewriteIndex; i++) {
+    rewrittenChapters[i] = checkpointState.chapters[i] ?? null
   }
 
-  let workingState: ReducedGraphState
+  const cleanedSummaries = checkpointState.chapterSummaries.slice(0, rewriteIndex)
+  const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
+    f => f.createdAtChapter < rewriteIndex + 1 && !isForeshadowLikelyPolluted(f)
+  )
+  const removedForeshadowCount = checkpointState.foreshadowStack.length - cleanedForeshadowStack.length
+  if (removedForeshadowCount > 0) {
+    console.log(`[MuseFlow] 清理 ${removedForeshadowCount} 个疑似由大纲污染生成的伏笔项`)
+  }
+
+  const cleanedPendingIssues = checkpointState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
+
+  const workingState: ReducedGraphState = {
+    ...checkpointState,
+    currentChapterIndex: rewriteIndex,
+    chapters: rewrittenChapters,
+    chapterSummaries: cleanedSummaries,
+    foreshadowStack: cleanedForeshadowStack,
+    chapterTimeAnchor: undefined,
+    pendingIssues: retryIssues.length > 0 ? retryIssues : cleanedPendingIssues,
+    rewriteApproved: userResponse,
+    rewriteRequested: false,
+    isWriting: true,
+    writeOneChapterOnly: true,
+    chapterPlan: targetChapterIndex !== undefined ? null : checkpointState.chapterPlan,
+    rewriteAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    forceStructuralRewrite: false,
+    routingDecision: undefined,
+  }
 
   if (targetChapterIndex !== undefined) {
-    console.log(`[MuseFlow] 查找第 ${targetChapterIndex} 章 checkpoint...`)
-    const prevChapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex)
-    if (prevChapterCheckpoint) {
-      config = {
-        configurable: {
-          thread_id: storyId,
-          checkpoint_id: prevChapterCheckpoint.checkpointId,
-          outputDir,
-        },
-      }
-      console.log(`[MuseFlow] 已恢复第 ${targetChapterIndex} 章完成时的状态`)
-    } else {
-      const chapterCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex + 1)
-      if (chapterCheckpoint) {
-        config = {
-          configurable: {
-            thread_id: storyId,
-            checkpoint_id: chapterCheckpoint.checkpointId,
-            outputDir,
-          },
-        }
-        console.log(`[MuseFlow] 未找到第 ${targetChapterIndex} 章的 checkpoint，已恢复第 ${targetChapterIndex + 1} 章完成时的状态（将清理该章状态）`)
-      } else {
-        console.log(`[MuseFlow] 未找到相关 checkpoint，将从当前状态继续`)
-      }
-    }
-
-    console.log('[MuseFlow] 加载 graph state...')
-    const snapshot = await graph.getState(config)
-    const checkpointState = snapshot.values as ReducedGraphState
-    console.log('[MuseFlow] graph state 加载完成')
-
-    const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
-    for (let i = 0; i < targetChapterIndex; i++) {
-      rewrittenChapters[i] = checkpointState.chapters[i] ?? null
-    }
-
-    const cleanedSummaries = checkpointState.chapterSummaries.slice(0, targetChapterIndex)
-    const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
-      f => f.createdAtChapter < targetChapterIndex + 1 && !isForeshadowLikelyPolluted(f)
-    )
-    const removedForeshadowCount = checkpointState.foreshadowStack.length - cleanedForeshadowStack.length
-    if (removedForeshadowCount > 0) {
-      console.log(`[MuseFlow] 清理 ${removedForeshadowCount} 个疑似由大纲污染生成的伏笔项`)
-    }
-
-    // 从 meta.json 恢复最新的 storyState，因为 checkpoint 中的 storyState 可能是空的或旧的
-    const persistedStoryState = getStoryState(storyId)
-    if (persistedStoryState && !isEmptyStoryState(persistedStoryState)) {
-      checkpointState.storyState = persistedStoryState
-    }
-
-    workingState = {
-      ...checkpointState,
-      currentChapterIndex: targetChapterIndex,
-      chapters: rewrittenChapters,
-      chapterSummaries: cleanedSummaries,
-      foreshadowStack: cleanedForeshadowStack,
-      chapterTimeAnchor: undefined,
-      pendingIssues: retryIssues.length > 0 ? retryIssues : checkpointState.pendingIssues,
-      rewriteApproved: userResponse,
-      rewriteRequested: false,
-      isWriting: true,
-      writeOneChapterOnly: true,
-      chapterPlan: null,
-    }
-
     console.log('[MuseFlow] 清理后续章节内容...')
     for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)
     }
-    console.log('[MuseFlow] 开始生成章节...')
-  } else {
-    await checkpointer.clearPendingWrites(outputDir)
-
-    const snapshot = await graph.getState(config)
-    const checkpointState = snapshot.values as ReducedGraphState
-
-    const rewriteIndex = checkpointState.currentChapterIndex > 0
-      ? checkpointState.currentChapterIndex
-      : 0
-
-    const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
-    for (let i = 0; i < rewriteIndex; i++) {
-      rewrittenChapters[i] = checkpointState.chapters[i] ?? null
-    }
-
-    const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
-      f => f.createdAtChapter < rewriteIndex + 1 && !isForeshadowLikelyPolluted(f)
-    )
-    const removedForeshadowCount = checkpointState.foreshadowStack.length - cleanedForeshadowStack.length
-    if (removedForeshadowCount > 0) {
-      console.log(`[MuseFlow] 清理 ${removedForeshadowCount} 个疑似由大纲污染生成的伏笔项`)
-    }
-
-    workingState = {
-      ...checkpointState,
-      currentChapterIndex: rewriteIndex,
-      chapters: rewrittenChapters,
-      foreshadowStack: cleanedForeshadowStack,
-      chapterTimeAnchor: undefined,
-      pendingIssues: retryIssues.length > 0 ? retryIssues : checkpointState.pendingIssues,
-      rewriteApproved: userResponse,
-      rewriteRequested: false,
-      isWriting: true,
-      writeOneChapterOnly: true,
-    }
   }
+  console.log('[MuseFlow] 开始生成章节...')
 
   try {
-    console.log('[MuseFlow] 调用 executeChapterGeneration...')
-    const result = await executeChapterGeneration(storyId, outputDir, workingState, graph, checkpointer, {
-      breakOnErrors: true,
-      maxRewriteAttempts: 3,
-      enableRevalidation: true,
-      enableStructuralBranching: true,
-    })
-    console.log('[MuseFlow] executeChapterGeneration 完成')
+    console.log('[MuseFlow] 调用章节写作 graph...')
+    const result = await runChapterGraph(storyId, outputDir, workingState)
+    console.log('[MuseFlow] 章节写作 graph 完成')
 
     if (!result.rewriteRequested && targetChapterIndex !== undefined) {
       await checkpointer.pruneIntermediateCheckpoints(outputDir)

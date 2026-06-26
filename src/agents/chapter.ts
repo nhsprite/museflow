@@ -60,6 +60,15 @@ ${FACT_CONSISTENCY_RULES}
 </story_state>`
       : ''
 
+    const stateConflictsSection = state.stateConflicts
+      ? `<state_conflicts>
+<mandatory>【必须处理的上游状态冲突 - 写正文前必须解决】</mandatory>
+${state.stateConflicts}
+
+<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作（递、接、取、放、交、藏等）完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>
+</state_conflicts>`
+      : ''
+
     const outlineComplianceSection = `<outline_compliance>
 <mandatory>【大纲遵循 - 强制要求】</mandatory>
 - 本章只能呈现大纲中明确列出的情节点，不得擅自添加大纲未提及的新情节、新场景或新角色
@@ -237,6 +246,8 @@ ${timelineSection}
 ${keyEventsSection}
 
 ${storyStateSection}
+
+${stateConflictsSection}
 
 ${timeAnchorSection}
 

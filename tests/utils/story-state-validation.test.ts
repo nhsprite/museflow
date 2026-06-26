@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizeStoryState } from '../../src/utils/story-state-validation.js'
+import { sanitizeStoryState, formatStateConflicts } from '../../src/utils/story-state-validation.js'
 import type { StoryState } from '../../src/types/story-state.js'
 import type { Character } from '../../src/types/character.js'
 
@@ -87,5 +87,47 @@ describe('sanitizeStoryState', () => {
     expect(report.state.revealedSecrets).toEqual([])
     expect(report.removedFacts).toContain('苏孟祥出门办事')
     expect(report.removedFacts).toContain('陆廷樑偷了东西')
+  })
+
+  it('detects ambiguous item names at same location', () => {
+    const state: StoryState = {
+      characterLocations: {},
+      characterStatus: {},
+      keyItemsLocation: {
+        '廷樾手记': '妆台抽屉',
+        '《廷樾手记》': '妆台抽屉',
+      },
+      keyItemsState: {},
+      activePlots: [],
+      revealedSecrets: [],
+      pendingTasks: [],
+      currentScene: '',
+      storyTime: '',
+    }
+    const report = sanitizeStoryState(state, characters)
+    expect(report.ambiguousItems.length).toBeGreaterThan(0)
+    expect(report.ambiguousItems[0].items).toContain('廷樾手记')
+  })
+
+  it('formats state conflicts into instructions', () => {
+    const state: StoryState = {
+      characterLocations: {},
+      characterStatus: {},
+      keyItemsLocation: {
+        '廷樾手记': '妆台抽屉',
+        '《廷樾手记》': '樟木箱暗格',
+      },
+      keyItemsState: {},
+      activePlots: [],
+      revealedSecrets: [],
+      pendingTasks: [],
+      currentScene: '',
+      storyTime: '',
+    }
+    const report = sanitizeStoryState(state, characters)
+    const formatted = formatStateConflicts(report)
+    expect(formatted).toContain('物品位置冲突')
+    expect(formatted).toContain('妆台抽屉')
+    expect(formatted).toContain('樟木箱暗格')
   })
 })

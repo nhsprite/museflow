@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const executeChapterGenerationMock = vi.fn()
+const runChapterGraphMock = vi.fn()
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
 const deleteChapterContentMock = vi.fn().mockResolvedValue(undefined)
-const getStoryStateMock = vi.fn().mockReturnValue(null)
 const getChapterCheckpointMock = vi.fn().mockResolvedValue(null)
 
 const initialState = {
@@ -63,12 +62,8 @@ vi.mock('../../src/core/runner.js', () => ({
         pendingIssues: [],
       },
     }),
-    updateState: vi.fn().mockResolvedValue(undefined),
   }),
-}))
-
-vi.mock('../../src/core/chapter-generation.js', () => ({
-  executeChapterGeneration: executeChapterGenerationMock,
+  runChapterGraph: runChapterGraphMock,
 }))
 
 vi.mock('../../src/graph/checkpointer.js', () => ({
@@ -84,9 +79,6 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   deleteChapterContent: deleteChapterContentMock,
 }))
 
-vi.mock('../../src/storage/database/dao/story-state.js', () => ({
-  getStoryState: getStoryStateMock,
-}))
 
 vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg, fn) => fn()),
@@ -101,7 +93,7 @@ vi.mock('../../src/utils/chapter-display.js', () => ({
 describe('rewrite command retry feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    executeChapterGenerationMock.mockImplementation(async (_storyId, _outputDir, workingState) => ({
+    runChapterGraphMock.mockImplementation(async (_storyId, _outputDir, workingState) => ({
       ...workingState,
       rewriteRequested: true,
       pendingIssues: workingState.pendingIssues,
@@ -113,15 +105,12 @@ describe('rewrite command retry feedback', () => {
 
     await rewrite('story-1', { storyId: 'story-1' })
 
-    expect(executeChapterGenerationMock).toHaveBeenCalledTimes(1)
+    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
 
-    const call = executeChapterGenerationMock.mock.calls[0]
+    const call = runChapterGraphMock.mock.calls[0]
     const workingState = call?.[2]
-    const options = call?.[5]
 
     expect(workingState?.pendingIssues).toEqual(initialState.pendingIssues)
-    expect(options).toMatchObject({
-      enableStructuralBranching: true,
-    })
+    expect(workingState?.rewriteApproved).toBe(true)
   })
 })

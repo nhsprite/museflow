@@ -10,7 +10,7 @@ import {
   saveForeshadowAlerts,
 } from '../../storage/database/dao/timeline.js'
 import { getForeshadowAlerts } from '../state.js'
-import { saveStoryState, getStoryState } from '../../storage/database/dao/story-state.js'
+
 import { getCheckpointer } from '../checkpointer.js'
 import { agePendingTasks } from '../../utils/pending-tasks.js'
 import { mergeStoryState } from '../utils/story-state.js'
@@ -26,6 +26,14 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     throw new Error(
       `第 ${chapterIndex + 1} 章文件为空或不存在，无法标记为完成。请重试撰写。`
     )
+  }
+
+  const pendingErrors = state.pendingIssues.filter(i => i.severity === 'error')
+  if (pendingErrors.length > 0) {
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章存在 ${pendingErrors.length} 个未解决的严重问题，跳过 finalize，避免未验证内容进入 storyState。`
+    )
+    return {}
   }
 
   let updatedStoryState = state.storyState
@@ -70,9 +78,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
           summarySuccess = true
 
           if (processed.storyState) {
-            const existing = getStoryState(state.story.id)
-            updatedStoryState = mergeStoryState(existing, processed.storyState)
-            saveStoryState(state.story.id, updatedStoryState)
+            updatedStoryState = mergeStoryState(state.storyState, processed.storyState)
             logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`)
           }
           break
@@ -100,7 +106,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     })
     if (hasAgedTasks) {
       updatedStoryState = { ...updatedStoryState, pendingTasks: agedTasks }
-      saveStoryState(state.story.id, updatedStoryState)
     }
   }
 

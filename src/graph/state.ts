@@ -123,6 +123,13 @@ export const GraphState = Annotation.Root({
   chapterTimeAnchor: Annotation<string | undefined>,
   autoFixAttempts: Annotation<number>,
   verifiedConstraints: Annotation<string[]>,
+
+  // chapter-writing loop state (managed by LangGraph)
+  rewriteAttempts: Annotation<number>,
+  previousIssues: Annotation<Issue[]>,
+  previousRawErrorCount: Annotation<number>,
+  forceStructuralRewrite: Annotation<boolean>,
+  routingDecision: Annotation<string | undefined>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

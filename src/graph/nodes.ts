@@ -36,7 +36,6 @@ export {
   detect_hallucination,
   detect_consistency,
   verify_outline_compliance,
-  request_rewrite,
 } from './nodes/validation.js'
 
 export {
@@ -50,3 +49,15 @@ export {
   filterSupersededFactsFromTimeline,
   filterSupersededEventsFromTimeline,
 } from './utils/story-state.js'
+
+export {
+  prepare_chapter,
+  decide_strategy,
+  route_strategy,
+  convergence_check,
+  route_convergence,
+  route_after_validation,
+  request_rewrite,
+  route_after_finalize,
+  route_mode,
+} from './nodes/chapter-orchestration.js'

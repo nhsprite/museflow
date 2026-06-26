@@ -6,9 +6,8 @@ import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
-import { createEmptyStoryState, getStoryState, isEmptyStoryState } from '../storage/database/dao/story-state.js'
+import { createEmptyStoryState, isEmptyStoryState, saveStoryState } from '../storage/database/dao/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
-import { executeChapterGeneration } from './chapter-generation.js'
 import { getWorld } from '../storage/database/dao/world.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
@@ -79,6 +78,11 @@ export async function runStory(input: {
     chapterTimeAnchor: undefined,
     autoFixAttempts: 0,
     verifiedConstraints: [],
+    rewriteAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    forceStructuralRewrite: false,
+    routingDecision: undefined,
   }
 
   const config: RunnableConfig = {
@@ -89,17 +93,12 @@ export async function runStory(input: {
   return result as ReducedGraphState
 }
 
-export async function continueStory(
+export async function runChapterGraph(
   storyId: string,
-  userResponse?: boolean,
-  currentChapterIndex?: number
+  outputDir: string,
+  workingState: ReducedGraphState
 ): Promise<ReducedGraphState> {
   const graph = getGraph()
-  const outputDir = getOutputDirFromStoryId(storyId)
-  if (!outputDir) {
-    throw new Error(`Story ${storyId} not found`)
-  }
-
   const checkpointer = getCheckpointer()
   await checkpointer.clearPendingWrites(outputDir)
 
@@ -107,6 +106,33 @@ export async function continueStory(
     configurable: { thread_id: storyId, outputDir },
   }
 
+  try {
+    const result = await graph.invoke(workingState, config)
+    if (result.storyState && !isEmptyStoryState(result.storyState)) {
+      saveStoryState(storyId, result.storyState)
+    }
+    return result as ReducedGraphState
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    logger.error(`[MuseFlow] 章节写作流程出错: ${errorMessage}`)
+    throw err
+  }
+}
+
+export async function continueStory(
+  storyId: string,
+  userResponse?: boolean,
+  currentChapterIndex?: number
+): Promise<ReducedGraphState> {
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    throw new Error(`Story ${storyId} not found`)
+  }
+
+  const graph = getGraph()
+  const config: RunnableConfig = {
+    configurable: { thread_id: storyId, outputDir },
+  }
   const snapshot = await graph.getState(config)
   const checkpointState = snapshot.values as ReducedGraphState
 
@@ -114,11 +140,7 @@ export async function continueStory(
   const isRewrite = currentChapterIndex !== undefined
 
   const checkpointHasState = checkpointState.storyState && !isEmptyStoryState(checkpointState.storyState)
-  const persistedStoryState = getStoryState(storyId)
-
-  if (persistedStoryState && !isEmptyStoryState(persistedStoryState)) {
-    checkpointState.storyState = persistedStoryState
-  } else if (!checkpointHasState && isRewrite && targetIndex > 1) {
+  if (!checkpointHasState && isRewrite && targetIndex > 1) {
     logger.info('[MuseFlow] Checkpoint storyState 为空，且为重写模式。清理可能过时的角色位置信息...')
     const emptyState = createEmptyStoryState()
     checkpointState.storyState = {
@@ -147,14 +169,14 @@ export async function continueStory(
     rewriteRequested: false,
     isWriting: true,
     writeOneChapterOnly: true,
+    rewriteAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    forceStructuralRewrite: false,
+    routingDecision: undefined,
   }
 
-  return executeChapterGeneration(storyId, outputDir, workingState, graph, checkpointer, {
-    breakOnErrors: false,
-    maxRewriteAttempts: 3,
-    enableRevalidation: true,
-    enableStructuralBranching: true,
-  })
+  return runChapterGraph(storyId, outputDir, workingState)
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {
@@ -180,11 +202,7 @@ export async function getState(storyId: string): Promise<ReducedGraphState | nul
       graphState.world = persistedWorld
     }
 
-    const persistedStoryState = getStoryState(storyId)
-    if (persistedStoryState && !isEmptyStoryState(persistedStoryState)) {
-      graphState.storyState = persistedStoryState
-    }
-
+    // storyState 以 checkpoint 为唯一真相源，不再从 meta.json 覆盖
     // 清除过时的 draft_failure 问题，避免阻断后续生成
     graphState.pendingIssues = graphState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
 

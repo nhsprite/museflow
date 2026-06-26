@@ -83,6 +83,51 @@ describe('mergeStoryState', () => {
     const merged = mergeStoryState(existing, delta)
     expect(merged.canonicalFacts).toHaveLength(1)
   })
+
+  it('normalizes item aliases with same value to the most descriptive key', () => {
+    const existing: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: { '血封信笺': '妆台抽屉' },
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: { '血封信笺（柏字残画）': '妆台抽屉' },
+    }
+
+    const merged = mergeStoryState(existing, delta)
+    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺（柏字残画）'])
+    expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('妆台抽屉')
+  })
+
+  it('overrides old alias when canonical item location changes', () => {
+    const existing: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: { '血封信笺': '妆台抽屉' },
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: { '血封信笺（柏字残画）': '火盆灰烬' },
+    }
+
+    const merged = mergeStoryState(existing, delta)
+    expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('火盆灰烬')
+    expect(merged.keyItemsLocation['血封信笺']).toBeUndefined()
+  })
+
+  it('normalizes item state aliases', () => {
+    const existing: StoryState = {
+      ...emptyState(),
+      keyItemsState: { '血封信笺': '完整' },
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      keyItemsState: { '一封血封信笺': '焚毁' },
+    }
+
+    const merged = mergeStoryState(existing, delta)
+    expect(Object.keys(merged.keyItemsState)).toEqual(['一封血封信笺'])
+    expect(merged.keyItemsState['一封血封信笺']).toBe('焚毁')
+  })
 })
 
 describe('filterSupersededFactsFromTimeline', () => {

@@ -276,10 +276,3 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
   return {}
 }
 
-export async function request_rewrite(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const issues = state.pendingIssues.filter(i => i.severity === 'error')
-  if (issues.length > 0) {
-    logger.error('[MuseFlow] 严重问题需要重写:', issues)
-  }
-  return { rewriteRequested: true }
-}

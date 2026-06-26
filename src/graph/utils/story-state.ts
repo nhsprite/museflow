@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
-import type { StoryState, CanonicalFact, PendingTask } from '../../types/story-state.js'
+import type { StoryState, CanonicalFact, PendingTask, ReconciliationReport } from '../../types/story-state.js'
 import {
   filterCharacterFactsByImportance,
   filterKeyEventsByImportance,
@@ -8,6 +8,10 @@ import {
   getCompressionLevel,
 } from '../../utils/summary-compressor.js'
 import { createEmptyStoryState } from '../../storage/database/dao/story-state.js'
+import { canonicalizeItemName } from '../../utils/story-state-validation.js'
+import { detectAllConflicts } from '../../core/state-reconciliation/conflict-detector.js'
+import { classifyConflicts } from '../../core/state-reconciliation/conflict-classifier.js'
+import { autoReconcile, applyCanonicalFactsToState, generateOverrideSuggestions } from '../../core/state-reconciliation/auto-reconciler.js'
 
 function formatCharacterFactEntries(
   entries: Array<{ character: string; facts: string[] }>,
@@ -117,6 +121,32 @@ export function buildKeyEventsTimeline(
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
 }
 
+function mergeItemRecord(
+  base: Record<string, string>,
+  delta: Record<string, string>
+): Record<string, string> {
+  const merged = { ...base }
+  for (const [item, value] of Object.entries(delta)) {
+    if (!value || value === '同前') continue
+    const canonical = canonicalizeItemName(item)
+    const existingAlias = Object.keys(merged).find(
+      key => canonicalizeItemName(key) === canonical
+    )
+    if (existingAlias && existingAlias !== item) {
+      if (merged[existingAlias] === value) {
+        if (item.length > existingAlias.length) {
+          delete merged[existingAlias]
+          merged[item] = value
+        }
+        continue
+      }
+      delete merged[existingAlias]
+    }
+    merged[item] = value
+  }
+  return merged
+}
+
 export function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryState {
   const base = existing ?? createEmptyStoryState()
 
@@ -134,19 +164,8 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     }
   }
 
-  const mergedItems = { ...base.keyItemsLocation }
-  for (const [item, loc] of Object.entries(delta.keyItemsLocation)) {
-    if (loc && loc !== '同前') {
-      mergedItems[item] = loc
-    }
-  }
-
-  const mergedItemStates = { ...base.keyItemsState }
-  for (const [item, state] of Object.entries(delta.keyItemsState ?? {})) {
-    if (state && state !== '同前') {
-      mergedItemStates[item] = state
-    }
-  }
+  const mergedItems = mergeItemRecord(base.keyItemsLocation, delta.keyItemsLocation)
+  const mergedItemStates = mergeItemRecord(base.keyItemsState, delta.keyItemsState ?? {})
 
   const mergedPlots = [...base.activePlots]
   for (const plot of delta.activePlots) {
@@ -204,6 +223,19 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     result.canonicalFacts = mergedCanonicalFacts
   }
 
+  const mergedOverrides = [...(base.overrides ?? [])]
+  for (const override of delta.overrides ?? []) {
+    const isDuplicate = mergedOverrides.some(
+      existing => existing.id === override.id
+    )
+    if (!isDuplicate) {
+      mergedOverrides.push(override)
+    }
+  }
+  if (mergedOverrides.length > 0) {
+    result.overrides = mergedOverrides
+  }
+
   return result
 }
 
@@ -254,7 +286,7 @@ function buildCharacterAliasMap(characters: Array<{ name: string }>): Map<string
   return aliasToFull
 }
 
-export function reconcileStoryState(
+function reconcileStoryStateContent(
   storyState: StoryState,
   outline: string,
   characters: Array<{ name: string }> = []
@@ -271,6 +303,7 @@ export function reconcileStoryState(
     storyTime: storyState.storyTime,
     ...(storyState.supersededFacts ? { supersededFacts: storyState.supersededFacts } : {}),
     ...(storyState.canonicalFacts ? { canonicalFacts: storyState.canonicalFacts } : {}),
+    ...(storyState.overrides ? { overrides: storyState.overrides } : {}),
   }
 
   const aliasMap = buildCharacterAliasMap(characters)
@@ -307,6 +340,32 @@ export function reconcileStoryState(
   }
 
   return reconciled
+}
+
+export function reconcileStoryState(
+  storyState: StoryState,
+  outline: string,
+  characters: Array<{ name: string }> = [],
+  chapterIndex = 0
+): ReconciliationReport {
+  const rawConflicts = detectAllConflicts(storyState, outline, chapterIndex)
+  const classified = classifyConflicts(rawConflicts)
+  const { state: preReconciled, autoResolved, remaining, canonicalFacts, supersededFacts } =
+    autoReconcile(classified, storyState, chapterIndex)
+
+  const reconciled = reconcileStoryStateContent(preReconciled, outline, characters)
+  reconciled.canonicalFacts = canonicalFacts
+  reconciled.supersededFacts = supersededFacts
+
+  const authoritativeState = applyCanonicalFactsToState(reconciled)
+
+  return {
+    state: authoritativeState,
+    conflicts: remaining,
+    autoResolved,
+    requiresAuthorDecision: remaining.filter(c => c.severity === 'blocking'),
+    suggestedOverrides: generateOverrideSuggestions(remaining, chapterIndex),
+  }
 }
 
 export function formatStoryState(storyState: StoryState): string {

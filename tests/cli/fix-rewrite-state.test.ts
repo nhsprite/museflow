@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const updateStateMock = vi.fn().mockResolvedValue(undefined)
 const getStateMock = vi.fn()
+const runChapterGraphMock = vi.fn().mockResolvedValue({
+  story: { id: 'story-1', outputDir: '/tmp/test-story' },
+  currentChapterIndex: 5,
+  totalChapters: 10,
+  pendingIssues: [],
+  rewriteRequested: false,
+})
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
 const saveChapterCheckpointMock = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpointsMock = vi.fn().mockResolvedValue(undefined)
@@ -25,69 +31,43 @@ vi.mock('../../src/storage/database/dao/story.js', () => ({
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
 
+const mockGraphState = {
+  story: { id: 'story-1', outputDir: '/tmp/test-story' },
+  idea: 'test',
+  genre: 'default',
+  totalChapters: 10,
+  world: null,
+  characters: [],
+  outline: Array.from({ length: 10 }, (_, i) => ({
+    number: i + 1,
+    title: `Chapter ${i + 1}`,
+    description: `Description ${i + 1}`,
+  })),
+  chapters: Array(10).fill(null),
+  currentChapterIndex: 5,
+  foreshadowStack: [],
+  chapterSummaries: [],
+  pendingIssues: [],
+  rewriteApproved: false,
+  rewriteRequested: false,
+  isWriting: true,
+  writeOneChapterOnly: true,
+  lastPrintedChapter: 0,
+  lastTimelineSnapshot: null,
+}
+
 vi.mock('../../src/core/runner.js', () => ({
   getState: getStateMock,
   getOutputDirFromStoryId: vi.fn().mockReturnValue('/tmp/test-story'),
   getGraph: vi.fn().mockReturnValue({
-    getState: vi.fn().mockResolvedValue({
-      values: {
-        story: { id: 'story-1', outputDir: '/tmp/test-story' },
-        idea: 'test',
-        genre: 'default',
-        totalChapters: 10,
-        world: null,
-        characters: [],
-        outline: Array.from({ length: 10 }, (_, i) => ({
-          number: i + 1,
-          title: `Chapter ${i + 1}`,
-          description: `Description ${i + 1}`,
-        })),
-        chapters: Array(10).fill(null),
-        currentChapterIndex: 5,
-        foreshadowStack: [],
-        chapterSummaries: [],
-        pendingIssues: [],
-        rewriteApproved: false,
-        rewriteRequested: false,
-        isWriting: true,
-        writeOneChapterOnly: true,
-        lastPrintedChapter: 0,
-        lastTimelineSnapshot: null,
-      },
-    }),
-    updateState: updateStateMock,
+    getState: vi.fn().mockResolvedValue({ values: mockGraphState }),
   }),
+  runChapterGraph: runChapterGraphMock,
 }))
 
 vi.mock('../../src/graph/novel.graph.js', () => ({
   buildNovelGraph: vi.fn().mockReturnValue({
-    getState: vi.fn().mockResolvedValue({
-      values: {
-        story: { id: 'story-1', outputDir: '/tmp/test-story' },
-        idea: 'test',
-        genre: 'default',
-        totalChapters: 10,
-        world: null,
-        characters: [],
-        outline: Array.from({ length: 10 }, (_, i) => ({
-          number: i + 1,
-          title: `Chapter ${i + 1}`,
-          description: `Description ${i + 1}`,
-        })),
-        chapters: Array(10).fill(null),
-        currentChapterIndex: 5,
-        foreshadowStack: [],
-        chapterSummaries: [],
-        pendingIssues: [],
-        rewriteApproved: false,
-        rewriteRequested: false,
-        isWriting: true,
-        writeOneChapterOnly: true,
-        lastPrintedChapter: 0,
-        lastTimelineSnapshot: null,
-      },
-    }),
-    updateState: updateStateMock,
+    getState: vi.fn().mockResolvedValue({ values: mockGraphState }),
   }),
 }))
 
@@ -218,11 +198,27 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
 describe('rewrite command state consistency', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    updateStateMock.mockResolvedValue(undefined)
+    runChapterGraphMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      currentChapterIndex: 5,
+      totalChapters: 10,
+      pendingIssues: [],
+      rewriteRequested: false,
+    })
   })
 
-  it('should save currentChapterIndex when rewrite fails with errors', async () => {
+  it('should invoke chapter graph when rewrite fails with errors', async () => {
     const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+
+    const pendingIssues = [
+      {
+        id: 'issue-1',
+        type: 'quality',
+        severity: 'error',
+        description: 'test error',
+        location: 'test location',
+      },
+    ]
 
     getStateMock.mockResolvedValue({
       story: { id: 'story-1', outputDir: '/tmp/test-story' },
@@ -240,15 +236,7 @@ describe('rewrite command state consistency', () => {
       currentChapterIndex: 5,
       foreshadowStack: [],
       chapterSummaries: [],
-      pendingIssues: [
-        {
-          id: 'issue-1',
-          type: 'quality',
-          severity: 'error',
-          description: 'test error',
-          location: 'test location',
-        },
-      ],
+      pendingIssues,
       rewriteApproved: false,
       rewriteRequested: true,
       isWriting: true,
@@ -257,15 +245,20 @@ describe('rewrite command state consistency', () => {
       lastTimelineSnapshot: null,
     })
 
-    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
-
-    const updateStateCalls = updateStateMock.mock.calls
-    expect(updateStateCalls.length).toBeGreaterThan(0)
-
-    const lastCall = updateStateCalls[updateStateCalls.length - 1]
-    expect(lastCall[1]).toMatchObject({
+    runChapterGraphMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      currentChapterIndex: 5,
+      totalChapters: 10,
+      pendingIssues,
       rewriteRequested: true,
     })
+
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
+
+    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
+    const invokedState = runChapterGraphMock.mock.calls[0]![2] as Record<string, unknown>
+    expect(invokedState.rewriteApproved).toBe(true)
+    expect(invokedState.currentChapterIndex).toBe(5)
   })
 
   it('should target current chapter when rewriteRequested is true (errors in current chapter)', async () => {

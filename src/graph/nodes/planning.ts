@@ -1,13 +1,12 @@
-import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import { getChapterPlannerAgent } from '../agent-factory.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
-import { buildCharacterFactTimeline, formatStoryState, reconcileStoryState } from '../utils/story-state.js'
+import { buildCharacterFactTimeline, formatStoryState } from '../utils/story-state.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { buildOutlineBridgeHint, buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
-import { sanitizeStoryState } from '../../utils/story-state-validation.js'
+import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 
 async function runPlanChapter(
   state: ReducedGraphState,
@@ -20,23 +19,9 @@ async function runPlanChapter(
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
-  const outlineItem = state.outline[chapterIndex]
-  let reconciledState = state.storyState && outlineItem?.description
-    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
-    : state.storyState
+  const { reconciledState, stateConflicts } = prepareStoryStateForChapter(state, chapterIndex)
 
-  if (reconciledState) {
-    const report = sanitizeStoryState(reconciledState, state.characters, { preserveExisting: true, existingStoryState: state.storyState })
-    if (report.itemLocationConflicts.length > 0) {
-      logger.warn('[MuseFlow] 规划前检测到物品位置冲突：')
-      for (const conflict of report.itemLocationConflicts) {
-        logger.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
-      }
-    }
-    reconciledState = report.state
-  }
-
-  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+  const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
 
@@ -56,6 +41,7 @@ async function runPlanChapter(
     timelineSnapshot,
     foreshadowStack: state.foreshadowStack,
     ...(storyStateStr ? { storyState: storyStateStr } : {}),
+    ...(stateConflicts ? { stateConflicts } : {}),
     ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
     ...(state.verifiedConstraints && state.verifiedConstraints.length > 0 ? { verifiedConstraints: state.verifiedConstraints } : {}),
   }

@@ -54,6 +54,11 @@ describe('chapter-level checkpoints', () => {
         }),
         'utf-8'
       )
+      await writeFile(
+        join(checkpointDir, 'latest.json'),
+        JSON.stringify({ checkpointId: 'checkpoint_1', ts: new Date().toISOString() }),
+        'utf-8'
+      )
 
       await saver.saveChapterCheckpoint(testOutputDir, 1)
 

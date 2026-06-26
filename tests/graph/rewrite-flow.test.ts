@@ -302,11 +302,10 @@ describe('finalize_chapter ages pending tasks', () => {
       },
     } as never)
 
-    const savedState = saveStoryState.mock.calls[0]![1] as { pendingTasks: Array<{ id: string; status: string }> }
-    expect(savedState.pendingTasks.find(t => t.id === 't1')!.status).toBe('expired')
-    expect(savedState.pendingTasks.find(t => t.id === 't2')!.status).toBe('pending')
-    expect(savedState.pendingTasks.find(t => t.id === 't3')!.status).toBe('done')
-    expect(result.storyState).toBeDefined()
+    const updatedTasks = (result.storyState!.pendingTasks as Array<{ id: string; status: string }>)
+    expect(updatedTasks.find(t => t.id === 't1')!.status).toBe('expired')
+    expect(updatedTasks.find(t => t.id === 't2')!.status).toBe('pending')
+    expect(updatedTasks.find(t => t.id === 't3')!.status).toBe('done')
   })
 })
 

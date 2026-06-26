@@ -6,7 +6,7 @@ import { buildCharacterWhitelist } from './character-whitelist.js'
 const UNIT_WORDS = ['一张', '一封', '一份', '一个', '一本', '一柄', '一把', '一卷', '那块', '那封', '那张', '那件']
 const DESCRIPTIVE_SUFFIXES = /[（(][^）)]*[）)]/g
 
-function canonicalizeItemName(name: string): string {
+export function canonicalizeItemName(name: string): string {
   let normalized = name
     .replace(DESCRIPTIVE_SUFFIXES, '')
     .replace(/^[《〈「『【（\u005b\u007b\s]+|[》〉」』】）\u005d\u007d\s]+$/g, '')
@@ -119,14 +119,6 @@ export function sanitizeStoryState(
     keyItemsLocation[best.item] = best.location
   }
 
-  const ambiguous = detectAmbiguousItemNames({ ...state, keyItemsLocation })
-  if (ambiguous.length > 0) {
-    logger.warn('[MuseFlow] 检测到同一位置下多个歧义物品名：')
-    for (const { location, items } of ambiguous) {
-      logger.warn(`  位置 "${location}" 对应物品：${items.join(' / ')}`)
-    }
-  }
-
   const officialNames = Array.from(whitelist.officialNames).concat(
     Array.from(whitelist.aliases.keys()),
   )
@@ -153,6 +145,14 @@ export function sanitizeStoryState(
     return true
   })
 
+  const ambiguousItems = detectAmbiguousItemNames(state)
+  if (ambiguousItems.length > 0) {
+    logger.warn('[MuseFlow] 检测到同一位置下多个歧义物品名：')
+    for (const { location, items } of ambiguousItems) {
+      logger.warn(`  位置 "${location}" 对应物品：${items.join(' / ')}`)
+    }
+  }
+
   return {
     state: {
       ...state,
@@ -165,5 +165,28 @@ export function sanitizeStoryState(
     removedCharacters,
     itemLocationConflicts,
     removedFacts,
+    ambiguousItems,
   }
+}
+
+export function formatStateConflicts(report: SanitizationReport): string {
+  const lines: string[] = []
+
+  if (report.itemLocationConflicts.length > 0) {
+    lines.push('【物品位置冲突 - 必须在正文中解决】')
+    for (const conflict of report.itemLocationConflicts) {
+      lines.push(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
+    }
+    lines.push('  要求：同一物品在同一时刻只能出现在一个位置。本章必须明确其唯一位置，并通过角色动作完成转移。')
+  }
+
+  if (report.ambiguousItems.length > 0) {
+    lines.push('【歧义物品名 - 必须使用统一名称】')
+    for (const { location, items } of report.ambiguousItems) {
+      lines.push(`  - 位置 "${location}" 对应：${items.join(' / ')}`)
+    }
+    lines.push('  要求：以上名称可能指向同一物品，本章统一使用最简洁、最标准的名称，避免同一物品多个别名并存。')
+  }
+
+  return lines.join('\n')
 }

@@ -7,11 +7,11 @@ import { generateId } from '../../utils/id.js'
 import { writeChapterContent, readChapterContent } from '../../storage/filesystem/writer.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
-import { buildCharacterFactTimeline, buildKeyEventsTimeline, formatStoryState, reconcileStoryState } from '../utils/story-state.js'
+import { buildCharacterFactTimeline, buildKeyEventsTimeline, formatStoryState } from '../utils/story-state.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent } from './planning.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
-import { sanitizeStoryState } from '../../utils/story-state-validation.js'
+import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent()
@@ -30,22 +30,8 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
-  let reconciledState = state.storyState && outlineItem?.description
-    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
-    : state.storyState
-
-  if (reconciledState) {
-    const report = sanitizeStoryState(reconciledState, state.characters, { preserveExisting: true, existingStoryState: state.storyState })
-    if (report.itemLocationConflicts.length > 0) {
-      logger.warn('[MuseFlow] 起草前检测到物品位置冲突：')
-      for (const conflict of report.itemLocationConflicts) {
-        logger.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
-      }
-    }
-    reconciledState = report.state
-  }
-
-  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+  const { reconciledState, stateConflicts } = prepareStoryStateForChapter(state, chapterIndex)
+  const storyStateStr = formatStoryState(reconciledState)
 
   const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor
 
@@ -68,6 +54,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     keyEventsTimeline,
     foreshadowStack: state.foreshadowStack,
     storyState: storyStateStr,
+    ...(stateConflicts ? { stateConflicts } : {}),
     chapterTimeAnchor,
     ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),

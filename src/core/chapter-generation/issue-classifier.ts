@@ -35,6 +35,18 @@ export function isItemLocationConflictIssue(issue: Issue): boolean {
   return /位置矛盾|位置冲突|物品位置|storyState|关键物品.*矛盾/.test(text)
 }
 
+export function isOutlineStateConflictIssue(issue: Issue): boolean {
+  if (issue.type !== 'consistency' && issue.type !== 'hallucination') return false
+  const text = `${issue.description} ${issue.location ?? ''}`
+  return /大纲.*矛盾|大纲.*冲突|与大纲.*不符|outline.*conflict|canonical.*fact|权威事实|superseded|已被覆盖|大纲.*状态/.test(text)
+}
+
+export function isCrossChapterKnowledgeIssue(issue: Issue): boolean {
+  if (issue.type !== 'consistency') return false
+  const text = `${issue.description} ${issue.location ?? ''}`
+  return /角色.*前章.*知道|本章.*像第一次|前章.*已知|知识矛盾|已知信息|认知.*矛盾/.test(text)
+}
+
 export function isTaskConsistencyIssue(issue: Issue): boolean {
   return issue.type === 'consistency' &&
     PENDING_TASK_MARKERS.some(pattern => pattern.test(issue.description))

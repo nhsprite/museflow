@@ -7,7 +7,8 @@ import { generateId } from '../../utils/id.js'
 import { readChapterContent, writeChapterContent } from '../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { validateFixedChapterContent } from '../../utils/chapter-content-validation.js'
-import { buildCharacterFactTimeline, formatStoryState, reconcileStoryState } from '../utils/story-state.js'
+import { buildCharacterFactTimeline, formatStoryState } from '../utils/story-state.js'
+import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
@@ -147,10 +148,8 @@ async function runSentenceFix(
   const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
   const context = contextParagraphs.join('\n\n')
 
-  const reconciledState = state.storyState && outlineItem?.description
-    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
-    : state.storyState
-  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+  const { reconciledState } = prepareStoryStateForChapter(state, chapterIndex)
+  const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
 
@@ -271,10 +270,8 @@ async function runParagraphFix(
   const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
   const context = contextParagraphs.join('\n\n')
 
-  const reconciledState = state.storyState && outlineItem?.description
-    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
-    : state.storyState
-  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+  const { reconciledState } = prepareStoryStateForChapter(state, chapterIndex)
+  const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
 
@@ -351,10 +348,8 @@ export async function runLegacyFix(
   timelineSnapshot: string,
   nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
-  const reconciledState = state.storyState && outlineItem?.description
-    ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
-    : state.storyState
-  const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
+  const { reconciledState } = prepareStoryStateForChapter(state, chapterIndex)
+  const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
 

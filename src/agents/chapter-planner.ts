@@ -65,6 +65,10 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
       ? `【上一章结束时间】\n${state.storyState}\n\n请根据本章大纲，判断本章叙事应该从何时开始。如果本章只是正常继续推进，chapterTimeAnchor 等于上一章结束时间；如果本章需要回溯、倒叙或跨越一段时间，请在 chapterTimeAnchor 中明确说明。`
       : '（暂无上一章状态）'
 
+    const stateConflictsSection = state.stateConflicts
+      ? `<state_conflicts>\n<mandatory>【必须处理的上游状态冲突】</mandatory>\n${state.stateConflicts}\n\n<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作（递、接、取、放、交、藏等）完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>\n</state_conflicts>`
+      : ''
+
     const characterOmissionIssues = state.issues?.filter(i =>
       i.type === 'consistency' &&
       (i.description.includes('角色遗漏') || i.description.includes('未提及') || i.description.includes('未出现'))
@@ -131,6 +135,8 @@ ${previousSummary}
 </previous_summary>
 
 ${storyStateSection}
+
+${stateConflictsSection}
 </context>
 
 <instruction>

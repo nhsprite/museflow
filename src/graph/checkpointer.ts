@@ -55,6 +55,53 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     return join(this.getCheckpointDir(outputDir), 'pending_writes.json')
   }
 
+  private getLatestPointerPath(outputDir: string): string {
+    return join(this.getCheckpointDir(outputDir), 'latest.json')
+  }
+
+  private readLatestCheckpointId(outputDir: string): { checkpointId: string; ts: string } | undefined {
+    const path = this.getLatestPointerPath(outputDir)
+    if (!existsSync(path)) return undefined
+    try {
+      const raw = readFileSync(path, 'utf-8')
+      const data = JSON.parse(raw) as { checkpointId?: string; ts?: string }
+      if (data.checkpointId) {
+        return { checkpointId: data.checkpointId, ts: data.ts ?? '' }
+      }
+    } catch {
+      // ignore corrupted pointer
+    }
+    return undefined
+  }
+
+  private writeLatestCheckpointId(outputDir: string, checkpointId: string, ts: string): void {
+    const path = this.getLatestPointerPath(outputDir)
+    this.writeFileAtomic(path, JSON.stringify({ checkpointId, ts }, null, 2))
+  }
+
+  private loadCheckpointRecord(outputDir: string, checkpointId: string): CheckpointRecord | undefined {
+    const path = this.getCheckpointPath(outputDir, checkpointId)
+    if (!existsSync(path)) return undefined
+    try {
+      const raw = readFileSync(path, 'utf-8')
+      return JSON.parse(raw) as CheckpointRecord
+    } catch {
+      return undefined
+    }
+  }
+
+  private recordToTuple(record: CheckpointRecord, threadId: string, outputDir: string): CheckpointTuple {
+    const tuple: CheckpointTuple = {
+      config: { configurable: { thread_id: threadId, checkpoint_id: record.checkpointId, outputDir } },
+      checkpoint: record.checkpoint,
+      metadata: record.metadata,
+    }
+    if (record.parentCheckpointId) {
+      tuple.parentConfig = { configurable: { thread_id: threadId, checkpoint_id: record.parentCheckpointId, outputDir } }
+    }
+    return tuple
+  }
+
   private loadCheckpointRecords(outputDir: string): Map<string, CheckpointRecord> {
     const dir = this.getCheckpointDir(outputDir)
     const records = new Map<string, CheckpointRecord>()
@@ -95,42 +142,35 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     const checkpointId = config.configurable?.checkpoint_id as string | undefined
     if (!threadId || !outputDir) return undefined
 
-    const records = this.loadCheckpointRecords(outputDir)
-    if (records.size === 0) return undefined
-
-    // If checkpoint_id is provided, look up that specific checkpoint
+    // If checkpoint_id is provided, look up that specific checkpoint directly
     if (checkpointId) {
-      const record = records.get(checkpointId)
+      const record = this.loadCheckpointRecord(outputDir, checkpointId)
       if (record) {
-        const tuple: CheckpointTuple = {
-          config: { configurable: { thread_id: threadId, checkpoint_id: record.checkpointId, outputDir } },
-          checkpoint: record.checkpoint,
-          metadata: record.metadata,
-        }
-        if (record.parentCheckpointId) {
-          tuple.parentConfig = { configurable: { thread_id: threadId, checkpoint_id: record.parentCheckpointId } }
-        }
-        return tuple
+        return this.recordToTuple(record, threadId, outputDir)
       }
       // checkpointId provided but not found - fall through to latest
     }
 
-    // No checkpoint_id or not found - return latest checkpoint
+    // Fast path: read the latest pointer file and load the referenced checkpoint directly
+    const pointer = this.readLatestCheckpointId(outputDir)
+    if (pointer) {
+      const record = this.loadCheckpointRecord(outputDir, pointer.checkpointId)
+      if (record) {
+        return this.recordToTuple(record, threadId, outputDir)
+      }
+    }
+
+    // Fallback: scan the checkpoint directory (backward compatibility / corrupted pointer)
+    const records = this.loadCheckpointRecords(outputDir)
+    if (records.size === 0) return undefined
+
     const sorted = [...records.values()].sort((a, b) =>
       a.checkpoint.ts.localeCompare(b.checkpoint.ts)
     )
     const latest = sorted[sorted.length - 1]
     if (!latest) return undefined
 
-    const tuple: CheckpointTuple = {
-      config: { configurable: { thread_id: threadId, checkpoint_id: latest.checkpointId } },
-      checkpoint: latest.checkpoint,
-      metadata: latest.metadata,
-    }
-    if (latest.parentCheckpointId) {
-      tuple.parentConfig = { configurable: { thread_id: threadId, checkpoint_id: latest.parentCheckpointId } }
-    }
-    return tuple
+    return this.recordToTuple(latest, threadId, outputDir)
   }
 
   async *list(
@@ -192,6 +232,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
 
     const path = join(dir, `${checkpoint.id}.json`)
     this.writeFileAtomic(path, JSON.stringify(record, null, 2))
+    this.writeLatestCheckpointId(outputDir, checkpoint.id as string, checkpoint.ts)
     logger.debug(`Checkpoint saved: ${outputDir}/${checkpoint.id}`)
 
     this.savePendingWrites(outputDir, [])
@@ -233,37 +274,19 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     const dir = this.getCheckpointDir(outputDir)
     if (!existsSync(dir)) return
 
+    const pointer = this.readLatestCheckpointId(outputDir)
+    if (!pointer) return
+
+    const record = this.loadCheckpointRecord(outputDir, pointer.checkpointId)
+    if (!record) return
+
     const chapterCheckpointId = `chapter_${chapterNumber}_done`
-
-    const files = readdirSync(dir).filter(
-      f => f.endsWith('.json') && f !== 'pending_writes.json' && !f.startsWith('chapter_')
-    )
-    if (files.length === 0) return
-
-    const records = files
-      .map(f => {
-        try {
-          const raw = readFileSync(join(dir, f), 'utf-8')
-          const rec = JSON.parse(raw) as CheckpointRecord
-          return { file: f, ts: rec.checkpoint.ts }
-        } catch {
-          return null
-        }
-      })
-      .filter((r): r is { file: string; ts: string } => r !== null)
-      .sort((a, b) => b.ts.localeCompare(a.ts))
-
-    if (records.length === 0) return
-
-    const sourcePath = join(dir, records[0]!.file)
-    const targetPath = join(dir, `${chapterCheckpointId}.json`)
-
-    const raw = readFileSync(sourcePath, 'utf-8')
-    const record = JSON.parse(raw) as CheckpointRecord
     record.checkpointId = chapterCheckpointId
     record.parentCheckpointId = record.parentCheckpointId ?? null
 
+    const targetPath = join(dir, `${chapterCheckpointId}.json`)
     this.writeFileAtomic(targetPath, JSON.stringify(record, null, 2))
+    this.writeLatestCheckpointId(outputDir, chapterCheckpointId, record.checkpoint.ts)
     logger.debug(`Chapter-level checkpoint saved: ${targetPath}`)
   }
 
