@@ -2,15 +2,13 @@ import { logger } from '../utils/logger.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import { plan_chapter_with_override } from '../graph/nodes.js'
 import {
-  buildOutlineBridgeHint,
   buildNextChapterBoundaryHint,
-  findRedundantOutlineEvents,
   reconcileOutlineWithState,
 } from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 import { readChapterContent } from '../storage/filesystem/writer.js'
-import { getChapterPlanningConfig, validateChapterPlanBudget } from '../utils/chapter-planning.js'
+import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation } from '../utils/chapter-planning.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -80,31 +78,28 @@ export async function expandOutlineForChapter(
 
   const planningConfig = getChapterPlanningConfig(state.genre)
 
-  const bridgeHint = buildOutlineBridgeHint(state.outline, chapterIndex)
   const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
-  const redundant = findRedundantOutlineEvents(state.outline, chapterIndex)
   const pendingTasksHint = reconcileOutlineWithState(state, chapterIndex, planningConfig)
-  const boundaryHints = [bridgeHint, nextBoundaryHint].filter(h => h.length > 0)
+  const boundaryHints = [nextBoundaryHint].filter(h => h.length > 0)
 
   const formattedOutline = [
     `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`,
     outlineItem.description,
     nextItem ? `\n【后续章节边界】第${nextItem.number}章"${nextItem.title}"大纲：${nextItem.description}` : '',
-    bridgeHint,
     nextBoundaryHint,
     pendingTasksHint,
-    redundant.length > 0
-      ? `\n【修正要求】检测到相邻章节事件重叠：第${redundant[0]!.previousChapter}章已包含"${redundant[0]!.previousKeyword}"，本章不得重复处理该事件，请将其改写为余波、后续发展或新转折。`
-      : '',
   ].filter(part => part.length > 0).join('\n')
 
   let chapterPlan: ChapterPlan | null = state.chapterPlan
+  let currentConstraints = [...(state.verifiedConstraints ?? [])]
+
+  // 首次生成规划
   if (!chapterPlan) {
     const planState: ReducedGraphState = {
       ...state,
       currentChapterIndex: chapterIndex,
+      verifiedConstraints: currentConstraints,
     }
-
     const planResult = await plan_chapter_with_override(planState, formattedOutline)
     chapterPlan = planResult.chapterPlan ?? null
   }
@@ -113,30 +108,36 @@ export async function expandOutlineForChapter(
     throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
   }
 
-  let focusValidation = validateChapterPlanBudget(chapterPlan, planningConfig)
-  if (!focusValidation.valid) {
-    logger.warn(`[MuseFlow] ${focusValidation.reason}`)
+  // 强制预算循环：校验核心事件占比和非核心段落字数，不合格则带约束重试
+  let budgetValidation = validateChapterPlanBudget(chapterPlan, planningConfig)
+  let budgetAttempts = 0
+  const maxBudgetAttempts = 3
+
+  while (!budgetValidation.valid && budgetAttempts < maxBudgetAttempts) {
+    logger.warn(`[MuseFlow] ${budgetValidation.reason}`)
     logger.warn('[MuseFlow] 章节规划重心偏离大纲核心事件，将使用约束重新规划...')
 
-    const focusConstraint = `【规划重心修正】前次规划 ${focusValidation.reason}。本次规划必须：1) 核心事件字数占比 ≥ ${Math.round(planningConfig.coreEventRatioTarget * 100)}%；2) 与核心事件无关的前章遗留差事必须选择 postponed 或一句话带过，不得展开为独立场景；3) 任何非核心段落字数不得超过 ${planningConfig.maxNonCoreSectionWordCount} 字。`
+    const focusConstraint = buildFocusConstraint(budgetValidation, planningConfig)
+    currentConstraints = [...currentConstraints, focusConstraint]
+
     const planState: ReducedGraphState = {
       ...state,
       currentChapterIndex: chapterIndex,
-      verifiedConstraints: [...(state.verifiedConstraints ?? []), focusConstraint],
+      verifiedConstraints: currentConstraints,
     }
-
     const planResult = await plan_chapter_with_override(planState, formattedOutline)
     const replanned = planResult.chapterPlan ?? null
-    if (replanned) {
-      const replanValidation = validateChapterPlanBudget(replanned, planningConfig)
-      if (replanValidation.valid) {
-        logger.info('[MuseFlow] 重新规划后重心已修正')
-        chapterPlan = replanned
-      } else {
-        logger.warn(`[MuseFlow] 重新规划后仍存在重心问题：${replanValidation.reason}，将使用最新规划继续`)
-        chapterPlan = replanned
-      }
-    }
+    if (!replanned) break
+
+    chapterPlan = replanned
+    budgetValidation = validateChapterPlanBudget(chapterPlan, planningConfig)
+    budgetAttempts++
+  }
+
+  if (!budgetValidation.valid) {
+    logger.warn(`[MuseFlow] 经过 ${maxBudgetAttempts} 次预算修正仍存在重心问题：${budgetValidation.reason}，将使用最新规划继续`)
+  } else if (budgetAttempts > 0) {
+    logger.info('[MuseFlow] 重新规划后重心已修正')
   }
 
   if (chapterIndex > 0) {
@@ -195,4 +196,20 @@ export async function expandOutlineForChapter(
     chapterPlan,
     boundaryHints,
   }
+}
+
+function buildFocusConstraint(
+  validation: ChapterPlanBudgetValidation,
+  config: ReturnType<typeof getChapterPlanningConfig>
+): string {
+  const targetPercent = Math.round(config.coreEventRatioTarget * 100)
+  const parts: string[] = [
+    `【规划重心修正】前次规划 ${validation.reason}。`,
+    `本次规划必须：`,
+    `1) 核心事件场景字数之和 ≥ 总字数 × ${targetPercent}%，这是硬性要求；`,
+    `2) 与核心事件无关的前章遗留差事必须选择 postponed 或 background（一句话带过），不得在 sections 中分配独立场景；`,
+    `3) 任何非核心段落字数不得超过 ${config.maxNonCoreSectionWordCount} 字；`,
+    `4) 核心事件场景不得少于 2 个，总场景数不得超过 6 个。`,
+  ]
+  return parts.join('')
 }

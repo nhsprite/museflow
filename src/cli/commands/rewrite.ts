@@ -268,6 +268,7 @@ async function rewriteChapter(
     writeOneChapterOnly: true,
     chapterPlan: targetChapterIndex !== undefined ? null : checkpointState.chapterPlan,
     rewriteAttempts: 0,
+    errorRewriteAttempts: 0,
     previousIssues: [],
     previousRawErrorCount: 0,
     forceStructuralRewrite: false,

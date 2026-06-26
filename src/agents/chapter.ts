@@ -206,8 +206,11 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
           : ''
 
     const factVerificationSection = this.buildFactVerificationSection(state)
+    const absoluteConstraintsSection = this.buildAbsoluteConstraints(state)
 
-    const userContent = `<task>
+    const userContent = `${absoluteConstraintsSection}
+
+<task>
 <instruction>请撰写第 ${displayChapterNumber} 章的正文内容。</instruction>
 
 <main_character>
@@ -405,6 +408,20 @@ ${FORESHADOW_DISCIPLINE_RULES}
     }
 
     return buildCanonicalFactsSection(facts)
+  }
+
+  private buildAbsoluteConstraints(state: Required<AgentState>): string {
+    const constraints: string[] = [
+      '本章不得提前完成或彻底收尾下一章大纲中的核心行动。',
+      '本章不得重复呈现上一章已标记为"已完成/已揭示"的核心事件。',
+      '本章对关键物品状态的改变必须与上一章结束时的权威事实一致，并有明确的角色动作支撑。',
+    ]
+
+    if (state.nextChapterBoundary) {
+      constraints.push('本章必须遵守【后续章节边界提示】：只能推进到合适的中转状态，不得替代下一章完成其核心行动或最终揭示。')
+    }
+
+    return `<absolute_constraints>\n<mandatory>【绝对约束 - 优先级最高】</mandatory>\n${constraints.map(c => `- ${c}`).join('\n')}\n</absolute_constraints>`
   }
 
   private extractChapterOutline(outline: string, chapterIndex: number): { title: string; description: string } {

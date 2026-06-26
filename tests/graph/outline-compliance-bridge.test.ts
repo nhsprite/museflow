@@ -40,7 +40,7 @@ describe('verify_outline_compliance bridge hint', () => {
     vi.clearAllMocks()
   })
 
-  it('includes outline bridge hint when current outline has terminal resolution', async () => {
+  it('includes generic next-chapter boundary hint in outline', async () => {
     const { verify_outline_compliance } = await import('../../src/graph/nodes.ts')
 
     await verify_outline_compliance({
@@ -69,8 +69,8 @@ describe('verify_outline_compliance bridge hint', () => {
       storyState: null,
     } as never)
 
-    expect(capturedOutline).toContain('【跨章节大纲桥接】')
-    expect(capturedOutline).toContain('被制服、受控或暂时收押')
+    expect(capturedOutline).toContain('【后续章节边界提示】')
+    expect(capturedOutline).toContain('不要把后续章节的核心事件提前解决')
   })
 
   it('does not include bridge hint when no terminal resolution is needed', async () => {

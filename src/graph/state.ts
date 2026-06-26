@@ -126,6 +126,7 @@ export const GraphState = Annotation.Root({
 
   // chapter-writing loop state (managed by LangGraph)
   rewriteAttempts: Annotation<number>,
+  errorRewriteAttempts: Annotation<number>,
   previousIssues: Annotation<Issue[]>,
   previousRawErrorCount: Annotation<number>,
   forceStructuralRewrite: Annotation<boolean>,

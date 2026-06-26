@@ -14,7 +14,6 @@ import {
 import { getChapterPlanningConfig } from '../../utils/chapter-planning.js'
 
 const MAX_REWRITE_ATTEMPTS = 3
-const MAX_VALIDATION_RETRIES = 3
 const INTERPRETIVE_ISSUE_PATTERN = /提前.*(?:剧透|揭示)|看破.*说破|感应.*反应|选择性感应|表达方式|性格驱动/
 
 function isInterpretiveIssue(issue: ReducedGraphState['pendingIssues'][number]): boolean {
@@ -81,6 +80,7 @@ export async function prepare_chapter(
 ): Promise<Partial<ReducedGraphState>> {
   return {
     rewriteAttempts: 0,
+    errorRewriteAttempts: 0,
     previousIssues: [],
     previousRawErrorCount: 0,
     forceStructuralRewrite: false,
@@ -95,6 +95,9 @@ export async function decide_strategy(
   const chapterIndex = state.currentChapterIndex
   const nextAttempts = (state.rewriteAttempts || 0) + 1
   const errorIssues = state.pendingIssues.filter(i => i.severity === 'error')
+  const nextErrorAttempts = errorIssues.length > 0
+    ? (state.errorRewriteAttempts || 0) + 1
+    : (state.errorRewriteAttempts || 0)
 
   // 没有错误且未请求重写时，直接进入 finalize
   if (errorIssues.length === 0 && !state.rewriteApproved) {
@@ -161,6 +164,7 @@ export async function decide_strategy(
 
   return {
     rewriteAttempts: nextAttempts,
+    errorRewriteAttempts: nextErrorAttempts,
     chapterPlan,
     pendingIssues,
     routingDecision,
@@ -194,7 +198,7 @@ export function convergence_check(
   const onlyInterpretiveErrors =
     currentRemainingErrors.length > 0 && currentRemainingErrors.every(isInterpretiveIssue)
 
-  if ((state.rewriteAttempts || 0) > 1) {
+  if ((state.errorRewriteAttempts || 0) > 1) {
     if (currentRawErrorCount > state.previousRawErrorCount) {
       logger.info(
         `[MuseFlow] 检测到问题数量上升（${state.previousRawErrorCount} -> ${currentRawErrorCount}），修复未收敛，下次尝试将强制完整重写...`
@@ -205,7 +209,7 @@ export function convergence_check(
         `[MuseFlow] 检测到问题高度重复（相似度 ${Math.round(similarity * 100)}%），修复未收敛，将保留全部问题反馈并强制完整重写...`
       )
       forceStructuralRewrite = true
-    } else if (onlyInterpretiveErrors && (state.rewriteAttempts || 0) >= MAX_REWRITE_ATTEMPTS - 1) {
+    } else if (onlyInterpretiveErrors && (state.errorRewriteAttempts || 0) >= MAX_REWRITE_ATTEMPTS - 1) {
       logger.info(
         `[MuseFlow] 剩余 ${currentRemainingErrors.length} 个问题均为解释性一致性问题，自动降级为 warning 以完成本章...`
       )
@@ -246,7 +250,7 @@ export function convergence_check(
 
   if (remainingErrors.length === 0) {
     routingDecision = 'finalize_chapter'
-  } else if ((state.rewriteAttempts || 0) >= MAX_REWRITE_ATTEMPTS) {
+  } else if ((state.errorRewriteAttempts || 0) >= MAX_REWRITE_ATTEMPTS) {
     routingDecision = 'request_rewrite'
     rewriteApproved = false
   } else {
@@ -275,11 +279,8 @@ export function route_after_validation(state: ReducedGraphState): string {
   if (errors.length > 0) {
     return 'convergence_check'
   }
-  const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
-  const autoFixAttempts = state.autoFixAttempts || 0
-  if (autoFixAttempts > 0 && autoFixAttempts < MAX_VALIDATION_RETRIES && warnings.length > 0) {
-    return 'validate_chapter'
-  }
+  // warning 不再触发自动修复循环，避免质量/风格类 warning 消耗重写次数。
+  // 如需处理 warning，可通过独立的 polish 流程或手动 rewrite。
   return 'finalize_chapter'
 }
 

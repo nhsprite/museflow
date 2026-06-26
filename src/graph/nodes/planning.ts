@@ -4,7 +4,7 @@ import { getChapterPlannerAgent } from '../agent-factory.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import { buildCharacterFactTimeline, formatStoryState } from '../utils/story-state.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
-import { buildOutlineBridgeHint, buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
+import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 
@@ -75,9 +75,8 @@ export function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIn
   if (!outlineItem) {
     return state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n')
   }
-  const bridgeHint = buildOutlineBridgeHint(state.outline, chapterIndex)
   const nextChapterBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
-  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, bridgeHint, nextChapterBoundaryHint, ...extraHints]
+  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, nextChapterBoundaryHint, ...extraHints]
     .filter(part => part.trim().length > 0)
     .join('\n')
 }

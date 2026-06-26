@@ -59,7 +59,7 @@ describe('expandOutlineForChapter', () => {
     expect(formattedOutline).toContain('第3章"脱困"')
   })
 
-  it('warns when current arc already resolves next arc event', async () => {
+  it('includes generic next-chapter boundary hint', async () => {
     const conflictState: ReducedGraphState = {
       ...baseState,
       outline: [
@@ -72,7 +72,7 @@ describe('expandOutlineForChapter', () => {
     await expandOutlineForChapter(conflictState, 1)
 
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![1] as string
-    expect(formattedOutline).toContain('不得重复处理')
+    expect(formattedOutline).toContain('不要把后续章节的核心事件提前解决')
   })
 
   it('returns boundary hints', async () => {
