@@ -99,12 +99,18 @@ export async function decide_strategy(
     ? (state.errorRewriteAttempts || 0) + 1
     : (state.errorRewriteAttempts || 0)
 
-  // 没有错误且未请求重写时，直接进入 finalize
+  // 没有错误且未请求重写时，若当前章节文件已存在则直接进入 finalize；否则需要起草
   if (errorIssues.length === 0 && !state.rewriteApproved) {
-    return {
-      rewriteAttempts: nextAttempts,
-      routingDecision: 'finalize_chapter',
-      autoFixAttempts: 0,
+    const existingContent = await readChapterContent(
+      state.story.outputDir,
+      chapterIndex + 1
+    )
+    if (existingContent !== null && existingContent.trim().length > 0) {
+      return {
+        rewriteAttempts: nextAttempts,
+        routingDecision: 'finalize_chapter',
+        autoFixAttempts: 0,
+      }
     }
   }
 

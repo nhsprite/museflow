@@ -261,4 +261,33 @@ describe('runner revalidation', () => {
     const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
     expect(invokedState.currentChapterIndex).toBe(2)
   })
+
+  it('treats supplied currentChapterIndex as rewrite mode by default', async () => {
+    const { continueStory } = await import('../../src/core/runner.js')
+
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({ currentChapterIndex: 2, pendingIssues: [] })
+    )
+
+    await continueStory('story-1', undefined, 2)
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
+    // rewrite mode sanitizes empty storyState for targetIndex > 1
+    expect(invokedState.storyState).not.toBeNull()
+  })
+
+  it('allows targeting a chapter without rewrite mode via options', async () => {
+    const { continueStory } = await import('../../src/core/runner.js')
+
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({ currentChapterIndex: 2, pendingIssues: [] })
+    )
+
+    await continueStory('story-1', undefined, 2, { isRewrite: false })
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
+    expect(invokedState.currentChapterIndex).toBe(2)
+    // non-rewrite mode leaves storyState untouched
+    expect(invokedState.storyState).toBeNull()
+  })
 })

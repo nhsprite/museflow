@@ -123,7 +123,8 @@ export async function runChapterGraph(
 export async function continueStory(
   storyId: string,
   userResponse?: boolean,
-  currentChapterIndex?: number
+  currentChapterIndex?: number,
+  options: { isRewrite?: boolean } = {}
 ): Promise<ReducedGraphState> {
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
@@ -138,7 +139,7 @@ export async function continueStory(
   const checkpointState = snapshot.values as ReducedGraphState
 
   const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
-  const isRewrite = currentChapterIndex !== undefined
+  const isRewrite = options.isRewrite ?? currentChapterIndex !== undefined
 
   const checkpointHasState = checkpointState.storyState && !isEmptyStoryState(checkpointState.storyState)
   if (!checkpointHasState && isRewrite && targetIndex > 1) {
