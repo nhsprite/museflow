@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   expandOutlineForChapter,
   validateChapterTimeAnchor,
-  validateChapterPlanFocus,
 } from '../../src/core/outline-expander.js'
+import { validateChapterPlanBudget } from '../../src/utils/chapter-planning.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
 
@@ -130,7 +130,18 @@ describe('validateChapterTimeAnchor', () => {
   })
 })
 
-describe('validateChapterPlanFocus', () => {
+const defaultPlanningConfig = {
+  coreEventRatioMin: 0.3,
+  coreEventRatioTarget: 0.5,
+  maxNonCoreSectionWordCount: 800,
+  minCoreSectionWordCount: 1000,
+  maxBackgroundTaskWordCount: 50,
+  maxExecutedTaskRatio: 0.1,
+  maxBridgeSceneRatio: 0.3,
+  maxVerifiedConstraints: 20,
+}
+
+describe('validateChapterPlanBudget', () => {
   it('passes when core sections account for at least 50% of word count', () => {
     const plan: ChapterPlan = {
       sections: [
@@ -143,7 +154,7 @@ describe('validateChapterPlanFocus', () => {
       ],
     }
 
-    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(true)
   })
@@ -160,7 +171,7 @@ describe('validateChapterPlanFocus', () => {
       ],
     }
 
-    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(false)
     expect(result.reason).toContain('50%')
@@ -178,7 +189,7 @@ describe('validateChapterPlanFocus', () => {
       ],
     }
 
-    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(false)
     expect(result.reason).toContain('800')
@@ -191,7 +202,7 @@ describe('validateChapterPlanFocus', () => {
       outlineCheck: [],
     }
 
-    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(true)
   })

@@ -1,5 +1,11 @@
 import type { PendingTask } from '../types/story-state.js'
 
+const COMMON_TIME_WORDS = new Set([
+  '明日', '后日', '今日', '昨日', '今晨', '今晚', '明早', '明晚',
+  '卯时', '辰时', '巳时', '午时', '未时', '申时', '酉时', '戌时', '亥时',
+  '期限', '截止', '到期', '之前', '之后', '限期',
+])
+
 export function agePendingTasks(
   tasks: PendingTask[],
   currentDisplayChapter: number
@@ -20,7 +26,10 @@ function extractChineseKeywords(text: string): string[] {
     const maxLen = Math.min(sequence.length, 4)
     for (let len = 2; len <= maxLen; len++) {
       for (let i = 0; i <= sequence.length - len; i++) {
-        keywords.add(sequence.slice(i, i + len))
+        const word = sequence.slice(i, i + len)
+        if (!COMMON_TIME_WORDS.has(word)) {
+          keywords.add(word)
+        }
       }
     }
   }
@@ -29,7 +38,13 @@ function extractChineseKeywords(text: string): string[] {
 
 function hasKeywordOverlap(taskDescription: string, outlineDescription: string): boolean {
   const taskWords = new Set(extractChineseKeywords(taskDescription))
-  return extractChineseKeywords(outlineDescription).some(word => taskWords.has(word))
+  if (taskWords.size === 0) return false
+  const outlineWords = extractChineseKeywords(outlineDescription)
+  let overlapCount = 0
+  for (const word of outlineWords) {
+    if (taskWords.has(word)) overlapCount++
+  }
+  return overlapCount >= 2
 }
 
 export function filterRelevantPendingTasks(
@@ -47,3 +62,4 @@ export function filterRelevantPendingTasks(
     return false
   })
 }
+

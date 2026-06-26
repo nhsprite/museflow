@@ -1,6 +1,7 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES } from './prompt-fragments.js'
+import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 
 export interface ChapterPlan {
   sections: Array<{
@@ -41,6 +42,10 @@ export class ChapterPlannerAgent extends BaseAgent {
     const chapterIndex = state.chapterIndex ?? 0
     const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
     const outline = state.outline || ''
+    const genreSkill = this.getGenre(state.genre)
+    const planningConfig = getChapterPlanningConfig(state.genre)
+    const chapterWordCountMin = genreSkill?.chapterWordCountMin ?? 4000
+    const chapterWordCountMax = genreSkill?.chapterWordCountMax ?? 7000
 
     const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
       ? `<official_characters>
@@ -149,8 +154,8 @@ ${storyStateSection}
      - 大纲中的时间要求（如"三日后""次日"）必须在时间线中体现
   5. 【核心事件聚焦 - 必须执行，优先级最高】
      - 本章必须有一个明确的核心事件（通常是大纲标题或第一句描述的事件）
-     - 核心事件必须占据本章总字数的 50% 以上，这是硬性要求，任何情况下不得突破
-     - 非核心事件（如前章遗留差事、过渡衔接、背景交代）必须压缩为简短的过渡段落，单段字数不得超过 800 字，不得发展成独立大场景
+     - 核心事件必须占据本章总字数的 {CORE_EVENT_RATIO_TARGET_PERCENT}% 以上，这是硬性要求，任何情况下不得突破
+     - 非核心事件（如前章遗留差事、过渡衔接、背景交代）必须压缩为简短的过渡段落，单段字数不得超过 {MAX_NON_CORE_SECTION_WORD_COUNT} 字，不得发展成独立大场景
      - 如果本章大纲只要求"接触""试探""登场""递帖"等初步事件，不得在本章把该事件完整解决或过度展开
      - 规划的总场景数不得超过 6 个，核心事件场景不得少于 2 个
      - 【硬性优先级】当核心事件与前章遗留差事、Deadline 到期事项发生冲突时，永远优先保证核心事件篇幅；不得以"差事到期"为由把无关差事扩展成大场景
@@ -162,7 +167,8 @@ ${storyStateSection}
      - 对于 background，必须在 reason 中说明为什么与核心事件无关，且 sections 中不得为其分配独立场景
      - 禁止无任何说明地忽略前章差事
      - 【重要】不得为了让所有 pending task 都在本章 executed 而挤占核心事件篇幅。如果 pending task 过多或与核心事件无关，优先选择 postponed 或 background 并说明原因
-     - 【硬性规则】如果某条 pending task 与第 ${displayChapterNumber} 章大纲核心事件无关，即使其 deadline 落在本章，也必须选择 postponed 或 background（或在一句话内 background 处理），不得在 sections 中为其分配独立场景或超过 10% 的总字数
+     - 【绝对规则】判断一条 pending task 能否标记为 executed 的唯一标准：该 task 的描述与第 ${displayChapterNumber} 章大纲描述存在明确的关键词重叠。没有关键词重叠的 task，即使 deadline 落在本章，resolution 也只能是 postponed 或 background，禁止 executed。
+     - 【绝对规则】如果某条 pending task 与第 ${displayChapterNumber} 章大纲核心事件无关，即使其 deadline 落在本章，也必须选择 postponed 或 background（或在一句话内 background 处理），总字数不得超过 {MAX_BACKGROUND_TASK_WORD_COUNT} 字，不得在 sections 中为其分配独立场景或超过 {MAX_EXECUTED_TASK_RATIO_PERCENT}% 的总字数
      - 【硬性规则】如果 taskResolutions 中某条差事为 postponed 或 background，sections 中不得出现专门执行该差事的场景；只允许在过渡句中提及
   7. 【角色完整性检查 - 必须执行】
    - 扫描人物设定和前几章摘要，识别哪些角色已加入团队/组织或已成为常驻角色
@@ -196,9 +202,9 @@ ${storyStateSection}
        2) 若官方角色均不适合，只能使用不露名、不进入 storyState 的临时龙套；
        3) 禁止为该动作 invent 新的有名角色或亲属关系。
   9. 【字数控制 - 必须执行】
-     - 所有 section 的 wordCount 之和应控制在 4000-7000 字之间
-     - 单个非核心过渡 section 的 wordCount 不得超过 800 字
-     - 核心事件 section 的 wordCount 不得低于 1000 字
+     - 所有 section 的 wordCount 之和应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间
+     - 单个非核心过渡 section 的 wordCount 不得超过 {MAX_NON_CORE_SECTION_WORD_COUNT} 字
+     - 核心事件 section 的 wordCount 不得低于 {MIN_CORE_SECTION_WORD_COUNT} 字
 
 ${OFFICIAL_CHARACTER_RULES}
 ${FORESHADOW_DISCIPLINE_RULES}
@@ -255,12 +261,24 @@ ${FORESHADOW_DISCIPLINE_RULES}
 - 如果上下文提供了 <pending_tasks>，必须在 taskResolutions 中逐条回应，禁止遗漏
 - 【核心事件聚焦】禁止用前章遗留差事或过渡场景挤占核心事件篇幅；核心事件必须获得最大权重
 - 【Deadline 冲突处理】与核心事件无关的 pending task，即使 deadline 落在本章，也必须选择 postponed 或一句话带过，不得展开为独立场景
-- 【字数控制】总字数不得超过 7000 字，非核心段落不得超过 800 字
+- 【字数控制】总字数不得超过 {CHAPTER_WORD_COUNT_MAX} 字，非核心段落不得超过 {MAX_NON_CORE_SECTION_WORD_COUNT} 字
 </important>`
+
+    const templatedContent = this.fillTemplate(userContent, {
+      CORE_EVENT_RATIO_TARGET_PERCENT: Math.round(planningConfig.coreEventRatioTarget * 100),
+      CORE_EVENT_RATIO_MIN_PERCENT: Math.round(planningConfig.coreEventRatioMin * 100),
+      MAX_NON_CORE_SECTION_WORD_COUNT: planningConfig.maxNonCoreSectionWordCount,
+      MIN_CORE_SECTION_WORD_COUNT: planningConfig.minCoreSectionWordCount,
+      MAX_BACKGROUND_TASK_WORD_COUNT: planningConfig.maxBackgroundTaskWordCount,
+      MAX_EXECUTED_TASK_RATIO_PERCENT: Math.round(planningConfig.maxExecutedTaskRatio * 100),
+      MAX_BRIDGE_SCENE_RATIO_PERCENT: Math.round(planningConfig.maxBridgeSceneRatio * 100),
+      CHAPTER_WORD_COUNT_MIN: chapterWordCountMin,
+      CHAPTER_WORD_COUNT_MAX: chapterWordCountMax,
+    })
 
     return [
       this.systemMessage('你是一位严谨的小说结构规划师。你的任务是在写作前生成详细的章节规划，确保每个大纲要求都被精确落实。你对时间线和情节顺序的准确性有零容忍态度。'),
-      this.userMessage(userContent),
+      this.userMessage(templatedContent),
     ]
   }
 

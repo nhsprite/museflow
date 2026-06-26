@@ -366,7 +366,7 @@ export function formatStoryState(storyState: StoryState): string {
     lines.push('【待办差事】')
     for (const task of storyState.pendingTasks) {
       const due = task.dueTime ?? (task.dueChapter ? `第${task.dueChapter}章前` : '未指定')
-      const statusLabel = task.status === 'done' ? '已完成' : task.status === 'postponed' ? '已推迟' : task.status === 'superseded' ? '已覆盖' : '待执行'
+      const statusLabel = task.status === 'done' ? '已完成' : task.status === 'postponed' ? '已推迟' : task.status === 'superseded' ? '已覆盖' : task.status === 'expired' ? '已到期' : '待执行'
       lines.push(`  - [${statusLabel}] ${task.assignee}：${task.description}（截止：${due}）`)
     }
   }

@@ -301,7 +301,6 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
   }
 
   processOutput(output: AgentOutput): Issue[] {
-    console.log('[MuseFlow] DEBUG: ConsistencyAgent.processOutput called')
     if (!output.success || !output.data) return []
     const data = output.data as {
       is_consistent?: boolean
@@ -320,7 +319,6 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
     }
 
     const rawIssues = data.issues || []
-    console.log(`[MuseFlow] DEBUG: Raw consistency issues count: ${rawIssues.length}`)
 
     const withdrawnPattern = /撤回|不成立|不构成严重矛盾|此条不成立|重新审视后|不构成.*矛盾|不视为/i
     const activeIssues = rawIssues.filter(issue => {

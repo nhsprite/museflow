@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   reconcileOutlineWithState,
 } from '../../src/utils/outline-boundary.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../src/utils/chapter-planning.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { PendingTask } from '../../src/types/story-state.js'
 
@@ -72,7 +73,7 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6)
+    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
 
     expect(hint).toBe('')
   })
@@ -96,7 +97,7 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6)
+    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
 
     expect(hint).toContain('陈裕堂登门拜访苏半城')
     expect(hint).not.toContain('回话亲王')
@@ -114,7 +115,7 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6)
+    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
 
     expect(hint).toContain('第三日清晨出发')
   })
@@ -131,7 +132,7 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6)
+    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
 
     expect(hint).toContain('回话亲王')
     expect(hint).toContain('postponed')

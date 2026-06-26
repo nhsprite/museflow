@@ -2,8 +2,55 @@ import type { Character } from '../types/character.js'
 import type { SanitizationReport, StoryState } from '../types/story-state.js'
 import { buildCharacterWhitelist } from './character-whitelist.js'
 
+const UNIT_WORDS = ['一张', '一封', '一份', '一个', '一本', '一柄', '一把', '一卷', '那块', '那封', '那张', '那件']
+const DESCRIPTIVE_SUFFIXES = /[（(][^）)]*[）)]/g
+
 function canonicalizeItemName(name: string): string {
-  return name.replace(/^[《〈「『【（\(\[\{]+|[》〉」』】）\)\]\}]+$/g, '').trim()
+  let normalized = name
+    .replace(DESCRIPTIVE_SUFFIXES, '')
+    .replace(/^[《〈「『【（\(\[\{\s]+|[》〉」』】）\)\]\}\s]+$/g, '')
+    .trim()
+
+  for (const unit of UNIT_WORDS) {
+    if (normalized.startsWith(unit)) {
+      normalized = normalized.slice(unit.length).trim()
+    }
+  }
+
+  return normalized.replace(/\s+/g, ' ').trim()
+}
+
+function chooseBestItemKey(group: Array<{ item: string; location: string }>): { item: string; location: string } {
+  const distinctLocations = Array.from(new Set(group.map(g => g.location)))
+  const candidates = distinctLocations.map(loc => {
+    const entriesWithLoc = group.filter(g => g.location === loc)
+    const lastEntry = entriesWithLoc[entriesWithLoc.length - 1] ?? group[group.length - 1]!
+    const mostDescriptive = entriesWithLoc.reduce((a, b) => (a.item.length >= b.item.length ? a : b), lastEntry)
+    return { item: mostDescriptive.item, location: loc }
+  })
+
+  return candidates[candidates.length - 1] ?? group[group.length - 1]!
+}
+
+export function detectAmbiguousItemNames(state: StoryState): Array<{ location: string; items: string[] }> {
+  const byLocation = new Map<string, string[]>()
+  for (const [item, location] of Object.entries(state.keyItemsLocation)) {
+    const list = byLocation.get(location) ?? []
+    if (!list.includes(item)) {
+      list.push(item)
+    }
+    byLocation.set(location, list)
+  }
+
+  const ambiguous: Array<{ location: string; items: string[] }> = []
+  for (const [location, items] of byLocation) {
+    if (items.length <= 1) continue
+    const canonicalSet = new Set(items.map(canonicalizeItemName))
+    if (canonicalSet.size < items.length) {
+      ambiguous.push({ location, items })
+    }
+  }
+  return ambiguous
 }
 
 export function sanitizeStoryState(
@@ -48,6 +95,7 @@ export function sanitizeStoryState(
   >()
   for (const [item, location] of Object.entries(state.keyItemsLocation)) {
     const canonical = canonicalizeItemName(item)
+    if (canonical.length === 0) continue
     const group = itemGroups.get(canonical) ?? []
     group.push({ item, location })
     itemGroups.set(canonical, group)
@@ -58,16 +106,24 @@ export function sanitizeStoryState(
 
   for (const group of itemGroups.values()) {
     const distinctLocations = Array.from(new Set(group.map((g) => g.location)))
-    const shortest = group.reduce((a, b) => (a.item.length <= b.item.length ? a : b))
-
     if (distinctLocations.length > 1) {
+      const representative = group.reduce((a, b) => (a.item.length >= b.item.length ? a : b), group[0]!)
       itemLocationConflicts.push({
-        item: shortest.item,
+        item: representative.item,
         locations: distinctLocations,
       })
     }
 
-    keyItemsLocation[shortest.item] = shortest.location
+    const best = chooseBestItemKey(group)
+    keyItemsLocation[best.item] = best.location
+  }
+
+  const ambiguous = detectAmbiguousItemNames({ ...state, keyItemsLocation })
+  if (ambiguous.length > 0) {
+    console.warn('[MuseFlow] 检测到同一位置下多个歧义物品名：')
+    for (const { location, items } of ambiguous) {
+      console.warn(`  位置 "${location}" 对应物品：${items.join(' / ')}`)
+    }
   }
 
   const officialNames = Array.from(whitelist.officialNames).concat(

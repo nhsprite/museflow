@@ -2,6 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 
 export class OutlineComplianceAgent extends BaseAgent {
   constructor() {
@@ -13,8 +14,9 @@ export class OutlineComplianceAgent extends BaseAgent {
     const displayNum = toDisplayChapterNumber(chapterIndex)
 
     const outlineItem = state.outline || ''
+    const planningConfig = getChapterPlanningConfig(state.genre)
 
-    const userContent = `<instruction>
+    const userContent = this.fillTemplate(`<instruction>
   请检查以下章节是否严格遵循了大纲要求。
   你是一位故事结构审核员。你的职责是确保章节**核心事件**与大纲一致，同时允许作者在概括性描述上进行合理的细节演绎。不要对大纲中的概括性措辞（如"四人"、"暗藏杀机"、"埋下伏笔"）做过度字面化解读。
 </instruction>
@@ -54,6 +56,7 @@ export class OutlineComplianceAgent extends BaseAgent {
     <step>是否有与大纲核心事件相矛盾的额外情节？</step>
     <step>额外情节是否严重冲淡核心事件的叙事重心？</step>
     <step>是否遗漏了大纲要求的核心事件？</step>
+    <step>本章允许存在为解决前章 deadline 而设置的简短桥接/过渡场景，只要它们：① 不占据超过本章 {MAX_BRIDGE_SCENE_RATIO_PERCENT}% 篇幅；② 服务于核心事件的引入或后果承接；③ 不把后续章节的核心结果提前完成。此类桥接不应判为 outline_deviation。只有当桥接场景独立成章、篇幅过大或提前完成后续章节核心结果时，才判为偏离。</step>
   </check_item>
 
   <check_item id="5" name="人物行为检查">
@@ -91,7 +94,9 @@ export class OutlineComplianceAgent extends BaseAgent {
     ],
     "summary": "总体评估"
   }
-</output_format>`
+</output_format>`, {
+      MAX_BRIDGE_SCENE_RATIO_PERCENT: Math.round(planningConfig.maxBridgeSceneRatio * 100),
+    })
 
     return [
       this.systemMessage(`你是一位极其严格的故事结构审核员，负责确保每个章节都严格遵循既定的大纲。你对偏离大纲的行为保持零容忍态度。你必须逐条检查大纲中的每个情节点，绝不能遗漏任何要求。
@@ -154,12 +159,15 @@ export class OutlineComplianceAgent extends BaseAgent {
       }
     }
 
+    const BRIDGE_INDICATORS = /过渡|衔接|桥接|前章遗留|回话|理账|交代|铺垫|承上启下|收尾|余波/
+
     for (const dev of (data.deviations || [])) {
+      const isBridgeLike = dev.type === 'extra_event' && BRIDGE_INDICATORS.test(dev.description || '')
       const issueType = dev.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'
       const issue: Issue = {
         id: generateId(),
         type: issueType,
-        severity: (dev.severity as Issue['severity']) || 'warning',
+        severity: isBridgeLike ? 'warning' : ((dev.severity as Issue['severity']) || 'warning'),
         description: `[大纲偏离] ${dev.description || ''}`,
       }
       if (dev.suggestion) {

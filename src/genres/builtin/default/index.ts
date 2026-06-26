@@ -1,4 +1,5 @@
 import type { GenreSkill } from '../../../types/genre.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../../utils/chapter-planning.js'
 
 export function createDefaultSkill(): GenreSkill {
   return {
@@ -27,5 +28,6 @@ export function createDefaultSkill(): GenreSkill {
 严格生成 exactly {totalChapters} 个章节。`,
     chapterPromptSupplement: ``,
     tropes: [],
+    chapterPlanning: DEFAULT_CHAPTER_PLANNING_CONFIG,
   }
 }

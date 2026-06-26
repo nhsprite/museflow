@@ -14,6 +14,7 @@ import { getCheckpointer } from '../checkpointer.js'
 import { agePendingTasks } from '../../utils/pending-tasks.js'
 import { mergeStoryState } from '../utils/story-state.js'
 import { buildEffectiveCharactersList } from '../utils/characters.js'
+import { generateForeshadowConstraints } from '../../utils/foreshadow-constraints.js'
 
 export async function finalize_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
@@ -58,7 +59,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
             console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
             continue
           }
-          const processed = processSummaryOutput(summaryOutput, chapterIndex, state.characters, state.storyState)
+          const processed = processSummaryOutput(summaryOutput, chapterIndex, effectiveCharacters, state.storyState)
           if (!processed || !processed.summary) {
             console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
@@ -120,6 +121,11 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   const alerts = getForeshadowAlerts(state.foreshadowStack, chapterIndex + 1)
   saveForeshadowAlerts(state.story.id, alerts)
 
+  const newForeshadowConstraints = generateForeshadowConstraints(state.foreshadowStack, chapterIndex + 1)
+  const updatedVerifiedConstraints = newForeshadowConstraints.length > 0
+    ? [...(state.verifiedConstraints ?? []), ...newForeshadowConstraints]
+    : (state.verifiedConstraints ?? [])
+
   const nextIndex = state.currentChapterIndex + 1
 
   const checkpointer = getCheckpointer()
@@ -134,6 +140,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     currentChapterIndex: nextIndex,
     chapterSummaries: state.chapterSummaries,
     storyState: updatedStoryState,
+    verifiedConstraints: updatedVerifiedConstraints,
   }
 }
 

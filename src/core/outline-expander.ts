@@ -9,6 +9,7 @@ import {
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 import { readChapterContent } from '../storage/filesystem/writer.js'
+import { getChapterPlanningConfig, validateChapterPlanBudget } from '../utils/chapter-planning.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -65,58 +66,6 @@ export function validateChapterTimeAnchor(
   return { valid: true }
 }
 
-export function validateChapterPlanFocus(
-  chapterPlan: ChapterPlan,
-  outlineItem: { title: string; description: string }
-): { valid: boolean; reason?: string } {
-  const sections = chapterPlan.sections
-  if (!sections || sections.length === 0) {
-    return { valid: true }
-  }
-
-  const coreSectionTitles = new Set(
-    (chapterPlan.outlineCheck ?? [])
-      .filter(c => c.fulfilled && c.section)
-      .map(c => c.section!.trim())
-  )
-
-  let totalWordCount = 0
-  let coreWordCount = 0
-  let maxNonCoreWordCount = 0
-
-  for (const section of sections) {
-    const wordCount = section.wordCount ?? 0
-    totalWordCount += wordCount
-    const isCore = coreSectionTitles.has(section.title?.trim() ?? '')
-    if (isCore) {
-      coreWordCount += wordCount
-    } else {
-      maxNonCoreWordCount = Math.max(maxNonCoreWordCount, wordCount)
-    }
-  }
-
-  if (totalWordCount === 0) {
-    return { valid: true }
-  }
-
-  const coreRatio = coreWordCount / totalWordCount
-  const reasons: string[] = []
-
-  if (coreRatio < 0.5) {
-    reasons.push(`核心事件字数占比约 ${Math.round(coreRatio * 100)}%，低于 50% 下限`)
-  }
-
-  if (maxNonCoreWordCount > 800) {
-    reasons.push(`最大非核心段落字数约 ${maxNonCoreWordCount}，超过 800 字上限`)
-  }
-
-  if (reasons.length > 0) {
-    return { valid: false, reason: reasons.join('；') }
-  }
-
-  return { valid: true }
-}
-
 export async function expandOutlineForChapter(
   state: ReducedGraphState,
   chapterIndex: number
@@ -128,10 +77,12 @@ export async function expandOutlineForChapter(
 
   const nextItem = state.outline[chapterIndex + 1]
 
+  const planningConfig = getChapterPlanningConfig(state.genre)
+
   const bridgeHint = buildOutlineBridgeHint(state.outline, chapterIndex)
   const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
   const redundant = findRedundantOutlineEvents(state.outline, chapterIndex)
-  const pendingTasksHint = reconcileOutlineWithState(state, chapterIndex)
+  const pendingTasksHint = reconcileOutlineWithState(state, chapterIndex, planningConfig)
   const boundaryHints = [bridgeHint, nextBoundaryHint].filter(h => h.length > 0)
 
   const formattedOutline = [
@@ -161,12 +112,12 @@ export async function expandOutlineForChapter(
     throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
   }
 
-  let focusValidation = validateChapterPlanFocus(chapterPlan, outlineItem)
+  let focusValidation = validateChapterPlanBudget(chapterPlan, planningConfig)
   if (!focusValidation.valid) {
     console.warn(`[MuseFlow] ${focusValidation.reason}`)
     console.warn('[MuseFlow] 章节规划重心偏离大纲核心事件，将使用约束重新规划...')
 
-    const focusConstraint = `【规划重心修正】前次规划 ${focusValidation.reason}。本次规划必须：1) 核心事件字数占比 ≥ 50%；2) 与核心事件无关的前章遗留差事必须选择 postponed 或一句话带过，不得展开为独立场景；3) 任何非核心段落字数不得超过 800 字。`
+    const focusConstraint = `【规划重心修正】前次规划 ${focusValidation.reason}。本次规划必须：1) 核心事件字数占比 ≥ ${Math.round(planningConfig.coreEventRatioTarget * 100)}%；2) 与核心事件无关的前章遗留差事必须选择 postponed 或一句话带过，不得展开为独立场景；3) 任何非核心段落字数不得超过 ${planningConfig.maxNonCoreSectionWordCount} 字。`
     const planState: ReducedGraphState = {
       ...state,
       currentChapterIndex: chapterIndex,
@@ -176,7 +127,7 @@ export async function expandOutlineForChapter(
     const planResult = await plan_chapter_with_override(planState, formattedOutline)
     const replanned = planResult.chapterPlan ?? null
     if (replanned) {
-      const replanValidation = validateChapterPlanFocus(replanned, outlineItem)
+      const replanValidation = validateChapterPlanBudget(replanned, planningConfig)
       if (replanValidation.valid) {
         console.log('[MuseFlow] 重新规划后重心已修正')
         chapterPlan = replanned

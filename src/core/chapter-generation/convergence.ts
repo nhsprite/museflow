@@ -2,8 +2,7 @@ import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
 import { deduplicateIssuesSemantically, issueFingerprint } from '../../utils/issue-deduplication.js'
 import { isInventedCharacterIssue, isItemLocationConflictIssue } from './issue-classifier.js'
-
-const MAX_NON_ERROR_ISSUES_PER_TYPE = 3
+import { getChapterPlanningConfig } from '../../utils/chapter-planning.js'
 
 const INTERPRETIVE_ISSUE_PATTERN = /提前.*(?:剧透|揭示)|看破.*说破|感应.*反应|选择性感应|表达方式|性格驱动/
 
@@ -18,7 +17,7 @@ export function calculateIssueSetSimilarity(prev: Issue[], curr: Issue[]): numbe
   return intersection / Math.max(prevSet.size, currSet.size)
 }
 
-function capNonErrorIssuesByType(issues: Issue[]): Issue[] {
+function capNonErrorIssuesByType(issues: Issue[], maxNonErrorIssuesPerType: number): Issue[] {
   const issueGroups = new Map<string, Issue[]>()
   for (const issue of issues) {
     const list = issueGroups.get(issue.type) ?? []
@@ -31,22 +30,34 @@ function capNonErrorIssuesByType(issues: Issue[]): Issue[] {
     const errors = issues.filter(i => i.severity === 'error')
     const nonErrors = issues.filter(i => i.severity !== 'error')
     dedupedIssues.push(...errors)
-    if (nonErrors.length <= MAX_NON_ERROR_ISSUES_PER_TYPE) {
+    if (nonErrors.length <= maxNonErrorIssuesPerType) {
       dedupedIssues.push(...nonErrors)
     } else {
-      console.warn(`[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留前 ${MAX_NON_ERROR_ISSUES_PER_TYPE} 个`)
-      dedupedIssues.push(...nonErrors.slice(0, MAX_NON_ERROR_ISSUES_PER_TYPE))
+      console.warn(`[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留前 ${maxNonErrorIssuesPerType} 个`)
+      dedupedIssues.push(...nonErrors.slice(0, maxNonErrorIssuesPerType))
     }
   }
   return dedupedIssues
 }
 
+function isInterpretiveIssue(issue: Issue): boolean {
+  return INTERPRETIVE_ISSUE_PATTERN.test(issue.description) || INTERPRETIVE_ISSUE_PATTERN.test(issue.location || '')
+}
+
 function updateVerifiedConstraints(
   previousIssues: Issue[],
   currentIssues: Issue[],
-  verifiedConstraints: string[]
+  verifiedConstraints: string[],
+  forceReset: boolean,
+  maxVerifiedConstraints: number
 ): { verifiedConstraints: string[]; resolvedCount: number } {
+  if (forceReset) {
+    return { verifiedConstraints: [], resolvedCount: 0 }
+  }
+
   const resolvedIssues = previousIssues.filter(prev =>
+    prev.severity === 'error' &&
+    !isInterpretiveIssue(prev) &&
     !currentIssues.some(curr =>
       curr.type === prev.type && curr.description === prev.description
     )
@@ -59,7 +70,11 @@ function updateVerifiedConstraints(
   const newConstraints = resolvedIssues.map(issue =>
     `[${issue.type}] ${issue.description}${issue.location ? `（位置：${issue.location}）` : ''}${issue.suggestion ? `；修复方向：${issue.suggestion}` : ''}`
   )
-  const updatedConstraints = [...verifiedConstraints, ...newConstraints]
+  let updatedConstraints = [...verifiedConstraints, ...newConstraints]
+  if (updatedConstraints.length > maxVerifiedConstraints) {
+    updatedConstraints = updatedConstraints.slice(-maxVerifiedConstraints)
+    console.warn(`[MuseFlow] verifiedConstraints 超过 ${maxVerifiedConstraints} 条，已保留最近 ${maxVerifiedConstraints} 条`)
+  }
   console.log(`[MuseFlow] 本轮已解决 ${resolvedIssues.length} 个问题，已记录为后续规划约束`)
   for (const constraint of newConstraints) {
     console.log(`  ✓ ${constraint.substring(0, 120)}${constraint.length > 120 ? '...' : ''}`)
@@ -90,24 +105,20 @@ export function runConvergenceCheck(
   rewriteAttempts: number,
   maxRewriteAttempts: number
 ): ConvergenceResult {
+  const planningConfig = getChapterPlanningConfig(workingState.genre)
+
   let updatedState = { ...workingState, pendingIssues: deduplicateIssuesSemantically(workingState.pendingIssues) }
-  updatedState = { ...updatedState, pendingIssues: capNonErrorIssuesByType(updatedState.pendingIssues) }
+  updatedState = { ...updatedState, pendingIssues: capNonErrorIssuesByType(updatedState.pendingIssues, planningConfig.maxNonErrorIssuesPerType) }
 
   const errorCountAfterDedup = updatedState.pendingIssues.filter(i => i.severity === 'error').length
   const currentRawErrorCount = updatedState.pendingIssues.filter(i => i.severity === 'error').length
   const currentErrorIssues = updatedState.pendingIssues.filter(i => i.severity === 'error')
   const similarity = calculateIssueSetSimilarity(previousIssues.filter(i => i.severity === 'error'), currentErrorIssues)
 
-  const constraintsResult = updateVerifiedConstraints(previousIssues, updatedState.pendingIssues, verifiedConstraints)
-  verifiedConstraints = constraintsResult.verifiedConstraints
-  updatedState = { ...updatedState, verifiedConstraints }
-
   let forceStructuralRewrite = false
 
   const currentRemainingErrors = updatedState.pendingIssues.filter(i => i.severity === 'error')
-  const onlyInterpretiveErrors = currentRemainingErrors.length > 0 && currentRemainingErrors.every(i =>
-    INTERPRETIVE_ISSUE_PATTERN.test(i.description) || INTERPRETIVE_ISSUE_PATTERN.test(i.location || '')
-  )
+  const onlyInterpretiveErrors = currentRemainingErrors.length > 0 && currentRemainingErrors.every(isInterpretiveIssue)
 
   if (rewriteAttempts > 1) {
     if (currentRawErrorCount > previousRawErrorCount) {
@@ -125,6 +136,10 @@ export function runConvergenceCheck(
       }
     }
   }
+
+  const constraintsResult = updateVerifiedConstraints(previousIssues, updatedState.pendingIssues, verifiedConstraints, forceStructuralRewrite, planningConfig.maxVerifiedConstraints)
+  verifiedConstraints = constraintsResult.verifiedConstraints
+  updatedState = { ...updatedState, verifiedConstraints }
 
   return {
     workingState: updatedState,

@@ -10,6 +10,7 @@ import { buildCharacterFactTimeline, buildKeyEventsTimeline, formatStoryState, r
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent } from './planning.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
+import { sanitizeStoryState } from '../../utils/story-state-validation.js'
 
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent()
@@ -28,9 +29,21 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
-  const reconciledState = state.storyState && outlineItem?.description
+  let reconciledState = state.storyState && outlineItem?.description
     ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
     : state.storyState
+
+  if (reconciledState) {
+    const report = sanitizeStoryState(reconciledState, state.characters, { preserveExisting: true, existingStoryState: state.storyState })
+    if (report.itemLocationConflicts.length > 0) {
+      console.warn('[MuseFlow] 起草前检测到物品位置冲突：')
+      for (const conflict of report.itemLocationConflicts) {
+        console.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
+      }
+    }
+    reconciledState = report.state
+  }
+
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
   const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor

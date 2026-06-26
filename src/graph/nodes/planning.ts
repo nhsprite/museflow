@@ -6,6 +6,7 @@ import { buildCharacterFactTimeline, formatStoryState, reconcileStoryState } fro
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { buildOutlineBridgeHint, buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
+import { sanitizeStoryState } from '../../utils/story-state-validation.js'
 
 async function runPlanChapter(
   state: ReducedGraphState,
@@ -19,9 +20,21 @@ async function runPlanChapter(
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
   const outlineItem = state.outline[chapterIndex]
-  const reconciledState = state.storyState && outlineItem?.description
+  let reconciledState = state.storyState && outlineItem?.description
     ? reconcileStoryState(state.storyState, outlineItem.description, state.characters)
     : state.storyState
+
+  if (reconciledState) {
+    const report = sanitizeStoryState(reconciledState, state.characters, { preserveExisting: true, existingStoryState: state.storyState })
+    if (report.itemLocationConflicts.length > 0) {
+      console.warn('[MuseFlow] 规划前检测到物品位置冲突：')
+      for (const conflict of report.itemLocationConflicts) {
+        console.warn(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
+      }
+    }
+    reconciledState = report.state
+  }
+
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
