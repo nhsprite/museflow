@@ -12,11 +12,23 @@ export class SummaryAgent extends BaseAgent {
   }
 
   protected buildPrompt(state: AgentState): Message[] {
+    const establishedSection = state.establishedCharacters && state.establishedCharacters.length > 0
+      ? `<established_characters>
+以下角色已在前面章节的摘要或故事状态中出现，允许继续出现：
+${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</established_characters>`
+      : ''
+
     const whitelistSection = state.charactersList && state.charactersList.length > 0
       ? `<official_characters>
+以下为本故事官方角色与大纲登场角色。摘要中涉及的有名有姓、有亲属关系、有身份地位的角色必须来自此列表或下方【前文已建立角色】列表；本章首次合理登场的新角色也可以列出，但必须在描述中注明"本章新登场"：
 ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>`
-      : ''
+</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
+<outline_characters>
+以下角色由大纲明确命名并将在本章或之前章节登场，允许出现：
+${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</outline_characters>` : ''}${establishedSection}`
+      : establishedSection
 
     return [
       this.systemMessage('<role>你是一位故事结构分析专家，擅长从章节内容中提取关键信息。你必须提取所有角色的关键事实（说过的话、知道的信息、态度变化），以及角色位置、状态、物品追踪等结构化状态信息。</role>'),
@@ -102,6 +114,18 @@ ${STATE_AUTHORITY_RULES}
           "status": "pending"
         }
       ],
+      "canonicalFacts": [
+        {
+          "id": "可选，留空",
+          "subject": "事实主体（角色/物品/地点/组织等）",
+          "attribute": "属性维度（所在位置/身份/状态/持有者等）",
+          "value": "本章结束时确立的权威值",
+          "establishedIn": 1,
+          "supersedes": [
+            { "chapter": 0, "oldValue": "被覆盖的旧值" }
+          ]
+        }
+      ],
       "currentScene": "本章主要场景",
       "storyTime": "故事内时间（如第三天傍晚）"
     }
@@ -126,7 +150,16 @@ ${STATE_AUTHORITY_RULES}
   <requirement>该角色在本章中明确承认/知道的事实</requirement>
   <requirement>该角色对本章关键信息的反应/态度</requirement>
   <requirement>该角色做出的关键承诺或威胁</requirement>
+  <requirement>对于其他角色明确告知的条件、要求、约定、交易条款等，必须作为该角色的已知事实记录，且 importance 必须标记为 critical</requirement>
 </character_facts_requirements>
+
+<critical_facts_priority>
+  <requirement>以下类型的事实必须标记为 critical，确保在远距离章节摘要中仍被保留：</requirement>
+  <requirement>- 角色之间明确达成的交易、条件、约定或承诺</requirement>
+  <requirement>- 角色明确知道的关键信息或秘密</requirement>
+  <requirement>- 角色做出的重大决定或制定的计划</requirement>
+  <requirement>- 关键物品的位置或状态变化</requirement>
+</critical_facts_priority>
 
 <pending_tasks_requirements>
   <requirement>提取本章中角色领受的、需要在后续章节执行的差事或任务</requirement>
@@ -142,6 +175,15 @@ ${STATE_AUTHORITY_RULES}
   <requirement>这有助于后续章节避免将旧事实当作当前有效信息来使用</requirement>
   <example>如果本章说"样本在实验室A"，但后续大纲已更新为"样本在实验室B"，则记录 supersededFact: {subject: "样本", oldFact: "样本在实验室A", reason: "后续大纲已更新位置"}</example>
 </superseded_facts_requirements>
+
+<canonical_facts_requirements>
+  <requirement>从本章内容中提取所有被本章明确确立或更新的"权威事实"，写入 storyState.canonicalFacts</requirement>
+  <requirement>每个权威事实必须包含：subject（事实主体）、attribute（属性维度）、value（权威值）</requirement>
+  <requirement>如果某个权威事实覆盖了前文章节中的旧认知，必须填写 supersedes 数组，指明被覆盖的章节索引和旧值</requirement>
+  <requirement>章节索引从0开始计数：第1章对应0，第2章对应1，以此类推</requirement>
+  <requirement>示例：某物品在本章从"实验室A"转移到"实验室B"，则记录 canonicalFact: {subject: "该物品", attribute: "所在位置", value: "实验室B", establishedIn: 当前章节索引, supersedes: [{chapter: 旧章节索引, oldValue: "实验室A"}]}</requirement>
+  <requirement>只记录本章有明确变化或重新确认的事实；没有变化的事实不必重复记录</requirement>
+</canonical_facts_requirements>
 
   <story_state_requirements>
   <requirement>characterLocations: 每个主要角色在本章结束时的所在位置</requirement>
@@ -185,6 +227,7 @@ export function processSummaryOutput(
   output: AgentOutput,
   chapterIndex?: number,
   characters?: Character[],
+  existingStoryState?: StoryState,
 ): { summary: string; storyState?: StoryState } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
@@ -249,6 +292,33 @@ export function processSummaryOutput(
       })).filter(item => item.assignee.length > 0 && item.description.length > 0)
     }
 
+    const toCanonicalFacts = (val: unknown): import('../types/story-state.js').CanonicalFact[] => {
+      if (!Array.isArray(val)) return []
+      return val
+        .filter((item): item is Record<string, unknown> => item && typeof item === 'object')
+        .map((item, idx) => {
+          const supersedesRaw = Array.isArray(item['supersedes'])
+            ? item['supersedes'].filter((s): s is Record<string, unknown> => s && typeof s === 'object')
+            : []
+          return {
+            id: typeof item['id'] === 'string' && item['id'].length > 0
+              ? item['id']
+              : `cf_${chapterIndex ?? 0}_${idx}`,
+            subject: typeof item['subject'] === 'string' ? item['subject'] : '',
+            attribute: typeof item['attribute'] === 'string' ? item['attribute'] : '',
+            value: typeof item['value'] === 'string' ? item['value'] : '',
+            establishedIn: typeof item['establishedIn'] === 'number' ? item['establishedIn'] : (chapterIndex ?? -1),
+            supersedes: supersedesRaw.length > 0
+              ? supersedesRaw.map(s => ({
+                  chapter: typeof s['chapter'] === 'number' ? s['chapter'] : -1,
+                  oldValue: typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
+                })).filter(s => s.oldValue.length > 0)
+              : undefined,
+          }
+        })
+        .filter(fact => fact.subject.length > 0 && fact.attribute.length > 0 && fact.value.length > 0)
+    }
+
     return {
       characterLocations: toRecord(s['characterLocations']),
       characterStatus: toRecord(s['characterStatus']),
@@ -257,6 +327,7 @@ export function processSummaryOutput(
       activePlots: toStringArray(s['activePlots']),
       revealedSecrets: toStringArray(s['revealedSecrets']),
       pendingTasks: toPendingTasks(s['pendingTasks']),
+      canonicalFacts: toCanonicalFacts(s['canonicalFacts']),
       currentScene: typeof s['currentScene'] === 'string' ? s['currentScene'] : '',
       storyTime: typeof s['storyTime'] === 'string' ? s['storyTime'] : '',
     }
@@ -275,7 +346,7 @@ export function processSummaryOutput(
   let storyState = extractStoryState()
 
   if (storyState && characters && characters.length > 0) {
-    const report = sanitizeStoryState(storyState, characters, { preserveExisting: true })
+    const report = sanitizeStoryState(storyState, characters, { preserveExisting: true, existingStoryState })
     if (report.removedCharacters.length > 0) {
       console.warn(`[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`)
     }

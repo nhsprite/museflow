@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { expandOutlineForChapter } from '../../src/core/outline-expander.js'
+import {
+  expandOutlineForChapter,
+  validateChapterTimeAnchor,
+  validateChapterPlanFocus,
+} from '../../src/core/outline-expander.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
 
 const { planChapterWithOverrideMock } = vi.hoisted(() => ({
   planChapterWithOverrideMock: vi.fn(),
@@ -80,5 +85,114 @@ describe('expandOutlineForChapter', () => {
   it('throws when plan_chapter returns no plan', async () => {
     planChapterWithOverrideMock.mockResolvedValueOnce({})
     await expect(expandOutlineForChapter(baseState, 1)).rejects.toThrow('详细计划生成失败')
+  })
+})
+
+describe('validateChapterTimeAnchor', () => {
+  it('passes when anchor does not claim previous events are completed', () => {
+    const plan: ChapterPlan = {
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      chapterTimeAnchor: '三日期限第三日卯时（继续推进）',
+    }
+
+    const result = validateChapterTimeAnchor(plan, '第六章正文：苏半城睡去。')
+
+    expect(result.valid).toBe(true)
+  })
+
+  it('fails when anchor claims an event was completed in the previous chapter but text does not contain it', () => {
+    const plan: ChapterPlan = {
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      chapterTimeAnchor: '三日期限第三日卯时末，昨日午时回话亲王已落地',
+    }
+
+    const result = validateChapterTimeAnchor(plan, '第六章正文：苏半城亥时末睡去，次日清晨才起身赴王府。')
+
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain('回话亲王')
+  })
+
+  it('passes when anchor claims completion and previous text contains the event', () => {
+    const plan: ChapterPlan = {
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      chapterTimeAnchor: '三日期限第三日卯时末，昨日午时回话亲王已落地',
+    }
+
+    const result = validateChapterTimeAnchor(plan, '第六章正文：苏半城昨日午时赴亲王府回话，当面答了办得成三字。')
+
+    expect(result.valid).toBe(true)
+  })
+})
+
+describe('validateChapterPlanFocus', () => {
+  it('passes when core sections account for at least 50% of word count', () => {
+    const plan: ChapterPlan = {
+      sections: [
+        { title: '核心事件', summary: '买办登场', wordCount: 2500, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
+        { title: '过渡', summary: '亲王回话收尾', wordCount: 800, events: ['回话亲王'], characters: ['苏半城'], timeMark: '巳时' },
+      ],
+      timeline: [],
+      outlineCheck: [
+        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
+      ],
+    }
+
+    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+
+    expect(result.valid).toBe(true)
+  })
+
+  it('fails when core sections account for less than 50% of word count', () => {
+    const plan: ChapterPlan = {
+      sections: [
+        { title: '核心事件', summary: '买办登场', wordCount: 1000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
+        { title: '过渡', summary: '亲王回话谈判', wordCount: 2000, events: ['回话亲王'], characters: ['苏半城', '亲王'], timeMark: '巳时' },
+      ],
+      timeline: [],
+      outlineCheck: [
+        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
+      ],
+    }
+
+    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain('50%')
+  })
+
+  it('fails when a non-core section exceeds 800 words', () => {
+    const plan: ChapterPlan = {
+      sections: [
+        { title: '核心事件', summary: '买办登场', wordCount: 3000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
+        { title: '过渡', summary: '亲王回话谈判', wordCount: 1200, events: ['回话亲王'], characters: ['苏半城', '亲王'], timeMark: '巳时' },
+      ],
+      timeline: [],
+      outlineCheck: [
+        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
+      ],
+    }
+
+    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain('800')
+  })
+
+  it('passes for empty plans', () => {
+    const plan: ChapterPlan = {
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+    }
+
+    const result = validateChapterPlanFocus(plan, { title: '买办登场', description: '买办商人陈裕堂主动登门。' })
+
+    expect(result.valid).toBe(true)
   })
 })

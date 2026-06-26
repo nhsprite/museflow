@@ -183,6 +183,53 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).toContain('本章时间锚点')
   })
 
+  it('includes core-event priority and pending-task deadline conflict rules', () => {
+    const agent = new TestableChapterPlannerAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '',
+      outline: '第2章：追查真相\n主角继续调查上一章遗留的问题',
+      previousChapters: '第1章：主角发现线索。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('核心事件必须占据本章总字数的 50% 以上')
+    expect(userMessage).toContain('硬性优先级')
+    expect(userMessage).toContain('当核心事件与前章遗留差事、Deadline 到期事项发生冲突时')
+    expect(userMessage).toContain('与核心事件无关的 pending task，即使 deadline 落在本章')
+    expect(userMessage).toContain('必须选择 postponed 或一句话带过')
+  })
+
+  it('includes verified constraints section when constraints are provided', () => {
+    const agent = new TestableChapterPlannerAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '',
+      outline: '第2章：追查真相\n主角继续调查上一章遗留的问题',
+      previousChapters: '第1章：主角发现线索。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      verifiedConstraints: ['[consistency] 三日期限是向亲王请得，不是主角主动设定'],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('已验证约束')
+    expect(userMessage).toContain('三日期限是向亲王请得')
+    expect(userMessage).toContain('不得推翻、改写或重新引入已被消除的矛盾')
+  })
+
   it('parses chapterTimeAnchor from planner JSON output', async () => {
     mockChat.mockResolvedValueOnce(JSON.stringify({
       sections: [

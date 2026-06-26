@@ -97,4 +97,110 @@ describe('SummaryAgent prompt', () => {
     expect(userMessage).toContain('<official_characters>')
     expect(userMessage).toContain('苏半城')
   })
+
+  it('includes canonicalFacts schema in prompt', () => {
+    const agent = new TestableSummaryAgent()
+    const messages = agent.exposePrompt({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterContent: 'test content',
+      chapterTitle: 'Test',
+      chapterIndex: 5,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+    const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
+    expect(userMessage).toContain('canonicalFacts')
+    expect(userMessage).toContain('subject')
+    expect(userMessage).toContain('attribute')
+    expect(userMessage).toContain('supersedes')
+    expect(userMessage).toContain('<canonical_facts_requirements>')
+  })
+
+  it('extracts canonical facts from SummaryAgent output', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            {
+              subject: '木之灵物',
+              attribute: '所在位置',
+              value: '昆仑山',
+              establishedIn: 2,
+              supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
+            },
+            {
+              subject: '',
+              attribute: '身份',
+              value: '主角',
+            },
+          ],
+          currentScene: '昆仑山',
+          storyTime: '第三日',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 2)
+    expect(result).not.toBeNull()
+    expect(result?.storyState?.canonicalFacts).toHaveLength(1)
+    expect(result?.storyState?.canonicalFacts?.[0]).toMatchObject({
+      id: 'cf_2_0',
+      subject: '木之灵物',
+      attribute: '所在位置',
+      value: '昆仑山',
+      establishedIn: 2,
+      supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
+    })
+  })
+
+  it('preserves canonical fact id when provided', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            { id: 'custom-id', subject: '样本', attribute: '位置', value: '实验室B', establishedIn: 3 },
+          ],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 3)
+    expect(result?.storyState?.canonicalFacts?.[0].id).toBe('custom-id')
+  })
 })

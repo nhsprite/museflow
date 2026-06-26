@@ -66,6 +66,7 @@ ${FACT_CONSISTENCY_RULES}
 - 如果大纲中某角色被描述为"暗中跟踪"、"暗中观察"或类似定位，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
 - 不得擅自增加大纲未提及的考验、试炼、关卡等情节
 - 不得擅自改变大纲中明确指定的角色关系（如"暗中护法"不得变为"正式入队"）
+- 如果本章规划（chapterPlan）将某条前章遗留差事标记为 postponed 或 background，本章只需一句话带过或承认其待办状态，不得展开为完整场景
 - 如果大纲中出现"后续章节边界提示"或"跨章节边界冲突"，必须严格遵守其中的强制要求：不要把后续章节的核心事件提前解决、不要重复处理前章已解决的事件
 </outline_compliance>`
 
@@ -126,18 +127,43 @@ ${state.chapterContent}
       ? (state.characters.match(/^【([^】]+)】/m)?.[1] || '（未设定主角）')
       : '（未设定主角）'
 
+    const establishedCharactersSection = state.establishedCharacters && state.establishedCharacters.length > 0
+      ? `<established_characters>
+<mandatory>【前文已建立角色】以下角色已在前面章节的摘要或故事状态中出现，允许在本章继续使用：</mandatory>
+${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</established_characters>`
+      : ''
+
     const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
       ? `<official_characters>
-<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表；任何不在此列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
+<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表、【大纲登场角色】列表或【前文已建立角色】列表；任何不在这些列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
 ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>`
-      : ''
+</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
+<outline_characters>
+<mandatory>【大纲登场角色】以下角色由大纲明确命名并将在本章或之前章节登场，允许在本章出现：</mandatory>
+${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</outline_characters>` : ''}${establishedCharactersSection}`
+      : establishedCharactersSection
 
     const planSection = state.chapterPlan
       ? `<chapter_plan>
 <instruction>【章节写作规划】（必须严格遵循以下结构）：</instruction>
 ${JSON.stringify(state.chapterPlan, null, 2)}
 </chapter_plan>`
+      : ''
+
+    const taskResolutions = state.chapterPlan?.taskResolutions
+    const taskResolutionSection = taskResolutions && taskResolutions.length > 0
+      ? `<task_resolutions>
+<instruction>【前章遗留差事处理 - 必须遵循】</instruction>
+${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t.description}\n   原因：${t.reason}${t.section ? `\n   对应段落：${t.section}` : ''}`).join('\n')}
+
+<mandatory>【强制要求】</mandatory>
+- 标记为 executed 的差事：本章必须完整呈现其执行过程
+- 标记为 postponed 的差事：本章只需承认其待办/推迟状态，不得展开执行
+- 标记为 superseded 的差事：本章不得提及，已被后续大纲覆盖
+- 标记为 background 的差事：本章只能用一句话带过（如"某事已安排"、"某事改日再办"），不得超过 50 字，不得写成独立场景
+</task_resolutions>`
       : ''
 
     const outlineKeyPoints = this.extractOutlineKeyPoints(chapterInfo.description)
@@ -217,6 +243,8 @@ ${timeAnchorSection}
 ${factVerificationSection}
 
 ${planSection}
+
+${taskResolutionSection}
 
 ${outlineComplianceSection}
 
@@ -339,12 +367,16 @@ ${FORESHADOW_DISCIPLINE_RULES}
 
     const revealedSecrets = extractSection('已揭示的秘密', storyState)
     const supersededFacts = extractSection('已被覆盖的旧事实', storyState)
+    const canonicalFacts = extractSection('权威事实', storyState)
     const characterLocations = extractSection('角色位置', storyState)
     const characterStatuses = extractSection('角色状态', storyState)
     const keyItems = extractSection('关键物品', storyState)
     const keyItemStates = extractSection('关键物品状态', storyState)
 
     const facts: string[] = []
+    if (canonicalFacts) {
+      facts.push(`【权威事实】\n${canonicalFacts}`)
+    }
     if (characterLocations) {
       facts.push(`【角色位置】\n${characterLocations}`)
     }

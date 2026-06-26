@@ -46,6 +46,14 @@ export class ForeshadowingAgent extends BaseAgent {
   </description>
 </anti_pattern>
 
+<strict_rules>
+  <rule>【禁止从大纲/规划生成伏笔】你不得把故事大纲、章节规划或未来剧情摘要中的内容登记为新伏笔。新伏笔必须源自本章正文中的具体细节、对话或场景，而不是源自对后续章节的预先了解。</rule>
+  <rule>【禁止把当前叙事登记为伏笔】如果某句话或某个细节在本章中已经得到解释、已经实现或已经完整呈现，它不是伏笔，而是本章叙事的一部分。例如：角色当面对话中明确说出的条件、角色已经完成的决定、本章已经揭晓的信息，都不得登记为伏笔。</rule>
+  <rule>【禁止登记短文本或通用细节】长度低于 40 字的条目、以及"角色注意到某事"这类过于笼统的描述，不得作为新伏笔。</rule>
+  <rule>【禁止登记未来台词】不得把角色未来才可能说的话、未来才可能产生的想法提前登记为伏笔。伏笔必须是本章中实际出现的、可被读者感知到的暗示。</rule>
+  <rule>【预期回收章节必须合理】新伏笔的预期回收章节应当是本章之后 2-8 章的范围内。除非有非常强的叙事理由，否则不得把伏笔预期回收章节设置得过远（如当前章节 +10 章以上），以免被误判为"提前剧透"。</rule>
+</strict_rules>
+
 <chapter_content>
   ${state.chapterContent || '（无内容）'}
 </chapter_content>
@@ -182,18 +190,21 @@ export class ForeshadowingAgent extends BaseAgent {
         }
         return !isSelfReferential
       })
-      .map(item => ({
-        id: generateId(),
-        text: item.text!,
-        expectedFulfillChapter: Math.min(
-          item.expected_fulfill_chapter ?? currentChapter + 5,
-          this.lastTotalChapters ?? currentChapter + 5
-        ),
-        createdAt: Date.now(),
-        createdAtChapter: currentChapter,
-        status: (item.foreshadow_type === 'explicit' ? 'shown' : 'planted') as import('../graph/state.js').ForeshadowStatus,
-        isExplicit: item.foreshadow_type === 'explicit',
-      }))
+      .map(item => {
+        const rawExpected = item.expected_fulfill_chapter ?? currentChapter + 5
+        const farFutureCap = Math.min(currentChapter + 8, this.lastTotalChapters ?? currentChapter + 8)
+        const expectedFulfillChapter = Math.max(currentChapter + 1, Math.min(rawExpected, farFutureCap))
+        return {
+          id: generateId(),
+          text: item.text!,
+          expectedFulfillChapter,
+          createdAt: Date.now(),
+          createdAtChapter: currentChapter,
+          status: (item.foreshadow_type === 'explicit' ? 'shown' : 'planted') as import('../graph/state.js').ForeshadowStatus,
+          isExplicit: item.foreshadow_type === 'explicit',
+          source: 'content' as const,
+        }
+      })
 
     const fulfilledCount = updatedStack.filter(item => item.fulfilledChapter && item.fulfilledChapter === currentChapter).length
     if (fulfilledCount > 0) {

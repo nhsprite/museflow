@@ -25,5 +25,23 @@ export function createEmptyStoryState(): StoryState {
     pendingTasks: [],
     currentScene: '',
     storyTime: '',
+    canonicalFacts: [],
   }
+}
+
+export function isEmptyStoryState(state: StoryState | null): boolean {
+  if (!state) return true
+  return (
+    Object.keys(state.characterLocations || {}).length === 0 &&
+    Object.keys(state.characterStatus || {}).length === 0 &&
+    Object.keys(state.keyItemsLocation || {}).length === 0 &&
+    Object.keys(state.keyItemsState || {}).length === 0 &&
+    (state.activePlots || []).length === 0 &&
+    (state.revealedSecrets || []).length === 0 &&
+    (state.pendingTasks || []).length === 0 &&
+    (state.supersededFacts || []).length === 0 &&
+    (state.canonicalFacts || []).length === 0 &&
+    !state.currentScene &&
+    !state.storyTime
+  )
 }

@@ -16,6 +16,7 @@ export interface ChapterOutline {
   number: number
   title: string
   description: string
+  introducedCharacters?: string[]
 }
 
 export type ForeshadowStatus = 'planted' | 'hinted' | 'shown' | 'recalled'
@@ -29,6 +30,7 @@ export interface ForeshadowItem {
   fulfilledChapter?: number
   status: ForeshadowStatus
   isExplicit: boolean
+  source?: 'content' | 'outline' | 'manual'
 }
 
 export type ForeshadowAlertLevel = 'overdue' | 'urgent' | 'normal'

@@ -25,7 +25,7 @@ export interface ChapterPlan {
     taskId: string
     assignee: string
     description: string
-    resolution: 'executed' | 'postponed' | 'superseded'
+    resolution: 'executed' | 'postponed' | 'superseded' | 'background'
     reason: string
     section?: string
   }>
@@ -44,9 +44,13 @@ export class ChapterPlannerAgent extends BaseAgent {
 
     const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
       ? `<official_characters>
-<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表；任何不在此列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
+<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表或下方【大纲登场角色】列表；任何不在此列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
 ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>`
+</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
+<outline_characters>
+<mandatory>【大纲登场角色】以下角色由大纲明确命名并将在本章或之前章节登场，允许在本章出现：</mandatory>
+${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</outline_characters>` : ''}`
       : ''
 
     const previousSummary = state.previousChapters || '（这是第一章）'
@@ -143,13 +147,24 @@ ${storyStateSection}
      - 大纲中提到的所有事件都有对应的段落
      - 大纲中提到的关键台词必须原样保留
      - 大纲中的时间要求（如"三日后""次日"）必须在时间线中体现
-  5. 【前章遗留差事处理 - 必须执行】
+  5. 【核心事件聚焦 - 必须执行，优先级最高】
+     - 本章必须有一个明确的核心事件（通常是大纲标题或第一句描述的事件）
+     - 核心事件必须占据本章总字数的 50% 以上，这是硬性要求，任何情况下不得突破
+     - 非核心事件（如前章遗留差事、过渡衔接、背景交代）必须压缩为简短的过渡段落，单段字数不得超过 800 字，不得发展成独立大场景
+     - 如果本章大纲只要求"接触""试探""登场""递帖"等初步事件，不得在本章把该事件完整解决或过度展开
+     - 规划的总场景数不得超过 6 个，核心事件场景不得少于 2 个
+     - 【硬性优先级】当核心事件与前章遗留差事、Deadline 到期事项发生冲突时，永远优先保证核心事件篇幅；不得以"差事到期"为由把无关差事扩展成大场景
+  6. 【前章遗留差事处理 - 必须执行】
      - 如果上下文中的 <pending_tasks> 列出了前章遗留差事，必须为每条差事在 taskResolutions 中给出处理结论
-     - 处理方式只能是 executed（在本章执行）、postponed（明确推迟）、superseded（因大纲覆盖而取消）
+     - 处理方式只能是 executed（在本章执行）、postponed（明确推迟）、superseded（因后续大纲覆盖而取消），新增 background（一句话带过，不占字数）
      - 对于 postponed，必须说明推迟到何时、原因是什么
      - 对于 superseded，必须引用后续大纲的哪一条要求覆盖了该差事
+     - 对于 background，必须在 reason 中说明为什么与核心事件无关，且 sections 中不得为其分配独立场景
      - 禁止无任何说明地忽略前章差事
-  6. 【角色完整性检查 - 必须执行】
+     - 【重要】不得为了让所有 pending task 都在本章 executed 而挤占核心事件篇幅。如果 pending task 过多或与核心事件无关，优先选择 postponed 或 background 并说明原因
+     - 【硬性规则】如果某条 pending task 与第 ${displayChapterNumber} 章大纲核心事件无关，即使其 deadline 落在本章，也必须选择 postponed 或 background（或在一句话内 background 处理），不得在 sections 中为其分配独立场景或超过 10% 的总字数
+     - 【硬性规则】如果 taskResolutions 中某条差事为 postponed 或 background，sections 中不得出现专门执行该差事的场景；只允许在过渡句中提及
+  7. 【角色完整性检查 - 必须执行】
    - 扫描人物设定和前几章摘要，识别哪些角色已加入团队/组织或已成为常驻角色
    - 对于每个已加入的常驻角色，必须在本章规划中明确安排：
      a) 出场：在对应段落的 characters 列表中加入该角色
@@ -166,20 +181,24 @@ ${storyStateSection}
    - 不得让角色说出其未在前文获得的信息；如果当前资料不足以解释，只能保持模糊或待解
    - 示例：某角色长期处于某种特殊状态后在本章出现 → 增加一段回忆说明状态变化过程
 
- 7. 【本章时间锚点 - 必须输出】
-    在输出 JSON 的根级别增加字段 "chapterTimeAnchor"（字符串）。
-    规则：
-    - 如果本章从上一章结束时间继续推进：chapterTimeAnchor = 上一章结束时间（或写"继续推进：{storyTime}"）。
-    - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日卯时（回溯覆盖第5章后三日）"）。
-    - 如果本章包含"三日期限"、"倒计时"等时间压力：chapterTimeAnchor 必须明确标注当前处于期限的第几天、还剩几天。
-    - 如果无法判断：chapterTimeAnchor = "未指定"。
-    - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。
-    - 所有 section 的 timeMark 必须相对于 chapterTimeAnchor 推进，严禁时间回退。
+  7. 【本章时间锚点 - 必须输出】
+     在输出 JSON 的根级别增加字段 "chapterTimeAnchor"（字符串）。
+     规则：
+     - 如果本章从上一章结束时间继续推进：chapterTimeAnchor = 上一章结束时间（或写"继续推进：{storyTime}"）。
+     - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日卯时（回溯覆盖第5章后三日）"）。
+     - 如果本章包含"三日期限"、"倒计时"等时间压力：chapterTimeAnchor 必须明确标注当前处于期限的第几天、还剩几天。
+     - 如果无法判断：chapterTimeAnchor = "未指定"。
+     - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。
+     - 所有 section 的 timeMark 必须相对于 chapterTimeAnchor 推进，严禁时间回退。
   8. 【角色执行者规则 - 必须执行】
      - 如果大纲中某动作执行者未指定具体人名（如"派人"、"某人"、"一名旧僚"），规划中必须：
        1) 优先从官方角色中选择执行者；
        2) 若官方角色均不适合，只能使用不露名、不进入 storyState 的临时龙套；
        3) 禁止为该动作 invent 新的有名角色或亲属关系。
+  9. 【字数控制 - 必须执行】
+     - 所有 section 的 wordCount 之和应控制在 4000-7000 字之间
+     - 单个非核心过渡 section 的 wordCount 不得超过 800 字
+     - 核心事件 section 的 wordCount 不得低于 1000 字
 
 ${OFFICIAL_CHARACTER_RULES}
 ${FORESHADOW_DISCIPLINE_RULES}
@@ -217,7 +236,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
       "taskId": "任务标识",
       "assignee": "被指派的执行角色",
       "description": "任务内容摘要",
-      "resolution": "executed|postponed|superseded",
+      "resolution": "executed|postponed|superseded|background",
       "reason": "处理原因",
       "section": "对应段落标题（如适用）"
     }
@@ -234,6 +253,9 @@ ${FORESHADOW_DISCIPLINE_RULES}
 - 所有大纲情节点必须在 outlineCheck 中标记为 fulfilled: true
 - 所有已加入的常驻角色必须在 sections 或 timeline 中有明确交代，不得无故遗漏
 - 如果上下文提供了 <pending_tasks>，必须在 taskResolutions 中逐条回应，禁止遗漏
+- 【核心事件聚焦】禁止用前章遗留差事或过渡场景挤占核心事件篇幅；核心事件必须获得最大权重
+- 【Deadline 冲突处理】与核心事件无关的 pending task，即使 deadline 落在本章，也必须选择 postponed 或一句话带过，不得展开为独立场景
+- 【字数控制】总字数不得超过 7000 字，非核心段落不得超过 800 字
 </important>`
 
     return [

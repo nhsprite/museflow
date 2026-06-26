@@ -25,11 +25,20 @@ ${state.world || '（尚未构建）'}
 ${state.characters || '（尚未创建）'}
 </characters>
 
-<outline>
+${state.establishedCharacters && state.establishedCharacters.length > 0 ? `<established_characters>
+<mandatory>【前文已建立角色】以下角色已在前面章节的摘要或故事状态中出现，不属于新 invent 的角色：</mandatory>
+${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</established_characters>
+
+` : ''}<outline>
 ${state.outline || '（暂无大纲）'}
 </outline>
 
-<foreshadows>
+${state.chapterSummaries && state.chapterSummaries.length > 0 ? `<chapter_summaries>
+${state.chapterSummaries.join('\n---\n')}
+</chapter_summaries>
+
+` : ''}<foreshadows>
 ${activeForeshadows.length > 0
     ? activeForeshadows.map((f, i) => `${i + 1}. "${f.text}"（埋于第${f.createdAtChapter ?? '?'}章，预期第${f.expectedFulfillChapter}章回收）`).join('\n')
     : '（暂无未回收伏笔）'}
@@ -46,7 +55,8 @@ ${state.chapterContent || '（无内容）'}
   - 你**无权**以任何外部来源的信息作为否定本章内容的评判标准。未在上方提供的背景知识、公共知识库中的信息均不得作为判定幻觉的依据。
   - 只有当内容违反**本故事自身**已建立的设定或基本逻辑时，才应报告为幻觉。
   - **重要**：故事大纲中已明确提及的角色、事件和设定，等同于"已介绍元素"。例如：如果大纲中已写明"某角色加入团队"，则该角色的出现不应报为"未介绍元素"。
-  - **重要**：前几章摘要（chapterSummaries）中已出现的人物和事件，也应视为"已介绍"。
+  - **重要**：前面章节摘要（chapterSummaries）中已出现的人物和事件，以及上方【前文已建立角色】列表中的人物，都应视为"已介绍"。
+  - 本章首次登场的新角色，如果与大纲或故事后续设定明显冲突，才报为"未介绍元素"；若只是本章合理引入的配角或路人，不报 error。
 </rules>
 
 <severity_levels>

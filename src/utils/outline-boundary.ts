@@ -1,5 +1,6 @@
 import type { ChapterOutline } from '../graph/state.js'
 import type { ReducedGraphState } from '../graph/state.js'
+import { filterRelevantPendingTasks } from './pending-tasks.js'
 
 const terminalKeywords = ['伏法', '伏妖', '处死', '消灭', '死亡', '已死', '被灭', '已毁', '已除', '已诛', '已斩']
 const containmentKeywords = ['封印', '封入', '收押', '缚住', '捆住', '被困', '囚禁', '制服', '被擒', '落网', '就擒']
@@ -176,26 +177,30 @@ export function reconcileOutlineWithState(
   if (!outlineItem) return ''
 
   const pendingTasks = state.storyState?.pendingTasks ?? []
-  const dueTasks = pendingTasks.filter(t => t.status === 'pending')
-  if (dueTasks.length === 0) return ''
+  const relevantTasks = filterRelevantPendingTasks(
+    pendingTasks,
+    chapterIndex,
+    outlineItem.description
+  )
+  if (relevantTasks.length === 0) return ''
 
   const nextItem = state.outline[chapterIndex + 1]
   const nextTitle = nextItem ? `第${nextItem.number}章"${nextItem.title}"` : '后续章节'
 
   return `<pending_tasks>
 <important>【前章遗留差事 - 本章规划必须处理或说明】</important>
-${dueTasks.map(t => {
+${relevantTasks.map(t => {
     const due = t.dueTime ?? (t.dueChapter ? `第${t.dueChapter}章前` : '未指定')
     return `- ${t.assignee}：${t.description}（截止：${due}）`
   }).join('\n')}
 
 <mandatory>【强制要求】
 1. 以上差事来自前章角色领受的任务，本章计划必须对每条差事给出明确处理：
-   - executed：在本章某 section 中执行该差事
-   - postponed：明确推迟到 ${nextTitle} 或更晚，并说明原因
+   - executed：在本章某 section 中执行该差事（仅当该差事与第 ${outlineItem.number} 章大纲核心事件直接相关时）
+   - postponed：明确推迟到 ${nextTitle} 或更晚，并说明原因（当差事与第 ${outlineItem.number} 章核心事件无关、或会挤占核心事件篇幅时，优先选择此项）
    - superseded：因后续大纲覆盖而取消，并说明原因
 2. 如果本章大纲本身已包含该差事（如"请大掌柜来理账"），直接标记为 executed。
-3. 如果本章大纲未包含该差事，不得无故忽略；必须在 timeline 或 taskResolutions 中说明去向。
+3. 如果本章大纲未包含该差事，不得无故忽略；必须在 timeline 或 taskResolutions 中说明去向。优先选择 postponed，不得以"差事今日到期"为由把无关差事扩展为独立大场景。
 4. 禁止为了把差事塞进本章而歪曲大纲核心事件；如果确实无法容纳，选择 postponed 并给出合理原因。</mandatory>
 </pending_tasks>`
 }

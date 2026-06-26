@@ -19,12 +19,23 @@ export class ConsistencyAgent extends BaseAgent {
       f => !f.fulfilledChapter && chapterIndex >= f.expectedFulfillChapter && chapterIndex <= f.expectedFulfillChapter + 1
     )
 
+    const establishedCharactersSection = state.establishedCharacters && state.establishedCharacters.length > 0
+      ? `<established_characters>
+<mandatory>【前文已建立角色】以下角色已在前面章节的摘要或故事状态中出现，不属于 invented character：</mandatory>
+${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</established_characters>`
+      : ''
+
     const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
       ? `<official_characters>
-<mandatory>【必须】以下为本故事官方角色。本章出现的所有有名有姓、有亲属关系、有 POV 或持久身份的角色必须来自此列表：</mandatory>
+<mandatory>【必须】以下为本故事官方角色。本章出现的所有有名有姓、有亲属关系、有 POV 或持久身份的角色必须来自此列表、下方【大纲登场角色】列表或【前文已建立角色】列表：</mandatory>
 ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>`
-      : ''
+</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
+<outline_characters>
+<mandatory>【大纲登场角色】以下角色由大纲明确命名并将在本章或之前章节登场，不属于 invented character：</mandatory>
+${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</outline_characters>` : ''}${establishedCharactersSection}`
+      : establishedCharactersSection
 
     const userContent = `<instruction>
   你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。
@@ -112,11 +123,11 @@ ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.descriptio
     <dimension name="time" priority="high">事件时间顺序是否合理，是否存在时间跳跃未标注、同一时间点发生矛盾事件等问题</dimension>
     <dimension name="space" priority="high">人物移动、位置变化是否连贯</dimension>
     <dimension name="causality" priority="high">事件因果关系是否合理</dimension>
-    <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫（如欺骗、试探），否则视为矛盾</dimension>
+    <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫（如欺骗、试探），否则视为矛盾。参见 supplementary_rules 中的 "deliberation_vs_discovery" 和 "inference_from_limited_information"：角色对已知情形的沉思推演和合理推断不视为矛盾。</dimension>
     <dimension name="character_whitelist" priority="critical">
-      检查本章出现的所有有名有姓、有亲属关系、有 POV 或持续身份的角色是否都在【人物设定】官方角色列表中。
-      如果本章 introduces 新名字（如"某个未登记的路人"、"某个未说明身份的亲戚"），而人物设定中无此角色，报 error。
-      如果本章把某个官方角色冠以新的亲属关系（如称"胞兄"），而该关系未被人物设定或前文摘要确认，报 error。
+      检查本章出现的所有有名有姓、有亲属关系、有 POV 或持续身份的角色是否都在【官方角色】、【大纲登场角色】或【前文已建立角色】列表中。
+      如果本章 introduces 新名字（如"某个未登记的路人"、"某个未说明身份的亲戚"），且不在上述任一列表中，报 error。
+      如果本章把某个已建立角色冠以新的亲属关系（如称"胞兄"），而该关系未被官方设定、前文摘要或故事状态确认，报 error。
       临时龙套（柜上伙计、轿夫、门房等无名角色）不构成 invented character，前提是他们没有名字、没有亲属关系、不进入 storyState。
     </dimension>
     <dimension name="timeline_anchor" priority="critical">
@@ -150,6 +161,22 @@ ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.descriptio
       - 如果角色在前章已经知道某个事实（如自己的使命、身份），本章中对该事实产生情绪反应（震惊、沉思、感慨）是正常的人物刻画，不要报 error。
       - 如果本章只是用不同的措辞表达与前章相同的概念，不要报 error。
       - 只有当角色对某个事实的认知本身发生矛盾（前章明确不知道，本章却表现得像已知道；或前章已否认，本章却断言为真）时，才报 error。
+    </rule>
+
+    <rule type="deliberation_vs_discovery">
+      区分"对已知情形的沉思推演"与"首次发现/认知"：
+      - 角色对已经知道的条件、计划、风险进行反复掂量、权衡、在心里过秤，属于正常的人物刻画和决策描写，**不是**知识矛盾。
+      - 例如：角色已知前章明确告知的交易条件或约定，本章开头仍在心里"把条件过了一遍"、"掂量利弊"、"比较两害相权"，这是合理的沉思过程，不应视为"仿佛第一次推演"。
+      - 只有当角色表现出对前章已明确告知的信息感到陌生、意外、或需要重新学习时，才构成知识矛盾。
+      - 判断标准：角色的内心活动是否使用了"已知信息"作为前提进行推演（合理），还是把已知信息当作新发现来呈现（矛盾）。
+    </rule>
+
+    <rule type="inference_from_limited_information">
+      区分"合理推断"与"无来源全知"：
+      - 角色可以根据本章新获得的信息、前章已揭示的事实、以及人物自身的经验和智力，做出合理的推断或猜测。
+      - 如果推断过程有清晰的逻辑链条（即使链条较短），不应视为 knowledge 矛盾。
+      - 只有当角色突然掌握其不可能知道的具体细节（如他人秘密计划的具体步骤、未出现人物的真实身份、未发生事件的精确结果）时，才报 error。
+      - 对于"知道某人大致意图"与"知道其全部具体布局"之间的灰色地带，应报 warning 而非 error，除非细节精确到不可能。
     </rule>
 
     <rule type="pending_tasks">
@@ -203,6 +230,14 @@ ${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.descriptio
     - 如果当前章节与 storyState 冲突，且无 chapterTimeAnchor → 报 error
     - 如果当前章节与 outline 冲突 → 报 error
     - 只有当角色对已被 storyState/outline 确立的事实表现出矛盾态度时，才报 error
+  </rule>
+
+  <rule type="canonical_facts_authority">
+    权威事实层（canonical facts）是最高权威：
+    1. 如果 story_state 中的【权威事实】与 timelineSnapshot 或 chapter summaries 中的旧事实冲突，以【权威事实】为准。
+    2. 被权威事实明确标记为"覆盖"的旧事实，不应作为当前章节的矛盾依据。
+    3. 只有当角色对权威事实中当前有效的值表现出不合理态度时，才报 consistency error。
+    4. 本章内容若与权威事实中的当前值一致，即使与旧摘要中的旧值不同，也不构成矛盾。
   </rule>
 
   <rule type="addressing_consistency">

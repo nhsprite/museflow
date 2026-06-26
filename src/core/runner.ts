@@ -5,7 +5,7 @@ import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getForeshadowStack } from '../storage/database/dao/timeline.js'
-import { createEmptyStoryState, getStoryState } from '../storage/database/dao/story-state.js'
+import { createEmptyStoryState, getStoryState, isEmptyStoryState } from '../storage/database/dao/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { executeChapterGeneration } from './chapter-generation.js'
 import { getWorld } from '../storage/database/dao/world.js'
@@ -112,22 +112,19 @@ export async function continueStory(
   const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
   const isRewrite = currentChapterIndex !== undefined
 
-  const checkpointHasState = checkpointState.storyState &&
-    (Object.keys(checkpointState.storyState.characterStatus || {}).length > 0 ||
-     Object.keys(checkpointState.storyState.characterLocations || {}).length > 0)
+  const checkpointHasState = checkpointState.storyState && !isEmptyStoryState(checkpointState.storyState)
+  const persistedStoryState = getStoryState(storyId)
 
-  if (!checkpointHasState && isRewrite && targetIndex > 1) {
+  if (persistedStoryState && !isEmptyStoryState(persistedStoryState)) {
+    checkpointState.storyState = persistedStoryState
+  } else if (!checkpointHasState && isRewrite && targetIndex > 1) {
     console.log('[MuseFlow] Checkpoint storyState 为空，且为重写模式。清理可能过时的角色位置信息...')
     const emptyState = createEmptyStoryState()
     checkpointState.storyState = {
       ...emptyState,
       revealedSecrets: checkpointState.storyState?.revealedSecrets || [],
       ...(checkpointState.storyState?.supersededFacts ? { supersededFacts: checkpointState.storyState.supersededFacts } : {}),
-    }
-  } else {
-    const persistedStoryState = getStoryState(storyId)
-    if (persistedStoryState && Object.keys(persistedStoryState.characterStatus || {}).length > 0) {
-      checkpointState.storyState = persistedStoryState
+      ...(checkpointState.storyState?.canonicalFacts ? { canonicalFacts: checkpointState.storyState.canonicalFacts } : {}),
     }
   }
 
@@ -180,6 +177,11 @@ export async function getState(storyId: string): Promise<ReducedGraphState | nul
     const persistedWorld = getWorld(storyId)
     if (persistedWorld && !graphState.world) {
       graphState.world = persistedWorld
+    }
+
+    const persistedStoryState = getStoryState(storyId)
+    if (persistedStoryState && !isEmptyStoryState(persistedStoryState)) {
+      graphState.storyState = persistedStoryState
     }
 
     // 清除过时的 draft_failure 问题，避免阻断后续生成

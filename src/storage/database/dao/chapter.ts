@@ -84,14 +84,14 @@ export function getChapters(storyId: string): ChapterMeta[] {
   }))
 }
 
-export function saveOutline(storyId: string, chapters: { number: number; title: string; description: string }[]): void {
+export function saveOutline(storyId: string, chapters: { number: number; title: string; description: string; introducedCharacters?: string[] }[]): void {
   const meta = readMetaJsonSync(storyId)
   if (!meta) return
   meta.outline = chapters
   writeMetaJsonSync(storyId, meta)
 }
 
-export function getOutline(storyId: string): { number: number; title: string; description: string }[] {
+export function getOutline(storyId: string): { number: number; title: string; description: string; introducedCharacters?: string[] }[] {
   const meta = readMetaJsonSync(storyId)
   if (!meta) return []
   return meta.outline

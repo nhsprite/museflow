@@ -44,6 +44,27 @@ import { isSemanticallyRelated } from '../utils/text-similarity.js'
 import { expandOutlineForChapter } from '../core/outline-expander.js'
 import { buildOutlineBridgeHint, buildNextChapterBoundaryHint } from '../utils/outline-boundary.js'
 import { buildCharacterWhitelist } from '../utils/character-whitelist.js'
+import { extractOutlineCharacters, mergeCharacterLists } from '../utils/outline-characters.js'
+import { extractEstablishedCharacters } from '../utils/established-characters.js'
+import { agePendingTasks } from '../utils/pending-tasks.js'
+import type { CanonicalFact } from '../types/story-state.js'
+
+function buildEffectiveCharactersList(state: ReducedGraphState, chapterIndex: number): {
+  official: Character[]
+  outline: Character[]
+  established: Character[]
+  merged: Character[]
+} {
+  const official = state.characters
+  const outline = extractOutlineCharacters(state.outline, chapterIndex)
+  const outlineMerged = mergeCharacterLists(official, outline)
+  const established = extractEstablishedCharacters(
+    state.chapterSummaries ?? [],
+    state.storyState,
+  ).filter(ec => !outlineMerged.some(c => c.name === ec.name))
+  const merged = [...outlineMerged, ...established]
+  return { official, outline: outlineMerged.slice(official.length), established, merged }
+}
 
 let worldbuilderAgent: WorldbuilderAgent | null = null
 let characterAgent: CharacterAgent | null = null
@@ -346,13 +367,17 @@ async function runPlanChapter(
     : state.storyState
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
+    const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+
     const agentState: AgentState = {
       idea: state.idea,
       genre: state.genre,
       totalChapters: state.totalChapters,
       ...(worldContent ? { world: worldContent } : {}),
       characters: charactersToString(state.characters),
-      charactersList: state.characters,
+      charactersList: effectiveCharacters,
+      outlineCharacters,
+      establishedCharacters,
       outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
       previousChapters,
       chapterIndex,
@@ -452,13 +477,17 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor
 
+    const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    charactersList: state.characters,
+    charactersList: effectiveCharacters,
+    outlineCharacters,
+    establishedCharacters,
     outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
     previousChapters,
     chapterIndex,
@@ -660,6 +689,8 @@ async function runSentenceFix(
     : state.storyState
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
+  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -671,6 +702,9 @@ async function runSentenceFix(
     timelineSnapshot,
     ...(storyStateStr ? { storyState: storyStateStr } : {}),
     ...(nextBoundaryHint ? { nextChapterBoundary: nextBoundaryHint } : {}),
+    charactersList: effectiveCharacters,
+    outlineCharacters,
+    establishedCharacters,
     sentenceFix: {
       sentences: sentenceFixes,
       context,
@@ -779,6 +813,8 @@ async function runParagraphFix(
     : state.storyState
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
+  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -790,6 +826,9 @@ async function runParagraphFix(
     timelineSnapshot,
     ...(storyStateStr ? { storyState: storyStateStr } : {}),
     ...(nextBoundaryHint ? { nextChapterBoundary: nextBoundaryHint } : {}),
+    charactersList: effectiveCharacters,
+    outlineCharacters,
+    establishedCharacters,
     paragraphFix: {
       paragraphs: paragraphFixes,
       context,
@@ -855,6 +894,8 @@ export async function runLegacyFix(
     : state.storyState
   const storyStateStr = reconciledState ? formatStoryState(reconciledState) : ''
 
+  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -865,9 +906,11 @@ export async function runLegacyFix(
     previousChapters,
     timelineSnapshot,
     ...(storyStateStr ? { storyState: storyStateStr } : {}),
-    ...(worldContent ? { world: worldContent } : {}),
     ...(nextBoundaryHint ? { nextChapterBoundary: nextBoundaryHint } : {}),
     characters: charactersToString(state.characters),
+    charactersList: effectiveCharacters,
+    outlineCharacters,
+    establishedCharacters,
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
   }
 
@@ -1355,7 +1398,6 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
     foreshadowStack: cleanedForeshadowStack,
   }
@@ -1383,12 +1425,18 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
 
   const worldContent = state.world?.content
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+
+  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
+    charactersList: effectiveCharacters,
+    outlineCharacters,
+    establishedCharacters,
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
     ...(content ? { chapterContent: content } : {}),
     chapterSummaries: state.chapterSummaries,
@@ -1421,13 +1469,17 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
 
   const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor
 
+  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+
     const agentState: AgentState = {
       idea: state.idea,
       genre: state.genre,
       totalChapters: state.totalChapters,
       ...(state.world?.content ? { world: state.world.content } : {}),
       characters: charactersToString(state.characters),
-      charactersList: state.characters,
+      charactersList: effectiveCharacters,
+      outlineCharacters,
+      establishedCharacters,
       outline: buildConsistencyOutlineContext(state, chapterIndex),
       ...(content ? { chapterContent: content } : {}),
       chapterSummaries: state.chapterSummaries,
@@ -1510,12 +1562,15 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     const needsSummary = !summary && chapterContent
     if (needsSummary) {
       const summaryAgent = getSummaryAgent()
+      const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
       const summaryState: AgentState = {
         idea: state.idea,
         genre: state.genre,
         totalChapters: state.totalChapters,
         chapterContent,
-        charactersList: state.characters,
+        charactersList: effectiveCharacters,
+        outlineCharacters,
+        establishedCharacters,
         ...(state.outline[chapterIndex]?.title ? { chapterTitle: state.outline[chapterIndex].title } : {}),
         chapterIndex,
       }
@@ -1532,7 +1587,7 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
             console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
             continue
           }
-          const processed = processSummaryOutput(summaryOutput, chapterIndex, state.characters)
+          const processed = processSummaryOutput(summaryOutput, chapterIndex, state.characters, state.storyState)
           if (!processed || !processed.summary) {
             console.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
@@ -1560,6 +1615,19 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
 
     if (summary && !state.chapterSummaries.includes(summary)) {
       state.chapterSummaries.push(summary)
+    }
+  }
+
+  const currentDisplayChapter = chapterIndex + 1
+  if (updatedStoryState) {
+    const agedTasks = agePendingTasks(updatedStoryState.pendingTasks, currentDisplayChapter)
+    const hasAgedTasks = agedTasks.some((task, index) => {
+      const original = updatedStoryState.pendingTasks[index]
+      return original !== undefined && task.status !== original.status
+    })
+    if (hasAgedTasks) {
+      updatedStoryState = { ...updatedStoryState, pendingTasks: agedTasks }
+      saveStoryState(state.story.id, updatedStoryState)
     }
   }
 
@@ -1678,6 +1746,40 @@ function formatCharacterFactEntries(
   return lines.join('\n')
 }
 
+function isSupersededFact(text: string, canonicalFacts: CanonicalFact[]): boolean {
+  for (const fact of canonicalFacts) {
+    if (!fact.supersedes || fact.supersedes.length === 0) continue
+    for (const old of fact.supersedes) {
+      if (old.oldValue.length === 0) continue
+      if (text.includes(fact.subject) && text.includes(old.oldValue)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+export function filterSupersededFactsFromTimeline(
+  entries: Array<{ character: string; facts: string[] }>,
+  canonicalFacts: CanonicalFact[]
+): Array<{ character: string; facts: string[] }> {
+  if (canonicalFacts.length === 0) return entries
+  return entries
+    .map(entry => ({
+      character: entry.character,
+      facts: entry.facts.filter(fact => !isSupersededFact(fact, canonicalFacts)),
+    }))
+    .filter(entry => entry.facts.length > 0)
+}
+
+export function filterSupersededEventsFromTimeline(
+  events: string[],
+  canonicalFacts: CanonicalFact[]
+): string[] {
+  if (canonicalFacts.length === 0) return events
+  return events.filter(event => !isSupersededFact(event, canonicalFacts))
+}
+
 function buildCharacterFactTimeline(
   state: ReducedGraphState,
   upToChapterIndex: number
@@ -1685,6 +1787,7 @@ function buildCharacterFactTimeline(
   const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
   if (!summaries.length) return '（暂无历史记录）'
 
+  const canonicalFacts = state.storyState?.canonicalFacts ?? []
   const result: string[] = []
 
   for (let i = 0; i < summaries.length; i++) {
@@ -1692,12 +1795,12 @@ function buildCharacterFactTimeline(
     if (!summary) continue
 
     const chapterNum = i + 1
-    const distance = upToChapterIndex - chapterNum
     const level = getCompressionLevel(chapterNum - 1, upToChapterIndex)
     const threshold = getImportanceThreshold(level)
 
     const filtered = filterCharacterFactsByImportance(summary, threshold)
-    const formatted = formatCharacterFactEntries(filtered, chapterNum)
+    const withoutSuperseded = filterSupersededFactsFromTimeline(filtered, canonicalFacts)
+    const formatted = formatCharacterFactEntries(withoutSuperseded, chapterNum)
 
     if (formatted) {
       result.push(formatted)
@@ -1714,6 +1817,7 @@ function buildKeyEventsTimeline(
   const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
   if (!summaries.length) return '（暂无历史记录）'
 
+  const canonicalFacts = state.storyState?.canonicalFacts ?? []
   const result: string[] = []
 
   for (let i = 0; i < summaries.length; i++) {
@@ -1721,20 +1825,20 @@ function buildKeyEventsTimeline(
     if (!summary) continue
 
     const chapterNum = i + 1
-    const distance = upToChapterIndex - chapterNum
     const level = getCompressionLevel(chapterNum - 1, upToChapterIndex)
     const threshold = getImportanceThreshold(level)
 
     const events = filterKeyEventsByImportance(summary, threshold)
-    if (events.length > 0) {
-      result.push(`第${chapterNum}章关键事件：\n${events.map(e => `  - ${e}`).join('\n')}`)
+    const withoutSuperseded = filterSupersededEventsFromTimeline(events, canonicalFacts)
+    if (withoutSuperseded.length > 0) {
+      result.push(`第${chapterNum}章关键事件：\n${withoutSuperseded.map(e => `  - ${e}`).join('\n')}`)
     }
   }
 
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
 }
 
-function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryState {
+export function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryState {
   const base = existing ?? createEmptyStoryState()
 
   const mergedLocations = { ...base.characterLocations }
@@ -1789,6 +1893,16 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
     }
   }
 
+  const mergedCanonicalFacts = [...(base.canonicalFacts ?? [])]
+  for (const fact of delta.canonicalFacts ?? []) {
+    const isDuplicate = mergedCanonicalFacts.some(
+      existing => existing.subject === fact.subject && existing.attribute === fact.attribute && existing.value === fact.value
+    )
+    if (!isDuplicate) {
+      mergedCanonicalFacts.push(fact)
+    }
+  }
+
   const mergedPendingTasks = mergePendingTasks(base.pendingTasks, delta.pendingTasks)
 
   const result: StoryState = {
@@ -1805,6 +1919,10 @@ function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryS
 
   if (mergedSuperseded.length > 0) {
     result.supersededFacts = mergedSuperseded
+  }
+
+  if (mergedCanonicalFacts.length > 0) {
+    result.canonicalFacts = mergedCanonicalFacts
   }
 
   return result
@@ -1876,6 +1994,7 @@ function reconcileStoryState(
     currentScene: storyState.currentScene,
     storyTime: storyState.storyTime,
     ...(storyState.supersededFacts ? { supersededFacts: storyState.supersededFacts } : {}),
+    ...(storyState.canonicalFacts ? { canonicalFacts: storyState.canonicalFacts } : {}),
   }
 
   const aliasMap = buildCharacterAliasMap(characters)
@@ -1978,6 +2097,16 @@ function formatStoryState(storyState: StoryState): string {
     lines.push('【已被覆盖的旧事实】')
     for (const fact of storyState.supersededFacts) {
       lines.push(`  - [${fact.subject}] ${fact.oldFact}（原因：${fact.reason}）`)
+    }
+  }
+
+  if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {
+    lines.push('【权威事实】')
+    for (const fact of storyState.canonicalFacts) {
+      lines.push(`  - [${fact.subject}] ${fact.attribute}: ${fact.value} (第${fact.establishedIn + 1}章确立)`)
+      for (const old of fact.supersedes ?? []) {
+        lines.push(`    覆盖第${old.chapter + 1}章: ${old.oldValue}`)
+      }
     }
   }
 

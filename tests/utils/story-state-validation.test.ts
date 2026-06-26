@@ -29,7 +29,7 @@ describe('sanitizeStoryState', () => {
   })
 
   it('keeps established characters when preserveExisting is true', () => {
-    const state: StoryState = {
+    const existingStoryState: StoryState = {
       characterLocations: { 苏半城: '正房', 亲王: '王府' },
       characterStatus: { 苏半城: '冷静', 亲王: '阴沉' },
       keyItemsLocation: {},
@@ -40,10 +40,15 @@ describe('sanitizeStoryState', () => {
       currentScene: '',
       storyTime: '',
     }
-    const report = sanitizeStoryState(state, characters, { preserveExisting: true })
+    const state: StoryState = {
+      ...existingStoryState,
+      characterLocations: { ...existingStoryState.characterLocations, 苏孟祥: '门外' },
+      characterStatus: { ...existingStoryState.characterStatus, 苏孟祥: '疲惫' },
+    }
+    const report = sanitizeStoryState(state, characters, { preserveExisting: true, existingStoryState })
     expect(report.state.characterLocations).toEqual({ 苏半城: '正房', 亲王: '王府' })
     expect(report.state.characterStatus).toEqual({ 苏半城: '冷静', 亲王: '阴沉' })
-    expect(report.removedCharacters).toEqual([])
+    expect(report.removedCharacters).toContain('苏孟祥')
   })
 
   it('detects conflicting item locations', () => {

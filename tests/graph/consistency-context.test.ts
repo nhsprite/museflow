@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 let capturedStoryState = ''
 let capturedOutline = ''
+let capturedTimelineSnapshot = ''
 
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
@@ -13,9 +14,10 @@ vi.mock('../../src/agents/index.js', () => ({
   ForeshadowingAgent: class {},
   HallucinationAgent: class {},
   ConsistencyAgent: class {
-    async run(state: { storyState?: string; outline?: string }) {
+    async run(state: { storyState?: string; outline?: string; timelineSnapshot?: string }) {
       capturedStoryState = state.storyState ?? ''
       capturedOutline = state.outline ?? ''
+      capturedTimelineSnapshot = state.timelineSnapshot ?? ''
       return { success: true, data: { is_consistent: true, issues: [] } }
     }
 
@@ -37,10 +39,121 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
 }))
 
 describe('detect_consistency validation context', () => {
+  function buildBaseState(): Parameters<typeof detect_consistency>[0] {
+    return {
+      story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 3,
+      world: null,
+      characters: [
+        {
+          id: 'character-1',
+          storyId: 'story-1',
+          name: '林黛玉',
+          description: null,
+          dialogueStyle: null,
+          createdAt: 0,
+        },
+      ],
+      outline: [
+        { number: 1, title: '第一章', description: '林黛玉辨认真伪，识破假宝玉。' },
+        { number: 2, title: '第二章', description: '后续。' },
+        { number: 3, title: '第三章', description: '结局。' },
+      ],
+      chapters: [{ id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 }, null, null],
+      currentChapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: -1,
+      lastTimelineSnapshot: null,
+      chapterPlan: null,
+      storyState: {
+        characterLocations: {},
+        characterStatus: {},
+        keyItemsLocation: {},
+        keyItemsState: {},
+        activePlots: [],
+        revealedSecrets: [],
+        pendingTasks: [],
+        currentScene: '',
+        storyTime: '',
+      },
+      autoFixAttempts: 0,
+    }
+  }
+
   beforeEach(() => {
     capturedStoryState = ''
     capturedOutline = ''
+    capturedTimelineSnapshot = ''
     vi.clearAllMocks()
+  })
+
+  it('passes canonical facts to consistency agent', async () => {
+    const { detect_consistency } = await import('../../src/graph/nodes.ts')
+
+    const state = buildBaseState()
+    state.storyState.canonicalFacts = [
+      { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 1 },
+    ]
+
+    await detect_consistency(state)
+    expect(capturedStoryState).toContain('【权威事实】')
+    expect(capturedStoryState).toContain('木之灵物')
+    expect(capturedStoryState).toContain('昆仑山')
+  })
+
+  it('filters superseded facts from timeline when canonical facts exist', async () => {
+    const { detect_consistency } = await import('../../src/graph/nodes.ts')
+
+    const state = buildBaseState()
+    state.currentChapterIndex = 2
+    state.chapters[2] = { id: 'chapter-3', storyId: 'story-1', number: 3, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 }
+    state.chapterSummaries = [
+      JSON.stringify({
+        characters: [],
+        characterFacts: [
+          { character: '旁白', facts: [{ text: '木之灵物位于东方灵河旧址', importance: 'critical' }] },
+        ],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+      }),
+      JSON.stringify({
+        characters: [],
+        characterFacts: [
+          { character: '旁白', facts: [{ text: '木之灵物被转移到昆仑山', importance: 'critical' }] },
+        ],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+      }),
+    ]
+    state.storyState.canonicalFacts = [
+      {
+        id: 'cf1',
+        subject: '木之灵物',
+        attribute: '所在位置',
+        value: '昆仑山',
+        establishedIn: 1,
+        supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
+      },
+    ]
+
+    await detect_consistency(state)
+    expect(capturedStoryState).toContain('【权威事实】')
+    // The superseded old location should not appear in the timeline snapshot
+    expect(capturedTimelineSnapshot).not.toContain('东方灵河旧址')
   })
 
   it('passes authoritative story state instead of only the reconciled state', async () => {

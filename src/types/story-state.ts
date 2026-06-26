@@ -5,6 +5,18 @@ export interface SupersededFact {
   chapterIndex: number
 }
 
+export interface CanonicalFact {
+  id: string
+  subject: string
+  attribute: string
+  value: string
+  establishedIn: number
+  supersedes?: Array<{
+    chapter: number
+    oldValue: string
+  }> | undefined
+}
+
 export interface PendingTask {
   id: string
   assignee: string
@@ -12,7 +24,7 @@ export interface PendingTask {
   createdChapter: number
   dueChapter?: number | undefined
   dueTime?: string | undefined
-  status: 'pending' | 'done' | 'postponed' | 'superseded'
+  status: 'pending' | 'done' | 'postponed' | 'superseded' | 'expired'
 }
 
 export interface StoryState {
@@ -26,6 +38,7 @@ export interface StoryState {
   currentScene: string
   storyTime: string
   supersededFacts?: SupersededFact[]
+  canonicalFacts?: CanonicalFact[]
 }
 
 export interface SanitizationReport {

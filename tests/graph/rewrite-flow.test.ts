@@ -70,6 +70,25 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
 vi.mock('../../src/storage/database/dao/chapter.js', () => ({ saveOutline: vi.fn() }))
 vi.mock('../../src/storage/database/dao/character.js', () => ({ saveCharacters: vi.fn() }))
 vi.mock('../../src/storage/database/dao/world.js', () => ({ saveWorld: vi.fn() }))
+const saveStoryState = vi.fn()
+const getStoryState = vi.fn().mockReturnValue(null)
+
+vi.mock('../../src/storage/database/dao/story-state.js', () => ({
+  saveStoryState,
+  getStoryState,
+  createEmptyStoryState: () => ({
+    characterLocations: {},
+    characterStatus: {},
+    keyItemsLocation: {},
+    keyItemsState: {},
+    activePlots: [],
+    revealedSecrets: [],
+    pendingTasks: [],
+    currentScene: '',
+    storyTime: '',
+  }),
+}))
+
 vi.mock('../../src/storage/database/dao/story.js', () => ({
   updateStoryTitle: vi.fn(),
   renameStoryOutputDir: vi.fn(),
@@ -238,6 +257,56 @@ describe('finalize_chapter guard against empty file', () => {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+  })
+})
+
+describe('finalize_chapter ages pending tasks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    readChapterContent.mockResolvedValue('chapter content')
+    getStoryState.mockReturnValue(null)
+  })
+
+  it('marks pending tasks due at or before current chapter as expired', async () => {
+    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+
+    const result = await finalize_chapter({
+      ...baseState,
+      currentChapterIndex: 1,
+      chapters: [{
+        id: 'chapter-2',
+        storyId: 'story-1',
+        number: 2,
+        title: 'Chapter 2',
+        outline: 'Desc 2',
+        summary: 'Summary 2',
+        foreshadows: null,
+        status: 'done',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+      storyState: {
+        characterLocations: {},
+        characterStatus: {},
+        keyItemsLocation: {},
+        keyItemsState: {},
+        activePlots: [],
+        revealedSecrets: [],
+        pendingTasks: [
+          { id: 't1', assignee: '主角', description: '明日午时前出发', createdChapter: 1, dueChapter: 2, status: 'pending' },
+          { id: 't2', assignee: '主角', description: '后日赴约', createdChapter: 1, dueChapter: 3, status: 'pending' },
+          { id: 't3', assignee: '主角', description: '已完成之事', createdChapter: 1, dueChapter: 2, status: 'done' },
+        ],
+        currentScene: '',
+        storyTime: '',
+      },
+    } as never)
+
+    const savedState = saveStoryState.mock.calls[0]![1] as { pendingTasks: Array<{ id: string; status: string }> }
+    expect(savedState.pendingTasks.find(t => t.id === 't1')!.status).toBe('expired')
+    expect(savedState.pendingTasks.find(t => t.id === 't2')!.status).toBe('pending')
+    expect(savedState.pendingTasks.find(t => t.id === 't3')!.status).toBe('done')
+    expect(result.storyState).toBeDefined()
   })
 })
 

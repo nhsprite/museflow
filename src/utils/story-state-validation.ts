@@ -9,14 +9,14 @@ function canonicalizeItemName(name: string): string {
 export function sanitizeStoryState(
   state: StoryState,
   characters: Character[],
-  options?: { preserveExisting?: boolean },
+  options?: { preserveExisting?: boolean | undefined; existingStoryState?: StoryState | undefined },
 ): SanitizationReport {
   const whitelist = buildCharacterWhitelist(characters)
 
-  const establishedNames = options?.preserveExisting
+  const establishedNames = options?.preserveExisting && options?.existingStoryState
     ? new Set([
-        ...Object.keys(state.characterLocations),
-        ...Object.keys(state.characterStatus),
+        ...Object.keys(options.existingStoryState.characterLocations),
+        ...Object.keys(options.existingStoryState.characterStatus),
       ])
     : new Set<string>()
 

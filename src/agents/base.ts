@@ -113,6 +113,8 @@ export interface AgentState {
   nextChapterBoundary?: string | undefined
   verifiedConstraints?: string[]
   charactersList?: Character[]
+  outlineCharacters?: Character[]
+  establishedCharacters?: Character[]
 }
 
 export interface AgentOutput {

@@ -8,10 +8,113 @@ import {
 } from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
+import { readChapterContent } from '../storage/filesystem/writer.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
   boundaryHints: string[]
+}
+
+const COMPLETION_MARKERS = /已(?:落地|完成|收束|结束|办妥|解决|处理)/g
+const PREVIOUS_TIME_MARKERS = /昨[日天]|上一章|前章|前一日/g
+
+function extractChineseKeywords(text: string): string[] {
+  const sequences = text.match(/[\u4e00-\u9fff]{2,}/g) ?? []
+  const keywords = new Set<string>()
+  for (const sequence of sequences) {
+    const maxLen = Math.min(sequence.length, 4)
+    for (let len = 2; len <= maxLen; len++) {
+      for (let i = 0; i <= sequence.length - len; i++) {
+        keywords.add(sequence.slice(i, i + len))
+      }
+    }
+  }
+  return Array.from(keywords)
+}
+
+export function validateChapterTimeAnchor(
+  chapterPlan: ChapterPlan,
+  previousChapterContent: string | null
+): { valid: boolean; reason?: string } {
+  const anchor = chapterPlan.chapterTimeAnchor ?? ''
+  if (!anchor || !previousChapterContent || previousChapterContent.trim().length === 0) {
+    return { valid: true }
+  }
+
+  if (!PREVIOUS_TIME_MARKERS.test(anchor)) {
+    return { valid: true }
+  }
+
+  const matches = anchor.matchAll(COMPLETION_MARKERS)
+  for (const match of matches) {
+    const markerIndex = match.index ?? 0
+    const prefix = anchor.slice(0, markerIndex)
+    const eventPhrase = prefix.match(/[\u4e00-\u9fff]{2,}(?=[，、；：]?$)/)?.[0] ?? ''
+    if (eventPhrase.length === 0) continue
+
+    const eventKeywords = extractChineseKeywords(eventPhrase)
+    const hasOverlap = eventKeywords.some(kw => previousChapterContent.includes(kw))
+    if (!hasOverlap) {
+      return {
+        valid: false,
+        reason: `chapterTimeAnchor 声称上一章已完成"${eventPhrase}"，但上一章正文未提及该事件`,
+      }
+    }
+  }
+
+  return { valid: true }
+}
+
+export function validateChapterPlanFocus(
+  chapterPlan: ChapterPlan,
+  outlineItem: { title: string; description: string }
+): { valid: boolean; reason?: string } {
+  const sections = chapterPlan.sections
+  if (!sections || sections.length === 0) {
+    return { valid: true }
+  }
+
+  const coreSectionTitles = new Set(
+    (chapterPlan.outlineCheck ?? [])
+      .filter(c => c.fulfilled && c.section)
+      .map(c => c.section!.trim())
+  )
+
+  let totalWordCount = 0
+  let coreWordCount = 0
+  let maxNonCoreWordCount = 0
+
+  for (const section of sections) {
+    const wordCount = section.wordCount ?? 0
+    totalWordCount += wordCount
+    const isCore = coreSectionTitles.has(section.title?.trim() ?? '')
+    if (isCore) {
+      coreWordCount += wordCount
+    } else {
+      maxNonCoreWordCount = Math.max(maxNonCoreWordCount, wordCount)
+    }
+  }
+
+  if (totalWordCount === 0) {
+    return { valid: true }
+  }
+
+  const coreRatio = coreWordCount / totalWordCount
+  const reasons: string[] = []
+
+  if (coreRatio < 0.5) {
+    reasons.push(`核心事件字数占比约 ${Math.round(coreRatio * 100)}%，低于 50% 下限`)
+  }
+
+  if (maxNonCoreWordCount > 800) {
+    reasons.push(`最大非核心段落字数约 ${maxNonCoreWordCount}，超过 800 字上限`)
+  }
+
+  if (reasons.length > 0) {
+    return { valid: false, reason: reasons.join('；') }
+  }
+
+  return { valid: true }
 }
 
 export async function expandOutlineForChapter(
@@ -43,7 +146,7 @@ export async function expandOutlineForChapter(
       : '',
   ].filter(part => part.length > 0).join('\n')
 
-  let chapterPlan = state.chapterPlan
+  let chapterPlan: ChapterPlan | null = state.chapterPlan
   if (!chapterPlan) {
     const planState: ReducedGraphState = {
       ...state,
@@ -51,10 +154,48 @@ export async function expandOutlineForChapter(
     }
 
     const planResult = await plan_chapter_with_override(planState, formattedOutline)
-    if (!planResult.chapterPlan) {
-      throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
+    chapterPlan = planResult.chapterPlan ?? null
+  }
+
+  if (!chapterPlan) {
+    throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
+  }
+
+  let focusValidation = validateChapterPlanFocus(chapterPlan, outlineItem)
+  if (!focusValidation.valid) {
+    console.warn(`[MuseFlow] ${focusValidation.reason}`)
+    console.warn('[MuseFlow] 章节规划重心偏离大纲核心事件，将使用约束重新规划...')
+
+    const focusConstraint = `【规划重心修正】前次规划 ${focusValidation.reason}。本次规划必须：1) 核心事件字数占比 ≥ 50%；2) 与核心事件无关的前章遗留差事必须选择 postponed 或一句话带过，不得展开为独立场景；3) 任何非核心段落字数不得超过 800 字。`
+    const planState: ReducedGraphState = {
+      ...state,
+      currentChapterIndex: chapterIndex,
+      verifiedConstraints: [...(state.verifiedConstraints ?? []), focusConstraint],
     }
-    chapterPlan = planResult.chapterPlan
+
+    const planResult = await plan_chapter_with_override(planState, formattedOutline)
+    const replanned = planResult.chapterPlan ?? null
+    if (replanned) {
+      const replanValidation = validateChapterPlanFocus(replanned, outlineItem)
+      if (replanValidation.valid) {
+        console.log('[MuseFlow] 重新规划后重心已修正')
+        chapterPlan = replanned
+      } else {
+        console.warn(`[MuseFlow] 重新规划后仍存在重心问题：${replanValidation.reason}，将使用最新规划继续`)
+        chapterPlan = replanned
+      }
+    }
+  }
+
+  if (chapterIndex > 0) {
+    const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)
+    const validation = validateChapterTimeAnchor(chapterPlan, previousContent)
+    if (!validation.valid) {
+      console.warn(`[MuseFlow] ${validation.reason}`)
+      console.warn('[MuseFlow] 时间锚点与上一章正文不一致，将使用 storyState 时间作为参考')
+      const { chapterTimeAnchor: _, ...restPlan } = chapterPlan
+      chapterPlan = restPlan
+    }
   }
 
   console.log(`[MuseFlow] 已动态展开第 ${outlineItem.number} 章详细大纲`)

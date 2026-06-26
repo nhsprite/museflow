@@ -6,7 +6,7 @@ import { withSpinner, stopStepProgress, stopStepProgressQuiet } from '../utils/s
 import { printChapterOutline } from '../../utils/chapter-display.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { deleteChapterContent } from '../../storage/filesystem/writer.js'
-import { getStoryState } from '../../storage/database/dao/story-state.js'
+import { getStoryState, isEmptyStoryState } from '../../storage/database/dao/story-state.js'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
@@ -174,6 +174,17 @@ async function handleRewrite(
   }
 }
 
+function isForeshadowLikelyPolluted(item: ReducedGraphState['foreshadowStack'][number]): boolean {
+  const text = item.text
+  if (text.length <= 30) return false
+  const narrativeMarkers = /[""''""「」『』（）]|\b(?:说道|问道|回答|决定|于是|因此|因为|结果|然后|接着|后来|终于|已经|完成|解决|处理|约定|答应|拒绝|提出|要求|命令|宣布|揭示|揭晓|真相|原来|发现|知道|明白|意识|想到|记得|回忆)/
+  if (narrativeMarkers.test(text) && text.length > 45) return true
+  const eventDescriptionPattern = /.+?(?:[，。；！？]|\.{3,}).+?(?:[，。；！？]|\.{3,})/
+  if (eventDescriptionPattern.test(text) && text.length > 60) return true
+  if (item.source === 'outline') return true
+  return false
+}
+
 async function rewriteChapter(
   storyId: string,
   userResponse: boolean,
@@ -236,12 +247,16 @@ async function rewriteChapter(
 
     const cleanedSummaries = checkpointState.chapterSummaries.slice(0, targetChapterIndex)
     const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
-      f => f.createdAtChapter < targetChapterIndex + 1
+      f => f.createdAtChapter < targetChapterIndex + 1 && !isForeshadowLikelyPolluted(f)
     )
+    const removedForeshadowCount = checkpointState.foreshadowStack.length - cleanedForeshadowStack.length
+    if (removedForeshadowCount > 0) {
+      console.log(`[MuseFlow] 清理 ${removedForeshadowCount} 个疑似由大纲污染生成的伏笔项`)
+    }
 
     // 从 meta.json 恢复最新的 storyState，因为 checkpoint 中的 storyState 可能是空的或旧的
     const persistedStoryState = getStoryState(storyId)
-    if (persistedStoryState && Object.keys(persistedStoryState.characterStatus || {}).length > 0) {
+    if (persistedStoryState && !isEmptyStoryState(persistedStoryState)) {
       checkpointState.storyState = persistedStoryState
     }
 
@@ -281,8 +296,12 @@ async function rewriteChapter(
     }
 
     const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
-      f => f.createdAtChapter < rewriteIndex + 1
+      f => f.createdAtChapter < rewriteIndex + 1 && !isForeshadowLikelyPolluted(f)
     )
+    const removedForeshadowCount = checkpointState.foreshadowStack.length - cleanedForeshadowStack.length
+    if (removedForeshadowCount > 0) {
+      console.log(`[MuseFlow] 清理 ${removedForeshadowCount} 个疑似由大纲污染生成的伏笔项`)
+    }
 
     workingState = {
       ...checkpointState,

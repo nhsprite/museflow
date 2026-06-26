@@ -53,6 +53,7 @@ export interface StoryMeta {
     number: number
     title: string
     description: string
+    introducedCharacters?: string[]
   }>
   chapters: Array<{
     id: string

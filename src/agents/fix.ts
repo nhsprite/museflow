@@ -31,6 +31,20 @@ ${state.nextChapterBoundary}
 </next_chapter_boundary>`
   }
 
+  private buildCharacterWhitelistSection(state: Required<AgentState>): string {
+    const official = state.charactersList && state.charactersList.length > 0
+      ? `<official_characters>\n<mandatory>【官方角色】</mandatory>\n${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}\n</official_characters>`
+      : ''
+    const outline = state.outlineCharacters && state.outlineCharacters.length > 0
+      ? `\n<outline_characters>\n<mandatory>【大纲登场角色】</mandatory>\n${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}\n</outline_characters>`
+      : ''
+    const established = state.establishedCharacters && state.establishedCharacters.length > 0
+      ? `\n<established_characters>\n<mandatory>【前文已建立角色】</mandatory>\n${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}\n</established_characters>`
+      : ''
+    const combined = official + outline + established
+    return combined ? `<character_whitelist>\n${combined}\n</character_whitelist>` : ''
+  }
+
   private buildSentencePrompt(state: Required<AgentState>, displayChapterNumber: string): import('../model/provider.js').Message[] {
     const { sentences, context } = state.sentenceFix!
 
@@ -55,6 +69,7 @@ ${state.nextChapterBoundary}
       : ''
 
     const boundarySection = this.buildBoundarySection(state)
+    const characterWhitelistSection = this.buildCharacterWhitelistSection(state)
 
     const userContent = `<instruction>
   请对第 ${displayChapterNumber} 章的指定句子进行精准修复。
@@ -70,6 +85,8 @@ ${storyStateSection}
 
 ${boundarySection}
 
+${characterWhitelistSection}
+
 <context>
   ${context}
 </context>
@@ -82,7 +99,7 @@ ${sentencesSection}
   <constraint>你只能修改上面标记的【段落 N · 第 M 句】，同一段落的其他句子必须原样保留</constraint>
   <constraint>修改后的句子必须在意思上能独立成立，与前后句衔接自然</constraint>
   <constraint>修改时必须彻底替换原句，绝不允许原句和新句同时存在</constraint>
-  <constraint>不得引入新的角色、地点、物品、时间线或因果关系</constraint>
+  <constraint>不得引入新的角色、地点、物品、时间线或因果关系；只允许使用上方角色白名单中的角色，无姓名的路人除外</constraint>
   <constraint>保持原文的语言风格、叙事节奏和人物语气</constraint>
   ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后通读段落，确保没有句子重复出现</constraint>
@@ -133,6 +150,7 @@ ${sentencesSection}
       : ''
 
     const boundarySection = this.buildBoundarySection(state)
+    const characterWhitelistSection = this.buildCharacterWhitelistSection(state)
 
     const userContent = `<instruction>
   请对第 ${displayChapterNumber} 章的指定段落进行精准修复。
@@ -148,6 +166,8 @@ ${storyStateSection}
 
 ${boundarySection}
 
+${characterWhitelistSection}
+
 <context>
   ${context}
 </context>
@@ -161,7 +181,7 @@ ${paragraphsSection}
   <constraint>每个段落的修改必须是独立的：修改段落A时不能引用或改变段落B的内容</constraint>
   <constraint>修改后的段落必须在意思上能独立成立，与上下文衔接自然</constraint>
   <constraint>修改时必须彻底替换原句，绝不允许原句和新句同时存在</constraint>
-  <constraint>不得引入新的角色、地点、物品、时间线或因果关系</constraint>
+  <constraint>不得引入新的角色、地点、物品、时间线或因果关系；只允许使用上方角色白名单中的角色，无姓名的路人除外</constraint>
   <constraint>保持原文的语言风格、叙事节奏和人物语气</constraint>
   ${AI_PHRASE_PROHIBITIONS}
   ${FACT_CONSISTENCY_RULES}
@@ -210,6 +230,7 @@ ${paragraphsSection}
       : ''
 
     const boundarySection = this.buildBoundarySection(state)
+    const characterWhitelistSection = this.buildCharacterWhitelistSection(state)
 
     const userContent = `<instruction>
   请对第 ${displayChapterNumber} 章进行针对性修复。
@@ -225,13 +246,15 @@ ${storyStateSection}
 
 ${boundarySection}
 
+${characterWhitelistSection}
+
 ${existingChapterSection}
 
 <constraints>
   <constraint>只修改与上述问题直接相关的段落或句子</constraint>
   <constraint>保留所有未涉及问题的原文内容，不得删减、改动或重新组织</constraint>
   <constraint>宁可少改，不要多改</constraint>
-  <constraint>不得引入新的角色、地点、物品、时间线或因果关系</constraint>
+  <constraint>不得引入新的角色、地点、物品、时间线或因果关系；只允许使用上方角色白名单中的角色，无姓名的路人除外</constraint>
   <constraint>用"替换"而非"追加"：修改时必须彻底删除原句，用新句替代</constraint>
   ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后确保没有任何句子重复出现</constraint>
