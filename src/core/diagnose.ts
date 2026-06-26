@@ -39,12 +39,6 @@ export async function diagnoseStoryState(state: ReducedGraphState, outputDir: st
     }
   }
 
-  const crossChapterConflicts = detectCrossChapterOutlineConflicts(state.outline)
-  for (const conflict of crossChapterConflicts) {
-    outlineIssues.push(conflict)
-    suggestions.push('建议修改大纲：避免在前章使用终结性词汇（如"伏法"），同时后章要求对该事件进行后续辨别/审判')
-  }
-
   const chapterPath = getChapterFilePath(outputDir, chapterIndex + 1)
   if (!existsSync(chapterPath)) {
     fileIssues.push(`第 ${chapterIndex + 1} 章文件不存在`)
@@ -103,30 +97,6 @@ export async function diagnoseStoryState(state: ReducedGraphState, outputDir: st
     foreshadowIssues,
     suggestions,
   }
-}
-
-function detectCrossChapterOutlineConflicts(
-  outline: Array<{ number: number; title: string; description: string }>
-): string[] {
-  const conflicts: string[] = []
-  const terminalKeywords = ['伏法', '处死', '消灭', '死亡', '已死', '被灭', '已毁', '已除', '已诛', '已斩']
-  const resolutionKeywords = ['辨别', '审判', '查明', '验证', '确认', '分辨', '识别', '识破', '揭露', '查证']
-
-  for (let i = 0; i < outline.length - 1; i++) {
-    const current = outline[i]
-    const next = outline[i + 1]
-    if (!current?.description || !next?.description) continue
-
-    const hasTerminal = terminalKeywords.some(k => current.description.includes(k))
-    const hasResolution = resolutionKeywords.some(k => next.description.includes(k))
-
-    if (hasTerminal && hasResolution) {
-      conflicts.push(
-        `第${current.number}章 "${current.title}" 包含终结性事件（如"${terminalKeywords.find(k => current.description.includes(k))}"），但第${next.number}章 "${next.title}" 需要对该事件进行后续辨别/审判，存在逻辑冲突`
-      )
-    }
-  }
-  return conflicts
 }
 
 export function printDiagnosis(result: DiagnosisResult): void {
