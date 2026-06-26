@@ -31,6 +31,7 @@ export type { LocationInfo } from './utils/text-patching.js'
 
 export {
   validate_chapter,
+  validate_chapter_comprehensive,
   quality_pass,
   detect_foreshadowing,
   detect_hallucination,

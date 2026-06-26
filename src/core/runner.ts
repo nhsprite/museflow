@@ -88,6 +88,7 @@ export async function runStory(input: {
 
   const config: RunnableConfig = {
     configurable: { thread_id: input.storyId, outputDir: storyObj.outputDir },
+    recursionLimit: 100,
   }
 
   const result = await graph.invoke(initialState, config)
@@ -105,6 +106,7 @@ export async function runChapterGraph(
 
   const config: RunnableConfig = {
     configurable: { thread_id: storyId, outputDir },
+    recursionLimit: 100,
   }
 
   try {

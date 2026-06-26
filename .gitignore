@@ -37,3 +37,6 @@ npm-debug.log*
 # Test coverage
 coverage/
 .worktrees/
+
+# Documentation / design docs
+docs/

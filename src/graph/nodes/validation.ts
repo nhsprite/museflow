@@ -276,3 +276,65 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
   return {}
 }
 
+export async function validate_chapter_comprehensive(
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  // 将字数、质量、伏笔、幻觉、一致性、大纲合规 6 个 agent 的校验串行聚合为单个图节点，
+  // 避免每个 agent 占用一个 LangGraph 步骤，从而防止重写循环时 recursionLimit 被快速耗尽。
+  let workingState: ReducedGraphState = { ...state }
+
+  function mergePendingIssues(updates: Partial<ReducedGraphState>): void {
+    if (updates.pendingIssues) {
+      workingState = {
+        ...workingState,
+        pendingIssues: [...workingState.pendingIssues, ...updates.pendingIssues],
+      }
+    }
+  }
+
+  const wordCountUpdates = await validate_chapter(workingState)
+  mergePendingIssues(wordCountUpdates)
+
+  const qualityUpdates = await quality_pass(workingState)
+  mergePendingIssues(qualityUpdates)
+
+  const foreshadowUpdates = await detect_foreshadowing(workingState)
+  if (foreshadowUpdates.foreshadowStack) {
+    workingState = {
+      ...workingState,
+      foreshadowStack: foreshadowUpdates.foreshadowStack,
+    }
+  }
+
+  const hallucinationUpdates = await detect_hallucination(workingState)
+  mergePendingIssues(hallucinationUpdates)
+
+  const consistencyUpdates = await detect_consistency(workingState)
+  mergePendingIssues(consistencyUpdates)
+
+  const outlineComplianceUpdates = await verify_outline_compliance(workingState)
+  mergePendingIssues(outlineComplianceUpdates)
+  if (outlineComplianceUpdates.rewriteApproved !== undefined) {
+    workingState = {
+      ...workingState,
+      rewriteApproved: outlineComplianceUpdates.rewriteApproved,
+    }
+  }
+
+  const result: Partial<ReducedGraphState> = {}
+
+  if (workingState.pendingIssues.length > 0) {
+    result.pendingIssues = workingState.pendingIssues
+  }
+
+  if (workingState.foreshadowStack !== state.foreshadowStack) {
+    result.foreshadowStack = workingState.foreshadowStack
+  }
+
+  if (workingState.rewriteApproved !== state.rewriteApproved) {
+    result.rewriteApproved = workingState.rewriteApproved
+  }
+
+  return result
+}
+

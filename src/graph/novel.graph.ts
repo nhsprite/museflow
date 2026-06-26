@@ -11,12 +11,7 @@ import {
   route_strategy,
   draft_chapter,
   fix_chapter,
-  validate_chapter,
-  quality_pass,
-  detect_foreshadowing,
-  detect_hallucination,
-  detect_consistency,
-  verify_outline_compliance,
+  validate_chapter_comprehensive,
   auto_fix_warnings,
   convergence_check,
   route_convergence,
@@ -42,12 +37,7 @@ export function buildNovelGraph() {
     decide_strategy,
     draft_chapter,
     fix_chapter,
-    validate_chapter,
-    quality_pass,
-    detect_foreshadowing,
-    detect_hallucination,
-    detect_consistency,
-    verify_outline_compliance,
+    validate_chapter_comprehensive,
     auto_fix_warnings,
     convergence_check,
     request_rewrite,
@@ -74,19 +64,13 @@ export function buildNovelGraph() {
     finalize_chapter: 'finalize_chapter',
   })
 
-  b1.addEdge('draft_chapter', 'validate_chapter')
-  b1.addEdge('fix_chapter', 'validate_chapter')
+  b1.addEdge('draft_chapter', 'validate_chapter_comprehensive')
+  b1.addEdge('fix_chapter', 'validate_chapter_comprehensive')
 
-  b1.addEdge('validate_chapter', 'quality_pass')
-  b1.addEdge('quality_pass', 'detect_foreshadowing')
-  b1.addEdge('detect_foreshadowing', 'detect_hallucination')
-  b1.addEdge('detect_hallucination', 'detect_consistency')
-  b1.addEdge('detect_consistency', 'verify_outline_compliance')
-  b1.addEdge('verify_outline_compliance', 'auto_fix_warnings')
+  b1.addEdge('validate_chapter_comprehensive', 'auto_fix_warnings')
 
   b1.addConditionalEdges('auto_fix_warnings', route_after_validation, {
     convergence_check: 'convergence_check',
-    validate_chapter: 'validate_chapter',
     finalize_chapter: 'finalize_chapter',
   })
 
