@@ -114,6 +114,14 @@ export async function runChapterGraph(
     if (result.storyState && !isEmptyStoryState(result.storyState)) {
       saveStoryState(storyId, result.storyState)
     }
+
+    // 章节完成后再保存 chapter checkpoint。在 finalize_chapter 节点内部调用时，
+    // LangGraph 尚未持久化该节点返回的状态更新，会导致 checkpoint 中的
+    // currentChapterIndex 落后一章，进而让下一次 write 重复撰写同一章。
+    if (!result.rewriteRequested && result.isWriting && result.currentChapterIndex > 0) {
+      await checkpointer.saveChapterCheckpoint(result.story.outputDir, result.currentChapterIndex)
+    }
+
     return result as ReducedGraphState
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)

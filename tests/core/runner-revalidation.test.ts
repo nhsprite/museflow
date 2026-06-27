@@ -19,6 +19,15 @@ const chapterPlannerRun = vi.fn().mockResolvedValue({
   },
 })
 
+vi.mock('../../src/graph/checkpointer.js', () => ({
+  getCheckpointer: vi.fn().mockReturnValue({
+    clearPendingWrites,
+    saveChapterCheckpoint,
+    pruneIntermediateCheckpoints,
+    loadPendingWritesForThread: vi.fn().mockResolvedValue([]),
+  }),
+}))
+
 const mockExistsSync = vi.fn().mockReturnValue(true)
 const mockReaddirSync = vi.fn().mockReturnValue(['test-story-story-1'])
 const mockReadFileSync = vi.fn().mockReturnValue(JSON.stringify({
@@ -289,5 +298,34 @@ describe('runner revalidation', () => {
     expect(invokedState.currentChapterIndex).toBe(2)
     // non-rewrite mode leaves storyState untouched
     expect(invokedState.storyState).toBeNull()
+  })
+
+  it('saves chapter checkpoint after a chapter is finalized', async () => {
+    const { continueStory } = await import('../../src/core/runner.js')
+
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({ currentChapterIndex: 1, pendingIssues: [] })
+    )
+
+    await continueStory('story-1')
+
+    expect(saveChapterCheckpoint).toHaveBeenCalledTimes(1)
+    expect(saveChapterCheckpoint).toHaveBeenCalledWith('/tmp/test', 1)
+  })
+
+  it('does not save chapter checkpoint when rewrite is requested', async () => {
+    const { continueStory } = await import('../../src/core/runner.js')
+
+    mockGraph.invoke.mockResolvedValue(
+      createBaseGraphState({
+        currentChapterIndex: 0,
+        rewriteRequested: true,
+        pendingIssues: [{ id: 'e1', type: 'quality', severity: 'error', description: 'error' }],
+      })
+    )
+
+    await continueStory('story-1')
+
+    expect(saveChapterCheckpoint).not.toHaveBeenCalled()
   })
 })

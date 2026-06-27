@@ -135,10 +135,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   const nextIndex = state.currentChapterIndex + 1
 
   const checkpointer = getCheckpointer()
-  await checkpointer.saveChapterCheckpoint(
-    state.story.outputDir,
-    chapterIndex + 1
-  ).catch(() => {})
   await checkpointer.pruneIntermediateCheckpoints(state.story.outputDir).catch(() => {})
   await checkpointer.clearPendingWrites(state.story.outputDir).catch(() => {})
 
