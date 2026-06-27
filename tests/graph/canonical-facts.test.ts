@@ -128,6 +128,42 @@ describe('mergeStoryState', () => {
     expect(Object.keys(merged.keyItemsState)).toEqual(['一封血封信笺'])
     expect(merged.keyItemsState['一封血封信笺']).toBe('焚毁')
   })
+
+  it('clears all canonical aliases when item location changes, avoiding lingering conflicts', () => {
+    const existing: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: {
+        '血封信笺（柏字残画）': '苏半城妆台抽屉附近',
+        '血封信笺': '东院正房妆台暗屉最里层薄油纸内',
+      },
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: { '血封信笺': '藏经阁夹壁中' },
+    }
+
+    const merged = mergeStoryState(existing, delta)
+    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺'])
+    expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
+  })
+
+  it('clears conflicting base entries even when delta uses a different alias', () => {
+    const existing: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: {
+        '血封信笺（柏字残画）': '苏半城妆台抽屉附近',
+        '一封血封信笺': '东院正房妆台暗屉最里层薄油纸内',
+      },
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: { '血封信笺': '藏经阁夹壁中' },
+    }
+
+    const merged = mergeStoryState(existing, delta)
+    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺'])
+    expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
+  })
 })
 
 describe('filterSupersededFactsFromTimeline', () => {

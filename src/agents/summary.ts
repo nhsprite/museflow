@@ -189,7 +189,9 @@ ${STATE_AUTHORITY_RULES}
   <story_state_requirements>
   <requirement>characterLocations: 每个主要角色在本章结束时的所在位置</requirement>
   <requirement>characterStatus: 每个主要角色的身体状况、情绪状态、能力状态等</requirement>
-  <requirement>keyItemsLocation: 关键物品在本章结束时的位置或持有者（如果物品位置发生变化，必须记录新位置）</requirement>
+  <requirement>keyItemsLocation: 关键物品在本章结束时的唯一位置或持有者。同一物品只能有一条记录；如果位置发生变化，只记录本章结束时的最终位置，不得同时保留旧位置</requirement>
+  <requirement>keyItemsLocation 必须使用统一、标准的物品名称，禁止同一物品以多个别名并存</requirement>
+  <requirement>如果某个关键物品位置没有变化，直接省略该物品或使用"同前"，不要重复记录相同位置</requirement>
   <requirement>keyItemsState: 关键物品在本章结束时的状态（如"活跃/沉寂/受损/充能中/封印"）。如果物品状态发生变化，必须记录新状态</requirement>
   <requirement>activePlots: 本章结束时尚未完结的情节线</requirement>
   <requirement>revealedSecrets: 本章中新揭示的秘密或真相（之前未揭示的）</requirement>

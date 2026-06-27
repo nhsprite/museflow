@@ -129,18 +129,12 @@ function mergeItemRecord(
   for (const [item, value] of Object.entries(delta)) {
     if (!value || value === '同前') continue
     const canonical = canonicalizeItemName(item)
-    const existingAlias = Object.keys(merged).find(
-      key => canonicalizeItemName(key) === canonical
-    )
-    if (existingAlias && existingAlias !== item) {
-      if (merged[existingAlias] === value) {
-        if (item.length > existingAlias.length) {
-          delete merged[existingAlias]
-          merged[item] = value
-        }
-        continue
+    // 清除所有同 canonical 的旧条目，确保同一物品最终只有一个位置/状态记录。
+    // 这能防止历史状态中的别名或旧位置与新 delta 并存，避免无限重复上报冲突。
+    for (const key of Object.keys(merged)) {
+      if (canonicalizeItemName(key) === canonical) {
+        delete merged[key]
       }
-      delete merged[existingAlias]
     }
     merged[item] = value
   }
