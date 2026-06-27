@@ -19,8 +19,13 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const outlineItem = state.outline[chapterIndex]
   const worldContent = state.world?.content
 
-  const { chapterPlan, boundaryHints } = await expandOutlineForChapter(state, chapterIndex)
+  const { chapterPlan, boundaryHints, pendingIssues: outlinePendingIssues } = await expandOutlineForChapter(state, chapterIndex)
   state = { ...state, chapterPlan }
+
+  const mergedIssues = [
+    ...(outlinePendingIssues ?? []),
+    ...(state.rewriteApproved ? (state.pendingIssues ?? []) : []),
+  ]
 
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
@@ -56,7 +61,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     storyState: storyStateStr,
     ...(stateConflicts ? { stateConflicts } : {}),
     chapterTimeAnchor,
-    ...(state.rewriteApproved ? { issues: state.pendingIssues } : {}),
+    ...(mergedIssues.length > 0 ? { issues: mergedIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
   }

@@ -349,12 +349,12 @@ export function processSummaryOutput(
   let storyState = extractStoryState()
 
   if (storyState && characters && characters.length > 0) {
-    const report = sanitizeStoryState(storyState, characters, { preserveExisting: true, existingStoryState })
+    const report = sanitizeStoryState(storyState, characters, { preserveExisting: true, existingStoryState, chapterIndex })
     if (report.removedCharacters.length > 0) {
       logger.warn(`[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`)
     }
     if (report.itemLocationConflicts.length > 0) {
-      logger.warn(`[MuseFlow] SummaryAgent 检测到物品位置冲突: ${report.itemLocationConflicts.map(c => c.item).join(', ')}`)
+      logger.info(`[MuseFlow] SummaryAgent 自动协调物品位置冲突: ${report.itemLocationConflicts.map(c => c.item).join(', ')}`)
     }
     storyState = report.state
   }
@@ -373,9 +373,11 @@ export function processSummaryOutput(
   }
 
   if (storyState) {
-    const supersededFacts = extractSupersededFacts()
-    if (supersededFacts && supersededFacts.length > 0) {
-      storyState.supersededFacts = supersededFacts
+    const extractedSupersededFacts = extractSupersededFacts() ?? []
+    const existingSupersededFacts = storyState.supersededFacts ?? []
+    const mergedSupersededFacts = [...existingSupersededFacts, ...extractedSupersededFacts]
+    if (mergedSupersededFacts.length > 0) {
+      storyState.supersededFacts = mergedSupersededFacts
     }
     return { summary, storyState }
   }

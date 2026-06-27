@@ -35,6 +35,18 @@ type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string; tempe
 
 const DEFAULT_FETCH_TIMEOUT_MS = 900000
 
+function describeFetchError(err: unknown): { message: string; cause?: unknown } {
+  if (err instanceof Error) {
+    const cause = (err as Error & { cause?: unknown }).cause
+    const causeText = cause instanceof Error ? cause.message : String(cause ?? '')
+    return {
+      message: causeText ? `${err.message} (cause: ${causeText})` : err.message,
+      cause,
+    }
+  }
+  return { message: String(err) }
+}
+
 async function fetchWithRetry(url: string, init: RequestInit, retries = 3): Promise<Response> {
   let lastError: Error | undefined
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -45,6 +57,7 @@ async function fetchWithRetry(url: string, init: RequestInit, retries = 3): Prom
       }
       return res
     } catch (err) {
+      const { message, cause } = describeFetchError(err)
       lastError = err instanceof Error ? err : new Error(String(err))
       const isRecoverable =
         lastError.message.includes('fetch failed') ||
@@ -52,10 +65,14 @@ async function fetchWithRetry(url: string, init: RequestInit, retries = 3): Prom
         lastError.name === 'AbortError' ||
         lastError.message.includes('timeout')
       if (!isRecoverable || attempt === retries - 1) {
+        logger.error(`API request failed after ${attempt + 1} attempt(s) to ${url}: ${message}`)
+        if (cause) {
+          logger.error(`Underlying cause: ${cause instanceof Error ? cause.stack ?? cause.message : String(cause)}`)
+        }
         throw lastError
       }
       const delay = 1000 * 2 ** attempt
-      logger.debug(`API fetch failed (attempt ${attempt + 1}/${retries}): ${lastError.message}. Retrying in ${delay}ms`)
+      logger.debug(`API fetch failed (attempt ${attempt + 1}/${retries}): ${message}. Retrying in ${delay}ms`)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }

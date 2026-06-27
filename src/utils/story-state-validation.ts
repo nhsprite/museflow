@@ -1,6 +1,6 @@
 import { logger } from './logger.js'
 import type { Character } from '../types/character.js'
-import type { SanitizationReport, StoryState } from '../types/story-state.js'
+import type { CanonicalFact, SanitizationReport, StoryState, SupersededFact } from '../types/story-state.js'
 import { buildCharacterWhitelist } from './character-whitelist.js'
 
 const UNIT_WORDS = ['一张', '一封', '一份', '一个', '一本', '一柄', '一把', '一卷', '那块', '那封', '那张', '那件']
@@ -21,16 +21,49 @@ export function canonicalizeItemName(name: string): string {
   return normalized.replace(/\s+/g, ' ').trim()
 }
 
-function chooseBestItemKey(group: Array<{ item: string; location: string }>): { item: string; location: string } {
-  const distinctLocations = Array.from(new Set(group.map(g => g.location)))
-  const candidates = distinctLocations.map(loc => {
-    const entriesWithLoc = group.filter(g => g.location === loc)
-    const lastEntry = entriesWithLoc[entriesWithLoc.length - 1] ?? group[group.length - 1]!
-    const mostDescriptive = entriesWithLoc.reduce((a, b) => (a.item.length >= b.item.length ? a : b), lastEntry)
-    return { item: mostDescriptive.item, location: loc }
-  })
+function resolveItemLocationGroup(
+  group: Array<{ item: string; location: string }>,
+  chapterIndex: number,
+): {
+  canonicalItem: string
+  authoritativeLocation: string
+  superseded: SupersededFact[]
+  canonical: CanonicalFact
+} {
+  // 中立规则：后写入的条目视为最新权威状态。
+  // keyItemsLocation 是 JSON 对象，entries 顺序即插入/写入顺序。
+  const scored = group.map((entry, index) => ({ entry, score: index }))
+  scored.sort((a, b) => b.score - a.score)
 
-  return candidates[candidates.length - 1] ?? group[group.length - 1]!
+  const winner = scored[0]!.entry
+  const canonicalSubject = canonicalizeItemName(winner.item)
+  const now = Date.now()
+
+  const superseded: SupersededFact[] = scored.slice(1).map(s => ({
+    subject: canonicalSubject,
+    oldFact: s.entry.location,
+    reason: `与同一规范名 "${canonicalSubject}" 的权威位置 "${winner.location}" 冲突，已自动归档`,
+    chapterIndex,
+  }))
+
+  const canonical: CanonicalFact = {
+    id: `cf_${chapterIndex}_${canonicalSubject}_${now}`,
+    subject: canonicalSubject,
+    attribute: 'location',
+    value: winner.location,
+    establishedIn: chapterIndex,
+    supersedes: superseded.map(f => ({
+      chapter: chapterIndex,
+      oldValue: f.oldFact,
+    })),
+  }
+
+  return {
+    canonicalItem: winner.item,
+    authoritativeLocation: winner.location,
+    superseded,
+    canonical,
+  }
 }
 
 export function detectAmbiguousItemNames(state: StoryState): Array<{ location: string; items: string[] }> {
@@ -57,9 +90,14 @@ export function detectAmbiguousItemNames(state: StoryState): Array<{ location: s
 export function sanitizeStoryState(
   state: StoryState,
   characters: Character[],
-  options?: { preserveExisting?: boolean | undefined; existingStoryState?: StoryState | undefined },
+  options?: {
+    preserveExisting?: boolean | undefined
+    existingStoryState?: StoryState | undefined
+    chapterIndex?: number | undefined
+  },
 ): SanitizationReport {
   const whitelist = buildCharacterWhitelist(characters)
+  const chapterIndex = options?.chapterIndex ?? -1
 
   const establishedNames = options?.preserveExisting && options?.existingStoryState
     ? new Set([
@@ -104,10 +142,13 @@ export function sanitizeStoryState(
 
   const keyItemsLocation: Record<string, string> = {}
   const itemLocationConflicts: Array<{ item: string; locations: string[] }> = []
+  const newSupersededFacts: SupersededFact[] = []
+  const newCanonicalFacts: CanonicalFact[] = []
 
   for (const group of itemGroups.values()) {
     const distinctLocations = Array.from(new Set(group.map((g) => g.location)))
-    if (distinctLocations.length > 1) {
+    const hasConflict = distinctLocations.length > 1
+    if (hasConflict) {
       const representative = group.reduce((a, b) => (a.item.length >= b.item.length ? a : b), group[0]!)
       itemLocationConflicts.push({
         item: representative.item,
@@ -115,8 +156,15 @@ export function sanitizeStoryState(
       })
     }
 
-    const best = chooseBestItemKey(group)
-    keyItemsLocation[best.item] = best.location
+    if (hasConflict) {
+      const resolved = resolveItemLocationGroup(group, chapterIndex)
+      keyItemsLocation[resolved.canonicalItem] = resolved.authoritativeLocation
+      newSupersededFacts.push(...resolved.superseded)
+      newCanonicalFacts.push(resolved.canonical)
+    } else {
+      const best = group[group.length - 1] ?? group[0]!
+      keyItemsLocation[best.item] = best.location
+    }
   }
 
   const officialNames = Array.from(whitelist.officialNames).concat(
@@ -153,6 +201,9 @@ export function sanitizeStoryState(
     }
   }
 
+  const mergedSupersededFacts = [...(state.supersededFacts ?? []), ...newSupersededFacts]
+  const mergedCanonicalFacts = [...(state.canonicalFacts ?? []), ...newCanonicalFacts]
+
   return {
     state: {
       ...state,
@@ -161,6 +212,8 @@ export function sanitizeStoryState(
       keyItemsLocation,
       activePlots,
       revealedSecrets,
+      supersededFacts: mergedSupersededFacts,
+      canonicalFacts: mergedCanonicalFacts,
     },
     removedCharacters,
     itemLocationConflicts,
@@ -173,11 +226,11 @@ export function formatStateConflicts(report: SanitizationReport): string {
   const lines: string[] = []
 
   if (report.itemLocationConflicts.length > 0) {
-    lines.push('【物品位置冲突 - 必须在正文中解决】')
+    lines.push('【物品位置冲突 - 已自动协调】')
     for (const conflict of report.itemLocationConflicts) {
       lines.push(`  - ${conflict.item}: ${conflict.locations.join(' / ')}`)
     }
-    lines.push('  要求：同一物品在同一时刻只能出现在一个位置。本章必须明确其唯一位置，并通过角色动作完成转移。')
+    lines.push('  说明：系统已按“后写入优先 + 结论性描述优先”的规则保留唯一位置，旧位置已归档到 supersededFacts。')
   }
 
   if (report.ambiguousItems.length > 0) {

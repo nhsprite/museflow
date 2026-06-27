@@ -86,6 +86,28 @@ describe('expandOutlineForChapter', () => {
     planChapterWithOverrideMock.mockResolvedValueOnce({})
     await expect(expandOutlineForChapter(baseState, 1)).rejects.toThrow('详细计划生成失败')
   })
+
+  it('returns warning issue when budget validation fails after max attempts', async () => {
+    const badPlan: ChapterPlan = {
+      sections: [
+        { title: '核心事件', summary: '买办登场', wordCount: 1000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
+        { title: '过渡', summary: '亲王回话谈判', wordCount: 2000, events: ['回话亲王'], characters: ['苏半城', '亲王'], timeMark: '巳时' },
+      ],
+      timeline: [],
+      outlineCheck: [
+        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
+      ],
+    }
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: badPlan })
+
+    const result = await expandOutlineForChapter(baseState, 1)
+
+    expect(result.pendingIssues).toBeDefined()
+    expect(result.pendingIssues!.length).toBe(1)
+    expect(result.pendingIssues![0].type).toBe('outline_density')
+    expect(result.pendingIssues![0].severity).toBe('warning')
+    expect(result.pendingIssues![0].description).toContain('预算修正')
+  })
 })
 
 describe('validateChapterTimeAnchor', () => {

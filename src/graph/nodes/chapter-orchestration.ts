@@ -6,6 +6,7 @@ import {
   isStructuralIssue,
   isLocalIssue,
   isTaskConsistencyIssue,
+  isStateCorruptionIssue,
 } from '../../core/chapter-generation/issue-classifier.js'
 import {
   deduplicateIssuesSemantically,
@@ -98,6 +99,24 @@ export async function decide_strategy(
   const nextErrorAttempts = errorIssues.length > 0
     ? (state.errorRewriteAttempts || 0) + 1
     : (state.errorRewriteAttempts || 0)
+
+  // 状态污染逃逸：当错误全部属于上游 storyState 污染类问题且处于重写模式时，
+  // 停止重写循环并请求人工处理，避免无限重写同一章。
+  if (
+    state.rewriteApproved &&
+    errorIssues.length > 0 &&
+    errorIssues.every(isStateCorruptionIssue)
+  ) {
+    logger.warn('[MuseFlow] 剩余错误均为上游状态污染，停止重写循环，请求人工处理...')
+    return {
+      rewriteAttempts: nextAttempts,
+      errorRewriteAttempts: nextErrorAttempts,
+      pendingIssues: errorIssues,
+      routingDecision: 'request_rewrite',
+      forceStructuralRewrite: false,
+      autoFixAttempts: 0,
+    }
+  }
 
   // 没有错误且未请求重写时，若当前章节文件已存在则直接进入 finalize；否则需要起草
   if (errorIssues.length === 0 && !state.rewriteApproved) {
@@ -257,6 +276,12 @@ export function convergence_check(
   if (remainingErrors.length === 0) {
     routingDecision = 'finalize_chapter'
   } else if ((state.errorRewriteAttempts || 0) >= MAX_REWRITE_ATTEMPTS) {
+    const corruptionCount = remainingErrors.filter(isStateCorruptionIssue).length
+    if (corruptionCount > 0) {
+      logger.error(
+        `[MuseFlow] 连续 ${MAX_REWRITE_ATTEMPTS} 次重写后仍有 ${remainingErrors.length} 个错误，其中 ${corruptionCount} 个为上游状态污染问题，停止循环。`
+      )
+    }
     routingDecision = 'request_rewrite'
     rewriteApproved = false
   } else {

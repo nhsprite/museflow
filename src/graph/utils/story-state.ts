@@ -138,6 +138,23 @@ function mergeItemRecord(
     }
     merged[item] = value
   }
+
+  // 最终扫描：清除 base 中残留的同一规范名多位置。
+  // 当 delta 没有提及某个物品，而 base 里已经存在该物品的多个旧位置时，
+  // 上面的循环不会处理它们；这里从后往前保留最后一个条目，删除前面的同 canonical 条目。
+  const seenCanonical = new Set<string>()
+  const keys = Object.keys(merged)
+  for (let i = keys.length - 1; i >= 0; i--) {
+    const key = keys[i]
+    if (!key) continue
+    const canonical = canonicalizeItemName(key)
+    if (seenCanonical.has(canonical)) {
+      delete merged[key]
+    } else {
+      seenCanonical.add(canonical)
+    }
+  }
+
   return merged
 }
 

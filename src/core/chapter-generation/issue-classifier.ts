@@ -75,3 +75,11 @@ export function isStructuralIssue(issue: Issue): boolean {
 export function isLocalIssue(issue: Issue): boolean {
   return issue.severity === 'error' && !isStructuralIssue(issue)
 }
+
+export function isStateCorruptionIssue(issue: Issue): boolean {
+  return (
+    isItemLocationConflictIssue(issue) ||
+    isInventedCharacterIssue(issue) ||
+    isOutlineStateConflictIssue(issue)
+  )
+}

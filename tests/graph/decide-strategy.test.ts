@@ -34,6 +34,7 @@ vi.mock('../../src/core/chapter-generation/issue-classifier.js', () => ({
   isStructuralIssue: vi.fn().mockReturnValue(false),
   isLocalIssue: vi.fn().mockReturnValue(false),
   isTaskConsistencyIssue: vi.fn().mockReturnValue(false),
+  isStateCorruptionIssue: vi.fn().mockReturnValue(false),
 }))
 
 vi.mock('../../src/utils/issue-deduplication.js', () => ({

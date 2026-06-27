@@ -9,10 +9,12 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 import { readChapterContent } from '../storage/filesystem/writer.js'
 import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation } from '../utils/chapter-planning.js'
+import type { Issue } from '../types/agent.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
   boundaryHints: string[]
+  pendingIssues?: Issue[]
 }
 
 const COMPLETION_MARKERS = /已(?:落地|完成|收束|结束|办妥|解决|处理)/g
@@ -92,6 +94,7 @@ export async function expandOutlineForChapter(
 
   let chapterPlan: ChapterPlan | null = state.chapterPlan
   let currentConstraints = [...(state.verifiedConstraints ?? [])]
+  let pendingIssues: Issue[] = []
 
   // 首次生成规划
   if (!chapterPlan) {
@@ -136,6 +139,14 @@ export async function expandOutlineForChapter(
 
   if (!budgetValidation.valid) {
     logger.warn(`[MuseFlow] 经过 ${maxBudgetAttempts} 次预算修正仍存在重心问题：${budgetValidation.reason}，将使用最新规划继续`)
+    pendingIssues = [
+      {
+        id: `outline-budget-failure-${chapterIndex}`,
+        type: 'outline_density',
+        severity: 'warning',
+        description: `经过 ${maxBudgetAttempts} 次预算修正仍存在重心问题：${budgetValidation.reason}。`,
+      },
+    ]
   } else if (budgetAttempts > 0) {
     logger.info('[MuseFlow] 重新规划后重心已修正')
   }
@@ -195,6 +206,7 @@ export async function expandOutlineForChapter(
   return {
     chapterPlan,
     boundaryHints,
+    pendingIssues,
   }
 }
 
