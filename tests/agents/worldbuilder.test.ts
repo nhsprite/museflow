@@ -27,11 +27,11 @@ describe('WorldbuilderAgent parse', () => {
     expect((result.data as { world?: string }).world).toBe('我不是洗衣精')
   })
 
-  it('returns success:true with fallback when JSON is malformed', () => {
+  it('returns success:true with repaired JSON when JSON is malformed', () => {
     const agent = new TestableWorldbuilderAgent()
     const result = agent.exposeParse('{"title": "测试", world: "内容"}')
     expect(result.success).toBe(true)
-    expect((result.data as { world?: string }).world).toContain('"title": "测试"')
+    expect(result.data).toEqual({ title: '测试', world: '内容' })
   })
 
   it('returns success:true with data when JSON is valid', () => {

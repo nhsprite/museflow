@@ -12,6 +12,10 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   maxBridgeSceneRatio: 0.3,
   maxVerifiedConstraints: 20,
   maxNonErrorIssuesPerType: 3,
+  closingForeshadowRecoveryRatio: 0.6,
+  minSections: 3,
+  maxSections: 6,
+  minCoreSections: 2,
 }
 
 export function getChapterPlanningConfig(genreName: string): Required<ChapterPlanningConfig> {

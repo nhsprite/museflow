@@ -54,12 +54,13 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
     const cfg = loadConfig()
 
     if (options.provider) {
-      const validProtocols = ['openai', 'anthropic']
+      const validProtocols = ['openai', 'anthropic', 'minimax', 'local']
       if (!validProtocols.includes(options.provider)) {
         console.error(`[MuseFlow] 错误: 协议必须是 ${validProtocols.join('、')}`)
         process.exit(1)
       }
-      cfg.model.provider = options.provider as 'openai' | 'anthropic'
+      // minimax/local use the OpenAI-compatible provider with custom baseUrl/model.
+      cfg.model.provider = (options.provider === 'minimax' || options.provider === 'local' ? 'openai' : options.provider) as 'openai' | 'anthropic'
       console.log(`[MuseFlow] 已设置协议: ${options.provider}`)
     }
 

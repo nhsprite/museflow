@@ -13,75 +13,61 @@ import {
   SummaryAgent,
 } from '../agents/index.js'
 
-let worldbuilderAgent: WorldbuilderAgent | null = null
-let characterAgent: CharacterAgent | null = null
-let highLevelOutlineAgent: HighLevelOutlineAgent | null = null
-let chapterAgent: ChapterAgent | null = null
-let chapterPlannerAgent: ChapterPlannerAgent | null = null
-let qualityAgent: QualityAgent | null = null
-let foreshadowingAgent: ForeshadowingAgent | null = null
-let hallucinationAgent: HallucinationAgent | null = null
-let consistencyAgent: ConsistencyAgent | null = null
-let outlineComplianceAgent: OutlineComplianceAgent | null = null
-let fixAgent: FixAgent | null = null
-let summaryAgent: SummaryAgent | null = null
+const instances = new Map<string, unknown>()
+
+function getAgentInstance<T>(key: string, ctor: new () => T): T {
+  let instance = instances.get(key) as T | undefined
+  if (!instance) {
+    instance = new ctor()
+    instances.set(key, instance)
+  }
+  return instance
+}
 
 export function getWorldbuilderAgent(): WorldbuilderAgent {
-  if (!worldbuilderAgent) worldbuilderAgent = new WorldbuilderAgent()
-  return worldbuilderAgent
+  return getAgentInstance('worldbuilder', WorldbuilderAgent)
 }
 
 export function getCharacterAgent(): CharacterAgent {
-  if (!characterAgent) characterAgent = new CharacterAgent()
-  return characterAgent
+  return getAgentInstance('character', CharacterAgent)
 }
 
 export function getHighLevelOutlineAgent(): HighLevelOutlineAgent {
-  if (!highLevelOutlineAgent) highLevelOutlineAgent = new HighLevelOutlineAgent()
-  return highLevelOutlineAgent
+  return getAgentInstance('high-level-outline', HighLevelOutlineAgent)
 }
 
 export function getChapterAgent(): ChapterAgent {
-  if (!chapterAgent) chapterAgent = new ChapterAgent()
-  return chapterAgent
+  return getAgentInstance('chapter', ChapterAgent)
 }
 
 export function getChapterPlannerAgent(): ChapterPlannerAgent {
-  if (!chapterPlannerAgent) chapterPlannerAgent = new ChapterPlannerAgent()
-  return chapterPlannerAgent
+  return getAgentInstance('chapter-planner', ChapterPlannerAgent)
 }
 
 export function getQualityAgent(): QualityAgent {
-  if (!qualityAgent) qualityAgent = new QualityAgent()
-  return qualityAgent
+  return getAgentInstance('quality', QualityAgent)
 }
 
 export function getForeshadowingAgent(): ForeshadowingAgent {
-  if (!foreshadowingAgent) foreshadowingAgent = new ForeshadowingAgent()
-  return foreshadowingAgent
+  return getAgentInstance('foreshadowing', ForeshadowingAgent)
 }
 
 export function getHallucinationAgent(): HallucinationAgent {
-  if (!hallucinationAgent) hallucinationAgent = new HallucinationAgent()
-  return hallucinationAgent
+  return getAgentInstance('hallucination', HallucinationAgent)
 }
 
 export function getConsistencyAgent(): ConsistencyAgent {
-  if (!consistencyAgent) consistencyAgent = new ConsistencyAgent()
-  return consistencyAgent
+  return getAgentInstance('consistency', ConsistencyAgent)
 }
 
 export function getOutlineComplianceAgent(): OutlineComplianceAgent {
-  if (!outlineComplianceAgent) outlineComplianceAgent = new OutlineComplianceAgent()
-  return outlineComplianceAgent
+  return getAgentInstance('outline-compliance', OutlineComplianceAgent)
 }
 
 export function getFixAgent(): FixAgent {
-  if (!fixAgent) fixAgent = new FixAgent()
-  return fixAgent
+  return getAgentInstance('fix', FixAgent)
 }
 
 export function getSummaryAgent(): SummaryAgent {
-  if (!summaryAgent) summaryAgent = new SummaryAgent()
-  return summaryAgent
+  return getAgentInstance('summary', SummaryAgent)
 }

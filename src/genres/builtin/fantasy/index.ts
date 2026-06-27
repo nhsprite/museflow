@@ -16,16 +16,6 @@ export function createFantasySkill(): GenreSkill {
 4. 王国/势力分布
 5. 重要历史事件或传说
 6. 常见的奇幻冲突来源`,
-    outlineTemplate: `为一部 {totalChapters} 章的西方奇幻小说制定大纲。
-
-故事简介：{idea}
-
-请按章节顺序列出每一章的：
-- 章节标题
-- 本章核心事件
-- 涉及的主要角色或势力
-
-严格生成 exactly {totalChapters} 个章节。`,
     chapterPromptSupplement: `你是一位擅长西方奇幻风格的作家。请特别注意：
 - 使用史诗感的叙事语言
 - 描写剑、魔法、城堡等奇幻元素

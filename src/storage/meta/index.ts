@@ -1,15 +1,15 @@
 import type { StateSnapshot } from '../../types/timeline.js'
-import type { ForeshadowAlert } from '../../graph/state.js'
+import type { ForeshadowAlert, ForeshadowItem } from '../../types/foreshadow.js'
 import type { StoryState } from '../../types/story-state.js'
+import type { Story } from '../../types/story.js'
+import type { Character } from '../../types/character.js'
+import type { ChapterMeta } from '../../types/chapter.js'
+import type { WorldContent } from '../../types/world.js'
+import type { ChapterOutline } from '../../types/outline.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import { logger } from '../../utils/logger.js'
-
-function writeFileAtomic(path: string, data: string): void {
-  const tmpPath = `${path}.tmp`
-  writeFileSync(tmpPath, data, 'utf-8')
-  renameSync(tmpPath, path)
-}
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, renameSync } from 'node:fs'
+import { writeFileAtomic, ensureDir } from '../../utils/fs.js'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
@@ -18,80 +18,20 @@ import { join } from 'node:path'
  */
 
 export interface StoryMeta {
-  story: {
-    id: string
-    title: string
-    worldDirection?: {
-      cultivationSystem?: string
-      coreConflict: string
-      worldFeatures: string[]
-    }
-    idea: string
-    genre: string
-    totalChapters: number
-    status: 'init' | 'worldbuilding' | 'outlining' | 'writing' | 'done' | 'error'
-    provider: string
-    outputDir: string
-    createdAt: number
-    updatedAt: number
-    outlineStrategy?: 'layered'
-  }
-  world: {
-    id: string
-    storyId: string
-    content: string
-  } | null
-  characters: Array<{
-    id: string
-    storyId: string
-    name: string
-    description: string | null
-    dialogueStyle: string | null
-    createdAt: number
-  }>
-  outline: Array<{
-    number: number
-    title: string
-    description: string
-    introducedCharacters?: string[]
-  }>
-  chapters: Array<{
-    id: string
-    storyId: string
-    number: number
-    title: string | null
-    outline: string | null
-    summary: string | null
-    foreshadows: string | null
-    status: 'outline' | 'drafting' | 'reviewing' | 'done' | 'error'
-    createdAt: number
-    updatedAt: number
-  }>
-  contextSnapshot: {
-    id: string
-    storyId: string
-    stateJson: string
-    createdAt: number
-  } | null
+  story: Story
+  world: WorldContent | null
+  characters: Character[]
+  outline: ChapterOutline[]
+  chapters: ChapterMeta[]
   timeline?: StateSnapshot[]
-  foreshadowStack?: Array<{
-    id: string
-    text: string
-    expectedFulfillChapter: number
-    createdAt: number
-    createdAtChapter: number
-    fulfilledChapter?: number
-  }>
+  foreshadowStack?: ForeshadowItem[]
   foreshadowAlerts?: ForeshadowAlert[]
   storyState?: StoryState
 }
 
 export function ensureStoryDir(storyId: string): string {
   const dir = join(getOutputsDir(), storyId)
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
-    logger.debug(`Created story directory: ${dir}`)
-  }
+  ensureDir(dir)
   return dir
 }
 
@@ -117,7 +57,7 @@ export async function readMetaJson(storyId: string): Promise<StoryMeta | null> {
 
 export async function writeMetaJson(storyId: string, meta: StoryMeta): Promise<void> {
   const outputDir = meta.story.outputDir
-  mkdirSync(outputDir, { recursive: true })
+  ensureDir(outputDir)
   const path = getStoryMetaPathFromOutputDir(outputDir)
   writeFileAtomic(path, JSON.stringify(meta, null, 2))
   logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
@@ -176,7 +116,7 @@ export function readMetaJsonSyncFromOutputDir(outputDir: string): StoryMeta | nu
 
 export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
   const outputDir = meta.story.outputDir
-  mkdirSync(outputDir, { recursive: true })
+  ensureDir(outputDir)
   const path = getStoryMetaPathFromOutputDir(outputDir)
   writeFileAtomic(path, JSON.stringify(meta, null, 2))
   logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
@@ -186,5 +126,5 @@ export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
 export type { Story, StoryCreateInput, StoryStatus } from '../../types/story.js'
 export type { ChapterMeta, ChapterStatus } from '../../types/chapter.js'
 export type { Character, CharacterCreateInput } from '../../types/character.js'
-export type { WorldContent, ContextSnapshot } from '../../types/context.js'
+export type { WorldContent } from '../../types/world.js'
 export type { StateSnapshot } from '../../types/timeline.js'

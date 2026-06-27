@@ -105,7 +105,7 @@ interface StoryBibleOutline {
 }
 
 interface StoryBibleWorldDirection {
-  cultivationSystem?: string
+  powerSystem?: string
   coreConflict: string
   worldFeatures: string[]
 }

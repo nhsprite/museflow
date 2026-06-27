@@ -9,6 +9,8 @@ export interface JsonSchema {
   required?: string[]
 }
 
+import { extractJsonBlock, repairMalformedJson } from '../utils/json.js'
+
 export interface ModelProvider {
   chat(messages: Message[], temperature?: number): Promise<string>
   chatStructured?<T>(messages: Message[], schema: JsonSchema, temperature?: number): Promise<T>
@@ -23,24 +25,6 @@ export function getNonSystemMessages(messages: Message[]): Array<{ role: 'user' 
   return messages
     .filter(m => m.role !== 'system')
     .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
-}
-
-export function repairMalformedJson(raw: string): string {
-  return raw
-    .replace(/```json?/g, '')
-    .replace(/```/g, '')
-    .replace(/([{,]\s*)([a-zA-Z_]\w*)(\s*:)/g, '$1"$2"$3')
-    .replace(/,\s*([}\]])/g, '$1')
-    .replace(/'([^']*)'/g, '"$1"')
-}
-
-export function extractJsonBlock(raw: string): string {
-  const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (codeBlockMatch) {
-    return codeBlockMatch[1]!.trim()
-  }
-  const jsonMatch = raw.match(/\{[\s\S]*\}/)
-  return jsonMatch ? jsonMatch[0] : raw.trim()
 }
 
 export async function chatStructuredFallback<T>(

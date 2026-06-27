@@ -1,4 +1,4 @@
-import type { ForeshadowItem } from '../graph/state.js'
+import type { ForeshadowItem } from '../types/foreshadow.js'
 
 export function generateForeshadowConstraints(
   foreshadowStack: ForeshadowItem[],

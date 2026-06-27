@@ -17,7 +17,7 @@ vi.mock('../../src/model/registry.js', () => ({
         {
           title: '《逆天改命》',
           worldDirection: {
-            cultivationSystem: '凡境→灵境→仙境',
+            powerSystem: '凡境→灵境→仙境',
             coreConflict: '资源争夺、宗门秘宝',
             worldFeatures: ['中土大陆', '灵气衰退'],
           },
@@ -25,7 +25,7 @@ vi.mock('../../src/model/registry.js', () => ({
         {
           title: '《凡人之躯》',
           worldDirection: {
-            cultivationSystem: '炼体、炼气、炼神三阶段',
+            powerSystem: '炼体、炼气、炼神三阶段',
             coreConflict: '人与天斗、阶级固化',
             worldFeatures: ['偏远山村', '世俗王朝'],
           },
@@ -33,7 +33,7 @@ vi.mock('../../src/model/registry.js', () => ({
         {
           title: '《破妄之剑》',
           worldDirection: {
-            cultivationSystem: '剑修为尊；剑意凝兵',
+            powerSystem: '剑修为尊；剑意凝兵',
             coreConflict: '正邪两道、师门恩怨',
             worldFeatures: ['万剑山脉', '剑冢禁地'],
           },
@@ -51,13 +51,13 @@ describe('title-selector', () => {
       const option: TitleOption = {
         title: '《逆天改命》',
         worldDirection: {
-          cultivationSystem: '凡境→灵境→仙境',
+          powerSystem: '凡境→灵境→仙境',
           coreConflict: '资源争夺、宗门秘宝',
           worldFeatures: ['中土大陆', '灵气衰退'],
         },
       }
       expect(option.title).toBe('《逆天改命》')
-      expect(option.worldDirection.cultivationSystem).toBe('凡境→灵境→仙境')
+      expect(option.worldDirection.powerSystem).toBe('凡境→灵境→仙境')
       expect(option.worldDirection.worldFeatures).toHaveLength(2)
     })
   })
@@ -77,7 +77,7 @@ describe('title-selector', () => {
       const firstOption = options[0]
       expect(firstOption).toHaveProperty('title')
       expect(firstOption).toHaveProperty('worldDirection')
-      expect(firstOption.worldDirection).toHaveProperty('cultivationSystem')
+      expect(firstOption.worldDirection).toHaveProperty('powerSystem')
       expect(firstOption.worldDirection).toHaveProperty('coreConflict')
       expect(firstOption.worldDirection).toHaveProperty('worldFeatures')
       expect(firstOption.worldDirection.worldFeatures).toBeInstanceOf(Array)
@@ -92,7 +92,7 @@ describe('title-selector', () => {
 
       const firstOption = options.find(o => o.title.includes('逆天改命'))
       expect(firstOption).toBeDefined()
-      expect(firstOption!.worldDirection.cultivationSystem).toContain('凡境')
+      expect(firstOption!.worldDirection.powerSystem).toContain('凡境')
     })
   })
 
@@ -114,7 +114,7 @@ describe('title-selector', () => {
         {
           title: '《逆天改命》',
           worldDirection: {
-            cultivationSystem: '凡境→灵境→仙境',
+            powerSystem: '凡境→灵境→仙境',
             coreConflict: '资源争夺',
             worldFeatures: ['中土大陆'],
           },
@@ -125,12 +125,12 @@ describe('title-selector', () => {
       expect(result.title).toBe('《逆天改命》')
     })
 
-    it('displays "修炼体系" label for xianxia genre', async () => {
+    it('displays "规则体系" label when power system is present', async () => {
       const options: TitleOption[] = [
         {
           title: '《逆天改命》',
           worldDirection: {
-            cultivationSystem: '凡境→灵境→仙境',
+            powerSystem: '凡境→灵境→仙境',
             coreConflict: '资源争夺',
             worldFeatures: ['中土大陆'],
           },
@@ -141,15 +141,15 @@ describe('title-selector', () => {
 
       const promptArg = vi.mocked(inquirer.default.prompt).mock.calls[0]?.[0]
       const question = promptArg?.[0]
-      expect(question?.choices?.[0]?.name).toContain('修炼体系：凡境→灵境→仙境')
+      expect(question?.choices?.[0]?.name).toContain('规则体系：凡境→灵境→仙境')
     })
 
-    it('hides power system line when cultivationSystem is empty or starts with "无体系"', async () => {
+    it('hides power system line when powerSystem is empty or starts with "无体系"', async () => {
       const options: TitleOption[] = [
         {
           title: '《血符京华》',
           worldDirection: {
-            cultivationSystem: '无体系，萨满巫术以血祭反噬',
+            powerSystem: '无体系，萨满巫术以血祭反噬',
             coreConflict: '复仇唤醒血脉诅咒',
             worldFeatures: ['咒道', '阴兵'],
           },
@@ -170,7 +170,7 @@ describe('title-selector', () => {
         {
           title: '《诅咒规则》',
           worldDirection: {
-            cultivationSystem: '血咒需至亲之血为引，每次反噬心智',
+            powerSystem: '血咒需至亲之血为引，每次反噬心智',
             coreConflict: '复仇唤醒血脉诅咒',
             worldFeatures: ['咒道', '阴兵'],
           },
@@ -190,7 +190,7 @@ describe('title-selector', () => {
         {
           title: '《逆天改命》',
           worldDirection: {
-            cultivationSystem: '凡境→灵境→仙境',
+            powerSystem: '凡境→灵境→仙境',
             coreConflict: '资源争夺',
             worldFeatures: ['中土大陆'],
           },
@@ -219,7 +219,7 @@ describe('title-selector', () => {
         {
           title: '《逆天改命》',
           worldDirection: {
-            cultivationSystem: '凡境→灵境→仙境',
+            powerSystem: '凡境→灵境→仙境',
             coreConflict: '资源争夺',
             worldFeatures: ['中土大陆'],
           },

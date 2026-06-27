@@ -1,7 +1,8 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
-import { generateId } from '../utils/id.js'
 import { AI_PHRASE_PROHIBITIONS, SEVERITY_INSTRUCTIONS } from './prompt-fragments.js'
+import { parseJsonFromLLM } from '../utils/json.js'
+import { normalizeIssues, isPositiveFeedback } from '../utils/agent-output.js'
 
 export class QualityAgent extends BaseAgent {
   constructor() {
@@ -92,17 +93,7 @@ ${state.chapterContent || '（无内容）'}
   }
 
   protected parse(content: string): AgentOutput {
-    const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return { success: false, error: '无法解析评审数据：未找到 JSON 格式' }
-    }
-    try {
-      const data = JSON.parse(jsonMatch[0])
-      return { success: true, data }
-    } catch {
-      return { success: false, error: '无法解析评审数据：JSON 格式错误' }
-    }
+    return parseJsonFromLLM(content)
   }
 
   processOutput(output: AgentOutput): { issues: Issue[]; qualityScore?: number } {
@@ -118,23 +109,10 @@ ${state.chapterContent || '（无内容）'}
       }>
     }
 
-    const issues: Issue[] = (data.issues || [])
-      .filter(issue => !this.isPositiveFeedback(issue.description || ''))
-      .map(issue => {
-        const result: Issue = {
-          id: generateId(),
-          type: 'quality',
-          severity: (issue.severity as IssueSeverity) || 'info',
-          description: issue.description || '',
-        }
-        if (issue.location) {
-          result.location = issue.location
-        }
-        if (issue.suggestion) {
-          result.suggestion = issue.suggestion
-        }
-        return result
-      })
+    const issues = normalizeIssues(data.issues, 'quality', {
+      defaultSeverity: 'info',
+      filter: issue => !isPositiveFeedback(issue.description || ''),
+    })
 
     const result: { issues: Issue[]; qualityScore?: number } = { issues }
     if (data.quality_score !== undefined) {
@@ -142,32 +120,4 @@ ${state.chapterContent || '（无内容）'}
     }
     return result
   }
-
-  private isPositiveFeedback(description: string): boolean {
-    const positivePatterns = [
-      /未检测到.*AI痕迹/,
-      /未检测到.*问题/,
-      /未发现问题/,
-      /没有.*问题/,
-      /没有.*痕迹/,
-      /保持.*较好/,
-      /保持.*良好/,
-      /语言.*流畅/,
-      /描写.*细腻/,
-      /文笔.*优秀/,
-      /文笔.*出色/,
-      /节奏.*恰当/,
-      /结构.*合理/,
-      /人物.*立体/,
-      /情节.*合理/,
-      /无明显/,
-      /无.*不足/,
-      /值得肯定/,
-      /表现.*优秀/,
-      /质量.*较高/,
-    ]
-    return positivePatterns.some(pattern => pattern.test(description))
-  }
 }
-
-type IssueSeverity = 'error' | 'warning' | 'info'

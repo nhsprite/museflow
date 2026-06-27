@@ -1,7 +1,8 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
-import { generateId } from '../utils/id.js'
-import { POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, FORESHADOW_BOUNDARY_RULES } from './prompt-fragments.js'
+import { POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, FORESHADOW_BOUNDARY_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
+import { parseJsonFromLLM } from '../utils/json.js'
+import { normalizeIssues } from '../utils/agent-output.js'
 
 export class HallucinationAgent extends BaseAgent {
   constructor() {
@@ -25,12 +26,13 @@ ${state.world || '（尚未构建）'}
 ${state.characters || '（尚未创建）'}
 </characters>
 
-${state.establishedCharacters && state.establishedCharacters.length > 0 ? `<established_characters>
-<mandatory>【前文已建立角色】以下角色已在前面章节的摘要或故事状态中出现，不属于新 invent 的角色：</mandatory>
-${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</established_characters>
+${buildCharacterWhitelistSection({
+  charactersList: state.charactersList,
+  outlineCharacters: state.outlineCharacters,
+  establishedCharacters: state.establishedCharacters,
+})}
 
-` : ''}<outline>
+<outline>
 ${state.outline || '（暂无大纲）'}
 </outline>
 
@@ -116,17 +118,7 @@ ${state.chapterContent || '（无内容）'}
   }
 
   protected parse(content: string): AgentOutput {
-    const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return { success: false, error: '无法解析检测数据：未找到 JSON 格式' }
-    }
-    try {
-      const data = JSON.parse(jsonMatch[0])
-      return { success: true, data }
-    } catch {
-      return { success: false, error: '无法解析检测数据：JSON 格式错误' }
-    }
+    return parseJsonFromLLM(content)
   }
 
   processOutput(output: AgentOutput): Issue[] {
@@ -147,29 +139,6 @@ ${state.chapterContent || '（无内容）'}
       return []
     }
 
-    const withdrawnPattern = /撤回|不成立|不构成严重矛盾|此条不成立|重新审视后|不构成.*矛盾|不视为/i
-    const activeIssues = (data.issues || []).filter(issue => {
-      const desc = `${issue.description ?? ''} ${issue.suggestion ?? ''}`
-      return !withdrawnPattern.test(desc)
-    })
-
-    return activeIssues.map(issue => {
-      const result: Issue = {
-        id: generateId(),
-        type: 'hallucination',
-        severity: (issue.severity as IssueSeverity) || 'warning',
-        description: issue.description || '',
-      }
-      const loc = issue.location || issue.conflict_with
-      if (loc) {
-        result.location = loc
-      }
-      if (issue.suggestion) {
-        result.suggestion = issue.suggestion
-      }
-      return result
-    })
+    return normalizeIssues(data.issues, 'hallucination')
   }
 }
-
-type IssueSeverity = 'error' | 'warning' | 'info'

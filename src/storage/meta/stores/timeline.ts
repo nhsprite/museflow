@@ -1,5 +1,5 @@
 import type { StateSnapshot } from '../../../types/timeline.js'
-import type { ForeshadowItem, ForeshadowAlert } from '../../../graph/state.js'
+import type { ForeshadowItem, ForeshadowAlert } from '../../../types/foreshadow.js'
 import { generateId } from '../../../utils/id.js'
 import { readMetaJsonSync, writeMetaJsonSync } from '../index.js'
 

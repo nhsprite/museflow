@@ -1,7 +1,7 @@
 import { requireStory } from '../utils/story-loader.js'
 import { getState } from '../../core/runner.js'
 
-import { getForeshadowAlerts, formatForeshadowAlerts } from '../../graph/state.js'
+import { getForeshadowAlerts, formatForeshadowAlerts } from '../../types/foreshadow.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { existsSync } from 'node:fs'
 

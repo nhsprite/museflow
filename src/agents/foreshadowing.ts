@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
-import type { ForeshadowItem } from '../graph/state.js'
+import type { ForeshadowItem, ForeshadowStatus } from '../types/foreshadow.js'
 import { generateId } from '../utils/id.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
 
@@ -201,7 +201,7 @@ export class ForeshadowingAgent extends BaseAgent {
           expectedFulfillChapter,
           createdAt: Date.now(),
           createdAtChapter: currentChapter,
-          status: (item.foreshadow_type === 'explicit' ? 'shown' : 'planted') as import('../graph/state.js').ForeshadowStatus,
+          status: (item.foreshadow_type === 'explicit' ? 'shown' : 'planted') as ForeshadowStatus,
           isExplicit: item.foreshadow_type === 'explicit',
           source: 'content' as const,
         }

@@ -1,16 +1,15 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
-import type { ChapterMeta } from '../../types/chapter.js'
 import type { AgentState } from '../../agents/base.js'
 import { getChapterAgent } from '../agent-factory.js'
-import { generateId } from '../../utils/id.js'
 import { writeChapterContent, readChapterContent } from '../../storage/filesystem/writer.js'
+import { createChapterMeta } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import { buildCharacterFactTimeline, buildKeyEventsTimeline, formatStoryState } from '../utils/story-state.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent } from './planning.js'
-import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
+
 import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -100,19 +99,9 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
 
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
-  const now = Date.now()
-  const newChapter: ChapterMeta = {
-    id: generateId(),
-    storyId: state.story.id,
-    number: toDisplayChapterNumber(chapterIndex),
-    title: null,
+  const newChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
     outline: outlineItem?.description || null,
-    summary: null,
-    foreshadows: null,
-    status: 'drafting',
-    createdAt: now,
-    updatedAt: now,
-  }
+  })
 
   const newChapters = [...state.chapters]
 

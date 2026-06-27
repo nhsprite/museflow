@@ -2,6 +2,8 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
+import { parseJsonFromLLM } from '../utils/json.js'
+import { normalizeIssues } from '../utils/agent-output.js'
 
 export class OutlineComplianceAgent extends BaseAgent {
   constructor() {
@@ -84,6 +86,7 @@ export class OutlineComplianceAgent extends BaseAgent {
       {
         "type": "missing_event|extra_event|timeline_mismatch|dialogue_mismatch|title_mismatch|logic_issue|character_order",
         "severity": "error|warning|info",
+        "is_bridge": true或false,
         "description": "偏离描述",
         "suggestion": "改进建议"
       }
@@ -103,17 +106,7 @@ export class OutlineComplianceAgent extends BaseAgent {
   }
 
   protected parse(content: string): AgentOutput {
-    const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return { success: false, error: '无法解析检查数据：未找到 JSON 格式' }
-    }
-    try {
-      const data = JSON.parse(jsonMatch[0])
-      return { success: true, data }
-    } catch {
-      return { success: false, error: '无法解析检查数据：JSON 格式错误' }
-    }
+    return parseJsonFromLLM(content)
   }
 
   processOutput(output: AgentOutput): { issues: Issue[]; isCompliant: boolean } {
@@ -131,6 +124,7 @@ export class OutlineComplianceAgent extends BaseAgent {
       deviations?: Array<{
         type?: string
         severity?: string
+        is_bridge?: boolean
         description?: string
         suggestion?: string
       }>
@@ -155,22 +149,21 @@ export class OutlineComplianceAgent extends BaseAgent {
       }
     }
 
-    const BRIDGE_INDICATORS = /过渡|衔接|桥接|前章遗留|回话|理账|交代|铺垫|承上启下|收尾|余波/
+    const deviationIssues = normalizeIssues(data.deviations, 'outline_deviation', {
+      mapType: dev => dev.type === 'missing_event' ? 'outline_violation' : 'outline_deviation',
+      filter: () => true,
+    }).map(issue => {
+      // Trust the agent's judgment: bridge-like or extra-event deviations should not be escalated above warning
+      // unless the model explicitly marked them as error for a non-bridge reason.
+      const dev = data.deviations?.find(d => d.description && issue.description.includes(d.description)) ?? {}
+      const isBridgeLike = (dev as { is_bridge?: boolean; type?: string }).is_bridge === true || (dev as { type?: string }).type === 'extra_event'
+      if (isBridgeLike && issue.severity === 'error') {
+        return { ...issue, severity: 'warning' as const }
+      }
+      return issue
+    })
 
-    for (const dev of (data.deviations || [])) {
-      const isBridgeLike = dev.type === 'extra_event' && BRIDGE_INDICATORS.test(dev.description || '')
-      const issueType = dev.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'
-      const issue: Issue = {
-        id: generateId(),
-        type: issueType,
-        severity: isBridgeLike ? 'warning' : ((dev.severity as Issue['severity']) || 'warning'),
-        description: `[大纲偏离] ${dev.description || ''}`,
-      }
-      if (dev.suggestion) {
-        issue.suggestion = dev.suggestion
-      }
-      issues.push(issue)
-    }
+    issues.push(...deviationIssues)
 
     return {
       issues,

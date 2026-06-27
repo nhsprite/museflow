@@ -41,7 +41,11 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
   let targetChapterIndex: number | undefined
 
   if (state.pendingIssues.length > 0) {
-    const currentChapterHasErrors = state.rewriteRequested
+    // rewriteRequested 为 true 说明上一章已在图节点里走到 request_rewrite，错误属于当前章。
+    // 但某些异常路径（如图抛错、checkpoint 未同步）会导致 rewriteRequested 仍为 false，
+    // 而 pendingIssues 中实际包含 error。因此以 issue severity 兜底判断。
+    const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
+    const currentChapterHasErrors = state.rewriteRequested || hasErrors
     targetChapterIndex = currentChapterHasErrors
       ? state.currentChapterIndex
       : Math.max(0, state.currentChapterIndex - 1)
@@ -157,12 +161,16 @@ async function handleRewrite(
 
 function isForeshadowLikelyPolluted(item: ReducedGraphState['foreshadowStack'][number]): boolean {
   const text = item.text
+  // Concise foreshadow hints are unlikely to be prompt pollution.
   if (text.length <= 30) return false
-  const narrativeMarkers = /[""''""「」『』（）]|\b(?:说道|问道|回答|决定|于是|因此|因为|结果|然后|接着|后来|终于|已经|完成|解决|处理|约定|答应|拒绝|提出|要求|命令|宣布|揭示|揭晓|真相|原来|发现|知道|明白|意识|想到|记得|回忆)/
-  if (narrativeMarkers.test(text) && text.length > 45) return true
-  const eventDescriptionPattern = /.+?(?:[，。；！？]|\.{3,}).+?(?:[，。；！？]|\.{3,})/
-  if (eventDescriptionPattern.test(text) && text.length > 60) return true
+  // Outline-derived items are typically prompt/outline pollution rather than organic foreshadows.
   if (item.source === 'outline') return true
+  // Multi-sentence text with narrative punctuation is likely narrative content, not a compact foreshadow.
+  const sentenceDelimiters = /[.!?。！？…]+/
+  const sentences = text.split(sentenceDelimiters).filter(s => s.trim().length > 0)
+  if (sentences.length >= 2 && text.length > 60) return true
+  // Very long single-sentence items are also suspect.
+  if (text.length > 120) return true
   return false
 }
 

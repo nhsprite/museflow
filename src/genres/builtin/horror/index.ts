@@ -21,16 +21,6 @@ export function createHorrorSkill(): GenreSkill {
 3. 故事发生的地理与社会环境
 4. 受害者或角色的处境
 5. 可能的逃生或对抗规则`,
-    outlineTemplate: `为一部 {totalChapters} 章的恐怖小说制定大纲。
-
-故事简介：{idea}
-
-请按章节顺序列出每一章的：
-- 章节标题
-- 本章核心恐怖事件
-- 紧张感递进节奏
-
-严格生成 exactly {totalChapters} 个章节。`,
     chapterPromptSupplement: `你是一位擅长恐怖风格的作家。请特别注意：
 - 营造压抑、紧张的氛围
 - 逐步揭露恐惧的来源

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
 import type { AgentState } from '../../src/agents/base.ts'
 import type { Issue } from '../../src/types/agent.ts'
+import type { ChapterPlannerAgent } from '../../src/agents/chapter-planner.ts'
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 
@@ -14,6 +15,10 @@ vi.mock('../../src/model/registry.ts', () => ({
 class TestableChapterPlannerAgent extends (await import('../../src/agents/chapter-planner.ts')).ChapterPlannerAgent {
   public exposePrompt(state: Required<AgentState>): Message[] {
     return this.buildPrompt(state)
+  }
+
+  public parseOutput(content: string): ReturnType<ChapterPlannerAgent['parse']> {
+    return this.parse(content)
   }
 }
 
@@ -262,5 +267,59 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(output.success).toBe(true)
     const data = output.data as { chapterTimeAnchor?: string }
     expect(data.chapterTimeAnchor).toBe('三日后（跨越三日）')
+  })
+})
+
+describe('ChapterPlannerAgent JSON repair', () => {
+  it('repairs literal newlines inside JSON string values', () => {
+    const agent = new TestableChapterPlannerAgent()
+    const output = agent.parseOutput(`\`\`\`json
+{
+  "sections": [
+    {
+      "title": "段落",
+      "summary": "第一行\n第二行",
+      "wordCount": 100,
+      "events": ["事件"],
+      "characters": ["角色"],
+      "timeMark": "初六"
+    }
+  ],
+  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],
+  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],
+  "chapterTimeAnchor": "初六"
+}
+\`\`\``)
+
+    expect(output.success).toBe(true)
+    const data = output.data as { sections: Array<{ summary: string }> }
+    expect(data.sections[0]!.summary).toBe('第一行\n第二行')
+  })
+
+  it('repairs literal tabs inside JSON string values', () => {
+    const agent = new TestableChapterPlannerAgent()
+    const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要\t带制表符",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
+
+    expect(output.success).toBe(true)
+    const data = output.data as { sections: Array<{ summary: string }> }
+    expect(data.sections[0]!.summary).toBe('摘要\t带制表符')
+  })
+
+  it('repairs malformed closing single quote converted from smart quote', () => {
+    const agent = new TestableChapterPlannerAgent()
+    const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "陈裕堂线缓兵三日，但苏半城未承诺' }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
+
+    expect(output.success).toBe(true)
+    const data = output.data as { timeline: Array<{ notes: string }> }
+    expect(data.timeline[0]!.notes).toBe('陈裕堂线缓兵三日，但苏半城未承诺')
+  })
+
+  it('keeps legitimate single quotes inside JSON string values untouched', () => {
+    const agent = new TestableChapterPlannerAgent()
+    const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "It's a test",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
+
+    expect(output.success).toBe(true)
+    const data = output.data as { sections: Array<{ summary: string }> }
+    expect(data.sections[0]!.summary).toBe("It's a test")
   })
 })

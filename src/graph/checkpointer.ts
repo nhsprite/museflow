@@ -1,9 +1,10 @@
 import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import type { Checkpoint, CheckpointTuple, CheckpointMetadata, PendingWrite, ChannelVersions } from '@langchain/langgraph-checkpoint'
 import type { RunnableConfig } from '@langchain/core/runnables'
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../utils/logger.js'
+import { writeFileAtomic, ensureDir } from '../utils/fs.js'
 
 interface CheckpointRecord {
   checkpointId: string
@@ -25,21 +26,13 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     super(undefined)
   }
 
-  private writeFileAtomic(path: string, data: string): void {
-    const tmpPath = `${path}.tmp`
-    writeFileSync(tmpPath, data, 'utf-8')
-    renameSync(tmpPath, path)
-  }
-
   private getCheckpointDir(outputDir: string): string {
     return join(outputDir, 'checkpoints')
   }
 
   private ensureCheckpointDir(outputDir: string): string {
     const dir = this.getCheckpointDir(outputDir)
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true })
-    }
+    ensureDir(dir)
     return dir
   }
 
@@ -76,7 +69,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
 
   private writeLatestCheckpointId(outputDir: string, checkpointId: string, ts: string): void {
     const path = this.getLatestPointerPath(outputDir)
-    this.writeFileAtomic(path, JSON.stringify({ checkpointId, ts }, null, 2))
+    writeFileAtomic(path, JSON.stringify({ checkpointId, ts }, null, 2))
   }
 
   private loadCheckpointRecord(outputDir: string, checkpointId: string): CheckpointRecord | undefined {
@@ -133,7 +126,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
   private savePendingWrites(outputDir: string, writes: PendingWritesRecord[]): void {
     const dir = this.ensureCheckpointDir(outputDir)
     const path = join(dir, 'pending_writes.json')
-    this.writeFileAtomic(path, JSON.stringify(writes, null, 2))
+    writeFileAtomic(path, JSON.stringify(writes, null, 2))
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
@@ -231,7 +224,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     }
 
     const path = join(dir, `${checkpoint.id}.json`)
-    this.writeFileAtomic(path, JSON.stringify(record, null, 2))
+    writeFileAtomic(path, JSON.stringify(record, null, 2))
     this.writeLatestCheckpointId(outputDir, checkpoint.id as string, checkpoint.ts)
     logger.debug(`Checkpoint saved: ${outputDir}/${checkpoint.id}`)
 
@@ -285,7 +278,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     record.parentCheckpointId = record.parentCheckpointId ?? null
 
     const targetPath = join(dir, `${chapterCheckpointId}.json`)
-    this.writeFileAtomic(targetPath, JSON.stringify(record, null, 2))
+    writeFileAtomic(targetPath, JSON.stringify(record, null, 2))
     this.writeLatestCheckpointId(outputDir, chapterCheckpointId, record.checkpoint.ts)
     logger.debug(`Chapter-level checkpoint saved: ${targetPath}`)
   }

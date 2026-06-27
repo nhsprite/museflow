@@ -1,6 +1,7 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
-import type { WorldContent } from '../types/context.js'
+import type { WorldContent } from '../types/world.js'
 import { generateId } from '../utils/id.js'
+import { parseJsonFromLLM } from '../utils/json.js'
 
 export class WorldbuilderAgent extends BaseAgent {
   constructor() {
@@ -40,31 +41,16 @@ export class WorldbuilderAgent extends BaseAgent {
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
 
-    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
-    if (codeBlockMatch) {
-      try {
-        const data = JSON.parse(codeBlockMatch[1]!.trim())
-        return { success: true, data }
-      } catch {
-        // ignore parse failure
-      }
-    }
-
-    const jsonMatch = trimmed.match(/\{[\s\S]*?\}/)
-    if (jsonMatch) {
-      try {
-        const data = JSON.parse(jsonMatch[0])
-        return { success: true, data }
-      } catch {
-        // ignore parse failure
-      }
+    const parsed = parseJsonFromLLM<{ title?: string; world?: string; content?: string }>(trimmed)
+    if (parsed.success) {
+      return { success: true, data: parsed.data }
     }
 
     if (trimmed.length > 0) {
       return { success: true, data: { title: '', world: trimmed } }
     }
 
-    return { success: false, error: '无法解析世界观数据：未找到 JSON 格式' }
+    return { success: false, error: parsed.error ?? '无法解析世界观数据：未找到 JSON 格式' }
   }
 
   processOutput(output: AgentOutput, storyId: string): WorldContent | null {

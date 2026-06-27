@@ -1,8 +1,9 @@
 import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
-import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES } from './prompt-fragments.js'
+import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
+import { parseJsonFromLLM } from '../utils/json.js'
 
 export interface ChapterPlan {
   sections: Array<{
@@ -48,16 +49,10 @@ export class ChapterPlannerAgent extends BaseAgent {
     const chapterWordCountMin = genreSkill?.chapterWordCountMin ?? 4000
     const chapterWordCountMax = genreSkill?.chapterWordCountMax ?? 7000
 
-    const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
-      ? `<official_characters>
-<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表或下方【大纲登场角色】列表；任何不在此列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
-${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
-<outline_characters>
-<mandatory>【大纲登场角色】以下角色由大纲明确命名并将在本章或之前章节登场，允许在本章出现：</mandatory>
-${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</outline_characters>` : ''}`
-      : ''
+    const characterWhitelistSection = buildCharacterWhitelistSection({
+      charactersList: state.charactersList,
+      outlineCharacters: state.outlineCharacters,
+    })
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
@@ -66,7 +61,7 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
       : '（暂无上一章状态）'
 
     const stateConflictsSection = state.stateConflicts
-      ? `<state_conflicts>\n<mandatory>【必须处理的上游状态冲突】</mandatory>\n${state.stateConflicts}\n\n<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作（递、接、取、放、交、藏等）完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>\n</state_conflicts>`
+      ? `<state_conflicts>\n<mandatory>【必须处理的上游状态冲突】</mandatory>\n${state.stateConflicts}\n\n<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作（递交、接取、拾取、放置、转交、藏匿等）完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>\n</state_conflicts>`
       : ''
 
     const characterOmissionIssues = state.issues?.filter(i =>
@@ -90,7 +85,7 @@ ${characterOmissionIssues.length > 0 ? `
 ${characterOmissionIssues.map((issue, i) => `${i + 1}. ${issue.description}`).join('\n')}
 修复方式（二选一）：
 - 方式A：在相关段落的 characters 列表中加入该角色，并在 events 中设计该角色的出场情节
-- 方式B：在 timeline 或某段落的 events 中明确说明该角色缺席的合理原因（如"留守庄院"、"外出化缘"、"因伤休养"等）
+- 方式B：在 timeline 或某段落的 events 中明确说明该角色缺席的合理原因，且该原因必须来自已确立的剧情、人物状态或世界观信息
 禁止方式：不得无视该角色，不得让其无故消失且不作任何交代。` : ''}`
       : ''
 
@@ -141,7 +136,7 @@ ${stateConflictsSection}
 
 <instruction>
 【规划要求】
-1. 将本章拆分为 3-6 个段落/场景
+1. 将本章拆分为 {MIN_SECTIONS}-{MAX_SECTIONS} 个段落/场景
 2. 对每个段落，明确：
    - 段落标题（简短）
    - 内容摘要（1-2句话）
@@ -152,8 +147,8 @@ ${stateConflictsSection}
   3. 列出完整的时间线，确保：
      - 时间顺序正确，不能出现时间回退或跳跃未交代的情况
      - 每个关键事件都有明确的时间标记
-     - 时间间隔符合大纲要求（如"高烧持续三日"必须真的跨越三日）
-     - 如果本章涉及"三日期限"、"倒计时"、"截止日"等时间压力，必须在 timeline 中标注剩余时间
+     - 时间间隔符合大纲要求（如大纲明确指定的时间跨度必须在时间线中得到完整体现）
+     - 如果本章涉及时间限制、倒计时或截止期限等时间压力，必须在 timeline 中标注剩余时间
   4. 逐条检查大纲要求，确保：
      - 大纲中的每个情节点都出现在规划中
      - 大纲中提到的所有事件都有对应的段落
@@ -164,7 +159,7 @@ ${stateConflictsSection}
      - 核心事件必须占据本章总字数的 {CORE_EVENT_RATIO_TARGET_PERCENT}% 以上，这是硬性要求，任何情况下不得突破
      - 非核心事件（如前章遗留差事、过渡衔接、背景交代）必须压缩为简短的过渡段落，单段字数不得超过 {MAX_NON_CORE_SECTION_WORD_COUNT} 字，不得发展成独立大场景
      - 如果本章大纲只要求"接触""试探""登场""递帖"等初步事件，不得在本章把该事件完整解决或过度展开
-     - 规划的总场景数不得超过 6 个，核心事件场景不得少于 2 个
+     - 规划的总场景数不得超过 {MAX_SECTIONS} 个，核心事件场景不得少于 {MIN_CORE_SECTIONS} 个
      - 【硬性优先级】当核心事件与前章遗留差事、Deadline 到期事项发生冲突时，永远优先保证核心事件篇幅；不得以"差事到期"为由把无关差事扩展成大场景
   6. 【前章遗留差事处理 - 必须执行】
      - 如果上下文中的 <pending_tasks> 列出了前章遗留差事，必须为每条差事在 taskResolutions 中给出处理结论
@@ -206,7 +201,7 @@ ${stateConflictsSection}
       规则：
       - 如果本章从上一章结束时间继续推进：chapterTimeAnchor = 上一章结束时间（或写"继续推进：{storyTime}"）。
       - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日卯时（回溯覆盖第5章后三日）"）。
-      - 如果本章包含"三日期限"、"倒计时"等时间压力：chapterTimeAnchor 必须明确标注当前处于期限的第几天、还剩几天。
+      - 如果本章包含时间限制、倒计时或截止期限等时间压力：chapterTimeAnchor 必须明确标注当前处于期限的哪个阶段、还剩多少。
       - 如果无法判断：chapterTimeAnchor = "未指定"。
       - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。
       - 所有 section 的 timeMark 必须相对于 chapterTimeAnchor 推进，严禁时间回退。
@@ -267,9 +262,9 @@ ${FORESHADOW_DISCIPLINE_RULES}
 
 <important>
 【重要】
-- 如果大纲要求"高烧持续三日后才退"，时间线必须显示三日，不能只写"过了一夜"
+- 如果大纲要求明确的时间跨度，时间线必须完整呈现该跨度，不得用模糊表述替代
 - 如果大纲要求某人说特定台词，规划中必须标注该台词原样出现
-- 如果大纲要求"次日"发生某事，时间线必须显示"第一日→第二日"的过渡
+- 如果大纲要求相邻时间点发生某事，时间线必须显示前一时刻到下一时刻的过渡
 - 所有大纲情节点必须在 outlineCheck 中标记为 fulfilled: true
 - 所有已加入的常驻角色必须在 sections 或 timeline 中有明确交代，不得无故遗漏
 - 如果上下文提供了 <pending_tasks>，必须在 taskResolutions 中逐条回应，禁止遗漏
@@ -288,6 +283,9 @@ ${FORESHADOW_DISCIPLINE_RULES}
       MAX_BRIDGE_SCENE_RATIO_PERCENT: Math.round(planningConfig.maxBridgeSceneRatio * 100),
       CHAPTER_WORD_COUNT_MIN: chapterWordCountMin,
       CHAPTER_WORD_COUNT_MAX: chapterWordCountMax,
+      MIN_SECTIONS: planningConfig.minSections,
+      MAX_SECTIONS: planningConfig.maxSections,
+      MIN_CORE_SECTIONS: planningConfig.minCoreSections,
     })
 
     return [
@@ -297,144 +295,32 @@ ${FORESHADOW_DISCIPLINE_RULES}
   }
 
   protected parse(content: string): AgentOutput {
-    const trimmed = content.trim()
-
-    const extractors = [
-      () => {
-        const match = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
-        return match ? match[1]!.trim() : null
-      },
-      () => {
-        const match = trimmed.match(/\{[\s\S]*?\}(?=\s*$)/)
-        return match ? match[0] : null
-      },
-      () => {
-        const start = trimmed.indexOf('{')
-        const end = trimmed.lastIndexOf('}')
-        if (start !== -1 && end !== -1 && end > start) {
-          return trimmed.slice(start, end + 1)
-        }
-        return null
-      },
-    ]
-
-    let jsonText: string | null = null
-    for (const extractor of extractors) {
-      jsonText = extractor()
-      if (jsonText) break
+    const parsed = parseJsonFromLLM<ChapterPlan>(content)
+    if (!parsed.success) {
+      logger.error('[MuseFlow] 章节规划 JSON 解析失败')
+      return { success: false, error: parsed.error ?? '无法解析规划数据：JSON 格式错误' }
     }
 
-    if (!jsonText) {
-      return { success: false, error: '无法解析规划数据：未找到 JSON 格式' }
+    const data = parsed.data
+    if (!data) {
+      return { success: false, error: '无法解析规划数据：JSON 为空' }
     }
-
-    const repaired = this.repairJson(jsonText)
-
-    try {
-      const data = JSON.parse(repaired) as ChapterPlan
-      if (!data.sections || !Array.isArray(data.sections)) {
-        return { success: false, error: '规划数据缺少 sections 字段' }
-      }
-      if (!data.timeline || !Array.isArray(data.timeline)) {
-        return { success: false, error: '规划数据缺少 timeline 字段' }
-      }
-      if (!data.outlineCheck || !Array.isArray(data.outlineCheck)) {
-        data.outlineCheck = []
-      }
-      const unfulfilled = data.outlineCheck.filter(c => !c.fulfilled)
-      if (unfulfilled.length > 0) {
-        logger.warn(`[MuseFlow] 规划警告：${unfulfilled.length} 项大纲要求未在规划中明确落实`)
-        for (const u of unfulfilled) {
-          logger.warn(`  - ${u.requirement}`)
-        }
-      }
-      return { success: true, data }
-    } catch (err) {
-      logger.error('[MuseFlow] DEBUG: JSON parse failed')
-      const match = err instanceof Error ? err.message.match(/position (\d+)/) : null
-      const errorPos = match && match[1] ? parseInt(match[1]) : null
-      if (errorPos && errorPos > 0) {
-        const start = Math.max(0, errorPos - 200)
-        const end = Math.min(repaired.length, errorPos + 200)
-        logger.error(`[MuseFlow] DEBUG: Problem area around position ${errorPos}:`)
-        logger.error(repaired.substring(start, end))
-      }
-      logger.error('[MuseFlow] DEBUG: Parse error:', err instanceof Error ? err.message : String(err))
-      return { success: false, error: '无法解析规划数据：JSON 格式错误' }
+    if (!data.sections || !Array.isArray(data.sections)) {
+      return { success: false, error: '规划数据缺少 sections 字段' }
     }
-  }
-
-  private repairJson(text: string): string {
-    let repaired = text
-      .replace(/[\u201C\u201D]/g, '"')
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/,\s*([}\]])/g, '$1')
-      .replace(/([{,])\s*([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*:/g, '$1"$2":')
-
-    // 修复单引号包裹的字符串（转为双引号）
-    repaired = repaired.replace(/'([^'\n]*?)'/g, '"$1"')
-
-    // 移除 JSON 中的注释（// 和 /* */）
-    repaired = repaired.replace(/\/\/.*$/gm, '')
-    repaired = repaired.replace(/\/\*[\s\S]*?\*\//g, '')
-
-    // 修复缺失的逗号：在对象/数组元素之间添加逗号
-    repaired = repaired.replace(/}(\s*){/g, '},$1{')
-    repaired = repaired.replace(/](\s*)\[/g, '],$1[')
-    repaired = repaired.replace(/"(\s*){/g, '",$1{')
-    repaired = repaired.replace(/}(\s*)"/g, '},$1"')
-
-    // 修复 undefined 值
-    repaired = repaired.replace(/: undefined/g, ': null')
-    repaired = repaired.replace(/: undefined,/g, ': null,')
-
-    // 修复 JSON 字符串值内部未转义的双引号
-    repaired = this.escapeInnerQuotes(repaired)
-
-    return repaired
-  }
-
-  private escapeInnerQuotes(json: string): string {
-    let result = ''
-    let inString = false
-    let escaped = false
-
-    for (let i = 0; i < json.length; i++) {
-      const char = json[i]
-
-      if (inString) {
-        if (escaped) {
-          escaped = false
-          result += char
-        } else if (char === '\\') {
-          escaped = true
-          result += char
-        } else if (char === '"') {
-          // 检查这是否是字符串的结束引号
-          // 如果下一个非空白字符是 : , } ] 之一，则这是结束引号
-          let j = i + 1
-          while (j < json.length && /\s/.test(json[j]!)) j++
-          const nextChar = json[j]
-          if (nextChar === undefined || nextChar === ':' || nextChar === ',' || nextChar === '}' || nextChar === ']') {
-            inString = false
-            result += char
-          } else {
-            // 这是字符串内部的未转义引号，需要转义
-            result += '\\"'
-          }
-        } else {
-          result += char
-        }
-      } else {
-        if (char === '"') {
-          inString = true
-          result += char
-        } else {
-          result += char
-        }
+    if (!data.timeline || !Array.isArray(data.timeline)) {
+      return { success: false, error: '规划数据缺少 timeline 字段' }
+    }
+    if (!data.outlineCheck || !Array.isArray(data.outlineCheck)) {
+      data.outlineCheck = []
+    }
+    const unfulfilled = data.outlineCheck.filter(c => !c.fulfilled)
+    if (unfulfilled.length > 0) {
+      logger.warn(`[MuseFlow] 规划警告：${unfulfilled.length} 项大纲要求未在规划中明确落实`)
+      for (const u of unfulfilled) {
+        logger.warn(`  - ${u.requirement}`)
       }
     }
-
-    return result
+    return { success: true, data }
   }
 }

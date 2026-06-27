@@ -356,4 +356,251 @@ describe('rewrite command state consistency', () => {
 
     logSpy.mockRestore()
   })
+
+  it('should target current chapter when errors exist even if rewriteRequested is false', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      world: null,
+      characters: [],
+      outline: Array.from({ length: 10 }, (_, i) => ({
+        number: i + 1,
+        title: `Chapter ${i + 1}`,
+        description: `Description ${i + 1}`,
+      })),
+      chapters: Array(10).fill(null),
+      currentChapterIndex: 5,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [
+        {
+          id: 'issue-1',
+          type: 'consistency',
+          severity: 'error',
+          description: 'test error',
+          location: 'test location',
+        },
+      ],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+    })
+
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
+
+    const targetLog = logSpy.mock.calls.find(
+      call => String(call[0]).includes('目标章节:')
+    )
+    expect(targetLog).toBeDefined()
+    expect(String(targetLog![0])).toContain('目标章节: 6/10')
+
+    logSpy.mockRestore()
+  })
+
+  it('should pass currentChapterIndex to graph when errors exist but rewriteRequested is false', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+
+    getStateMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      world: null,
+      characters: [],
+      outline: Array.from({ length: 10 }, (_, i) => ({
+        number: i + 1,
+        title: `Chapter ${i + 1}`,
+        description: `Description ${i + 1}`,
+      })),
+      chapters: Array(10).fill(null),
+      currentChapterIndex: 5,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [
+        {
+          id: 'issue-1',
+          type: 'consistency',
+          severity: 'error',
+          description: 'test error',
+          location: 'test location',
+        },
+      ],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+    })
+
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
+
+    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
+    const invokedState = runChapterGraphMock.mock.calls[0]![2] as Record<string, unknown>
+    expect(invokedState.currentChapterIndex).toBe(5)
+    expect(invokedState.rewriteApproved).toBe(true)
+  })
+
+  it('should honor --chapter flag regardless of pending issues state', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      world: null,
+      characters: [],
+      outline: Array.from({ length: 10 }, (_, i) => ({
+        number: i + 1,
+        title: `Chapter ${i + 1}`,
+        description: `Description ${i + 1}`,
+      })),
+      chapters: Array(10).fill(null),
+      currentChapterIndex: 5,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [
+        {
+          id: 'issue-1',
+          type: 'consistency',
+          severity: 'error',
+          description: 'test error',
+          location: 'test location',
+        },
+      ],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+    })
+
+    await rewrite('story-1', { storyId: 'story-1', chapter: '3' }).catch(() => {})
+
+    const targetLog = logSpy.mock.calls.find(
+      call => String(call[0]).includes('目标章节:')
+    )
+    expect(targetLog).toBeDefined()
+    expect(String(targetLog![0])).toContain('目标章节: 3/10')
+
+    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
+    const invokedState = runChapterGraphMock.mock.calls[0]![2] as Record<string, unknown>
+    expect(invokedState.currentChapterIndex).toBe(2)
+
+    logSpy.mockRestore()
+  })
+
+  it('should target current chapter when mixed errors and warnings exist with rewriteRequested false', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      world: null,
+      characters: [],
+      outline: Array.from({ length: 10 }, (_, i) => ({
+        number: i + 1,
+        title: `Chapter ${i + 1}`,
+        description: `Description ${i + 1}`,
+      })),
+      chapters: Array(10).fill(null),
+      currentChapterIndex: 7,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [
+        {
+          id: 'issue-1',
+          type: 'quality',
+          severity: 'warning',
+          description: 'test warning',
+          location: 'test location',
+        },
+        {
+          id: 'issue-2',
+          type: 'consistency',
+          severity: 'error',
+          description: 'test error',
+          location: 'test location',
+        },
+      ],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+    })
+
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
+
+    const targetLog = logSpy.mock.calls.find(
+      call => String(call[0]).includes('目标章节:')
+    )
+    expect(targetLog).toBeDefined()
+    expect(String(targetLog![0])).toContain('目标章节: 8/10')
+
+    logSpy.mockRestore()
+  })
+
+  it('should not go below chapter 1 when targeting previous chapter with warnings', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      world: null,
+      characters: [],
+      outline: Array.from({ length: 10 }, (_, i) => ({
+        number: i + 1,
+        title: `Chapter ${i + 1}`,
+        description: `Description ${i + 1}`,
+      })),
+      chapters: Array(10).fill(null),
+      currentChapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [
+        {
+          id: 'issue-1',
+          type: 'quality',
+          severity: 'warning',
+          description: 'test warning',
+          location: 'test location',
+        },
+      ],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+    })
+
+    await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
+
+    const targetLog = logSpy.mock.calls.find(
+      call => String(call[0]).includes('目标章节:')
+    )
+    expect(targetLog).toBeDefined()
+    expect(String(targetLog![0])).toContain('目标章节: 1/10')
+
+    logSpy.mockRestore()
+  })
 })

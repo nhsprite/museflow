@@ -1,5 +1,6 @@
 import type { StoryState, Conflict } from '../../types/story-state.js'
-import { canonicalizeItemName } from '../../utils/story-state-validation.js'
+import { canonicalizeItemName } from '../../utils/items.js'
+import { tokenizeWords } from '../../utils/text.js'
 
 const STOP_CHARS = '。！？；'
 
@@ -271,23 +272,16 @@ export function detectCharacterStatusConflicts(state: StoryState, outline: strin
   )
 }
 
-function tokenize(text: string): string[] {
-  return text
-    .split(/\s+|[，。！？、；：""''\n]/u)
-    .map(s => s.trim())
-    .filter(s => s.length >= 2)
-}
-
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {
   const conflicts: Conflict[] = []
-  const outlineTokens = tokenize(outline)
+  const outlineTokens = tokenizeWords(outline)
   let index = 0
 
   for (const secret of state.revealedSecrets) {
     const secretSentences = splitSentences(secret)
     let maxOverlapRatio = 0
     for (const secretSentence of secretSentences) {
-      const secretTokens = tokenize(secretSentence)
+      const secretTokens = tokenizeWords(secretSentence)
       const overlap = secretTokens.filter(t => outlineTokens.includes(t))
       const overlapRatio = secretTokens.length > 0 ? overlap.length / secretTokens.length : 0
       maxOverlapRatio = Math.max(maxOverlapRatio, overlapRatio)

@@ -95,7 +95,6 @@ describe('exportMetaFromCheckpoint', () => {
       characters: [],
       outline: [],
       chapters: [],
-      contextSnapshot: null,
       timeline: existingTimeline,
     }
     const fs = await import('node:fs')

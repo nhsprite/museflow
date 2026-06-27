@@ -17,6 +17,14 @@ export interface ChapterPlanningConfig {
   maxVerifiedConstraints: number
   /** 每种非错误类型最多保留的问题数 */
   maxNonErrorIssuesPerType: number
+  /** 收尾阶段前必须回收的主要伏笔最低比例 */
+  closingForeshadowRecoveryRatio: number
+  /** 每章最少段落/场景数 */
+  minSections: number
+  /** 每章最多段落/场景数 */
+  maxSections: number
+  /** 核心事件场景的最少数量 */
+  minCoreSections: number
 }
 
 export interface GenreSkill {
@@ -24,7 +32,6 @@ export interface GenreSkill {
   displayName: string
   version: string
   worldbuildingPrompt: string
-  outlineTemplate: string
   chapterPromptSupplement: string
   tropes: string[]
   chapterWordCountMin?: number

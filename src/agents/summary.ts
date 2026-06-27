@@ -3,9 +3,10 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Character } from '../types/character.js'
 import type { StoryState } from '../types/story-state.js'
 import type { Message } from '../model/provider.js'
-import { extractJsonBlock, repairMalformedJson } from '../model/provider.js'
+
 import { sanitizeStoryState } from '../utils/story-state-validation.js'
-import { OFFICIAL_CHARACTER_RULES, STATE_AUTHORITY_RULES } from './prompt-fragments.js'
+import { OFFICIAL_CHARACTER_RULES, STATE_AUTHORITY_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
+import { parseJsonFromLLM } from '../utils/json.js'
 
 export class SummaryAgent extends BaseAgent {
   constructor() {
@@ -13,23 +14,11 @@ export class SummaryAgent extends BaseAgent {
   }
 
   protected buildPrompt(state: AgentState): Message[] {
-    const establishedSection = state.establishedCharacters && state.establishedCharacters.length > 0
-      ? `<established_characters>
-以下角色已在前面章节的摘要或故事状态中出现，允许继续出现：
-${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</established_characters>`
-      : ''
-
-    const whitelistSection = state.charactersList && state.charactersList.length > 0
-      ? `<official_characters>
-以下为本故事官方角色与大纲登场角色。摘要中涉及的有名有姓、有亲属关系、有身份地位的角色必须来自此列表或下方【前文已建立角色】列表；本章首次合理登场的新角色也可以列出，但必须在描述中注明"本章新登场"：
-${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
-<outline_characters>
-以下角色由大纲明确命名并将在本章或之前章节登场，允许出现：
-${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</outline_characters>` : ''}${establishedSection}`
-      : establishedSection
+    const whitelistSection = buildCharacterWhitelistSection({
+      charactersList: state.charactersList,
+      outlineCharacters: state.outlineCharacters,
+      establishedCharacters: state.establishedCharacters,
+    })
 
     return [
       this.systemMessage('<role>你是一位故事结构分析专家，擅长从章节内容中提取关键信息。你必须提取所有角色的关键事实（说过的话、知道的信息、态度变化），以及角色位置、状态、物品追踪等结构化状态信息。</role>'),
@@ -184,6 +173,8 @@ ${STATE_AUTHORITY_RULES}
   <requirement>章节索引从0开始计数：第1章对应0，第2章对应1，以此类推</requirement>
   <requirement>示例：某物品在本章从"实验室A"转移到"实验室B"，则记录 canonicalFact: {subject: "该物品", attribute: "所在位置", value: "实验室B", establishedIn: 当前章节索引, supersedes: [{chapter: 旧章节索引, oldValue: "实验室A"}]}</requirement>
   <requirement>只记录本章有明确变化或重新确认的事实；没有变化的事实不必重复记录</requirement>
+  <requirement>权威事实的 value 必须使用完整、无歧义的名称，禁止使用"此物"、"该物"、"前述物品"、"此件"、"那件"等依赖上下文的代词。value 中必须重复使用 subject 的完整名称，或写出能唯一识别该物品的完整描述；如果涉及多个同类物品，必须分别写明其完整名称和用途。</requirement>
+  <requirement>如果某个事实涉及"某物品不用于某用途"，必须同时写明该物品的完整名称和该用途的完整名称，避免后续章节将两个不同用途的物品混淆。</requirement>
 </canonical_facts_requirements>
 
   <story_state_requirements>
@@ -212,17 +203,7 @@ ${STATE_AUTHORITY_RULES}
   }
 
   protected parse(content: string): AgentOutput {
-    const trimmed = content.trim()
-    const jsonText = extractJsonBlock(trimmed)
-    try {
-      return { success: true, data: JSON.parse(jsonText) }
-    } catch {
-      try {
-        return { success: true, data: JSON.parse(repairMalformedJson(jsonText)) }
-      } catch {
-        return { success: false, error: 'JSON解析失败' }
-      }
-    }
+    return parseJsonFromLLM(content)
   }
 }
 
@@ -295,6 +276,14 @@ export function processSummaryOutput(
       })).filter(item => item.assignee.length > 0 && item.description.length > 0)
     }
 
+    const disambiguateValue = (value: string, subject: string): string => {
+      // 权威事实中禁止使用依赖上下文的代词；如果 LLM 仍然生成了，用完整 subject 兜底替换。
+      const ambiguousPronouns = /此物|该物|前述物品|此件|那件/g
+      if (!ambiguousPronouns.test(value)) return value
+      logger.warn(`[MuseFlow] canonicalFact 中发现模糊指代，将用 '${subject}' 兜底澄清: ${value}`)
+      return value.replace(ambiguousPronouns, subject)
+    }
+
     const toCanonicalFacts = (val: unknown): import('../types/story-state.js').CanonicalFact[] => {
       if (!Array.isArray(val)) return []
       return val
@@ -303,18 +292,23 @@ export function processSummaryOutput(
           const supersedesRaw = Array.isArray(item['supersedes'])
             ? item['supersedes'].filter((s): s is Record<string, unknown> => s && typeof s === 'object')
             : []
+          const subject = typeof item['subject'] === 'string' ? item['subject'] : ''
+          const value = typeof item['value'] === 'string' ? item['value'] : ''
           return {
             id: typeof item['id'] === 'string' && item['id'].length > 0
               ? item['id']
               : `cf_${chapterIndex ?? 0}_${idx}`,
-            subject: typeof item['subject'] === 'string' ? item['subject'] : '',
+            subject,
             attribute: typeof item['attribute'] === 'string' ? item['attribute'] : '',
-            value: typeof item['value'] === 'string' ? item['value'] : '',
+            value: disambiguateValue(value, subject),
             establishedIn: typeof item['establishedIn'] === 'number' ? item['establishedIn'] : (chapterIndex ?? -1),
             supersedes: supersedesRaw.length > 0
               ? supersedesRaw.map(s => ({
                   chapter: typeof s['chapter'] === 'number' ? s['chapter'] : -1,
-                  oldValue: typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
+                  oldValue: disambiguateValue(
+                    typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
+                    subject
+                  ),
                 })).filter(s => s.oldValue.length > 0)
               : undefined,
           }

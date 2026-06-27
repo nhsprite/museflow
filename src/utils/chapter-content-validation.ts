@@ -1,3 +1,5 @@
+import { countChineseWords } from './text.js'
+
 export interface ValidationOptions {
   chapterIndex: number
   minWordCount?: number
@@ -8,12 +10,6 @@ export interface ValidationResult {
   valid: boolean
   content?: string
   error?: string
-}
-
-function countChineseWords(text: string): number {
-  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
-  const englishWords = (text.match(/[a-zA-Z]+/g) ?? []).length
-  return chineseChars + englishWords
 }
 
 const CHINESE_NUMERALS: Record<string, number> = {

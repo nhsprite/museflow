@@ -1,138 +1,7 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Character } from '../types/character.js'
 import { generateId } from '../utils/id.js'
-
-function extractJsonArray(text: string): unknown[] | null {
-  const startIdx = text.indexOf('[')
-  if (startIdx === -1) return null
-
-  let depth = 0
-  let inString = false
-  let escapeNext = false
-  for (let i = startIdx; i < text.length; i++) {
-    const ch = text[i]
-    if (escapeNext) {
-      escapeNext = false
-      continue
-    }
-    if (ch === '\\') {
-      escapeNext = true
-      continue
-    }
-    if (ch === '"' && !inString) {
-      inString = true
-    } else if (ch === '"' && inString) {
-      inString = false
-    } else if (!inString) {
-      if (ch === '[' || ch === '{') depth++
-      else if (ch === ']' || ch === '}') {
-        depth--
-        if (depth === 0) {
-          const slice = text.slice(startIdx, i + 1)
-          try {
-            const parsed = JSON.parse(slice)
-            if (Array.isArray(parsed)) return parsed
-          } catch {
-            return null
-          }
-        }
-      }
-    }
-  }
-  return null
-}
-
-function extractJsonObject(text: string): Record<string, unknown> | null {
-  const startIdx = text.indexOf('{')
-  if (startIdx === -1) return null
-
-  let depth = 0
-  let inString = false
-  let escapeNext = false
-  for (let i = startIdx; i < text.length; i++) {
-    const ch = text[i]
-    if (escapeNext) {
-      escapeNext = false
-      continue
-    }
-    if (ch === '\\') {
-      escapeNext = true
-      continue
-    }
-    if (ch === '"' && !inString) {
-      inString = true
-    } else if (ch === '"' && inString) {
-      inString = false
-    } else if (!inString) {
-      if (ch === '{' || ch === '[') depth++
-      else if (ch === '}' || ch === ']') {
-        depth--
-        if (depth === 0) {
-          const slice = text.slice(startIdx, i + 1)
-          try {
-            const parsed = JSON.parse(slice)
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              return parsed as Record<string, unknown>
-            }
-          } catch {
-            return null
-          }
-        }
-      }
-    }
-  }
-  return null
-}
-
-function extractMultipleObjects(text: string): Record<string, unknown>[] {
-  const objects: Record<string, unknown>[] = []
-  let i = 0
-  while (i < text.length) {
-    const idx = text.indexOf('{', i)
-    if (idx === -1) break
-    let depth = 0
-    let inString = false
-    let escapeNext = false
-    let found = false
-    for (let j = idx; j < text.length; j++) {
-      const ch = text[j]
-      if (escapeNext) {
-        escapeNext = false
-        continue
-      }
-      if (ch === '\\') {
-        escapeNext = true
-        continue
-      }
-      if (ch === '"' && !inString) {
-        inString = true
-      } else if (ch === '"' && inString) {
-        inString = false
-      } else if (!inString) {
-        if (ch === '{' || ch === '[') depth++
-        else if (ch === '}' || ch === ']') {
-          depth--
-          if (depth === 0) {
-            const slice = text.slice(idx, j + 1)
-            try {
-              const parsed = JSON.parse(slice)
-              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                objects.push(parsed as Record<string, unknown>)
-              }
-            } catch (_err) {
-              void _err
-            }
-            i = j + 1
-            found = true
-            break
-          }
-        }
-      }
-    }
-    if (!found) break
-  }
-  return objects
-}
+import { parseJsonFromLLM } from '../utils/json.js'
 
 export class CharacterAgent extends BaseAgent {
   constructor() {
@@ -144,7 +13,7 @@ export class CharacterAgent extends BaseAgent {
     const wd = state.worldDirection
     const worldDirSection = wd
       ? `世界观方向：
-${wd.cultivationSystem ? `- 修炼体系：${wd.cultivationSystem}` : ''}
+${wd.powerSystem ? `- 力量/规则体系：${wd.powerSystem}` : ''}
 - 核心冲突：${wd.coreConflict}
 - 世界观特色：${wd.worldFeatures.join('、')}`
       : ''
@@ -191,39 +60,12 @@ ${formatReminder ?? ''}`
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
 
-    try {
-      const data = JSON.parse(trimmed)
-      return { success: true, data }
-    } catch {
-      // ignore parse failure
+    const parsed = parseJsonFromLLM<unknown>(trimmed)
+    if (parsed.success) {
+      return { success: true, data: parsed.data }
     }
 
-    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
-    if (codeBlockMatch) {
-      try {
-        const data = JSON.parse(codeBlockMatch[1]!.trim())
-        return { success: true, data }
-      } catch {
-        // ignore parse failure
-      }
-    }
-
-    const arrayResult = extractJsonArray(trimmed)
-    if (arrayResult) {
-      return { success: true, data: arrayResult }
-    }
-
-    const objectResult = extractJsonObject(trimmed)
-    if (objectResult) {
-      return { success: true, data: [objectResult] }
-    }
-
-    const objects = extractMultipleObjects(trimmed)
-    if (objects.length > 0) {
-      return { success: true, data: objects }
-    }
-
-    return { success: false, error: '无法解析角色数据：JSON 格式错误', content: trimmed }
+    return { success: false, error: parsed.error ?? '无法解析角色数据：JSON 格式错误', content: trimmed }
   }
 
   processOutput(output: AgentOutput, storyId: string): Character[] {

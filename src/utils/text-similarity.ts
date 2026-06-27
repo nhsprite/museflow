@@ -1,11 +1,8 @@
-function extractKeywords(text: string): string[] {
-  const matches = text.match(/[\u4e00-\u9fff]{2,}/g)
-  return matches ? matches.filter(kw => kw.length >= 2) : []
-}
+import { extractChineseKeywords } from './text.js'
 
 export function calculateKeywordOverlap(text1: string, text2: string): number {
-  const keywords1 = new Set(extractKeywords(text1))
-  const keywords2 = new Set(extractKeywords(text2))
+  const keywords1 = new Set(extractChineseKeywords(text1, { ngrams: false }))
+  const keywords2 = new Set(extractChineseKeywords(text2, { ngrams: false }))
 
   if (keywords1.size === 0 || keywords2.size === 0) {
     return text1 === text2 ? 1 : 0

@@ -1,8 +1,9 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
-import { generateId } from '../utils/id.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
-import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES } from './prompt-fragments.js'
+import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
+import { parseJsonFromLLM } from '../utils/json.js'
+import { normalizeIssues } from '../utils/agent-output.js'
 
 export class ConsistencyAgent extends BaseAgent {
   constructor() {
@@ -19,23 +20,11 @@ export class ConsistencyAgent extends BaseAgent {
       f => !f.fulfilledChapter && chapterIndex >= f.expectedFulfillChapter && chapterIndex <= f.expectedFulfillChapter + 1
     )
 
-    const establishedCharactersSection = state.establishedCharacters && state.establishedCharacters.length > 0
-      ? `<established_characters>
-<mandatory>【前文已建立角色】以下角色已在前面章节的摘要或故事状态中出现，不属于 invented character：</mandatory>
-${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</established_characters>`
-      : ''
-
-    const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
-      ? `<official_characters>
-<mandatory>【必须】以下为本故事官方角色。本章出现的所有有名有姓、有亲属关系、有 POV 或持久身份的角色必须来自此列表、下方【大纲登场角色】列表或【前文已建立角色】列表：</mandatory>
-${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
-<outline_characters>
-<mandatory>【大纲登场角色】以下角色由大纲明确命名并将在本章或之前章节登场，不属于 invented character：</mandatory>
-${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</outline_characters>` : ''}${establishedCharactersSection}`
-      : establishedCharactersSection
+    const characterWhitelistSection = buildCharacterWhitelistSection({
+      charactersList: state.charactersList,
+      outlineCharacters: state.outlineCharacters,
+      establishedCharacters: state.establishedCharacters,
+    })
 
     const userContent = `<instruction>
   你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。
@@ -248,6 +237,8 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
     2. 被权威事实明确标记为"覆盖"的旧事实，不应作为当前章节的矛盾依据。
     3. 只有当角色对权威事实中当前有效的值表现出不合理态度时，才报 consistency error。
     4. 本章内容若与权威事实中的当前值一致，即使与旧摘要中的旧值不同，也不构成矛盾。
+    5. <mandatory>【执行约束】在输出最终 issues 前，你必须逐条审查每个候选 issue。如果某个候选 issue 的描述或建议与 canonicalFacts 中的任何一条事实直接矛盾（例如 canonicalFact 记录"某物在 A 处"，而 issue 声称"某物不应在 A 处"），则必须删除该候选 issue，不得在最终 JSON 中报告。</mandatory>
+    6. <mandatory>【执行约束】如果 canonicalFacts 已经明确记录了某个信息的传递方式、物品位置或角色行动，本章只要与该记录一致，就不应报 consistency error，即使该记录与你的常识推断不同。</mandatory>
   </rule>
 
   <rule type="addressing_consistency">
@@ -255,7 +246,7 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
   </rule>
 
   <rule type="item_origin_consistency">
-    关键物品来源一致性：如果本章中角色使用了一件关键物品（尤其是武器、法宝、重要道具），而该物品在前文中尚未明确出现或回归，本章又没有交代其来源或回归过程，则报 error。
+    关键物品来源一致性：如果本章中角色使用了一件关键物品（尤其是武器、特殊物品/关键道具、重要道具），而该物品在前文中尚未明确出现或回归，本章又没有交代其来源或回归过程，则报 error。
   </rule>
 
   <rule type="future_information_boundary">
@@ -297,17 +288,7 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
   }
 
   protected parse(content: string): AgentOutput {
-    const trimmed = content.trim()
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return { success: false, error: '无法解析检测数据：未找到 JSON 格式' }
-    }
-    try {
-      const data = JSON.parse(jsonMatch[0])
-      return { success: true, data }
-    } catch {
-      return { success: false, error: '无法解析检测数据：JSON 格式错误' }
-    }
+    return parseJsonFromLLM(content)
   }
 
   processOutput(output: AgentOutput): Issue[] {
@@ -328,30 +309,6 @@ ${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.descrip
       return []
     }
 
-    const rawIssues = data.issues || []
-
-    const withdrawnPattern = /撤回|不成立|不构成严重矛盾|此条不成立|重新审视后|不构成.*矛盾|不视为/i
-    const activeIssues = rawIssues.filter(issue => {
-      const desc = `${issue.description ?? ''} ${issue.suggestion ?? ''}`
-      return !withdrawnPattern.test(desc)
-    })
-    
-    return activeIssues.map(issue => {
-      const result: Issue = {
-        id: generateId(),
-        type: 'consistency',
-        severity: (issue.severity as IssueSeverity) || 'warning',
-        description: issue.description || '',
-      }
-      if (issue.location) {
-        result.location = issue.location
-      }
-      if (issue.suggestion) {
-        result.suggestion = issue.suggestion
-      }
-      return result
-    })
+    return normalizeIssues(data.issues, 'consistency')
   }
 }
-
-type IssueSeverity = 'error' | 'warning' | 'info'

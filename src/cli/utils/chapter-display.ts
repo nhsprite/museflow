@@ -1,4 +1,4 @@
-import type { ChapterOutline } from '../../graph/state.js'
+import type { ChapterOutline } from '../../types/outline.js'
 import type { ChapterReport } from '../../types/chapter-report.js'
 
 function toDisplayChapterNumber(chapterIndex: number): number {

@@ -132,9 +132,6 @@ export async function genres(action: string, name?: string, options?: GenresOpti
     console.log('世界观提示:')
     console.log(skill.worldbuildingPrompt.substring(0, 200) + '...')
     console.log('')
-    console.log('大纲模板:')
-    console.log(skill.outlineTemplate.substring(0, 200) + '...')
-    console.log('')
 
     if (skill.chapterPromptSupplement) {
       console.log('章节补充:')

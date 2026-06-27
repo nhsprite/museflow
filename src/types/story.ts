@@ -1,5 +1,7 @@
+import type { ModelConfig } from './config.js'
+
 export interface WorldDirection {
-  cultivationSystem?: string
+  powerSystem?: string
   coreConflict: string
   worldFeatures: string[]
 }
@@ -22,7 +24,7 @@ export interface Story {
   genre: string
   totalChapters: number
   status: StoryStatus
-  provider: string
+  provider: ModelConfig['provider']
   outputDir: string
   createdAt: number
   updatedAt: number
@@ -35,14 +37,7 @@ export interface StoryCreateInput {
   idea: string
   genre: string
   totalChapters: number
-  provider?: string
+  provider?: ModelConfig['provider']
   outlineStrategy?: 'layered'
 }
 
-export interface StoryConfig {
-  provider: string
-  model: string
-  apiKey?: string
-  baseUrl?: string
-  outlineStrategy?: 'layered'
-}

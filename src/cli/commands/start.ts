@@ -5,6 +5,7 @@ import { getGenreRegistry } from '../../genres/registry.js'
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { generateTitleOptions, selectTitleOption, type TitleOption } from './title-selector.js'
 import { withSpinner } from '../utils/spinner.js'
+import type { ModelConfig } from '../../types/config.js'
 
 interface StartOptions {
   idea: string
@@ -75,11 +76,14 @@ export async function start(options: StartOptions): Promise<void> {
 
   console.log(`\n[MuseFlow] 已选择：${selectedOption.title}\n`)
 
+  const resolvedProvider: ModelConfig['provider'] =
+    provider === 'minimax' || provider === 'local' ? 'openai' : (provider as ModelConfig['provider'] | undefined) ?? 'openai'
+
   const story = createStory({
     idea,
     genre,
     totalChapters: chapters,
-    provider: provider || 'openai',
+    provider: resolvedProvider,
     title: selectedOption.title,
     worldDirection: selectedOption.worldDirection,
     outlineStrategy: 'layered',

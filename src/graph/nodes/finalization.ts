@@ -7,7 +7,7 @@ import { readChapterContent } from '../../storage/filesystem/writer.js'
 import { saveChapterReport } from '../../storage/meta/stores/chapter-report.js'
 import { appendTimelineSnapshot } from '../../storage/meta/stores/timeline.js'
 import { exportMetaFromCheckpoint } from '../../storage/meta/exporter.js'
-import { getForeshadowAlerts } from '../state.js'
+import { getForeshadowAlerts } from '../../types/foreshadow.js'
 import { getCheckpointer } from '../checkpointer.js'
 import { agePendingTasks } from '../../utils/pending-tasks.js'
 import { mergeStoryState } from '../utils/story-state.js'
@@ -16,10 +16,10 @@ import { generateForeshadowConstraints } from '../../utils/foreshadow-constraint
 import {
   createEmptyChapterReport,
   summarizeIssues,
-  countChineseWords,
   type StateCorrection,
   type ChapterReport,
 } from '../../types/chapter-report.js'
+import { countChineseWords } from '../../utils/text.js'
 
 export async function finalize_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex

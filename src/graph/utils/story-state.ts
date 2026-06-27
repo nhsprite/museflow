@@ -8,7 +8,7 @@ import {
   getCompressionLevel,
 } from '../../utils/summary-compressor.js'
 import { createEmptyStoryState } from '../../storage/meta/stores/story-state.js'
-import { canonicalizeItemName } from '../../utils/story-state-validation.js'
+import { mergeCanonicalRecords } from '../../utils/items.js'
 import { detectAllConflicts } from '../../core/state-reconciliation/conflict-detector.js'
 import { classifyConflicts } from '../../core/state-reconciliation/conflict-classifier.js'
 import { autoReconcile, applyCanonicalFactsToState, generateOverrideSuggestions } from '../../core/state-reconciliation/auto-reconciler.js'
@@ -121,42 +121,6 @@ export function buildKeyEventsTimeline(
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
 }
 
-function mergeItemRecord(
-  base: Record<string, string>,
-  delta: Record<string, string>
-): Record<string, string> {
-  const merged = { ...base }
-  for (const [item, value] of Object.entries(delta)) {
-    if (!value || value === '同前') continue
-    const canonical = canonicalizeItemName(item)
-    // 清除所有同 canonical 的旧条目，确保同一物品最终只有一个位置/状态记录。
-    // 这能防止历史状态中的别名或旧位置与新 delta 并存，避免无限重复上报冲突。
-    for (const key of Object.keys(merged)) {
-      if (canonicalizeItemName(key) === canonical) {
-        delete merged[key]
-      }
-    }
-    merged[item] = value
-  }
-
-  // 最终扫描：清除 base 中残留的同一规范名多位置。
-  // 当 delta 没有提及某个物品，而 base 里已经存在该物品的多个旧位置时，
-  // 上面的循环不会处理它们；这里从后往前保留最后一个条目，删除前面的同 canonical 条目。
-  const seenCanonical = new Set<string>()
-  const keys = Object.keys(merged)
-  for (let i = keys.length - 1; i >= 0; i--) {
-    const key = keys[i]
-    if (!key) continue
-    const canonical = canonicalizeItemName(key)
-    if (seenCanonical.has(canonical)) {
-      delete merged[key]
-    } else {
-      seenCanonical.add(canonical)
-    }
-  }
-
-  return merged
-}
 
 export function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryState {
   const base = existing ?? createEmptyStoryState()
@@ -175,8 +139,8 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     }
   }
 
-  const mergedItems = mergeItemRecord(base.keyItemsLocation, delta.keyItemsLocation)
-  const mergedItemStates = mergeItemRecord(base.keyItemsState, delta.keyItemsState ?? {})
+  const mergedItems = mergeCanonicalRecords(base.keyItemsLocation, delta.keyItemsLocation, { ignoreValue: '同前' })
+  const mergedItemStates = mergeCanonicalRecords(base.keyItemsState, delta.keyItemsState ?? {}, { ignoreValue: '同前' })
 
   const mergedPlots = [...base.activePlots]
   for (const plot of delta.activePlots) {

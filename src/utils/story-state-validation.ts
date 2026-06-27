@@ -2,69 +2,7 @@ import { logger } from './logger.js'
 import type { Character } from '../types/character.js'
 import type { CanonicalFact, SanitizationReport, StoryState, SupersededFact } from '../types/story-state.js'
 import { buildCharacterWhitelist } from './character-whitelist.js'
-
-const UNIT_WORDS = ['一张', '一封', '一份', '一个', '一本', '一柄', '一把', '一卷', '那块', '那封', '那张', '那件']
-const DESCRIPTIVE_SUFFIXES = /[（(][^）)]*[）)]/g
-
-export function canonicalizeItemName(name: string): string {
-  let normalized = name
-    .replace(DESCRIPTIVE_SUFFIXES, '')
-    .replace(/^[《〈「『【（\u005b\u007b\s]+|[》〉」』】）\u005d\u007d\s]+$/g, '')
-    .trim()
-
-  for (const unit of UNIT_WORDS) {
-    if (normalized.startsWith(unit)) {
-      normalized = normalized.slice(unit.length).trim()
-    }
-  }
-
-  return normalized.replace(/\s+/g, ' ').trim()
-}
-
-function resolveItemLocationGroup(
-  group: Array<{ item: string; location: string }>,
-  chapterIndex: number,
-): {
-  canonicalItem: string
-  authoritativeLocation: string
-  superseded: SupersededFact[]
-  canonical: CanonicalFact
-} {
-  // 中立规则：后写入的条目视为最新权威状态。
-  // keyItemsLocation 是 JSON 对象，entries 顺序即插入/写入顺序。
-  const scored = group.map((entry, index) => ({ entry, score: index }))
-  scored.sort((a, b) => b.score - a.score)
-
-  const winner = scored[0]!.entry
-  const canonicalSubject = canonicalizeItemName(winner.item)
-  const now = Date.now()
-
-  const superseded: SupersededFact[] = scored.slice(1).map(s => ({
-    subject: canonicalSubject,
-    oldFact: s.entry.location,
-    reason: `与同一规范名 "${canonicalSubject}" 的权威位置 "${winner.location}" 冲突，已自动归档`,
-    chapterIndex,
-  }))
-
-  const canonical: CanonicalFact = {
-    id: `cf_${chapterIndex}_${canonicalSubject}_${now}`,
-    subject: canonicalSubject,
-    attribute: 'location',
-    value: winner.location,
-    establishedIn: chapterIndex,
-    supersedes: superseded.map(f => ({
-      chapter: chapterIndex,
-      oldValue: f.oldFact,
-    })),
-  }
-
-  return {
-    canonicalItem: winner.item,
-    authoritativeLocation: winner.location,
-    superseded,
-    canonical,
-  }
-}
+import { canonicalizeItemName, resolveCanonicalItemGroup } from './items.js'
 
 export function detectAmbiguousItemNames(state: StoryState): Array<{ location: string; items: string[] }> {
   const byLocation = new Map<string, string[]>()
@@ -79,7 +17,7 @@ export function detectAmbiguousItemNames(state: StoryState): Array<{ location: s
   const ambiguous: Array<{ location: string; items: string[] }> = []
   for (const [location, items] of byLocation) {
     if (items.length <= 1) continue
-    const canonicalSet = new Set(items.map(canonicalizeItemName))
+    const canonicalSet = new Set(items.map(item => canonicalizeItemName(item)))
     if (canonicalSet.size < items.length) {
       ambiguous.push({ location, items })
     }
@@ -157,10 +95,32 @@ export function sanitizeStoryState(
     }
 
     if (hasConflict) {
-      const resolved = resolveItemLocationGroup(group, chapterIndex)
-      keyItemsLocation[resolved.canonicalItem] = resolved.authoritativeLocation
-      newSupersededFacts.push(...resolved.superseded)
-      newCanonicalFacts.push(resolved.canonical)
+      const { winner, superseded } = resolveCanonicalItemGroup(group.map(g => ({ item: g.item, value: g.location })))
+      const canonicalSubject = canonicalizeItemName(winner.item)
+      const now = Date.now()
+
+      const supersededFacts: SupersededFact[] = superseded.map(s => ({
+        subject: canonicalSubject,
+        oldFact: s.value,
+        reason: `与同一规范名 "${canonicalSubject}" 的权威位置 "${winner.value}" 冲突，已自动归档`,
+        chapterIndex,
+      }))
+
+      const canonical: CanonicalFact = {
+        id: `cf_${chapterIndex}_${canonicalSubject}_${now}`,
+        subject: canonicalSubject,
+        attribute: 'location',
+        value: winner.value,
+        establishedIn: chapterIndex,
+        supersedes: supersededFacts.map(f => ({
+          chapter: chapterIndex,
+          oldValue: f.oldFact,
+        })),
+      }
+
+      keyItemsLocation[winner.item] = winner.value
+      newSupersededFacts.push(...supersededFacts)
+      newCanonicalFacts.push(canonical)
     } else {
       const best = group[group.length - 1] ?? group[0]!
       keyItemsLocation[best.item] = best.location

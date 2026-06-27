@@ -1,10 +1,9 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
-import type { ChapterMeta } from '../../types/chapter.js'
 import type { AgentState } from '../../agents/base.js'
 import { getFixAgent } from '../agent-factory.js'
-import { generateId } from '../../utils/id.js'
 import { readChapterContent, writeChapterContent } from '../../storage/filesystem/writer.js'
+import { createChapterMeta } from '../../utils/agent-output.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { validateFixedChapterContent } from '../../utils/chapter-content-validation.js'
 import { buildCharacterFactTimeline, formatStoryState } from '../utils/story-state.js'
@@ -12,7 +11,7 @@ import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
-import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
+
 import {
   splitIntoParagraphs,
   findAffectedParagraphs,
@@ -211,19 +210,9 @@ async function runSentenceFix(
   content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
-  const now = Date.now()
-  const updatedChapter: ChapterMeta = {
-    id: generateId(),
-    storyId: state.story.id,
-    number: toDisplayChapterNumber(chapterIndex),
-    title: null,
+  const updatedChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
     outline: outlineItem?.description || null,
-    summary: null,
-    foreshadows: null,
-    status: 'drafting',
-    createdAt: now,
-    updatedAt: now,
-  }
+  })
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
@@ -316,19 +305,9 @@ async function runParagraphFix(
   content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
-  const now = Date.now()
-  const updatedChapter: ChapterMeta = {
-    id: generateId(),
-    storyId: state.story.id,
-    number: toDisplayChapterNumber(chapterIndex),
-    title: null,
+  const updatedChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
     outline: outlineItem?.description || null,
-    summary: null,
-    foreshadows: null,
-    status: 'drafting',
-    createdAt: now,
-    updatedAt: now,
-  }
+  })
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
@@ -401,19 +380,9 @@ export async function runLegacyFix(
   content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
-  const now = Date.now()
-  const updatedChapter: ChapterMeta = {
-    id: generateId(),
-    storyId: state.story.id,
-    number: toDisplayChapterNumber(chapterIndex),
-    title: null,
+  const updatedChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
     outline: outlineItem?.description || null,
-    summary: null,
-    foreshadows: null,
-    status: 'drafting',
-    createdAt: now,
-    updatedAt: now,
-  }
+  })
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter

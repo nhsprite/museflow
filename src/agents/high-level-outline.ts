@@ -1,6 +1,7 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
-import type { ChapterOutline } from '../graph/state.js'
+import type { ChapterOutline } from '../types/outline.js'
 import { generateId } from '../utils/id.js'
+import { parseJsonFromLLM } from '../utils/json.js'
 
 export interface HighLevelOutlineData {
   chapters: ChapterOutline[]
@@ -59,49 +60,25 @@ ${state.characters ? `<characters>\n${state.characters}\n</characters>` : ''}
       error: error instanceof Error ? `${message}: ${error.message}` : message,
     })
 
-    const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
-    if (codeBlockMatch) {
-      try {
-        const data = JSON.parse(codeBlockMatch[1]!.trim()) as HighLevelOutlineData
-        if (!Array.isArray(data.chapters)) {
-          return baseError('大纲格式错误：chapters 不是数组')
-        }
-        const chapters = data.chapters.map(ch => ({
-          id: generateId(),
-          number: ch.number,
-          title: ch.title,
-          description: ch.description,
-          introducedCharacters: Array.isArray(ch.introducedCharacters)
-            ? ch.introducedCharacters.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
-            : undefined,
-        }))
-        return { success: true, data: { chapters } }
-      } catch (err) {
-        return baseError('无法解析大纲：JSON 代码块格式错误', err)
-      }
+    const parsed = parseJsonFromLLM<HighLevelOutlineData>(trimmed)
+    if (!parsed.success) {
+      return baseError('无法解析大纲：JSON 格式错误')
     }
 
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return baseError('无法解析大纲：未找到 JSON 格式')
+    const data = parsed.data
+    if (!data || !Array.isArray(data.chapters)) {
+      return baseError('大纲格式错误：chapters 不是数组')
     }
-    try {
-      const data = JSON.parse(jsonMatch[0]) as HighLevelOutlineData
-      if (!Array.isArray(data.chapters)) {
-        return baseError('大纲格式错误：chapters 不是数组')
-      }
-      const chapters = data.chapters.map(ch => ({
-        id: generateId(),
-        number: ch.number,
-        title: ch.title,
-        description: ch.description,
-        introducedCharacters: Array.isArray(ch.introducedCharacters)
-          ? ch.introducedCharacters.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
-          : undefined,
-      }))
-      return { success: true, data: { chapters } }
-    } catch (err) {
-      return baseError('无法解析大纲：JSON 格式错误', err)
-    }
+
+    const chapters = data.chapters.map(ch => ({
+      id: generateId(),
+      number: ch.number,
+      title: ch.title,
+      description: ch.description,
+      introducedCharacters: Array.isArray(ch.introducedCharacters)
+        ? ch.introducedCharacters.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+        : undefined,
+    }))
+    return { success: true, data: { chapters } }
   }
 }

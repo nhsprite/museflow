@@ -9,6 +9,7 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 import { readChapterContent } from '../storage/filesystem/writer.js'
 import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation } from '../utils/chapter-planning.js'
+import { extractChineseKeywords } from '../utils/text.js'
 import type { Issue } from '../types/agent.js'
 
 export interface ExpandedOutline {
@@ -19,20 +20,6 @@ export interface ExpandedOutline {
 
 const COMPLETION_MARKERS = /已(?:落地|完成|收束|结束|办妥|解决|处理)/g
 const PREVIOUS_TIME_MARKERS = /昨[日天]|上一章|前章|前一日/g
-
-function extractChineseKeywords(text: string): string[] {
-  const sequences = text.match(/[\u4e00-\u9fff]{2,}/g) ?? []
-  const keywords = new Set<string>()
-  for (const sequence of sequences) {
-    const maxLen = Math.min(sequence.length, 4)
-    for (let len = 2; len <= maxLen; len++) {
-      for (let i = 0; i <= sequence.length - len; i++) {
-        keywords.add(sequence.slice(i, i + len))
-      }
-    }
-  }
-  return Array.from(keywords)
-}
 
 export function validateChapterTimeAnchor(
   chapterPlan: ChapterPlan,
@@ -221,7 +208,7 @@ function buildFocusConstraint(
     `1) 核心事件场景字数之和 ≥ 总字数 × ${targetPercent}%，这是硬性要求；`,
     `2) 与核心事件无关的前章遗留差事必须选择 postponed 或 background（一句话带过），不得在 sections 中分配独立场景；`,
     `3) 任何非核心段落字数不得超过 ${config.maxNonCoreSectionWordCount} 字；`,
-    `4) 核心事件场景不得少于 2 个，总场景数不得超过 6 个。`,
+    `4) 核心事件场景不得少于 ${config.minCoreSections} 个，总场景数不得超过 ${config.maxSections} 个。`,
   ]
   return parts.join('')
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { decide_strategy, convergence_check } from '../../../src/graph/nodes/chapter-orchestration.js'
+import {
+  decide_strategy,
+  convergence_check,
+  route_strategy,
+  route_convergence,
+} from '../../../src/graph/nodes/chapter-orchestration.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { Issue } from '../../../src/types/agent.js'
 
@@ -122,6 +127,18 @@ describe('decide_strategy', () => {
     const result = await decide_strategy(state)
 
     expect(result.routingDecision).toBe('draft_chapter')
+  })
+})
+
+describe('route_strategy', () => {
+  it('returns request_rewrite when policy decides to stop loop', () => {
+    const state = buildBaseState({ routingDecision: 'request_rewrite' })
+    expect(route_strategy(state)).toBe('request_rewrite')
+  })
+
+  it('returns finalize_chapter as fallback when routingDecision is undefined', () => {
+    const state = buildBaseState({ routingDecision: undefined })
+    expect(route_strategy(state)).toBe('finalize_chapter')
   })
 })
 

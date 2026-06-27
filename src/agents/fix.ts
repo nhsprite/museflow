@@ -2,7 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
-import { AI_PHRASE_PROHIBITIONS, FIX_OUTPUT_RULES, FACT_CONSISTENCY_RULES } from './prompt-fragments.js'
+import { AI_PHRASE_PROHIBITIONS, FIX_OUTPUT_RULES, FACT_CONSISTENCY_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 
 export class FixAgent extends BaseAgent {
   constructor() {
@@ -32,17 +32,12 @@ ${state.nextChapterBoundary}
   }
 
   private buildCharacterWhitelistSection(state: Required<AgentState>): string {
-    const official = state.charactersList && state.charactersList.length > 0
-      ? `<official_characters>\n<mandatory>【官方角色】</mandatory>\n${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}\n</official_characters>`
-      : ''
-    const outline = state.outlineCharacters && state.outlineCharacters.length > 0
-      ? `\n<outline_characters>\n<mandatory>【大纲登场角色】</mandatory>\n${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}\n</outline_characters>`
-      : ''
-    const established = state.establishedCharacters && state.establishedCharacters.length > 0
-      ? `\n<established_characters>\n<mandatory>【前文已建立角色】</mandatory>\n${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}\n</established_characters>`
-      : ''
-    const combined = official + outline + established
-    return combined ? `<character_whitelist>\n${combined}\n</character_whitelist>` : ''
+    const section = buildCharacterWhitelistSection({
+      charactersList: state.charactersList,
+      outlineCharacters: state.outlineCharacters,
+      establishedCharacters: state.establishedCharacters,
+    })
+    return section ? `<character_whitelist>\n${section}\n</character_whitelist>` : ''
   }
 
   private buildSentencePrompt(state: Required<AgentState>, displayChapterNumber: string): import('../model/provider.js').Message[] {

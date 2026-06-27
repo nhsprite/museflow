@@ -45,7 +45,7 @@ describe('HighLevelOutlineAgent', () => {
     expect(data?.chapters ?? []).toHaveLength(0)
   })
 
-  it('reports failure with original content when JSON contains unescaped inner quotes', async () => {
+  it('repairs JSON containing unescaped inner quotes', async () => {
     const agent = new HighLevelOutlineAgent()
     const malformedJson = '```json\n{\n  "chapters": [\n    { "number": 1, "title": "启程", "description": "主角以"义仆"之名潜入王府，谋求复仇。" }\n  ]\n}\n```'
     mockChat.mockResolvedValueOnce(malformedJson)
@@ -56,9 +56,9 @@ describe('HighLevelOutlineAgent', () => {
       totalChapters: 1,
     })
 
-    expect(output.success).toBe(false)
-    expect(output.content).toContain('"义仆"')
-    expect(output.error).toMatch(/JSON/)
+    expect(output.success).toBe(true)
+    const data = output.data as { chapters: Array<{ description: string }> }
+    expect(data.chapters[0]!.description).toBe('主角以"义仆"之名潜入王府，谋求复仇。')
   })
 
   it('parses outline when descriptions use Chinese quotation marks', async () => {

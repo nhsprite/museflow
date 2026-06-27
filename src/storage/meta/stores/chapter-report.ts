@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ChapterReport } from '../../../types/chapter-report.js'
+import { writeFileAtomic, ensureDir } from '../../../utils/fs.js'
 
 function getReportsDir(outputDir: string): string {
   return join(outputDir, 'reports')
@@ -10,17 +11,9 @@ function getChapterReportPath(outputDir: string, chapterIndex: number): string {
   return join(getReportsDir(outputDir), `chapter_${chapterIndex + 1}.report.json`)
 }
 
-function writeFileAtomic(path: string, data: string): void {
-  const tmpPath = `${path}.tmp`
-  writeFileSync(tmpPath, data, 'utf-8')
-  renameSync(tmpPath, path)
-}
-
 export function saveChapterReport(outputDir: string, report: ChapterReport): void {
   const reportsDir = getReportsDir(outputDir)
-  if (!existsSync(reportsDir)) {
-    mkdirSync(reportsDir, { recursive: true })
-  }
+  ensureDir(reportsDir)
   const path = getChapterReportPath(outputDir, report.chapterIndex)
   const data = JSON.stringify(report, null, 2)
   writeFileAtomic(path, data)

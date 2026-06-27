@@ -1,9 +1,10 @@
 import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ChapterMeta } from '../types/chapter.js'
-import type { ForeshadowItem } from '../graph/state.js'
+import type { ForeshadowItem } from '../types/foreshadow.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import {
   AI_PHRASE_PROHIBITIONS,
   TIMELINE_RULES,
@@ -14,7 +15,11 @@ import {
   CHAPTER_OUTPUT_RULES,
   OFFICIAL_CHARACTER_RULES,
   FORESHADOW_DISCIPLINE_RULES,
+  ABSTRACT_OUTCOME_RULES,
+  PENDING_TASK_AUTHORITY_RULES,
+  TIME_ANCHOR_AUTHORITY_RULES,
   buildCanonicalFactsSection,
+  buildCharacterWhitelistSection,
 } from './prompt-fragments.js'
 
 export class ChapterAgent extends BaseAgent {
@@ -23,6 +28,7 @@ export class ChapterAgent extends BaseAgent {
   }
   protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
+    const planningConfig = getChapterPlanningConfig(state.genre)
     const chapterSupplement = genre?.chapterPromptSupplement ?? ''
     const chapterIndex = state.chapterIndex ?? 0
     const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
@@ -65,16 +71,16 @@ ${FACT_CONSISTENCY_RULES}
 <mandatory>【必须处理的上游状态冲突 - 写正文前必须解决】</mandatory>
 ${state.stateConflicts}
 
-<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作（递、接、取、放、交、藏等）完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>
+<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作（递交、接取、拾取、放置、转交、藏匿等）完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>
 </state_conflicts>`
       : ''
 
     const outlineComplianceSection = `<outline_compliance>
 <mandatory>【大纲遵循 - 强制要求】</mandatory>
 - 本章只能呈现大纲中明确列出的情节点，不得擅自添加大纲未提及的新情节、新场景或新角色
-- 如果大纲中某角色被描述为"暗中跟踪"、"暗中观察"或类似定位，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
-- 不得擅自增加大纲未提及的考验、试炼、关卡等情节
-- 不得擅自改变大纲中明确指定的角色关系（如"暗中护法"不得变为"正式入队"）
+- 如果大纲中某角色被定位为隐藏观察者、暗中保护者或类似非公开定位，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
+- 不得擅自增加大纲未提及的、以考验或测试角色为核心目的的情节
+- 不得擅自改变大纲中明确指定的角色关系（如隐藏身份不得变为正式入队）
 - 如果本章规划（chapterPlan）将某条前章遗留差事标记为 postponed 或 background，本章只需一句话带过或承认其待办状态，不得展开为完整场景
 - 如果大纲中出现"后续章节边界提示"或"跨章节边界冲突"，必须严格遵守其中的强制要求：不要把后续章节的核心事件提前解决、不要重复处理前章已解决的事件
 </outline_compliance>`
@@ -136,23 +142,11 @@ ${state.chapterContent}
       ? (state.characters.match(/^【([^】]+)】/m)?.[1] || '（未设定主角）')
       : '（未设定主角）'
 
-    const establishedCharactersSection = state.establishedCharacters && state.establishedCharacters.length > 0
-      ? `<established_characters>
-<mandatory>【前文已建立角色】以下角色已在前面章节的摘要或故事状态中出现，允许在本章继续使用：</mandatory>
-${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</established_characters>`
-      : ''
-
-    const characterWhitelistSection = state.charactersList && state.charactersList.length > 0
-      ? `<official_characters>
-<mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表、【大纲登场角色】列表或【前文已建立角色】列表；任何不在这些列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
-${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
-<outline_characters>
-<mandatory>【大纲登场角色】以下角色由大纲明确命名并将在本章或之前章节登场，允许在本章出现：</mandatory>
-${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</outline_characters>` : ''}${establishedCharactersSection}`
-      : establishedCharactersSection
+    const characterWhitelistSection = buildCharacterWhitelistSection({
+      charactersList: state.charactersList,
+      outlineCharacters: state.outlineCharacters,
+      establishedCharacters: state.establishedCharacters,
+    })
 
     const planSection = state.chapterPlan
       ? `<chapter_plan>
@@ -171,7 +165,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 - 标记为 executed 的差事：本章必须完整呈现其执行过程
 - 标记为 postponed 的差事：本章只需承认其待办/推迟状态，不得展开执行
 - 标记为 superseded 的差事：本章不得提及，已被后续大纲覆盖
-- 标记为 background 的差事：本章只能用一句话带过（如"某事已安排"、"某事改日再办"），不得超过 50 字，不得写成独立场景
+- 标记为 background 的差事：本章只能用一句话带过（如"某事已安排"、"某事改日再办"），不得超过 {MAX_BACKGROUND_TASK_WORD_COUNT} 字，不得写成独立场景
 </task_resolutions>`
       : ''
 
@@ -192,7 +186,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 <title>【冲突期提示】</title>
 <content>还有最后一章就完结了，本章必须：
 - 推进最终对决/高潮冲突到临界点
-- 回收至少 60% 的主要伏笔
+- 回收至少 {CLOSING_FORESHADOW_RECOVERY_PERCENT}% 的主要伏笔
 - 为结局做好所有铺垫，不要在最后一章引入新线索</content>
 </closing_phase>`
         : remainingChapters <= 3
@@ -314,7 +308,7 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
 ${CHAPTER_OUTPUT_RULES}
 <rule id="1"><mandatory>【必须】</mandatory>严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现</rule>
 <rule id="2"><mandatory>【必须】</mandatory>主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字</rule>
-<rule id="3"><mandatory>【必须】</mandatory>物品名称、技能/功法名称等必须与大纲完全一致</rule>
+<rule id="3"><mandatory>【必须】</mandatory>物品名称、技能/能力名称、专有名词等必须与大纲完全一致</rule>
 ${TIMELINE_RULES}
 <rule id="5"><mandatory>【必须】</mandatory>关键台词必须原样出现：
    - 大纲中明确要求的台词必须一字不差地出现
@@ -333,6 +327,9 @@ ${CROSS_CHAPTER_CONTINUITY_RULES}
 ${FACT_CONSISTENCY_RULES}
 ${FORESHADOW_BOUNDARY_RULES}
 ${POWER_SYSTEM_RULES}
+${ABSTRACT_OUTCOME_RULES}
+${PENDING_TASK_AUTHORITY_RULES}
+${TIME_ANCHOR_AUTHORITY_RULES}
 <rule id="16">以自然流畅的段落叙述为主</rule>
 ${OFFICIAL_CHARACTER_RULES}
 ${FORESHADOW_DISCIPLINE_RULES}
@@ -343,13 +340,18 @@ ${FORESHADOW_DISCIPLINE_RULES}
 </output_format>
 </task>`
 
+    const templatedContent = this.fillTemplate(userContent, {
+      MAX_BACKGROUND_TASK_WORD_COUNT: planningConfig.maxBackgroundTaskWordCount,
+      CLOSING_FORESHADOW_RECOVERY_PERCENT: Math.round(planningConfig.closingForeshadowRecoveryRatio * 100),
+    })
+
     return [
       this.systemMessage(`<system>
 <role>专业小说作家</role>
 <capability>擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进</capability>
 <requirement>在动笔前，你必须先完成预写对齐检查，确认每个大纲要求都有明确的执行计划，然后严格按照该计划撰写正文</requirement>
 </system>`),
-      this.userMessage(userContent),
+      this.userMessage(templatedContent),
     ]
   }
 

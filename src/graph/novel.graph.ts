@@ -7,21 +7,22 @@ import {
   create_outline,
   validate_outline,
   prepare_chapter,
-  decide_strategy,
-  route_strategy,
   draft_chapter,
   fix_chapter,
   validate_chapter_comprehensive,
   auto_fix_warnings,
   convergence_check,
-  route_convergence,
-  route_after_validation,
   request_rewrite,
   finalize_chapter,
-  route_after_finalize,
   finalize_story,
-  route_mode,
 } from './nodes.js'
+import {
+  route_mode,
+  route_strategy,
+  route_after_validation,
+  route_convergence,
+  route_after_finalize,
+} from './nodes/chapter-orchestration.js'
 import { getCheckpointer } from './checkpointer.js'
 import { END, START } from '@langchain/langgraph'
 
@@ -34,7 +35,6 @@ export function buildNovelGraph() {
     create_outline,
     validate_outline,
     prepare_chapter,
-    decide_strategy,
     draft_chapter,
     fix_chapter,
     validate_chapter_comprehensive,
@@ -62,6 +62,7 @@ export function buildNovelGraph() {
     draft_chapter: 'draft_chapter',
     fix_chapter: 'fix_chapter',
     finalize_chapter: 'finalize_chapter',
+    request_rewrite: 'request_rewrite',
   })
 
   b1.addEdge('draft_chapter', 'validate_chapter_comprehensive')

@@ -114,7 +114,6 @@ describe('chapter report generation', () => {
         characters: [],
         outline: [],
         chapters: [],
-        contextSnapshot: null,
       }),
       'utf-8'
     )

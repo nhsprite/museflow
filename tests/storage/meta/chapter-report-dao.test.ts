@@ -7,10 +7,8 @@ import {
   readChapterReport,
   listChapterReports,
 } from '../../../src/storage/meta/stores/chapter-report.js'
-import {
-  createEmptyChapterReport,
-  countChineseWords,
-} from '../../../src/types/chapter-report.js'
+import { createEmptyChapterReport } from '../../../src/types/chapter-report.js'
+import { countChineseWords } from '../../../src/utils/text.js'
 
 describe('chapter-report DAO', () => {
   let tempDir: string

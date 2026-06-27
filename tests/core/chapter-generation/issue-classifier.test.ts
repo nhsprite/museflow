@@ -4,6 +4,7 @@ import {
   isItemLocationConflictIssue,
   isInventedCharacterIssue,
   isOutlineStateConflictIssue,
+  isStructuralIssue,
 } from '../../../src/core/chapter-generation/issue-classifier.js'
 import type { Issue } from '../../../src/types/agent.js'
 
@@ -102,5 +103,67 @@ describe('isOutlineStateConflictIssue', () => {
       description: '与权威事实冲突',
     }
     expect(isOutlineStateConflictIssue(issue)).toBe(true)
+  })
+})
+
+describe('isStructuralIssue', () => {
+  it('returns true for outline violations', () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'outline_violation',
+      severity: 'error',
+      description: '缺少大纲要求的核心事件',
+    }
+    expect(isStructuralIssue(issue)).toBe(true)
+  })
+
+  it('returns true for cross-chapter issues referencing previous chapters', () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'consistency',
+      severity: 'error',
+      description: '前章中角色A已知某事实，本章却表现得像第一次听说',
+    }
+    expect(isStructuralIssue(issue)).toBe(true)
+  })
+
+  it('returns true for issues referencing canonical facts', () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'consistency',
+      severity: 'error',
+      description: '本章与权威事实冲突',
+    }
+    expect(isStructuralIssue(issue)).toBe(true)
+  })
+
+  it('returns true for issues referencing pending tasks', () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'consistency',
+      severity: 'error',
+      description: '角色B未执行已确立的差事',
+    }
+    expect(isStructuralIssue(issue)).toBe(true)
+  })
+
+  it('returns false for local internal consistency issues', () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'consistency',
+      severity: 'error',
+      description: '本章内部时间顺序不一致',
+    }
+    expect(isStructuralIssue(issue)).toBe(false)
+  })
+
+  it('returns false for quality issues', () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'quality',
+      severity: 'error',
+      description: '用词重复',
+    }
+    expect(isStructuralIssue(issue)).toBe(false)
   })
 })

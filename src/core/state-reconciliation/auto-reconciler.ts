@@ -1,5 +1,5 @@
 import type { StoryState, Conflict, CanonicalFact, SupersededFact, StateOverride } from '../../types/story-state.js'
-import { canonicalizeItemName } from '../../utils/story-state-validation.js'
+import { canonicalizeItemName } from '../../utils/items.js'
 import { generateId } from '../../utils/id.js'
 
 export interface ReconcileResult {

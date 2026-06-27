@@ -6,16 +6,50 @@ import {
   createDefaultRewriteRoutingPolicy,
   DEFAULT_REWRITE_ROUTING_CONFIG,
   type RewriteRoutingConfig,
+  type RewritePolicyServices,
 } from '../policies/rewrite-routing.js'
-import { createRewritePolicyServices } from '../policies/default-services.js'
+import { readChapterContent } from '../../storage/filesystem/writer.js'
+import {
+  isStructuralIssue,
+  isLocalIssue,
+  isTaskConsistencyIssue,
+  isStateCorruptionIssue,
+} from '../../core/chapter-generation/issue-classifier.js'
+import {
+  deduplicateIssuesSemantically,
+  issueFingerprint,
+} from '../../utils/issue-deduplication.js'
+import type { ChapterOutline } from '../../types/outline.js'
 
-function createPolicyServices(state: ReducedGraphState): import('../policies/rewrite-routing.js').RewritePolicyServices {
-  return createRewritePolicyServices(
-    state.story.outputDir,
-    state.currentChapterIndex + 1,
-    state.outline,
-    state.currentChapterIndex
+const INTERPRETIVE_ISSUE_PATTERN = /提前.*(?:剧透|揭示)|看破.*说破|感应.*反应|选择性感应|表达方式|性格驱动/
+
+function isInterpretiveIssue(issue: { description: string; location?: string }): boolean {
+  return (
+    INTERPRETIVE_ISSUE_PATTERN.test(issue.description) ||
+    INTERPRETIVE_ISSUE_PATTERN.test(issue.location || '')
   )
+}
+
+function createPolicyServices(
+  outputDir: string,
+  chapterNumber: number,
+  outline: ChapterOutline[],
+  chapterIndex: number
+): RewritePolicyServices {
+  return {
+    isStructuralIssue,
+    isLocalIssue,
+    isTaskConsistencyIssue,
+    isStateCorruptionIssue,
+    deduplicateIssues: deduplicateIssuesSemantically,
+    issueFingerprint,
+    isInterpretiveIssue,
+    shouldForceTemporaryReplan: () => shouldForceTemporaryReplan(outline, chapterIndex),
+    readChapterContent: () => readChapterContent(outputDir, chapterNumber),
+    log(level, message, ...meta) {
+      logger[level](message, ...meta)
+    },
+  }
 }
 
 function buildRoutingConfig(genre: string): Required<RewriteRoutingConfig> {
@@ -52,7 +86,12 @@ export async function decide_strategy(
 
   const policy = createDefaultRewriteRoutingPolicy()
   const config = buildRoutingConfig(state.genre)
-  const services = createPolicyServices(state)
+  const services = createPolicyServices(
+    state.story.outputDir,
+    state.currentChapterIndex + 1,
+    state.outline,
+    state.currentChapterIndex
+  )
 
   const strategy = await policy.decideStrategy({
     chapterIndex: state.currentChapterIndex,
@@ -87,8 +126,8 @@ export async function decide_strategy(
   }
 }
 
-export function route_strategy(_state: ReducedGraphState): string {
-  return _state.routingDecision ?? 'finalize_chapter'
+export function route_strategy(state: ReducedGraphState): string {
+  return state.routingDecision ?? 'finalize_chapter'
 }
 
 export function convergence_check(
@@ -96,7 +135,12 @@ export function convergence_check(
 ): Partial<ReducedGraphState> {
   const policy = createDefaultRewriteRoutingPolicy()
   const config = buildRoutingConfig(state.genre)
-  const services = createPolicyServices(state)
+  const services = createPolicyServices(
+    state.story.outputDir,
+    state.currentChapterIndex + 1,
+    state.outline,
+    state.currentChapterIndex
+  )
 
   const result = policy.convergenceCheck({
     rewriteApproved: state.rewriteApproved,

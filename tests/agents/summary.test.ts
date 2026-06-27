@@ -203,4 +203,119 @@ describe('SummaryAgent prompt', () => {
     const result = processSummaryOutput(output, 3)
     expect(result?.storyState?.canonicalFacts?.[0].id).toBe('custom-id')
   })
+
+  it('disambiguates ambiguous pronouns in canonical fact values', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            {
+              subject: '某关键道具',
+              attribute: '用途',
+              value: '此物不用于新走账通道',
+              establishedIn: 4,
+            },
+          ],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 4)
+    expect(result?.storyState?.canonicalFacts?.[0].value).toBe('某关键道具不用于新走账通道')
+  })
+
+  it('disambiguates ambiguous pronouns in superseded old values', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            {
+              subject: '样本A',
+              attribute: '所在位置',
+              value: '样本A在实验室B',
+              establishedIn: 3,
+              supersedes: [{ chapter: 1, oldValue: '此物在实验室A' }],
+            },
+          ],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 3)
+    expect(result?.storyState?.canonicalFacts?.[0].supersedes?.[0].oldValue).toBe('样本A在实验室A')
+  })
+
+  it('keeps unambiguous canonical fact values unchanged', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            {
+              subject: '样本A',
+              attribute: '所在位置',
+              value: '样本A在实验室B',
+              establishedIn: 3,
+            },
+          ],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 3)
+    expect(result?.storyState?.canonicalFacts?.[0].value).toBe('样本A在实验室B')
+  })
 })

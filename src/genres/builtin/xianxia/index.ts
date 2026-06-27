@@ -22,16 +22,6 @@ export function createXianxiaSkill(): GenreSkill {
 4. 灵根/天赋设定
 5. 资源稀缺性设定（灵石、灵药等）
 6. 仙凡关系`,
-    outlineTemplate: `为一部 {totalChapters} 章的仙侠小说制定大纲。
-
-故事简介：{idea}
-
-请按章节顺序列出每一章的：
-- 章节标题
-- 本章核心事件（包含修真、功法、门派冲突等）
-- 主角当前境界
-
-严格生成 exactly {totalChapters} 个章节。`,
     chapterPromptSupplement: `你是一位擅长仙侠风格的作家。请特别注意：
 - 使用古风文言与白话结合的语言
 - 描写修真境界、功法特效、修仙心境

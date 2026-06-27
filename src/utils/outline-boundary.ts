@@ -1,4 +1,4 @@
-import type { ChapterOutline } from '../graph/state.js'
+import type { ChapterOutline } from '../types/outline.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import { filterRelevantPendingTasks } from './pending-tasks.js'
 import type { ChapterPlanningConfig } from '../types/genre.js'

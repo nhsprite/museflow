@@ -8,13 +8,19 @@ const STRUCTURAL_ISSUE_TYPES = new Set([
 
 const CROSS_CHAPTER_MARKERS = [
   /上一章/,
+  /前章/,
+  /前面章节/,
   /前[一二三四五六七八九十\d]+章/,
   /第\s*[一二三四五六七八九十\d]+\s*章/,
   /story_state/,
   /已确认事实/,
   /已确立/,
   /既定事实/,
+  /权威事实/,
+  /canonical\s*fact/,
   /大纲第\s*[一二三四五六七八九十\d]+\s*章/,
+  /pendingTasks?/,
+  /差事/,
 ]
 
 const PENDING_TASK_MARKERS = [

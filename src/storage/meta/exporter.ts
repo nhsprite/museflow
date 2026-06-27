@@ -1,14 +1,25 @@
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ReducedGraphState } from '../../graph/state.js'
 import type { StoryMeta } from './index.js'
+import type { Story } from '../../types/story.js'
+import type { Character } from '../../types/character.js'
+import type { ChapterMeta } from '../../types/chapter.js'
+import type { WorldContent } from '../../types/world.js'
+import type { ChapterOutline } from '../../types/outline.js'
+import type { ForeshadowItem } from '../../types/foreshadow.js'
+import type { StoryState } from '../../types/story-state.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { logger } from '../../utils/logger.js'
+import { writeFileAtomic, ensureDir } from '../../utils/fs.js'
 
-function writeFileAtomic(path: string, data: string): void {
-  const tmpPath = `${path}.tmp`
-  writeFileSync(tmpPath, data, 'utf-8')
-  renameSync(tmpPath, path)
+interface CheckpointState {
+  story: Story
+  world: WorldContent | null
+  characters: Character[]
+  outline: ChapterOutline[]
+  chapters: (ChapterMeta | null)[]
+  foreshadowStack: ForeshadowItem[]
+  storyState: StoryState
 }
 
 function getMetaPath(outputDir: string): string {
@@ -42,7 +53,7 @@ export async function exportMetaFromCheckpoint(outputDir: string): Promise<void>
     return
   }
 
-  const state = checkpoint.checkpoint.channel_values as ReducedGraphState | undefined
+  const state = checkpoint.checkpoint.channel_values as unknown as CheckpointState | undefined
   if (!state) {
     logger.debug('[MuseFlow] Checkpoint has no channel values, skipping meta export')
     return
@@ -71,17 +82,13 @@ export async function exportMetaFromCheckpoint(outputDir: string): Promise<void>
         updatedAt: Date.now(),
       }
     }),
-    contextSnapshot: null,
     timeline: existing?.timeline ?? [],
     foreshadowStack: state.foreshadowStack,
     foreshadowAlerts: [],
     storyState: state.storyState,
   }
 
-  if (!existsSync(outputDir)) {
-    mkdirSync(outputDir, { recursive: true })
-  }
-
+  ensureDir(outputDir)
   writeFileAtomic(getMetaPath(outputDir), JSON.stringify(meta, null, 2))
   logger.debug(`[MuseFlow] Exported meta.json from checkpoint: ${outputDir}`)
 }

@@ -15,17 +15,6 @@ export function createDefaultSkill(): GenreSkill {
   "title": "生成的书名",
   "world": "世界观详细设定内容，包含：1. 背景设定（时间、地点、社会结构） 2. 主要势力或阵营 3. 核心规则或法则 4. 文化与技术水平 5. 可能的冲突来源"
 }`,
-    outlineTemplate: `根据以下信息，为一部 {totalChapters} 章的小说制定大纲。
-
-题材：通用（不限定具体类型）
-故事简介：{idea}
-
-请按章节顺序列出每一章的：
-- 章节标题
-- 本章核心事件
-- 预计篇幅
-
-严格生成 exactly {totalChapters} 个章节。`,
     chapterPromptSupplement: ``,
     tropes: [],
     chapterPlanning: DEFAULT_CHAPTER_PLANNING_CONFIG,

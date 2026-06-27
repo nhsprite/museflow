@@ -44,7 +44,6 @@ export function createStory(input: StoryCreateInput): Story {
     characters: [],
     outline: [],
     chapters: [],
-    contextSnapshot: null,
   }
 
   writeMetaJsonSync(id, meta)
