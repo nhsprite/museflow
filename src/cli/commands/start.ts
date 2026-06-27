@@ -1,8 +1,8 @@
-import { createStory } from '../../storage/database/dao/story.js'
+import { createStory } from '../../storage/meta/stores/story.js'
 import { runStory } from '../../core/runner.js'
-import { initStoryDb } from '../../storage/database/dao/story.js'
+import { initStoryDb } from '../../storage/meta/stores/story.js'
 import { getGenreRegistry } from '../../genres/registry.js'
-import { updateStoryStatus } from '../../storage/database/dao/story.js'
+import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { generateTitleOptions, selectTitleOption, type TitleOption } from './title-selector.js'
 import { withSpinner } from '../utils/spinner.js'
 

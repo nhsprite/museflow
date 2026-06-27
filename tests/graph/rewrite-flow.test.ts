@@ -67,13 +67,13 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeStoryBible: vi.fn(),
 }))
 
-vi.mock('../../src/storage/database/dao/chapter.js', () => ({ saveOutline: vi.fn() }))
-vi.mock('../../src/storage/database/dao/character.js', () => ({ saveCharacters: vi.fn() }))
-vi.mock('../../src/storage/database/dao/world.js', () => ({ saveWorld: vi.fn() }))
+vi.mock('../../src/storage/meta/stores/chapter.js', () => ({ saveOutline: vi.fn() }))
+vi.mock('../../src/storage/meta/stores/character.js', () => ({ saveCharacters: vi.fn() }))
+vi.mock('../../src/storage/meta/stores/world.js', () => ({ saveWorld: vi.fn() }))
 const saveStoryState = vi.fn()
 const getStoryState = vi.fn().mockReturnValue(null)
 
-vi.mock('../../src/storage/database/dao/story-state.js', () => ({
+vi.mock('../../src/storage/meta/stores/story-state.js', () => ({
   saveStoryState,
   getStoryState,
   createEmptyStoryState: () => ({
@@ -89,13 +89,13 @@ vi.mock('../../src/storage/database/dao/story-state.js', () => ({
   }),
 }))
 
-vi.mock('../../src/storage/database/dao/story.js', () => ({
+vi.mock('../../src/storage/meta/stores/story.js', () => ({
   updateStoryTitle: vi.fn(),
   renameStoryOutputDir: vi.fn(),
 }))
 const saveForeshadowAlerts = vi.fn()
 
-vi.mock('../../src/storage/database/dao/timeline.js', () => ({
+vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
   appendTimelineSnapshot,
   getLatestSnapshot,
   saveForeshadowStack,
@@ -105,7 +105,7 @@ vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockRetu
 vi.mock('../../src/utils/paths.js', () => ({ getStoryOutputDirWithTitle: vi.fn() }))
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('generated-id') }))
 vi.mock('../../src/graph/checkpointer.js', () => ({
-  getCheckpointer: () => ({ saveChapterCheckpoint, pruneIntermediateCheckpoints, clearPendingWrites: vi.fn().mockResolvedValue(undefined) }),
+  getCheckpointer: () => ({ saveChapterCheckpoint, pruneIntermediateCheckpoints, clearPendingWrites: vi.fn().mockResolvedValue(undefined), getTuple: vi.fn().mockResolvedValue(null) }),
 }))
 
 const baseState = {

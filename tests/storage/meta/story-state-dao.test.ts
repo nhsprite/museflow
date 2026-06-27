@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createEmptyStoryState,
   isEmptyStoryState,
-} from '../../../src/storage/database/dao/story-state.js'
+} from '../../../src/storage/meta/stores/story-state.js'
 
 describe('createEmptyStoryState', () => {
   it('initializes canonicalFacts as empty array', () => {

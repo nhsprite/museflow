@@ -5,10 +5,9 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { getForeshadowStack } from '../storage/database/dao/timeline.js'
-import { createEmptyStoryState, isEmptyStoryState, saveStoryState } from '../storage/database/dao/story-state.js'
+import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
-import { getWorld } from '../storage/database/dao/world.js'
+import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -78,6 +77,7 @@ export async function runStory(input: {
     chapterTimeAnchor: undefined,
     autoFixAttempts: 0,
     verifiedConstraints: [],
+    chapterReport: null,
     rewriteAttempts: 0,
     errorRewriteAttempts: 0,
     previousIssues: [],
@@ -111,9 +111,6 @@ export async function runChapterGraph(
 
   try {
     const result = await graph.invoke(workingState, config)
-    if (result.storyState && !isEmptyStoryState(result.storyState)) {
-      saveStoryState(storyId, result.storyState)
-    }
 
     // 章节完成后再保存 chapter checkpoint。在 finalize_chapter 节点内部调用时，
     // LangGraph 尚未持久化该节点返回的状态更新，会导致 checkpoint 中的
@@ -121,6 +118,9 @@ export async function runChapterGraph(
     if (!result.rewriteRequested && result.isWriting && result.currentChapterIndex > 0) {
       await checkpointer.saveChapterCheckpoint(result.story.outputDir, result.currentChapterIndex)
     }
+
+    // 将 checkpoint 同步为 meta.json 导出视图，保持 CLI 命令可读。
+    await exportMetaFromCheckpoint(outputDir)
 
     return result as ReducedGraphState
   } catch (err) {
@@ -134,7 +134,7 @@ export async function continueStory(
   storyId: string,
   userResponse?: boolean,
   currentChapterIndex?: number,
-  options: { isRewrite?: boolean } = {}
+  _options: { isRewrite?: boolean } = {}
 ): Promise<ReducedGraphState> {
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
@@ -149,19 +149,6 @@ export async function continueStory(
   const checkpointState = snapshot.values as ReducedGraphState
 
   const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
-  const isRewrite = options.isRewrite ?? currentChapterIndex !== undefined
-
-  const checkpointHasState = checkpointState.storyState && !isEmptyStoryState(checkpointState.storyState)
-  if (!checkpointHasState && isRewrite && targetIndex > 1) {
-    logger.info('[MuseFlow] Checkpoint storyState 为空，且为重写模式。清理可能过时的角色位置信息...')
-    const emptyState = createEmptyStoryState()
-    checkpointState.storyState = {
-      ...emptyState,
-      revealedSecrets: checkpointState.storyState?.revealedSecrets || [],
-      ...(checkpointState.storyState?.supersededFacts ? { supersededFacts: checkpointState.storyState.supersededFacts } : {}),
-      ...(checkpointState.storyState?.canonicalFacts ? { canonicalFacts: checkpointState.storyState.canonicalFacts } : {}),
-    }
-  }
 
   const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
   for (let i = 0; i < targetIndex; i++) {
@@ -181,6 +168,7 @@ export async function continueStory(
     rewriteRequested: false,
     isWriting: true,
     writeOneChapterOnly: true,
+    chapterReport: null,
     rewriteAttempts: 0,
     errorRewriteAttempts: 0,
     previousIssues: [],
@@ -205,18 +193,8 @@ export async function getState(storyId: string): Promise<ReducedGraphState | nul
     const state = await graph.getState(config)
     const graphState = state.values as unknown as ReducedGraphState
 
-    const persistedForeshadowStack = getForeshadowStack(storyId)
-    if (persistedForeshadowStack.length > 0) {
-      graphState.foreshadowStack = persistedForeshadowStack
-    }
-
-    const persistedWorld = getWorld(storyId)
-    if (persistedWorld && !graphState.world) {
-      graphState.world = persistedWorld
-    }
-
-    // storyState 以 checkpoint 为唯一真相源，不再从 meta.json 覆盖
-    // 清除过时的 draft_failure 问题，避免阻断后续生成
+    // Checkpoint 是运行时唯一真相源。不再从 meta.json 覆盖任何字段。
+    // 清除过时的 draft_failure 问题，避免阻断后续生成。
     graphState.pendingIssues = graphState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
 
     return graphState

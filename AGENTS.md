@@ -44,14 +44,15 @@ docs/superpowers/  Implementation plans from agent sessions
 
 ## Storage Architecture (Critical)
 
-Despite the `sql.js` dependency, **MuseFlow does NOT use SQLite** for story data.
+**MuseFlow uses JSON + filesystem storage only. It does NOT use SQLite.**
 
 - **Metadata**: `books/{storyId}/meta.json` — single JSON file per story with world, characters, outline, chapter summaries.
 - **Chapter content**: `books/{storyId}/chapters/chapter_{n}.md` — one Markdown file per chapter.
 - **Checkpoints**: `books/{storyId}/checkpoints/` — JSON files for LangGraph checkpoint recovery. Custom `JsonCheckpointer` class.
+- **Reports**: `books/{storyId}/reports/chapter_{n}.report.json` — per-chapter generation reports.
 - **User config**: `~/.museflow/config.json` — API keys, provider, model.
 
-Do not add SQLite migrations or SQL queries. The `sql.js` dep is a remnant / future placeholder.
+Do not add SQLite migrations or SQL queries.
 
 ## CLI Command Flow
 

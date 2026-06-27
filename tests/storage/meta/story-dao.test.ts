@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createStory, getStory, updateStoryStatus, updateStoryTitle, listStories, deleteStory } from '../../../src/storage/database/dao/story.ts'
+import { createStory, getStory, updateStoryStatus, updateStoryTitle, listStories, deleteStory } from '../../../src/storage/meta/stores/story.ts'
 import { getStoryOutputDir } from '../../../src/utils/paths.js'
 
 describe('story DAO', () => {

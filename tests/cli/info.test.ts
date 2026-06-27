@@ -7,7 +7,7 @@ const getStateMock = vi.fn<() => Promise<ReducedGraphState | null>>()
 const getGenreSkillMock = vi.fn()
 const loadConfigMock = vi.fn()
 
-vi.mock('../../src/storage/database/dao/story.ts', () => ({
+vi.mock('../../src/storage/meta/stores/story.ts', () => ({
   getStory: getStoryMock,
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))

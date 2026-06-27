@@ -70,7 +70,7 @@ vi.mock('../../src/agents/index.js', () => ({
   },
 }))
 
-vi.mock('../../src/storage/database/dao/story-state.js', () => ({
+vi.mock('../../src/storage/meta/stores/story-state.js', () => ({
   getStoryState: vi.fn().mockReturnValue(null),
   saveStoryState: vi.fn(),
   createEmptyStoryState: vi.fn().mockReturnValue({
@@ -86,7 +86,7 @@ vi.mock('../../src/storage/database/dao/story-state.js', () => ({
   }),
 }))
 
-vi.mock('../../src/storage/database/dao/timeline.js', () => ({
+vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
   appendTimelineSnapshot: vi.fn(),
   getLatestSnapshot: vi.fn().mockReturnValue(null),
   saveForeshadowStack: vi.fn(),

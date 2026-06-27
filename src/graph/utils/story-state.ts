@@ -7,7 +7,7 @@ import {
   getImportanceThreshold,
   getCompressionLevel,
 } from '../../utils/summary-compressor.js'
-import { createEmptyStoryState } from '../../storage/database/dao/story-state.js'
+import { createEmptyStoryState } from '../../storage/meta/stores/story-state.js'
 import { canonicalizeItemName } from '../../utils/story-state-validation.js'
 import { detectAllConflicts } from '../../core/state-reconciliation/conflict-detector.js'
 import { classifyConflicts } from '../../core/state-reconciliation/conflict-classifier.js'

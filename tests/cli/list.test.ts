@@ -4,7 +4,7 @@ import type { Story } from '../../src/types/story.ts'
 const listStoriesMock = vi.fn<() => Story[]>()
 const getStateMock = vi.fn<() => Promise<null>>()
 
-vi.mock('../../src/storage/database/dao/story.ts', () => ({
+vi.mock('../../src/storage/meta/stores/story.ts', () => ({
   listStories: listStoriesMock,
 }))
 

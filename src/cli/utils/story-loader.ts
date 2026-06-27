@@ -1,4 +1,4 @@
-import { getStory, initStoryDb } from '../../storage/database/dao/story.js'
+import { getStory, initStoryDb } from '../../storage/meta/stores/story.js'
 import { getState } from '../../core/runner.js'
 import type { Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'

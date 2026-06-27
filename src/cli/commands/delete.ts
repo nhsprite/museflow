@@ -1,4 +1,4 @@
-import { deleteStory } from '../../storage/database/dao/story.js'
+import { deleteStory } from '../../storage/meta/stores/story.js'
 import { requireStory } from '../utils/story-loader.js'
 
 interface DeleteOptions {

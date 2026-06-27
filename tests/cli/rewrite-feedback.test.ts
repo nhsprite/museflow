@@ -42,7 +42,7 @@ const initialState = {
   autoFixAttempts: 0,
 }
 
-vi.mock('../../src/storage/database/dao/story.js', () => ({
+vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({
     id: 'story-1',
     title: 'Test Story',

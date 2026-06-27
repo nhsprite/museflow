@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createStory } from '../../../src/storage/database/dao/story.ts'
-import { saveOutline, getOutline } from '../../../src/storage/database/dao/chapter.ts'
+import { createStory } from '../../../src/storage/meta/stores/story.ts'
+import { saveOutline, getOutline } from '../../../src/storage/meta/stores/chapter.ts'
 
 describe('chapter DAO outline persistence', () => {
   const createdStories: Array<{ id: string; outputDir: string }> = []

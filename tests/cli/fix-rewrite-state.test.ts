@@ -21,7 +21,7 @@ vi.mock('../../src/graph/checkpointer.js', () => ({
   }),
 }))
 
-vi.mock('../../src/storage/database/dao/story.js', () => ({
+vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({
     id: 'story-1',
     title: 'Test Story',
@@ -163,19 +163,19 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   deleteChapterContent: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('../../src/storage/database/dao/chapter.js', () => ({
+vi.mock('../../src/storage/meta/stores/chapter.js', () => ({
   saveOutline: vi.fn(),
 }))
 
-vi.mock('../../src/storage/database/dao/character.js', () => ({
+vi.mock('../../src/storage/meta/stores/character.js', () => ({
   saveCharacters: vi.fn(),
 }))
 
-vi.mock('../../src/storage/database/dao/world.js', () => ({
+vi.mock('../../src/storage/meta/stores/world.js', () => ({
   saveWorld: vi.fn(),
 }))
 
-vi.mock('../../src/storage/database/dao/timeline.js', () => ({
+vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
   appendTimelineSnapshot: vi.fn(),
   getLatestSnapshot: vi.fn().mockReturnValue(null),
   saveForeshadowStack: vi.fn(),

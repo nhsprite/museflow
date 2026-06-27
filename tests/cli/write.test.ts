@@ -51,7 +51,7 @@ vi.mock('../../src/core/runner.js', () => ({
   getState: getStateMock,
 }))
 
-vi.mock('../../src/storage/database/dao/story.js', () => ({
+vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({
     id: 'story-1',
     title: 'Test Story',
@@ -80,6 +80,7 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
 
 vi.mock('../../src/cli/utils/chapter-display.js', () => ({
   printChapterOutline: vi.fn().mockReturnValue(true),
+  printChapterReport: vi.fn(),
 }))
 
 vi.mock('../../src/utils/paths.js', () => ({

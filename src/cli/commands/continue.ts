@@ -1,4 +1,4 @@
-import { updateStoryStatus } from '../../storage/database/dao/story.js'
+import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { continueStory } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'

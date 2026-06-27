@@ -4,18 +4,22 @@ import type { AgentState } from '../../agents/base.js'
 import { getSummaryAgent } from '../agent-factory.js'
 import { processSummaryOutput } from '../../agents/index.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
-import {
-  appendTimelineSnapshot,
-  saveForeshadowStack,
-  saveForeshadowAlerts,
-} from '../../storage/database/dao/timeline.js'
+import { saveChapterReport } from '../../storage/meta/stores/chapter-report.js'
+import { appendTimelineSnapshot } from '../../storage/meta/stores/timeline.js'
+import { exportMetaFromCheckpoint } from '../../storage/meta/exporter.js'
 import { getForeshadowAlerts } from '../state.js'
-
 import { getCheckpointer } from '../checkpointer.js'
 import { agePendingTasks } from '../../utils/pending-tasks.js'
 import { mergeStoryState } from '../utils/story-state.js'
 import { buildEffectiveCharactersList } from '../utils/characters.js'
 import { generateForeshadowConstraints } from '../../utils/foreshadow-constraints.js'
+import {
+  createEmptyChapterReport,
+  summarizeIssues,
+  countChineseWords,
+  type StateCorrection,
+  type ChapterReport,
+} from '../../types/chapter-report.js'
 
 export async function finalize_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
@@ -122,11 +126,6 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     stateJson: null,
   })
 
-  saveForeshadowStack(state.story.id, state.foreshadowStack)
-
-  const alerts = getForeshadowAlerts(state.foreshadowStack, chapterIndex + 1)
-  saveForeshadowAlerts(state.story.id, alerts)
-
   const newForeshadowConstraints = generateForeshadowConstraints(state.foreshadowStack, chapterIndex + 1)
   const updatedVerifiedConstraints = newForeshadowConstraints.length > 0
     ? [...(state.verifiedConstraints ?? []), ...newForeshadowConstraints]
@@ -134,16 +133,107 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
 
   const nextIndex = state.currentChapterIndex + 1
 
+  const chapterReport = buildChapterReport(
+    state,
+    chapter ?? null,
+    chapterContent,
+    updatedStoryState
+  )
+  saveChapterReport(state.story.outputDir, chapterReport)
+
   const checkpointer = getCheckpointer()
   await checkpointer.pruneIntermediateCheckpoints(state.story.outputDir).catch(() => {})
   await checkpointer.clearPendingWrites(state.story.outputDir).catch(() => {})
+
+  // checkpoint 是运行时唯一真相源；meta.json 是其导出视图。
+  await exportMetaFromCheckpoint(state.story.outputDir)
 
   return {
     currentChapterIndex: nextIndex,
     chapterSummaries: state.chapterSummaries,
     storyState: updatedStoryState,
     verifiedConstraints: updatedVerifiedConstraints,
+    chapterReport,
   }
+}
+
+function buildChapterReport(
+  state: ReducedGraphState,
+  chapter: ReducedGraphState['chapters'][number],
+  chapterContent: string,
+  updatedStoryState: ReducedGraphState['storyState']
+): ChapterReport {
+  const chapterIndex = state.currentChapterIndex
+  const outlineItem = state.outline[chapterIndex]
+
+  const report = createEmptyChapterReport(state.story.id, chapterIndex)
+  report.chapterTitle = outlineItem?.title ?? chapter?.title ?? ''
+  report.wordCount = countChineseWords(chapterContent)
+  report.summary = chapter?.summary ?? null
+
+  report.draftStrategy = inferDraftStrategy(state)
+  report.rewriteAttempts = state.rewriteAttempts ?? 0
+  report.errorRewriteAttempts = state.errorRewriteAttempts ?? 0
+  report.autoFixAttempts = state.autoFixAttempts ?? 0
+
+  report.issues = state.pendingIssues
+  report.issuesSummary = summarizeIssues(state.pendingIssues)
+
+  report.stateCorrections = buildStateCorrections(updatedStoryState)
+
+  const alerts = getForeshadowAlerts(state.foreshadowStack, chapterIndex + 1)
+  report.foreshadowsPlanted = state.foreshadowStack.filter(
+    f => f.createdAtChapter === chapterIndex + 1
+  ).length
+  report.foreshadowsFulfilled = state.foreshadowStack.filter(
+    f => f.fulfilledChapter === chapterIndex + 1
+  ).length
+  report.foreshadowsOverdue = alerts.filter(a => a.level === 'overdue').length
+
+  report.convergence = inferConvergence(state)
+
+  return report
+}
+
+function inferDraftStrategy(state: ReducedGraphState): ChapterReport['draftStrategy'] {
+  if (state.routingDecision === 'fix_chapter') return 'fix'
+  if (state.routingDecision === 'finalize_chapter' && (state.rewriteAttempts ?? 0) === 0) {
+    return 'finalize-only'
+  }
+  if ((state.autoFixAttempts ?? 0) > 0) return 'fix'
+  return 'draft'
+}
+
+function inferConvergence(state: ReducedGraphState): ChapterReport['convergence'] {
+  if (!state.rewriteRequested) return 'success'
+  if ((state.errorRewriteAttempts ?? 0) >= 3) return 'max-attempts-reached'
+  return 'manual-rewrite-requested'
+}
+
+function buildStateCorrections(storyState: ReducedGraphState['storyState']): StateCorrection[] {
+  if (!storyState) return []
+  const corrections: StateCorrection[] = []
+  for (const fact of storyState.canonicalFacts ?? []) {
+    for (const old of fact.supersedes ?? []) {
+      corrections.push({
+        subject: fact.subject,
+        attribute: fact.attribute,
+        oldValue: old.oldValue,
+        newValue: fact.value,
+        reason: 'canonical_fact',
+      })
+    }
+  }
+  for (const fact of storyState.supersededFacts ?? []) {
+    corrections.push({
+      subject: fact.subject,
+      attribute: 'fact',
+      oldValue: fact.oldFact,
+      newValue: '',
+      reason: 'superseded_fact',
+    })
+  }
+  return corrections
 }
 
 export async function finalize_story(_state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {

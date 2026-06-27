@@ -5,7 +5,7 @@ import type { Story } from '../../src/types/story.ts'
 const getStoryMock = vi.fn<() => Story | null>()
 const getStateMock = vi.fn<() => Promise<ReducedGraphState | null>>()
 
-vi.mock('../../src/storage/database/dao/story.ts', () => ({
+vi.mock('../../src/storage/meta/stores/story.ts', () => ({
   getStory: getStoryMock,
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))

@@ -1,4 +1,4 @@
-import { listStories } from '../../storage/database/dao/story.js'
+import { listStories } from '../../storage/meta/stores/story.js'
 import { getState } from '../../core/runner.js'
 import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
 

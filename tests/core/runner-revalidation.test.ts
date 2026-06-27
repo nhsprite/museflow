@@ -25,6 +25,7 @@ vi.mock('../../src/graph/checkpointer.js', () => ({
     saveChapterCheckpoint,
     pruneIntermediateCheckpoints,
     loadPendingWritesForThread: vi.fn().mockResolvedValue([]),
+    getTuple: vi.fn().mockResolvedValue(null),
   }),
 }))
 
@@ -93,22 +94,22 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeStoryBible: vi.fn(),
 }))
 
-vi.mock('../../src/storage/database/dao/chapter.js', () => ({ saveOutline: vi.fn() }))
-vi.mock('../../src/storage/database/dao/character.js', () => ({ saveCharacters: vi.fn() }))
-vi.mock('../../src/storage/database/dao/world.js', () => ({ saveWorld: vi.fn() }))
-vi.mock('../../src/storage/database/dao/story.js', () => ({
+vi.mock('../../src/storage/meta/stores/chapter.js', () => ({ saveOutline: vi.fn() }))
+vi.mock('../../src/storage/meta/stores/character.js', () => ({ saveCharacters: vi.fn() }))
+vi.mock('../../src/storage/meta/stores/world.js', () => ({ saveWorld: vi.fn() }))
+vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({ id: 'story-1', title: 'Test', outputDir: '/tmp/test', status: 'writing' }),
   updateStoryStatus,
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../../src/storage/database/dao/timeline.js', () => ({
+vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
   appendTimelineSnapshot,
   getLatestSnapshot: vi.fn().mockReturnValue(null),
   saveForeshadowStack,
   saveForeshadowAlerts,
   getForeshadowAlerts,
 }))
-vi.mock('../../src/storage/database/dao/story-state.js', () => ({
+vi.mock('../../src/storage/meta/stores/story-state.js', () => ({
   saveStoryState,
   getStoryState,
   createEmptyStoryState: vi.fn().mockReturnValue({
@@ -281,8 +282,7 @@ describe('runner revalidation', () => {
     await continueStory('story-1', undefined, 2)
 
     const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
-    // rewrite mode sanitizes empty storyState for targetIndex > 1
-    expect(invokedState.storyState).not.toBeNull()
+    expect(invokedState.currentChapterIndex).toBe(2)
   })
 
   it('allows targeting a chapter without rewrite mode via options', async () => {

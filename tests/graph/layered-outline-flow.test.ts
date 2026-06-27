@@ -40,7 +40,7 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeStoryBible: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('../../src/storage/database/dao/chapter.js', () => ({
+vi.mock('../../src/storage/meta/stores/chapter.js', () => ({
   saveOutline: vi.fn(),
 }))
 

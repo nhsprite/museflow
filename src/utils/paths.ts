@@ -58,10 +58,6 @@ export function getConfigFilePath(): string {
   return getGlobalConfigFilePath()
 }
 
-export function getCheckpointFilePath(outputDir: string, storyId: string): string {
-  return join(outputDir, `${storyId}.sqlite`)
-}
-
 function getStoryShortId(storyId: string): string {
   const suffix = storyId.split('_').pop() ?? storyId
   return suffix.slice(0, 12).toLowerCase()

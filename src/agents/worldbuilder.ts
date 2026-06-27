@@ -1,5 +1,5 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
-import type { WorldContent } from '../graph/state.js'
+import type { WorldContent } from '../types/context.js'
 import { generateId } from '../utils/id.js'
 
 export class WorldbuilderAgent extends BaseAgent {

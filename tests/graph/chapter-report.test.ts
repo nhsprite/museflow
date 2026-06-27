@@ -1,0 +1,196 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import * as fs from 'node:fs/promises'
+import * as path from 'node:path'
+import { finalize_chapter } from '../../src/graph/nodes.js'
+import type { ReducedGraphState } from '../../src/graph/state.js'
+import type { Issue } from '../../src/types/agent.js'
+import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
+
+vi.mock('../../src/graph/agent-factory.js', () => ({
+  getSummaryAgent: vi.fn().mockReturnValue({
+    run: vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        summary: '主角离开家乡，踏上旅途。',
+        characterLocations: { 主角: '路上' },
+        keyItemsLocation: { 护身符: '主角身上' },
+      },
+    }),
+  }),
+}))
+
+vi.mock('../../src/agents/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/agents/index.js')>('../../src/agents/index.js')
+  return {
+    ...actual,
+    processSummaryOutput: vi.fn().mockReturnValue({
+      summary: '主角离开家乡，踏上旅途。',
+      storyState: {
+        characterLocations: { 主角: '路上' },
+        keyItemsLocation: { 护身符: '主角身上' },
+        currentScene: '官道',
+        storyTime: '清晨',
+      },
+    }),
+  }
+})
+
+vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
+  appendTimelineSnapshot: vi.fn().mockReturnValue({}),
+  saveForeshadowStack: vi.fn(),
+  saveForeshadowAlerts: vi.fn(),
+  getTimeline: vi.fn().mockReturnValue([]),
+  getLatestSnapshot: vi.fn().mockReturnValue(null),
+  getForeshadowAlertsFromDb: vi.fn().mockReturnValue([]),
+}))
+
+vi.mock('../../src/graph/checkpointer.js', () => ({
+  getCheckpointer: vi.fn().mockReturnValue({
+    pruneIntermediateCheckpoints: vi.fn().mockResolvedValue(undefined),
+    clearPendingWrites: vi.fn().mockResolvedValue(undefined),
+    getTuple: vi.fn().mockResolvedValue(null),
+  }),
+}))
+
+function buildState(outputDir: string, overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
+  const base: ReducedGraphState = {
+    story: { id: 'test-story', title: 'Test', outputDir, genre: 'default', totalChapters: 3 },
+    idea: 'test idea',
+    genre: 'default',
+    totalChapters: 3,
+    currentChapterIndex: 0,
+    chapters: [{
+      id: 'ch-1',
+      storyId: 'test-story',
+      number: 1,
+      title: '启程',
+      outline: '主角离开家乡。',
+      summary: null,
+      foreshadows: null,
+      status: 'drafting',
+      createdAt: 0,
+      updatedAt: 0,
+    }],
+    chapterSummaries: [],
+    foreshadowStack: [],
+    outline: [
+      { number: 1, title: '启程', description: '主角离开家乡。' },
+      { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+      { number: 3, title: '脱困', description: '主角脱困。' },
+    ],
+    characters: [{ id: 'char-1', storyId: 'test-story', name: '主角', description: '主角', dialogueStyle: null, createdAt: 0 }],
+    world: null,
+    storyState: createEmptyStoryState(),
+    pendingIssues: [],
+    autoFixAttempts: 0,
+    verifiedConstraints: [],
+    rewriteAttempts: 1,
+    errorRewriteAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    forceStructuralRewrite: false,
+    routingDecision: 'draft_chapter',
+    ...overrides,
+  } as unknown as ReducedGraphState
+  return base
+}
+
+describe('chapter report generation', () => {
+  let tmpDir: string
+
+  beforeEach(async () => {
+    tmpDir = path.join(process.cwd(), 'tests', 'tmp', `chapter-report-${Date.now()}`)
+    await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_1.md'),
+      '# 第一章 启程\n\n主角告别了故乡，踏上了未知的旅途。他的护身符在怀中微微发热。\n\n远处传来马蹄声。',
+      'utf-8'
+    )
+    await fs.writeFile(
+      path.join(tmpDir, 'meta.json'),
+      JSON.stringify({
+        story: { id: 'test-story', title: 'Test', outputDir: tmpDir, genre: 'default', totalChapters: 3, status: 'writing', provider: 'openai', createdAt: 0, updatedAt: 0 },
+        world: null,
+        characters: [],
+        outline: [],
+        chapters: [],
+        contextSnapshot: null,
+      }),
+      'utf-8'
+    )
+  })
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it('generates and saves a chapter report on finalize', async () => {
+    const state = buildState(tmpDir)
+
+    const result = await finalize_chapter(state)
+
+    expect(result.chapterReport).toBeDefined()
+    expect(result.chapterReport!.chapterIndex).toBe(0)
+    expect(result.chapterReport!.chapterTitle).toBe('启程')
+    expect(result.chapterReport!.draftStrategy).toBe('draft')
+    expect(result.chapterReport!.convergence).toBe('success')
+    expect(result.chapterReport!.wordCount).toBeGreaterThan(0)
+
+    const reportPath = path.join(tmpDir, 'reports', 'chapter_1.report.json')
+    const exists = await fs.access(reportPath).then(() => true).catch(() => false)
+    expect(exists).toBe(true)
+
+    const saved = JSON.parse(await fs.readFile(reportPath, 'utf-8'))
+    expect(saved.storyId).toBe('test-story')
+    expect(saved.chapterIndex).toBe(0)
+    expect(saved.chapterTitle).toBe('启程')
+    expect(saved.convergence).toBe('success')
+  })
+
+  it('records pending issues in the report', async () => {
+    const issues: Issue[] = [
+      { id: '1', type: 'consistency', severity: 'warning', description: '时间线略紧凑' },
+      { id: '2', type: 'hallucination', severity: 'warning', description: '描写略显突兀' },
+    ]
+    const state = buildState(tmpDir, { pendingIssues: issues })
+
+    const result = await finalize_chapter(state)
+
+    expect(result.chapterReport).toBeDefined()
+    expect(result.chapterReport!.issues).toHaveLength(2)
+    expect(result.chapterReport!.issuesSummary.total).toBe(2)
+    expect(result.chapterReport!.issuesSummary.errors).toBe(0)
+    expect(result.chapterReport!.issuesSummary.warnings).toBe(2)
+  })
+
+  it('records foreshadow counts in the report', async () => {
+    const state = buildState(tmpDir, {
+      foreshadowStack: [
+        {
+          id: 'fs-1',
+          text: '护身符发热',
+          expectedFulfillChapter: 3,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: true,
+        },
+        {
+          id: 'fs-2',
+          text: '远处的马蹄声',
+          expectedFulfillChapter: 1,
+          createdAt: 0,
+          createdAtChapter: 1,
+          fulfilledChapter: 1,
+          status: 'shown',
+          isExplicit: false,
+        },
+      ],
+    })
+
+    const result = await finalize_chapter(state)
+
+    expect(result.chapterReport!.foreshadowsPlanted).toBe(2)
+    expect(result.chapterReport!.foreshadowsFulfilled).toBe(1)
+  })
+})

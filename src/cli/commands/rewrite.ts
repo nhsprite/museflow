@@ -1,8 +1,8 @@
-import { updateStoryStatus } from '../../storage/database/dao/story.js'
+import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { getState, getGraph, getOutputDirFromStoryId, runChapterGraph } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
-import { printChapterOutline } from '../utils/chapter-display.js'
+import { printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { deleteChapterContent } from '../../storage/filesystem/writer.js'
 import type { ReducedGraphState } from '../../graph/state.js'
@@ -117,8 +117,6 @@ async function handleRewrite(
       return
     }
 
-    console.log(`\n✅ 第 ${chapterNum} 章重写完成`)
-
     if (result.currentChapterIndex >= result.totalChapters) {
       updateStatus('done')
       return
@@ -126,33 +124,19 @@ async function handleRewrite(
 
     updateStatus('writing')
 
-    const writtenIndex = result.currentChapterIndex - 1
-    const outlineItem = result.outline[writtenIndex]
     const errors = result.pendingIssues.filter(i => i.severity === 'error')
 
-    if (errors.length > 0) {
-      console.log(`\n[MuseFlow] 第 ${writtenIndex + 1}/${result.totalChapters} 章重写完成`)
-      if (outlineItem) {
-        console.log(`  章节名: ${outlineItem.title}`)
-      }
-      console.log(`  状态: 仍有 ${errors.length} 个严重问题`)
-      console.log('  请再次运行 "museflow rewrite" 重写本章\n')
-      return
-    }
+    printChapterReport(result.chapterReport)
 
-    console.log(`\n[MuseFlow] ✅ 第 ${writtenIndex + 1}/${result.totalChapters} 章重写完成`)
-    if (outlineItem) {
-      console.log(`  章节名: ${outlineItem.title}`)
+    if (errors.length > 0) {
+      console.log(`\n状态: 仍有 ${errors.length} 个严重问题`)
+      console.log('请再次运行 "museflow rewrite" 重写本章\n')
+      return
     }
 
     const fixedCount = state!.pendingIssues.filter(i => i.severity === 'error').length
     if (fixedCount > 0) {
-      console.log(`  已修复: ${fixedCount} 个严重问题`)
-    }
-
-    const remainingWarnings = result.pendingIssues.filter(i => i.severity === 'warning')
-    if (remainingWarnings.length > 0) {
-      console.log(`  仍有 ${remainingWarnings.length} 个警告`)
+      console.log(`\n已修复: ${fixedCount} 个严重问题`)
     }
 
     console.log('\n✨ 质量检查通过，运行 "museflow write" 继续下一章\n')

@@ -7,11 +7,8 @@ import {
   getHighLevelOutlineAgent,
 } from '../agent-factory.js'
 import { generateId } from '../../utils/id.js'
-import { saveCharacters } from '../../storage/database/dao/character.js'
-import { saveWorld } from '../../storage/database/dao/world.js'
-import { saveOutline } from '../../storage/database/dao/chapter.js'
 import { writeOutlineContent, writeStoryBible } from '../../storage/filesystem/writer.js'
-import { updateStoryTitle, renameStoryOutputDir } from '../../storage/database/dao/story.js'
+import { updateStoryTitle, renameStoryOutputDir } from '../../storage/meta/stores/story.js'
 import { getStoryOutputDirWithTitle } from '../../utils/paths.js'
 import { charactersToString } from '../utils/characters.js'
 
@@ -29,8 +26,6 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   if (!world) {
     throw new Error('世界观生成失败，请检查 AI 输出或重试')
   }
-
-  saveWorld(state.story.id, world.content)
 
   const existingTitle = state.story.title
   const aiGeneratedTitle = agent.extractTitle(output)
@@ -79,7 +74,6 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
       if (attempt > 0) {
         logger.info(`[MuseFlow] 角色生成重试成功，共创建 ${characters.length} 个人物`)
       }
-      saveCharacters(state.story.id, characters)
       return { characters }
     }
 
@@ -126,7 +120,6 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
       if (attempt > 0) {
         logger.info(`[MuseFlow] 章节大纲重试成功，共生成 ${chapters.length} 章`)
       }
-      saveOutline(state.story.id, chapters)
       await writeOutlineContent(state.story.outputDir, state.story.title, chapters)
       await writeStoryBible(
         state.story.outputDir,

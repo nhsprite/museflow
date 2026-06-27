@@ -5,12 +5,8 @@ import type { Issue } from '../types/agent.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 import type { StoryState } from '../types/story-state.js'
-
-export interface WorldContent {
-  id: string
-  storyId: string
-  content: string
-}
+import type { ChapterReport } from '../types/chapter-report.js'
+import type { WorldContent } from '../types/context.js'
 
 export interface ChapterOutline {
   number: number
@@ -123,6 +119,8 @@ export const GraphState = Annotation.Root({
   chapterTimeAnchor: Annotation<string | undefined>,
   autoFixAttempts: Annotation<number>,
   verifiedConstraints: Annotation<string[]>,
+
+  chapterReport: Annotation<ChapterReport | null>,
 
   // chapter-writing loop state (managed by LangGraph)
   rewriteAttempts: Annotation<number>,

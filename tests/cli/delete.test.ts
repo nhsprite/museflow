@@ -4,7 +4,7 @@ import type { Story } from '../../src/types/story.ts'
 const getStoryMock = vi.fn<() => Story | null>()
 const deleteStoryMock = vi.fn<() => boolean>()
 
-vi.mock('../../src/storage/database/dao/story.ts', () => ({
+vi.mock('../../src/storage/meta/stores/story.ts', () => ({
   getStory: getStoryMock,
   deleteStory: deleteStoryMock,
   initStoryDb: vi.fn().mockResolvedValue(undefined),

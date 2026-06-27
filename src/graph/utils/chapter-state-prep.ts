@@ -3,7 +3,7 @@ import type { ReducedGraphState } from '../state.js'
 import type { StoryState, PendingTask } from '../../types/story-state.js'
 import { reconcileStoryState } from './story-state.js'
 import { sanitizeStoryState, formatStateConflicts } from '../../utils/story-state-validation.js'
-import { createEmptyStoryState } from '../../storage/database/dao/story-state.js'
+import { createEmptyStoryState } from '../../storage/meta/stores/story-state.js'
 
 export interface PreparedStoryState {
   reconciledState: StoryState
