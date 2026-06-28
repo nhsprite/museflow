@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import * as contextJudge from '../../../src/utils/context-judge.js'
+import * as outlineRevision from '../../../src/core/chapter-generation/outline-revision-proposal.js'
 import {
   mergeStoryState,
   sanitizeStoryState,
@@ -28,6 +29,14 @@ vi.mock('../../../src/utils/context-judge.js', async (importOriginal) => {
     batchExtractEntityChanges: vi.fn(),
     batchDetectTimeJumps: vi.fn(),
     batchJudgeBlockingConflictDescriptions: vi.fn(),
+  }
+})
+
+vi.mock('../../../src/core/chapter-generation/outline-revision-proposal.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof outlineRevision>()
+  return {
+    ...actual,
+    generateOutlineRevisionProposal: vi.fn(),
   }
 })
 
@@ -612,8 +621,41 @@ describe('prepareStoryStateForChapter', () => {
     } as unknown as ModelProvider
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
     vi.mocked(registryCreateProvider).mockReturnValue(provider)
+    vi.mocked(outlineRevision.generateOutlineRevisionProposal).mockResolvedValue(null)
 
     await expect(prepareStoryStateForChapter(state, 0)).rejects.toBeInstanceOf(BlockingConflictError)
+  })
+
+  it('attaches an outline revision proposal to BlockingConflictError when one is generated', async () => {
+    const state = makeState()
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        conflicts: [
+          {
+            subject: '主角',
+            attribute: '所在位置',
+            oldValue: '家中',
+            newValue: '京城',
+            severity: 'blocking',
+            description: '大纲要求主角抵达京城，与权威事实冲突',
+          },
+        ],
+        constraints: [],
+      })),
+    } as unknown as ModelProvider
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
+    vi.mocked(registryCreateProvider).mockReturnValue(provider)
+    vi.mocked(outlineRevision.generateOutlineRevisionProposal).mockResolvedValue({
+      revisedDescription: '主角在家中收到京城来信，决定暂缓出行。',
+      explanation: '避免与主角仍在家的权威事实冲突。',
+    })
+
+    await expect(prepareStoryStateForChapter(state, 0)).rejects.toMatchObject({
+      proposal: {
+        revisedDescription: '主角在家中收到京城来信，决定暂缓出行。',
+        explanation: '避免与主角仍在家的权威事实冲突。',
+      },
+    })
   })
 
   it('skips blocking conflicts that have an author decision', async () => {

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
-import { deleteChapterContent } from '../storage/filesystem/writer.js'
+import { deleteChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import type { Issue } from '../types/agent.js'
 import type { StateOverride } from '../types/story-state.js'
 
@@ -282,6 +282,54 @@ export async function applyStateOverrides(
     verifiedConstraints: updatedConstraints,
     authorDecisions: updatedDecisions,
   })
+}
+
+/**
+ * 应用作者采纳的系统大纲修订建议。
+ *
+ * 该函数会同时更新 checkpoint 中的 outline 数组和 outline.md 文件，
+ * 使第 N+1 次运行基于新大纲继续生成。
+ */
+export async function applyOutlineRevision(
+  storyId: string,
+  chapterIndex: number,
+  revisedDescription: string
+): Promise<void> {
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    throw new Error(`Story ${storyId} not found`)
+  }
+
+  const state = await getState(storyId)
+  if (!state) {
+    throw new Error(`Story ${storyId} state not found`)
+  }
+
+  const outline = [...(state.outline ?? [])]
+  const existing = outline[chapterIndex]
+  if (!existing) {
+    throw new Error(`Chapter ${chapterIndex + 1} outline not found`)
+  }
+
+  outline[chapterIndex] = {
+    ...existing,
+    description: revisedDescription,
+  }
+
+  const checkpointer = getCheckpointer()
+  await checkpointer.updateLatestState(outputDir, { outline })
+
+  await writeOutlineContent(
+    outputDir,
+    state.story.title,
+    outline.map(ch => ({
+      number: ch.number,
+      title: ch.title,
+      description: ch.description,
+    }))
+  )
+
+  logger.info(`[MuseFlow] 已更新第 ${chapterIndex + 1} 章大纲并同步到 outline.md`)
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {

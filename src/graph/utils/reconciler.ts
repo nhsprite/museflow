@@ -32,6 +32,7 @@ import { createProvider } from '../../model/registry.js'
 import { generateId } from '../../utils/id.js'
 import { BlockingConflictError } from '../../utils/errors.js'
 import type { Character } from '../../types/character.js'
+import { generateOutlineRevisionProposal } from '../../core/chapter-generation/outline-revision-proposal.js'
 
 // ----- Chapter state preparation -----
 export interface PreparedStoryState {
@@ -212,7 +213,13 @@ export async function prepareStoryStateForChapter(
       ),
     ]
     if (undecidedBlockingConflicts.length > 0) {
-      throw new BlockingConflictError(undecidedBlockingConflicts, chapterIndex)
+      const proposal = await generateOutlineRevisionProposal(
+        state.outline,
+        chapterIndex,
+        undecidedBlockingConflicts,
+        reconciledState
+      )
+      throw new BlockingConflictError(undecidedBlockingConflicts, chapterIndex, proposal ?? undefined)
     }
 
     const sanitizationReport = sanitizeStoryState(reconciledState, state.characters, {

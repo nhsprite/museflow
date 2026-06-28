@@ -7,6 +7,7 @@ import { getCheckpointer } from '../../graph/checkpointer.js'
 import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
 import { requireStoryState } from '../utils/story-loader.js'
+import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
 
 interface RewriteOptions {
   storyId: string
@@ -94,17 +95,29 @@ async function handleRewrite(
   const totalChapters = state ? state.totalChapters : 0
 
   try {
-    const result = await withSpinner(
-      `正在重写第 ${chapterNum}/${totalChapters} 章...`,
-      () => runOneChapter(storyId, {
-        mode: 'rewrite',
-        targetChapterIndex,
-        userResponse,
-        retryIssues,
-      }),
-      `✅ 第 ${chapterNum} 章重写完成`,
-      (result) => !result.rewriteRequested
-    )
+    async function runWithConflictResolution() {
+      try {
+        return await withSpinner(
+          `正在重写第 ${chapterNum}/${totalChapters} 章...`,
+          () => runOneChapter(storyId, {
+            mode: 'rewrite',
+            targetChapterIndex,
+            userResponse,
+            retryIssues,
+          }),
+          `✅ 第 ${chapterNum} 章重写完成`,
+          (result) => !result.rewriteRequested
+        )
+      } catch (err) {
+        if (isBlockingConflictError(err)) {
+          await resolveBlockingConflicts(storyId, err)
+          return runWithConflictResolution()
+        }
+        throw err
+      }
+    }
+
+    const result = await runWithConflictResolution()
 
     if (result.rewriteRequested) {
       const errors = result.pendingIssues.filter(i => i.severity === 'error')
