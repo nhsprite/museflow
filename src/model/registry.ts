@@ -2,6 +2,7 @@ import type { ModelProvider, Message, JsonSchema } from './provider.js'
 import { getSystemMessage, getNonSystemMessages, chatStructuredFallback } from './provider.js'
 import { loadConfig } from '../config/store.js'
 import { logger, logDebugToFile, isDebugEnabled } from '../utils/logger.js'
+import { extractJsonBlock, repairMalformedJson } from '../utils/json.js'
 
 export function createProvider(): ModelProvider {
   const config = loadConfig()
@@ -127,7 +128,7 @@ class OpenAICompatibleProvider implements ModelProvider {
   }
 }
 
-class AnthropicCompatibleProvider implements ModelProvider {
+export class AnthropicCompatibleProvider implements ModelProvider {
   constructor(private cfg: ProviderConfig) {}
 
   async chat(messages: Message[], temperature?: number): Promise<string> {
@@ -197,13 +198,31 @@ class AnthropicCompatibleProvider implements ModelProvider {
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`)
     const json = await res.json() as {
-      content: Array<{ type: string; name?: string; input?: T }>
+      content: Array<{ type: string; name?: string; input?: T; text?: string }>
     }
     const toolUse = json.content?.find(c => c.type === 'tool_use' && c.name === toolName)
-    if (!toolUse?.input) {
-      throw new Error('Anthropic API did not return structured output')
+    if (toolUse?.input) {
+      return toolUse.input
     }
-    return toolUse.input
+
+    // Fallback: some Anthropic-compatible endpoints (e.g., Minimax) return the
+    // structured JSON inside a plain text content block instead of a tool_use block.
+    const textContent = json.content?.find(c => c.type === 'text')?.text
+    if (textContent) {
+      const jsonText = extractJsonBlock(textContent)
+      try {
+        return JSON.parse(jsonText) as T
+      } catch {
+        try {
+          return JSON.parse(repairMalformedJson(jsonText)) as T
+        } catch {
+          // fall through to throw with response preview
+        }
+      }
+    }
+
+    const responsePreview = JSON.stringify(json).slice(0, 500)
+    throw new Error(`Anthropic API did not return structured output. Response preview: ${responsePreview}`)
   }
 }
 
