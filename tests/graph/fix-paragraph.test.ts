@@ -6,7 +6,7 @@ import {
   mergeParagraphFixes,
   applyParagraphDiffProtection,
   deduplicateSentences,
-} from '../../src/graph/nodes.js'
+} from '../../src/graph/utils/text-patching.js'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
 import type { AgentState } from '../../src/agents/base.ts'
 

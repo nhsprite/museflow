@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterIssuesAgainstCanonicalFacts } from '../../../src/graph/nodes/validation.js'
+import { filterIssuesAgainstCanonicalFacts } from '../../../src/utils/agent-output.js'
 import type { Issue } from '../../../src/types/agent.js'
 import type { CanonicalFact } from '../../../src/types/story-state.js'
 

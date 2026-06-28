@@ -31,15 +31,20 @@ vi.mock('../../src/utils/logger.js', () => ({
 }))
 
 vi.mock('../../src/core/chapter-generation/issue-classifier.js', () => ({
-  isStructuralIssue: vi.fn().mockReturnValue(false),
-  isLocalIssue: vi.fn().mockReturnValue(false),
-  isTaskConsistencyIssue: vi.fn().mockReturnValue(false),
-  isStateCorruptionIssue: vi.fn().mockReturnValue(false),
+  isStructuralIssue: vi.fn().mockResolvedValue(false),
+  isLocalIssue: vi.fn().mockResolvedValue(false),
+  isTaskConsistencyIssue: vi.fn().mockResolvedValue(false),
+  isStateCorruptionIssue: vi.fn().mockResolvedValue(false),
+  isInterpretiveIssue: vi.fn().mockResolvedValue(false),
 }))
 
 vi.mock('../../src/utils/issue-deduplication.js', () => ({
-  deduplicateIssuesSemantically: vi.fn((issues: unknown[]) => issues),
-  issueFingerprint: vi.fn((issue: { description: string }) => issue.description),
+  deduplicateIssuesSemantically: vi.fn().mockImplementation(async (_provider: unknown, issues: unknown[]) => issues),
+  issueFingerprint: vi.fn().mockResolvedValue('fingerprint'),
+}))
+
+vi.mock('../../src/model/registry.js', () => ({
+  createProvider: vi.fn().mockReturnValue({ chat: vi.fn() }),
 }))
 
 function createBaseState(overrides: Record<string, unknown> = {}): ReducedGraphState {
@@ -80,11 +85,50 @@ function createBaseState(overrides: Record<string, unknown> = {}): ReducedGraphS
   } as ReducedGraphState
 }
 
-describe('decide_strategy', () => {
+describe('convergence_check', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('stops rewrite loop early when issues are highly similar and involve state corruption', async () => {
+    const { isStateCorruptionIssue } = await import('../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+
+    const { convergence_check } = await import('../../src/graph/nodes/chapter-orchestration.js')
+
+    const state = createBaseState({
+      rewriteApproved: true,
+      errorRewriteAttempts: 2,
+      previousIssues: [{
+        id: 'e1',
+        type: 'state_corruption',
+        severity: 'error',
+        description: '大纲与权威事实冲突',
+      }],
+      previousRawErrorCount: 1,
+      pendingIssues: [{
+        id: 'e1',
+        type: 'state_corruption',
+        severity: 'error',
+        description: '大纲与权威事实冲突',
+      }],
+    })
+
+    const result = await convergence_check(state)
+
+    expect(result.routingDecision).toBe('request_rewrite')
+    expect(result.rewriteApproved).toBe(false)
+    expect(result.forceStructuralRewrite).toBe(false)
+  })
+})
+
+describe('decide_strategy', () => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     readChapterContent.mockResolvedValue(null)
     shouldForceTemporaryReplan.mockReturnValue(false)
+    const { isStateCorruptionIssue } = await import('../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStateCorruptionIssue).mockResolvedValue(false)
   })
 
   it('routes to draft_chapter when chapter file does not exist', async () => {

@@ -1,4 +1,6 @@
 import { logger } from '../../utils/logger.js'
+import { extractChineseKeywords } from '../../utils/text.js'
+
 export interface LocationInfo {
   paragraphIndex?: number
   sentenceIndex?: number
@@ -68,34 +70,19 @@ function parseLocationNumber(str: string): number | null {
   return result > 0 ? result : null
 }
 
-const STOP_WORDS = new Set([
-  '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好', '自己', '这', '那', '这些', '那些', '这个', '那个', '这样', '那样', '这里', '那里', '这边', '那边', '这时', '那时', '之后', '之前', '然后', '接着', '后来', '于是', '因此', '所以', '因为', '由于', '虽然', '但是', '然而', '不过', '而且', '并且', '或者', '还是', '要么', '不仅', '不但', '只要', '只有', '无论', '不管', '尽管', '即使', '即便', '除非', '除了', '此外', '另外', '而且', '并且', '然后', '接着', '后来', '于是', '因此', '因而', '从而', '总之', '综上所述', '例如', '比如', '譬如', '像是', '好像', '仿佛', '似乎', '大概', '大约', '也许', '可能', '或许', '应该', '应当', '需要', '必须', '一定', '肯定', '当然', '自然', '其实', '实际上', '事实上', '本来', '原来', '原先', '最初', '开始', '最后', '最终', '终于', '结果', '可以', '能够', '可能', '应该', '得', '地', '着', '过', '把', '被', '让', '给', '向', '往', '从', '自', '由', '把', '将', '把', '被', '让', '给', '跟', '同', '与', '及', '以及', '还有', '或者', '还是', '既', '又', '也', '还', '再', '才', '就', '便', '即', '则', '却', '可', '但', '而', '因', '为', '以', '于', '对', '关于', '对于', '至于', '鉴于', '根据', '按照', '依照', '遵循', '遵守', '符合', '满足', '达到', '实现', '完成', '结束', '停止', '终止', '中断', '继续', '恢复', '重复', '重新', '再次', '一再', '屡次', '多次',
-])
-
 export function extractIssueKeywords(issue: { description: string; location?: string }): string[] {
+  const text = issue.description + ' ' + (issue.location || '')
   const keywords: string[] = []
 
-  const text = issue.description + ' ' + (issue.location || '')
-
+  // 优先保留引号内的明确表述。
   const quotes = text.match(/"([^"]+)"/g)
   if (quotes) {
     keywords.push(...quotes.map(q => q.slice(1, -1)))
   }
 
-  const chineseSequences = text.match(/[\u4e00-\u9fff]+/g)
-  if (chineseSequences) {
-    for (const sequence of chineseSequences) {
-      const maxLen = Math.min(6, sequence.length)
-      for (let len = 2; len <= maxLen; len++) {
-        for (let i = 0; i <= sequence.length - len; i++) {
-          const substr = sequence.slice(i, i + len)
-          if (substr.length >= 2 && !STOP_WORDS.has(substr)) {
-            keywords.push(substr)
-          }
-        }
-      }
-    }
-  }
+  // 使用通用 n-gram 提取，不再维护停用词列表。
+  // 关键词长度限制在 2-6 字，避免过短噪音和过长片段。
+  keywords.push(...extractChineseKeywords(text, { minLen: 2, maxLen: 6, ngrams: true }))
 
   const unique = [...new Set(keywords)]
   return unique.slice(0, 35)

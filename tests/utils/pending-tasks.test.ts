@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as contextJudge from '../../src/utils/context-judge.js'
 import {
   agePendingTasks,
   filterRelevantPendingTasks,
 } from '../../src/utils/pending-tasks.js'
 import type { PendingTask } from '../../src/types/story-state.js'
+import type { ModelProvider } from '../../src/model/provider.js'
+
+vi.mock('../../src/utils/context-judge.js', () => ({
+  batchJudgeTaskRelevance: vi.fn().mockResolvedValue([]),
+}))
 
 function task(overrides: Partial<PendingTask> = {}): PendingTask {
   return {
@@ -14,6 +20,10 @@ function task(overrides: Partial<PendingTask> = {}): PendingTask {
     status: 'pending',
     ...overrides,
   }
+}
+
+function createProvider(): ModelProvider {
+  return { chat: vi.fn() }
 }
 
 describe('agePendingTasks', () => {
@@ -57,37 +67,38 @@ describe('agePendingTasks', () => {
 })
 
 describe('filterRelevantPendingTasks', () => {
-  it('includes tasks due at the current chapter', () => {
+  it('includes tasks due at the current chapter', async () => {
     const tasks: PendingTask[] = [
       task({ id: 'due-this-chapter', dueChapter: 7, description: '买办登门' }),
       task({ id: 'future', dueChapter: 8, description: '小叔逼宫' }),
     ]
 
-    const relevant = filterRelevantPendingTasks(tasks, 6, '买办商人陈裕堂主动登门')
+    const relevant = await filterRelevantPendingTasks(tasks, 6, '买办商人陈裕堂主动登门')
 
     expect(relevant.map(t => t.id)).toContain('due-this-chapter')
     expect(relevant.map(t => t.id)).not.toContain('future')
   })
 
-  it('includes tasks whose description overlaps with current outline', () => {
+  it('includes tasks whose description overlaps with current outline', async () => {
     const tasks: PendingTask[] = [
-      task({ id: 'overlap', dueChapter: undefined, description: '陈裕堂持汇丰名帖拜访苏半城' }),
+      task({ id: 'overlap', dueChapter: undefined, description: '陈裕堂登门拜访苏半城' }),
       task({ id: 'unrelated', dueChapter: undefined, description: '延绥镖局四百两旧线待查' }),
     ]
+    vi.mocked(contextJudge.batchJudgeTaskRelevance).mockResolvedValueOnce([true, false])
 
-    const relevant = filterRelevantPendingTasks(tasks, 6, '买办商人陈裕堂主动登门')
+    const relevant = await filterRelevantPendingTasks(tasks, 6, '买办商人陈裕堂主动登门', createProvider())
 
     expect(relevant.map(t => t.id)).toContain('overlap')
     expect(relevant.map(t => t.id)).not.toContain('unrelated')
   })
 
-  it('excludes expired or done tasks', () => {
+  it('excludes expired or done tasks', async () => {
     const tasks: PendingTask[] = [
       task({ id: 'expired', status: 'expired', dueChapter: 7 }),
       task({ id: 'done', status: 'done', dueChapter: 7 }),
     ]
 
-    const relevant = filterRelevantPendingTasks(tasks, 6, '任何大纲')
+    const relevant = await filterRelevantPendingTasks(tasks, 6, '任何大纲')
 
     expect(relevant).toHaveLength(0)
   })

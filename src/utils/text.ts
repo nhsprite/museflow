@@ -1,10 +1,8 @@
-export interface ExtractChineseKeywordsOptions {
+interface ExtractChineseKeywordsOptions {
   /** Minimum keyword length (in characters). Defaults to 2. */
   minLen?: number
   /** Maximum n-gram length. Only used when `ngrams` is true. Defaults to 4. */
   maxLen?: number
-  /** Optional set of words to exclude from the result. */
-  stopWords?: Set<string> | undefined
   /**
    * When true, generate sliding n-grams from each Chinese sequence.
    * When false, return the full sequences themselves.
@@ -38,7 +36,6 @@ export function extractChineseKeywords(
   const {
     minLen = 2,
     maxLen = 4,
-    stopWords,
     ngrams = true,
     deduplicate = true,
   } = options
@@ -48,7 +45,7 @@ export function extractChineseKeywords(
 
   for (const sequence of sequences) {
     if (!ngrams) {
-      if (sequence.length >= minLen && !stopWords?.has(sequence)) {
+      if (sequence.length >= minLen) {
         result.push(sequence)
       }
       continue
@@ -58,7 +55,6 @@ export function extractChineseKeywords(
     for (let len = minLen; len <= limit; len++) {
       for (let i = 0; i <= sequence.length - len; i++) {
         const word = sequence.slice(i, i + len)
-        if (stopWords?.has(word)) continue
         result.push(word)
       }
     }

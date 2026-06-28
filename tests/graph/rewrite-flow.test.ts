@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ModelProvider } from '../../src/model/provider.js'
 
 const saveChapterCheckpoint = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('old chapter content')
-const appendTimelineSnapshot = vi.fn().mockReturnValue({})
-const getLatestSnapshot = vi.fn().mockReturnValue(null)
-const saveForeshadowStack = vi.fn()
-
 let mockChapterContentValue = 'rewritten chapter content'
 
 vi.mock('../../src/agents/index.js', () => ({
@@ -93,16 +90,24 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
   updateStoryTitle: vi.fn(),
   renameStoryOutputDir: vi.fn(),
 }))
-const saveForeshadowAlerts = vi.fn()
-
-vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
-  appendTimelineSnapshot,
-  getLatestSnapshot,
-  saveForeshadowStack,
-  saveForeshadowAlerts,
-}))
 vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockReturnValue(null) }))
-vi.mock('../../src/utils/paths.js', () => ({ getStoryOutputDirWithTitle: vi.fn() }))
+const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [true] }))
+const mockChatStructured = vi.fn().mockResolvedValue({ results: [true] })
+
+vi.mock('../../src/utils/paths.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/paths.js')>()
+  return {
+    ...actual,
+    getStoryOutputDirWithTitle: vi.fn(),
+  }
+})
+
+vi.mock('../../src/model/registry.ts', () => ({
+  createProvider: (): ModelProvider => ({
+    chat: mockChat,
+    chatStructured: mockChatStructured,
+  }),
+}))
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('generated-id') }))
 vi.mock('../../src/graph/checkpointer.js', () => ({
   getCheckpointer: () => ({ saveChapterCheckpoint, pruneIntermediateCheckpoints, clearPendingWrites: vi.fn().mockResolvedValue(undefined), getTuple: vi.fn().mockResolvedValue(null) }),
@@ -133,11 +138,10 @@ describe('rewrite flow regression', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     readChapterContent.mockResolvedValue('old chapter content')
-    getLatestSnapshot.mockReturnValue(null)
   })
 
   it('rewrites the current chapter using existing chapter content', async () => {
-    const { draft_chapter } = await import('../../src/graph/nodes.js')
+    const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
     const draftResult = await draft_chapter({
       ...baseState,
@@ -153,7 +157,7 @@ describe('rewrite flow regression', () => {
   })
 
   it('logs the completed chapter number instead of the next chapter number', async () => {
-    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+    const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     const result = await finalize_chapter({
@@ -190,7 +194,7 @@ describe('draft_chapter guard against empty content', () => {
   it('throws error when AI returns empty string', async () => {
     mockChapterContentValue = ''
 
-    const { draft_chapter } = await import('../../src/graph/nodes.js')
+    const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
     await expect(draft_chapter({
       ...baseState,
@@ -201,7 +205,7 @@ describe('draft_chapter guard against empty content', () => {
   it('throws error when AI returns only whitespace', async () => {
     mockChapterContentValue = '   \n\t  '
 
-    const { draft_chapter } = await import('../../src/graph/nodes.js')
+    const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
     await expect(draft_chapter({
       ...baseState,
@@ -212,7 +216,7 @@ describe('draft_chapter guard against empty content', () => {
   it('throws error when AI returns null content', async () => {
     mockChapterContentValue = null as unknown as string
 
-    const { draft_chapter } = await import('../../src/graph/nodes.js')
+    const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
     await expect(draft_chapter({
       ...baseState,
@@ -229,7 +233,7 @@ describe('finalize_chapter guard against empty file', () => {
   it('throws error when chapter file does not exist (returns null)', async () => {
     readChapterContent.mockResolvedValue(null)
 
-    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+    const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
     await expect(finalize_chapter({
       ...baseState,
@@ -240,7 +244,7 @@ describe('finalize_chapter guard against empty file', () => {
   it('throws error when chapter file is empty string', async () => {
     readChapterContent.mockResolvedValue('')
 
-    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+    const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
     await expect(finalize_chapter({
       ...baseState,
@@ -251,7 +255,7 @@ describe('finalize_chapter guard against empty file', () => {
   it('throws error when chapter file is only whitespace', async () => {
     readChapterContent.mockResolvedValue('   \n\t  ')
 
-    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+    const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
     await expect(finalize_chapter({
       ...baseState,
@@ -268,7 +272,7 @@ describe('finalize_chapter ages pending tasks', () => {
   })
 
   it('marks pending tasks due at or before current chapter as expired', async () => {
-    const { finalize_chapter } = await import('../../src/graph/nodes.js')
+    const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
     const result = await finalize_chapter({
       ...baseState,
@@ -316,7 +320,7 @@ describe('detect_foreshadowing preserves current-chapter foreshadows', () => {
   })
 
   it('keeps a foreshadow created in the current chapter for future fulfillment', async () => {
-    const { detect_foreshadowing } = await import('../../src/graph/nodes.js')
+    const { detect_foreshadowing } = await import('../../src/graph/nodes/validation.js')
 
     const currentChapterForeshadow = {
       id: 'fs-current',

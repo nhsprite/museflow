@@ -6,18 +6,20 @@ import {
   create_characters,
   create_outline,
   validate_outline,
-  prepare_chapter,
-  decide_strategy,
-  draft_chapter,
-  fix_chapter,
-  validate_chapter_comprehensive,
+} from './nodes/story-creation.js'
+import { draft_chapter } from './nodes/draft.js'
+import { fix_chapter } from './nodes/fix.js'
+import { validate_chapter_comprehensive } from './nodes/validation.js'
+import {
   auto_fix_warnings,
-  convergence_check,
-  request_rewrite,
   finalize_chapter,
   finalize_story,
-} from './nodes.js'
+} from './nodes/finalization.js'
 import {
+  prepare_chapter,
+  decide_strategy,
+  convergence_check,
+  request_rewrite,
   route_mode,
   route_strategy,
   route_after_validation,

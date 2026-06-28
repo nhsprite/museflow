@@ -2,54 +2,174 @@ import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import { shouldForceTemporaryReplan } from '../../utils/outline-boundary.js'
 import { getChapterPlanningConfig } from '../../utils/chapter-planning.js'
-import {
-  createDefaultRewriteRoutingPolicy,
-  DEFAULT_REWRITE_ROUTING_CONFIG,
-  type RewriteRoutingConfig,
-  type RewritePolicyServices,
-} from '../policies/rewrite-routing.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
 import {
   isStructuralIssue,
   isLocalIssue,
   isTaskConsistencyIssue,
   isStateCorruptionIssue,
+  isInterpretiveIssue,
 } from '../../core/chapter-generation/issue-classifier.js'
 import {
   deduplicateIssuesSemantically,
   issueFingerprint,
 } from '../../utils/issue-deduplication.js'
-import type { ChapterOutline } from '../../types/outline.js'
+import { createProvider } from '../../model/registry.js'
+import type { StoryState } from '../../types/story-state.js'
+import type { Issue, IssueSeverity } from '../../types/agent.js'
 
-const INTERPRETIVE_ISSUE_PATTERN = /提前.*(?:剧透|揭示)|看破.*说破|感应.*反应|选择性感应|表达方式|性格驱动/
+export type RoutingDecision =
+  | 'draft_chapter'
+  | 'fix_chapter'
+  | 'finalize_chapter'
+  | 'request_rewrite'
+  | 'decide_strategy'
 
-function isInterpretiveIssue(issue: { description: string; location?: string }): boolean {
-  return (
-    INTERPRETIVE_ISSUE_PATTERN.test(issue.description) ||
-    INTERPRETIVE_ISSUE_PATTERN.test(issue.location || '')
-  )
+export interface RewriteRoutingConfig {
+  maxErrorRewriteAttempts: number
+  maxNonErrorIssuesPerType: number
+  maxVerifiedConstraints: number
+  issueSetSimilarityThreshold: number
+  downgradeInterpretiveErrors: boolean
 }
 
-function createPolicyServices(
-  outputDir: string,
-  chapterNumber: number,
-  outline: ChapterOutline[],
-  chapterIndex: number
-): RewritePolicyServices {
-  return {
-    isStructuralIssue,
-    isLocalIssue,
-    isTaskConsistencyIssue,
-    isStateCorruptionIssue,
-    deduplicateIssues: deduplicateIssuesSemantically,
-    issueFingerprint,
-    isInterpretiveIssue,
-    shouldForceTemporaryReplan: () => shouldForceTemporaryReplan(outline, chapterIndex),
-    readChapterContent: () => readChapterContent(outputDir, chapterNumber),
-    log(level, message, ...meta) {
-      logger[level](message, ...meta)
-    },
+export const DEFAULT_REWRITE_ROUTING_CONFIG: Required<RewriteRoutingConfig> = {
+  maxErrorRewriteAttempts: 3,
+  maxNonErrorIssuesPerType: 3,
+  maxVerifiedConstraints: 20,
+  issueSetSimilarityThreshold: 0.5,
+  downgradeInterpretiveErrors: true,
+}
+
+export interface RewriteConvergenceResult {
+  decision: RoutingDecision
+  rewriteApproved: boolean
+  pendingIssues: Issue[]
+  verifiedConstraints: string[]
+  forceStructuralRewrite: boolean
+}
+
+export interface InterpretiveDowngradeResult {
+  issues: Issue[]
+  downgraded: boolean
+}
+
+function withSeverity(issue: Issue, severity: IssueSeverity): Issue {
+  return { ...issue, severity }
+}
+
+export function capNonErrorIssuesByType(
+  issues: Issue[],
+  maxPerType: number,
+  log: (level: 'info' | 'warn' | 'error', message: string, ...meta: unknown[]) => void
+): Issue[] {
+  const groups = new Map<string, Issue[]>()
+  for (const issue of issues) {
+    const list = groups.get(issue.type) ?? []
+    list.push(issue)
+    groups.set(issue.type, list)
   }
+
+  const result: Issue[] = []
+  for (const [type, list] of groups) {
+    const errors = list.filter(i => i.severity === 'error')
+    const nonErrors = list.filter(i => i.severity !== 'error')
+    result.push(...errors)
+    if (nonErrors.length <= maxPerType) {
+      result.push(...nonErrors)
+    } else {
+      log(
+        'warn',
+        `[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留前 ${maxPerType} 个`
+      )
+      result.push(...nonErrors.slice(0, maxPerType))
+    }
+  }
+  return result
+}
+
+export async function calculateIssueSetSimilarity(
+  prev: Issue[],
+  curr: Issue[],
+  issueFingerprint: (issue: Issue) => Promise<string>
+): Promise<number> {
+  if (prev.length === 0 || curr.length === 0) return 0
+  const prevFps = await Promise.all(prev.map(issueFingerprint))
+  const currFps = await Promise.all(curr.map(issueFingerprint))
+  const prevSet = new Set(prevFps)
+  const currSet = new Set(currFps)
+  let intersection = 0
+  for (const fp of currSet) {
+    if (prevSet.has(fp)) intersection++
+  }
+  return intersection / Math.max(prevSet.size, currSet.size)
+}
+
+export async function downgradeInterpretiveErrors(
+  issues: Issue[],
+  isInterpretiveIssue: (issue: Issue) => Promise<boolean>
+): Promise<InterpretiveDowngradeResult> {
+  let downgraded = false
+  const result = await Promise.all(
+    issues.map(async issue => {
+      if (issue.severity === 'error' && (await isInterpretiveIssue(issue))) {
+        downgraded = true
+        return withSeverity(issue, 'warning')
+      }
+      return issue
+    })
+  )
+  return { issues: result, downgraded }
+}
+
+export async function buildVerifiedConstraints(
+  previousIssues: Issue[],
+  currentIssues: Issue[],
+  isInterpretiveIssue: (issue: Issue) => Promise<boolean>,
+  maxConstraints: number,
+  log: (level: 'info' | 'warn' | 'error', message: string, ...meta: unknown[]) => void
+): Promise<{ constraints: string[]; resolvedCount: number }> {
+  const resolvedIssues: Issue[] = []
+  for (const prev of previousIssues) {
+    if (prev.severity !== 'error') continue
+    if (await isInterpretiveIssue(prev)) continue
+    const stillPresent = currentIssues.some(
+      curr => curr.type === prev.type && curr.description === prev.description
+    )
+    if (!stillPresent) {
+      resolvedIssues.push(prev)
+    }
+  }
+
+  const newConstraints = resolvedIssues.map(
+    issue =>
+      `[${issue.type}] ${issue.description}${
+        issue.location ? `（位置：${issue.location}）` : ''
+      }${issue.suggestion ? `；修复方向：${issue.suggestion}` : ''}`
+  )
+
+  if (newConstraints.length > 0) {
+    log('info', `[MuseFlow] 本轮已解决 ${resolvedIssues.length} 个问题，已记录为后续规划约束`)
+    for (const constraint of newConstraints) {
+      log(
+        'info',
+        `  ✓ ${constraint.substring(0, 120)}${constraint.length > 120 ? '...' : ''}`
+      )
+    }
+  }
+
+  let constraints = newConstraints
+  if (newConstraints.length > maxConstraints) {
+    constraints = newConstraints.slice(
+      Math.max(0, newConstraints.length - maxConstraints)
+    )
+    log(
+      'warn',
+      `[MuseFlow] verifiedConstraints 超过 ${maxConstraints} 条，已保留最近 ${maxConstraints} 条`
+    )
+  }
+
+  return { constraints, resolvedCount: resolvedIssues.length }
 }
 
 function buildRoutingConfig(genre: string): Required<RewriteRoutingConfig> {
@@ -58,6 +178,45 @@ function buildRoutingConfig(genre: string): Required<RewriteRoutingConfig> {
     ...DEFAULT_REWRITE_ROUTING_CONFIG,
     maxNonErrorIssuesPerType: planningConfig.maxNonErrorIssuesPerType,
     maxVerifiedConstraints: planningConfig.maxVerifiedConstraints,
+  }
+}
+
+/**
+ * 当 structural rewrite 未收敛时，清理当前章节由大纲解析自动写入的
+ * canonicalFacts / supersededFacts。当前章节尚未 finalize，其权威事实
+ * 应主要来自前章正文；大纲解析结果只应作为提示，不应持续污染状态。
+ */
+function cleanCurrentChapterInferredFacts(state: ReducedGraphState): StoryState | undefined {
+  const storyState = state.storyState
+  if (!storyState) return undefined
+
+  const currentDisplayChapter = state.currentChapterIndex + 1
+  const currentChapterIndex = state.currentChapterIndex
+
+  const canonicalFacts = storyState.canonicalFacts ?? []
+  const supersededFacts = storyState.supersededFacts ?? []
+
+  const cleanedCanonicalFacts = canonicalFacts.filter(
+    f => f.establishedIn !== currentDisplayChapter
+  )
+  const cleanedSupersededFacts = supersededFacts.filter(
+    f => f.chapterIndex !== currentChapterIndex
+  )
+
+  const hasChanges =
+    cleanedCanonicalFacts.length !== canonicalFacts.length ||
+    cleanedSupersededFacts.length !== supersededFacts.length
+
+  if (!hasChanges) return undefined
+
+  logger.info(
+    `[MuseFlow] 重写未收敛，清理当前章节由大纲解析自动生成的 ${canonicalFacts.length - cleanedCanonicalFacts.length} 条权威事实与 ${supersededFacts.length - cleanedSupersededFacts.length} 条覆盖记录`
+  )
+
+  return {
+    ...storyState,
+    canonicalFacts: cleanedCanonicalFacts,
+    supersededFacts: cleanedSupersededFacts,
   }
 }
 
@@ -75,6 +234,272 @@ export async function prepare_chapter(
   }
 }
 
+async function anyIssueMatches(
+  issues: Issue[],
+  predicate: (issue: Issue) => Promise<boolean>
+): Promise<boolean> {
+  for (const issue of issues) {
+    if (await predicate(issue)) return true
+  }
+  return false
+}
+
+async function allIssuesMatch(
+  issues: Issue[],
+  predicate: (issue: Issue) => Promise<boolean>
+): Promise<boolean> {
+  if (issues.length === 0) return false
+  for (const issue of issues) {
+    if (!(await predicate(issue))) return false
+  }
+  return true
+}
+
+async function countMatchingIssues(
+  issues: Issue[],
+  predicate: (issue: Issue) => Promise<boolean>
+): Promise<number> {
+  let count = 0
+  for (const issue of issues) {
+    if (await predicate(issue)) count++
+  }
+  return count
+}
+
+async function decideRoutingStrategy(
+  state: ReducedGraphState
+): Promise<{
+  decision: RoutingDecision
+  discardPlan: boolean
+  feedbackIssues: Issue[]
+  rewriteApproved: boolean
+}> {
+  const provider = createProvider()
+  const chapterIndex = state.currentChapterIndex
+  const rewriteApproved = state.rewriteApproved
+  const pendingIssues = state.pendingIssues
+  const outputDir = state.story.outputDir
+  const chapterNumber = chapterIndex + 1
+  const errorIssues = pendingIssues.filter(i => i.severity === 'error')
+
+  if (
+    rewriteApproved &&
+    errorIssues.length > 0 &&
+    (await allIssuesMatch(errorIssues, issue => isStateCorruptionIssue(provider, issue)))
+  ) {
+    logger.warn('[MuseFlow] 剩余错误均为上游状态污染，停止重写循环，请求人工处理...')
+    return {
+      decision: 'request_rewrite',
+      discardPlan: false,
+      feedbackIssues: errorIssues,
+      rewriteApproved: false,
+    }
+  }
+
+  if (errorIssues.length === 0 && !rewriteApproved) {
+    const existingContent = await readChapterContent(outputDir, chapterNumber)
+    if (existingContent !== null && existingContent.trim().length > 0) {
+      return {
+        decision: 'finalize_chapter',
+        discardPlan: false,
+        feedbackIssues: [],
+        rewriteApproved: false,
+      }
+    }
+  }
+
+  let discardPlan = false
+  let decision: Extract<RoutingDecision, 'draft_chapter' | 'fix_chapter'> = 'draft_chapter'
+  let feedbackIssues = errorIssues
+
+  if (!rewriteApproved) {
+    decision = 'draft_chapter'
+    feedbackIssues = []
+  } else {
+    const chapterFileExists = (await readChapterContent(outputDir, chapterNumber)) !== null
+
+    if (!chapterFileExists) {
+      logger.info(`[MuseFlow] 第 ${chapterNumber} 章文件不存在，跳过修复模式，直接重新起草...`)
+      decision = 'draft_chapter'
+      feedbackIssues = errorIssues
+    } else {
+      const hasStructural =
+        (await anyIssueMatches(errorIssues, issue => isStructuralIssue(provider, issue))) ||
+        (state.forceStructuralRewrite || false)
+      const hasLocal = await anyIssueMatches(errorIssues, issue => isLocalIssue(provider, issue))
+      const hasTaskConsistency = await anyIssueMatches(
+        errorIssues,
+        issue => isTaskConsistencyIssue(provider, issue)
+      )
+
+      if (hasTaskConsistency) {
+        logger.info('[MuseFlow] 检测到跨章节差事一致性错误，将清空计划并重新规划...')
+        discardPlan = true
+        feedbackIssues = errorIssues
+        decision = 'draft_chapter'
+      } else if (hasStructural && !hasLocal) {
+        logger.info('[MuseFlow] 检测到结构性问题，将重新规划并完整重写本章...')
+        discardPlan = true
+        feedbackIssues = errorIssues
+        decision = 'draft_chapter'
+      } else if (!hasStructural && hasLocal) {
+        logger.info('[MuseFlow] 检测到局部问题，将使用段落修复模式...')
+        decision = 'fix_chapter'
+        feedbackIssues = errorIssues
+      } else if (hasStructural) {
+        logger.info('[MuseFlow] 同时存在结构性和局部问题，将重新规划并完整重写...')
+        discardPlan = true
+        feedbackIssues = errorIssues
+        decision = 'draft_chapter'
+      } else {
+        logger.info('[MuseFlow] 检测到局部问题，将使用现有计划重写...')
+        decision = 'draft_chapter'
+        feedbackIssues = errorIssues
+      }
+    }
+  }
+
+  return {
+    decision,
+    discardPlan,
+    feedbackIssues,
+    rewriteApproved: true,
+  }
+}
+
+async function convergenceCheck(
+  state: ReducedGraphState
+): Promise<RewriteConvergenceResult> {
+  const provider = createProvider()
+  const config = buildRoutingConfig(state.genre)
+
+  let dedupedIssues = await deduplicateIssuesSemantically(provider, state.pendingIssues)
+  dedupedIssues = capNonErrorIssuesByType(
+    dedupedIssues,
+    config.maxNonErrorIssuesPerType,
+    (level, message, ...meta) => logger[level](message, ...meta)
+  )
+
+  const currentRawErrorCount = dedupedIssues.filter(i => i.severity === 'error').length
+  const currentErrorIssues = dedupedIssues.filter(i => i.severity === 'error')
+  const previousErrors = state.previousIssues.filter(i => i.severity === 'error')
+  const similarity = await calculateIssueSetSimilarity(
+    previousErrors,
+    currentErrorIssues,
+    issue => issueFingerprint(provider, issue)
+  )
+
+  let forceStructuralRewrite = false
+  const currentRemainingErrors = dedupedIssues.filter(i => i.severity === 'error')
+  const onlyInterpretiveErrors =
+    currentRemainingErrors.length > 0 &&
+    (await allIssuesMatch(currentRemainingErrors, issue => isInterpretiveIssue(provider, issue)))
+
+  const errorCountIncreased = currentRawErrorCount > (state.previousRawErrorCount || 0)
+  const issuesHighlySimilar =
+    similarity >= config.issueSetSimilarityThreshold && currentRawErrorCount > 0
+
+  const hasStateCorruptionError = await anyIssueMatches(
+    currentErrorIssues,
+    issue => isStateCorruptionIssue(provider, issue)
+  )
+
+  const errorRewriteAttempts = state.errorRewriteAttempts || 0
+
+  if (errorRewriteAttempts > 1) {
+    if (errorCountIncreased) {
+      logger.info(
+        `[MuseFlow] 检测到问题数量上升（${state.previousRawErrorCount || 0} -> ${currentRawErrorCount}），修复未收敛，下次尝试将强制完整重写...`
+      )
+      forceStructuralRewrite = true
+    } else if (issuesHighlySimilar) {
+      logger.info(
+        `[MuseFlow] 检测到问题高度重复（相似度 ${Math.round(similarity * 100)}%），修复未收敛，将保留全部问题反馈并强制完整重写...`
+      )
+      forceStructuralRewrite = true
+    }
+  }
+
+  if (
+    !forceStructuralRewrite &&
+    config.downgradeInterpretiveErrors &&
+    onlyInterpretiveErrors &&
+    errorRewriteAttempts >= config.maxErrorRewriteAttempts - 1
+  ) {
+    logger.info(
+      `[MuseFlow] 剩余 ${currentRemainingErrors.length} 个问题均为解释性一致性问题，自动降级为 warning 以完成本章...`
+    )
+    const downgrade = await downgradeInterpretiveErrors(
+      dedupedIssues,
+      issue => isInterpretiveIssue(provider, issue)
+    )
+    dedupedIssues = downgrade.issues
+  }
+
+  const { constraints: newConstraints } = await buildVerifiedConstraints(
+    state.previousIssues,
+    dedupedIssues,
+    issue => isInterpretiveIssue(provider, issue),
+    config.maxVerifiedConstraints,
+    (level, message, ...meta) => logger[level](message, ...meta)
+  )
+
+  const updatedConstraints = [...state.verifiedConstraints ?? [], ...newConstraints]
+  const trimmedConstraints =
+    updatedConstraints.length > config.maxVerifiedConstraints
+      ? updatedConstraints.slice(-config.maxVerifiedConstraints)
+      : updatedConstraints
+
+  if (
+    errorRewriteAttempts > 1 &&
+    issuesHighlySimilar &&
+    hasStateCorruptionError
+  ) {
+    logger.warn(
+      `[MuseFlow] 检测到问题高度重复且涉及上游状态污染（相似度 ${Math.round(similarity * 100)}%），继续重写无法收敛，将停止循环并请求状态级修复...`
+    )
+    return {
+      decision: 'request_rewrite',
+      rewriteApproved: false,
+      pendingIssues: dedupedIssues,
+      verifiedConstraints: trimmedConstraints,
+      forceStructuralRewrite: false,
+    }
+  }
+
+  const remainingErrors = dedupedIssues.filter(i => i.severity === 'error')
+  let decision: RoutingDecision
+  let nextRewriteApproved = state.rewriteApproved
+
+  if (remainingErrors.length === 0) {
+    decision = 'finalize_chapter'
+    nextRewriteApproved = false
+  } else if (errorRewriteAttempts >= config.maxErrorRewriteAttempts) {
+    const corruptionCount = await countMatchingIssues(
+      remainingErrors,
+      issue => isStateCorruptionIssue(provider, issue)
+    )
+    if (corruptionCount > 0) {
+      logger.error(
+        `[MuseFlow] 连续 ${config.maxErrorRewriteAttempts} 次重写后仍有 ${remainingErrors.length} 个错误，其中 ${corruptionCount} 个为上游状态污染问题，停止循环。`
+      )
+    }
+    decision = 'request_rewrite'
+    nextRewriteApproved = false
+  } else {
+    decision = 'decide_strategy'
+    nextRewriteApproved = true
+  }
+
+  return {
+    decision,
+    rewriteApproved: nextRewriteApproved,
+    pendingIssues: dedupedIssues,
+    verifiedConstraints: trimmedConstraints,
+    forceStructuralRewrite,
+  }
+}
+
 export async function decide_strategy(
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
@@ -84,26 +509,7 @@ export async function decide_strategy(
     ? (state.errorRewriteAttempts || 0) + 1
     : (state.errorRewriteAttempts || 0)
 
-  const policy = createDefaultRewriteRoutingPolicy()
-  const config = buildRoutingConfig(state.genre)
-  const services = createPolicyServices(
-    state.story.outputDir,
-    state.currentChapterIndex + 1,
-    state.outline,
-    state.currentChapterIndex
-  )
-
-  const strategy = await policy.decideStrategy({
-    chapterIndex: state.currentChapterIndex,
-    rewriteApproved: state.rewriteApproved,
-    rewriteAttempts: state.rewriteAttempts || 0,
-    errorRewriteAttempts: state.errorRewriteAttempts || 0,
-    forceStructuralRewrite: state.forceStructuralRewrite || false,
-    pendingIssues: state.pendingIssues,
-    chapterPlanExists: state.chapterPlan !== null,
-    config,
-    services,
-  })
+  const strategy = await decideRoutingStrategy(state)
 
   let chapterPlan = state.chapterPlan
   if (chapterPlan && shouldForceTemporaryReplan(state.outline, state.currentChapterIndex)) {
@@ -130,30 +536,12 @@ export function route_strategy(state: ReducedGraphState): string {
   return state.routingDecision ?? 'finalize_chapter'
 }
 
-export function convergence_check(
+export async function convergence_check(
   state: ReducedGraphState
-): Partial<ReducedGraphState> {
-  const policy = createDefaultRewriteRoutingPolicy()
-  const config = buildRoutingConfig(state.genre)
-  const services = createPolicyServices(
-    state.story.outputDir,
-    state.currentChapterIndex + 1,
-    state.outline,
-    state.currentChapterIndex
-  )
+): Promise<Partial<ReducedGraphState>> {
+  const result = await convergenceCheck(state)
 
-  const result = policy.convergenceCheck({
-    rewriteApproved: state.rewriteApproved,
-    errorRewriteAttempts: state.errorRewriteAttempts || 0,
-    previousIssues: state.previousIssues,
-    previousRawErrorCount: state.previousRawErrorCount || 0,
-    pendingIssues: state.pendingIssues,
-    verifiedConstraints: state.verifiedConstraints ?? [],
-    config,
-    services,
-  })
-
-  return {
+  const update: Partial<ReducedGraphState> = {
     pendingIssues: result.pendingIssues,
     verifiedConstraints: result.verifiedConstraints,
     previousIssues: result.pendingIssues,
@@ -163,6 +551,15 @@ export function convergence_check(
     routingDecision: result.decision,
     autoFixAttempts: 0,
   }
+
+  if (result.forceStructuralRewrite && result.decision === 'decide_strategy') {
+    const cleanedStoryState = cleanCurrentChapterInferredFacts(state)
+    if (cleanedStoryState) {
+      update.storyState = cleanedStoryState
+    }
+  }
+
+  return update
 }
 
 export function route_convergence(state: ReducedGraphState): string {
@@ -174,8 +571,6 @@ export function route_after_validation(state: ReducedGraphState): string {
   if (errors.length > 0) {
     return 'convergence_check'
   }
-  // warning 不再触发自动修复循环，避免质量/风格类 warning 消耗重写次数。
-  // 如需处理 warning，可通过独立的 polish 流程或手动 rewrite。
   return 'finalize_chapter'
 }
 

@@ -175,4 +175,60 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain('本章允许采用回忆、倒叙或跨日叙事')
     expect(userMessage).toContain('上一章结束时间')
   })
+
+  it('sorts canonical facts by outline relevance', () => {
+    const agent = new TestableChapterAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【苏半城】主角',
+      outline: '第2章：长命锁之谜\n主角调查长命锁的来源',
+      previousChapters: '第1章：主角获得长命锁。',
+      chapterContent: '',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: `【权威事实】
+- [长命锁] 来源: 苏家满月礼
+- [玉佩] 来源: 皇家赏赐
+- [令牌] 来源: 师父所赠`,
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    const canonicalSection = userMessage.slice(
+      userMessage.indexOf('【权威事实】'),
+      userMessage.indexOf('</canonical_facts>')
+    )
+    const lockIndex = canonicalSection.indexOf('长命锁')
+    const jadeIndex = canonicalSection.indexOf('玉佩')
+    const tokenIndex = canonicalSection.indexOf('令牌')
+    expect(lockIndex).toBeGreaterThan(-1)
+    expect(lockIndex).toBeLessThan(jadeIndex)
+    expect(lockIndex).toBeLessThan(tokenIndex)
+  })
+
+  it('includes anti-hallucination constraints about item origins', () => {
+    const agent = new TestableChapterAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【苏半城】主角',
+      outline: '第1章：破庙惊梦\n少年在破庙中醒来',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('涉及关键物品/设定的来源、制造者、来历、赠予者时，必须与【权威事实】中的记录一致')
+    expect(userMessage).toContain('严禁 invent 具体来源')
+  })
 })

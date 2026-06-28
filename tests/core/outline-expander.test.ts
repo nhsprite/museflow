@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import * as contextJudge from '../../src/utils/context-judge.js'
 import {
   expandOutlineForChapter,
   validateChapterTimeAnchor,
@@ -6,13 +7,28 @@ import {
 import { validateChapterPlanBudget } from '../../src/utils/chapter-planning.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
+import type { ModelProvider } from '../../src/model/provider.js'
 
 const { planChapterWithOverrideMock } = vi.hoisted(() => ({
   planChapterWithOverrideMock: vi.fn(),
 }))
 
-vi.mock('../../src/graph/nodes.js', () => ({
+const mockChat = vi.fn(async (): Promise<string> => '')
+const mockChatStructured = vi.fn()
+
+vi.mock('../../src/graph/nodes/planning.js', () => ({
   plan_chapter_with_override: planChapterWithOverrideMock,
+}))
+
+vi.mock('../../src/model/registry.ts', () => ({
+  createProvider: (): ModelProvider => ({
+    chat: mockChat,
+    chatStructured: mockChatStructured,
+  }),
+}))
+
+vi.mock('../../src/utils/context-judge.js', () => ({
+  batchValidateTimeAnchors: vi.fn().mockResolvedValue([{ valid: true }]),
 }))
 
 const baseState: ReducedGraphState = {
@@ -47,6 +63,8 @@ describe('expandOutlineForChapter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
+    mockChatStructured.mockResolvedValue({ results: [true, true] })
+    mockChat.mockResolvedValue(JSON.stringify({ results: [true, true] }))
   })
 
   it('calls plan_chapter with current and next chapter arcs', async () => {
@@ -99,6 +117,7 @@ describe('expandOutlineForChapter', () => {
       ],
     }
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: badPlan })
+    mockChatStructured.mockResolvedValue({ results: [true, false] })
 
     const result = await expandOutlineForChapter(baseState, 1)
 
@@ -111,7 +130,12 @@ describe('expandOutlineForChapter', () => {
 })
 
 describe('validateChapterTimeAnchor', () => {
-  it('passes when anchor does not claim previous events are completed', () => {
+  beforeEach(() => {
+    vi.mocked(contextJudge.batchValidateTimeAnchors).mockReset()
+    vi.mocked(contextJudge.batchValidateTimeAnchors).mockResolvedValue([{ valid: true }])
+  })
+
+  it('passes when anchor does not claim previous events are completed', async () => {
     const plan: ChapterPlan = {
       sections: [],
       timeline: [],
@@ -119,26 +143,29 @@ describe('validateChapterTimeAnchor', () => {
       chapterTimeAnchor: '三日期限第三日卯时（继续推进）',
     }
 
-    const result = validateChapterTimeAnchor(plan, '第六章正文：苏半城睡去。')
+    const result = await validateChapterTimeAnchor(plan, '第六章正文：苏半城睡去。', { chat: vi.fn() })
 
     expect(result.valid).toBe(true)
   })
 
-  it('fails when anchor claims an event was completed in the previous chapter but text does not contain it', () => {
+  it('fails when anchor claims an event was completed in the previous chapter but text does not contain it', async () => {
     const plan: ChapterPlan = {
       sections: [],
       timeline: [],
       outlineCheck: [],
       chapterTimeAnchor: '三日期限第三日卯时末，昨日午时回话亲王已落地',
     }
+    vi.mocked(contextJudge.batchValidateTimeAnchors).mockResolvedValueOnce([
+      { valid: false, reason: 'chapterTimeAnchor 声称上一章已完成"回话亲王"，但上一章正文未提及该事件' },
+    ])
 
-    const result = validateChapterTimeAnchor(plan, '第六章正文：苏半城亥时末睡去，次日清晨才起身赴王府。')
+    const result = await validateChapterTimeAnchor(plan, '第六章正文：苏半城亥时末睡去，次日清晨才起身赴王府。', { chat: vi.fn() })
 
     expect(result.valid).toBe(false)
     expect(result.reason).toContain('回话亲王')
   })
 
-  it('passes when anchor claims completion and previous text contains the event', () => {
+  it('passes when anchor claims completion and previous text contains the event', async () => {
     const plan: ChapterPlan = {
       sections: [],
       timeline: [],
@@ -146,7 +173,7 @@ describe('validateChapterTimeAnchor', () => {
       chapterTimeAnchor: '三日期限第三日卯时末，昨日午时回话亲王已落地',
     }
 
-    const result = validateChapterTimeAnchor(plan, '第六章正文：苏半城昨日午时赴亲王府回话，当面答了办得成三字。')
+    const result = await validateChapterTimeAnchor(plan, '第六章正文：苏半城昨日午时赴亲王府回话，当面答了办得成三字。', { chat: vi.fn() })
 
     expect(result.valid).toBe(true)
   })
@@ -169,7 +196,7 @@ const defaultPlanningConfig = {
 }
 
 describe('validateChapterPlanBudget', () => {
-  it('passes when core sections account for at least 50% of word count', () => {
+  it('passes when core sections account for at least 50% of word count', async () => {
     const plan: ChapterPlan = {
       sections: [
         { title: '核心事件', summary: '买办登场', wordCount: 2500, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
@@ -181,12 +208,12 @@ describe('validateChapterPlanBudget', () => {
       ],
     }
 
-    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
+    const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(true)
   })
 
-  it('fails when core sections account for less than 50% of word count', () => {
+  it('fails when core sections account for less than 50% of word count', async () => {
     const plan: ChapterPlan = {
       sections: [
         { title: '核心事件', summary: '买办登场', wordCount: 1000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
@@ -198,13 +225,13 @@ describe('validateChapterPlanBudget', () => {
       ],
     }
 
-    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
+    const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(false)
     expect(result.reason).toContain('50%')
   })
 
-  it('fails when a non-core section exceeds 800 words', () => {
+  it('fails when a non-core section exceeds 800 words', async () => {
     const plan: ChapterPlan = {
       sections: [
         { title: '核心事件', summary: '买办登场', wordCount: 3000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
@@ -216,20 +243,20 @@ describe('validateChapterPlanBudget', () => {
       ],
     }
 
-    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
+    const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(false)
     expect(result.reason).toContain('800')
   })
 
-  it('passes for empty plans', () => {
+  it('passes for empty plans', async () => {
     const plan: ChapterPlan = {
       sections: [],
       timeline: [],
       outlineCheck: [],
     }
 
-    const result = validateChapterPlanBudget(plan, defaultPlanningConfig)
+    const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
 
     expect(result.valid).toBe(true)
   })

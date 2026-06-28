@@ -3,6 +3,13 @@ import type { ChapterMeta } from '../types/chapter.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { AI_PHRASE_PROHIBITIONS, FIX_OUTPUT_RULES, FACT_CONSISTENCY_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
+import {
+  mergeSentenceFixes,
+  mergeParagraphFixes,
+  applyParagraphDiffProtection,
+  deduplicateSentences,
+  deduplicateParagraphBlocks,
+} from '../graph/utils/text-patching.js'
 
 export class FixAgent extends BaseAgent {
   constructor() {
@@ -325,9 +332,20 @@ ${existingChapterSection}
     return { success: true, content: extractedContent }
   }
 
-  processOutput(output: AgentOutput, _storyId: string, _chapterIndex: number): ChapterMeta {
+  processOutput(
+    output: AgentOutput,
+    existingContent: string,
+    paragraphs: string[],
+    affectedIndices: number[],
+    _storyId: string,
+    _chapterIndex: number
+  ): { content: string; chapterMeta: ChapterMeta } {
+    let content = this.buildFixedContent(output, existingContent, paragraphs, affectedIndices)
+    content = deduplicateSentences(content)
+    content = deduplicateParagraphBlocks(content)
+
     const now = Date.now()
-    return {
+    const chapterMeta: ChapterMeta = {
       id: generateId(),
       storyId: _storyId,
       number: _chapterIndex,
@@ -339,5 +357,51 @@ ${existingChapterSection}
       createdAt: now,
       updatedAt: now,
     }
+
+    return { content, chapterMeta }
+  }
+
+  private buildFixedContent(
+    output: AgentOutput,
+    existingContent: string,
+    paragraphs: string[],
+    affectedIndices: number[]
+  ): string {
+    if (output.data && (output.data as { modifiedSentences?: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences) {
+      const modifiedSentences = (output.data as { modifiedSentences: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences
+      const modifiedParagraphs = new Map<number, Array<{ index: number; content: string }>>()
+
+      for (const s of modifiedSentences) {
+        if (!modifiedParagraphs.has(s.paragraphIndex)) {
+          modifiedParagraphs.set(s.paragraphIndex, [])
+        }
+        modifiedParagraphs.get(s.paragraphIndex)!.push({ index: s.sentenceIndex, content: s.content })
+      }
+
+      const resultParagraphs = [...paragraphs]
+      for (const [pIdx, sentences] of modifiedParagraphs) {
+        const originalParagraph = paragraphs[pIdx]
+        if (originalParagraph) {
+          resultParagraphs[pIdx] = mergeSentenceFixes(originalParagraph, sentences)
+        }
+      }
+      return resultParagraphs.join('\n\n')
+    }
+
+    if (output.data && (output.data as { modifiedParagraphs?: Array<{ index: number; content: string }> }).modifiedParagraphs) {
+      const modifiedParagraphs = (output.data as { modifiedParagraphs: Array<{ index: number; content: string }> }).modifiedParagraphs
+      return mergeParagraphFixes(paragraphs, modifiedParagraphs, affectedIndices)
+    }
+
+    if (!output.success && output.error) {
+      throw new Error(`修复失败：${output.error}`)
+    }
+
+    let content = output.content ?? ''
+    if (!content || content.trim().length === 0) {
+      throw new Error(`修复后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
+    }
+
+    return applyParagraphDiffProtection(existingContent, content, affectedIndices)
   }
 }

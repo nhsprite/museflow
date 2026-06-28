@@ -2,11 +2,10 @@ import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import { getChapterPlannerAgent } from '../agent-factory.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
-import { buildCharacterFactTimeline, formatStoryState } from '../utils/story-state.js'
+import { buildCharacterFactTimeline, formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
-import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 
 async function runPlanChapter(
   state: ReducedGraphState,
@@ -19,7 +18,7 @@ async function runPlanChapter(
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
-  const { reconciledState, stateConflicts } = prepareStoryStateForChapter(state, chapterIndex)
+  const { reconciledState, stateConflicts } = await prepareStoryStateForChapter(state, chapterIndex)
 
   const storyStateStr = formatStoryState(reconciledState)
 
@@ -57,10 +56,6 @@ async function runPlanChapter(
   const chapterPlan = output.data as import('../../agents/chapter-planner.js').ChapterPlan
 
   return { chapterPlan }
-}
-
-export async function plan_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  return runPlanChapter(state)
 }
 
 export async function plan_chapter_with_override(

@@ -8,6 +8,8 @@ import { join } from 'node:path'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
+import { deleteChapterContent } from '../storage/filesystem/writer.js'
+import type { Issue } from '../types/agent.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -64,6 +66,7 @@ export async function runStory(input: {
     chapters: new Array(input.totalChapters).fill(null) as ReducedGraphState['chapters'],
     currentChapterIndex: 0,
     foreshadowStack: [],
+    timeline: undefined,
     chapterSummaries: [],
     pendingIssues: [],
     rewriteApproved: false,
@@ -95,7 +98,7 @@ export async function runStory(input: {
   return result as ReducedGraphState
 }
 
-export async function runChapterGraph(
+async function runChapterGraph(
   storyId: string,
   outputDir: string,
   workingState: ReducedGraphState
@@ -130,11 +133,27 @@ export async function runChapterGraph(
   }
 }
 
-export async function continueStory(
+function isForeshadowLikelyPolluted(item: ReducedGraphState['foreshadowStack'][number]): boolean {
+  const text = item.text
+  if (text.length <= 30) return false
+  if (item.source === 'outline') return true
+  const sentenceDelimiters = /[.!?。！？…]+/
+  const sentences = text.split(sentenceDelimiters).filter(s => s.trim().length > 0)
+  if (sentences.length >= 2 && text.length > 60) return true
+  if (text.length > 120) return true
+  return false
+}
+
+export interface RunOneChapterOptions {
+  mode: 'draft' | 'rewrite' | 'continue'
+  targetChapterIndex?: number | undefined
+  userResponse?: boolean | undefined
+  retryIssues?: Issue[] | undefined
+}
+
+export async function runOneChapter(
   storyId: string,
-  userResponse?: boolean,
-  currentChapterIndex?: number,
-  _options: { isRewrite?: boolean } = {}
+  options: RunOneChapterOptions
 ): Promise<ReducedGraphState> {
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
@@ -142,21 +161,38 @@ export async function continueStory(
   }
 
   const graph = getGraph()
-  const config: RunnableConfig = {
-    configurable: { thread_id: storyId, outputDir },
+  const checkpointer = getCheckpointer()
+  await checkpointer.clearPendingWrites(outputDir)
+
+  let checkpointId: string | undefined
+  if (options.mode === 'rewrite' && options.targetChapterIndex !== undefined) {
+    const prevCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, options.targetChapterIndex)
+    if (prevCheckpoint) {
+      checkpointId = prevCheckpoint.checkpointId
+    } else {
+      const sameCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, options.targetChapterIndex + 1)
+      if (sameCheckpoint) {
+        checkpointId = sameCheckpoint.checkpointId
+      }
+    }
   }
-  const snapshot = await graph.getState(config)
+
+  const snapshot = await graph.getState({
+    configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
+  })
   const checkpointState = snapshot.values as ReducedGraphState
 
-  const targetIndex = currentChapterIndex ?? checkpointState.currentChapterIndex
+  const targetIndex = options.targetChapterIndex ?? checkpointState.currentChapterIndex
 
   const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
   for (let i = 0; i < targetIndex; i++) {
     rewrittenChapters[i] = checkpointState.chapters[i] ?? null
   }
 
-  // 清除过时的 draft_failure 问题，因为本次运行会重新生成章节
-  const cleanedPendingIssues = checkpointState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
+  const basePendingIssues = options.retryIssues?.length
+    ? options.retryIssues
+    : checkpointState.pendingIssues
+  const cleanedPendingIssues = basePendingIssues.filter(issue => issue.type !== 'draft_failure')
 
   const workingState: ReducedGraphState = {
     ...checkpointState,
@@ -164,7 +200,7 @@ export async function continueStory(
     chapters: rewrittenChapters,
     pendingIssues: cleanedPendingIssues,
     chapterTimeAnchor: undefined,
-    rewriteApproved: userResponse ?? false,
+    rewriteApproved: options.userResponse ?? false,
     rewriteRequested: false,
     isWriting: true,
     writeOneChapterOnly: true,
@@ -177,7 +213,36 @@ export async function continueStory(
     routingDecision: undefined,
   }
 
+  if (options.mode === 'rewrite') {
+    workingState.chapterSummaries = checkpointState.chapterSummaries.slice(0, targetIndex)
+    workingState.foreshadowStack = checkpointState.foreshadowStack.filter(
+      f => f.createdAtChapter < targetIndex + 1 && !isForeshadowLikelyPolluted(f)
+    )
+    if (options.targetChapterIndex !== undefined) {
+      workingState.chapterPlan = null
+    }
+  }
+
+  if (options.mode === 'rewrite' && options.targetChapterIndex !== undefined) {
+    for (let ch = targetIndex + 1; ch <= checkpointState.totalChapters; ch++) {
+      await deleteChapterContent(outputDir, ch)
+    }
+  }
+
   return runChapterGraph(storyId, outputDir, workingState)
+}
+
+export async function continueStory(
+  storyId: string,
+  userResponse?: boolean,
+  currentChapterIndex?: number,
+  _options: { isRewrite?: boolean } = {}
+): Promise<ReducedGraphState> {
+  return runOneChapter(storyId, {
+    mode: 'continue',
+    targetChapterIndex: currentChapterIndex,
+    userResponse,
+  })
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {

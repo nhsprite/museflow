@@ -21,7 +21,7 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   }
 
   const output = await agent.run(agentState)
-  const world = agent.processOutput(output, state.story.id)
+  const world = await agent.processOutput(output, state.story.id)
 
   if (!world) {
     throw new Error('世界观生成失败，请检查 AI 输出或重试')
@@ -68,7 +68,7 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
 
     const output = await agent.run(agentState)
     lastOutput = output
-    const characters = agent.processOutput(output, state.story.id)
+    const characters = await agent.processOutput(output, state.story.id)
 
     if (characters.length > 0) {
       if (attempt > 0) {

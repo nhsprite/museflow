@@ -1,4 +1,4 @@
-export interface ParsedJson<T = unknown> {
+interface ParsedJson<T = unknown> {
   success: boolean
   data?: T
   error?: string

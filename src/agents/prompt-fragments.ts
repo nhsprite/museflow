@@ -20,9 +20,10 @@ export const FACT_CONSISTENCY_RULES = `<fact_consistency_rules>
 - 角色位置、状态、物品持有者必须与已确立的故事状态保持一致；发生变化时必须有明确过程。
 - 关键物品在同一时刻只能由唯一持有者持有，转移必须通过明确动作完成。
 - 角色称呼、已揭示秘密、未来信息边界等需与前面章节建立的事实保持一致。
-- 涉及物品来源、制造者、材质时，必须与权威事实一致；不得 invent 新的事实来支持情节。
+- 涉及物品来源、制造者、材质、来历、赠予者时，必须与权威事实完全一致；若权威事实未记录且大纲未明确引入新来源，必须保持来源未说明，不得 invent 新的事实来支持情节。
 - 如果大纲引入新设定与已确立事实冲突，必须标注为"大纲新设定"并说明区别。
 - <mandatory>涉及多个用途、来源或归属不同的同类物品时，必须使用完整名称或精确限定语明确区分，不得以模糊指代将不同物品混为一谈。</mandatory>
+- <mandatory>不得为已有关键物品/设定 invent 新的来源、新的制造者或新的来历；也不得把已有的来源/制造者替换为另一个。</mandatory>
 </fact_consistency_rules>`
 
 export const POWER_SYSTEM_RULES = `<power_system_rules>
@@ -46,7 +47,7 @@ export const FORESHADOW_BOUNDARY_RULES = `<foreshadow_boundary_rules>
 <mandatory>【必须】正确区分伏笔与正常叙事</mandatory>
 - 本章首次引入的新设定、新身份、新场景、新对话属于正常叙事推进，不是"伏笔提前泄露"。
 - 只有当本章明确揭示了前序章节中已埋下并标注为"待后续回收"的具体悬念时，才构成伏笔回收。
-- 不要为了让角色"知道"而凭空补充前序未明确交代的细节；如果大纲要求本章揭示新信息，请通过角色对话、感知、他人告知等合理方式呈现。
+- 不要为了让角色"知道"而凭空补充前序未明确交代的细节；如果大纲要求本章揭示新信息，必须通过合理的叙事方式呈现，并明确交代信息来源。
 - 角色通过自身经历、对话或合理推理在本章自然得出的信息，即使与后续大纲暗合，也不得视为"提前剧透"。
 </foreshadow_boundary_rules>`
 
@@ -60,7 +61,7 @@ export const CHAPTER_OUTPUT_RULES = `<chapter_output_rules>
 export const FIX_OUTPUT_RULES = `<fix_output_rules>
 <mandatory>【必须】修复输出要求</mandatory>
 - 只输出修改后的正文内容或指定句子/段落。
-- 不要输出任何辅助性内容，例如问题分析、修复建议、修改方案、检查表、清单或表格。
+- 不要输出任何辅助性内容，包括但不限于问题分析、修复建议、修改方案、检查表、清单或表格。
 - 修改时必须彻底替换原句/原段落，绝不允许原句和新句同时存在。
 - 修改后通读上下文，确保没有句子重复出现。
 </fix_output_rules>`
@@ -127,7 +128,7 @@ export const OFFICIAL_CHARACTER_RULES = `<official_character_rules>
 <mandatory>【必须】只能使用官方角色与大纲预告角色</mandatory>
 - 本任务中 "官方角色" 指【人物设定】中明确列出的角色；"大纲预告角色" 指【大纲登场角色】中列出的、由大纲明确命名并将在本章或之前章节登场的新角色。
 - 严禁为故事 invent 全新的角色名字、亲属称呼或身份，除非该角色已经出现在【大纲登场角色】中。
-- 如果大纲要求"派人"、"某人"、"一名旧僚"等未指定身份的动作执行者，必须从官方角色或大纲预告角色中选择；若均不适合，只能虚构一个不获取姓名、不建立亲属关系、不进入 storyState 的龙套。
+- 如果大纲要求未指定身份的动作执行者，必须从官方角色或大纲预告角色中选择；若均不适合，只能虚构一个不获取姓名、不建立亲属关系、不进入 storyState 的无名功能性角色。
 - 角色之间的亲属关系必须来自人物设定或大纲，不得自行添加。
 - 任何新角色如果要在正文中出现，必须先在大纲或人物设定中有依据；否则只能以无名的功能性身份出现，且不得在 storyState 中留下记录。
 </official_character_rules>`
@@ -142,7 +143,7 @@ export const FORESHADOW_DISCIPLINE_RULES = `<foreshadow_discipline_rules>
 export const STATE_AUTHORITY_RULES = `<state_authority_rules>
 <mandatory>【必须】storyState 是最高事实权威，但只能记录真实来源</mandatory>
 - storyState 中的角色位置、状态、物品位置只能记录官方角色和本章明确发生转移的物品。
-- 禁止把 invented 角色、推测性身份、临时龙套写入 storyState。
+- 禁止把 invented 角色、推测性身份、无名功能性角色写入 storyState。
 - 如果本章为某个物品提供了新的位置，必须同时确认旧位置记录已被覆盖或标记为 superseded。
 </state_authority_rules>`
 

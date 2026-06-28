@@ -5,12 +5,11 @@ import { getSummaryAgent } from '../agent-factory.js'
 import { processSummaryOutput } from '../../agents/index.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
 import { saveChapterReport } from '../../storage/meta/stores/chapter-report.js'
-import { appendTimelineSnapshot } from '../../storage/meta/stores/timeline.js'
-import { exportMetaFromCheckpoint } from '../../storage/meta/exporter.js'
 import { getForeshadowAlerts } from '../../types/foreshadow.js'
+import { generateId } from '../../utils/id.js'
 import { getCheckpointer } from '../checkpointer.js'
 import { agePendingTasks } from '../../utils/pending-tasks.js'
-import { mergeStoryState } from '../utils/story-state.js'
+import { mergeStoryState } from '../utils/reconciler.js'
 import { buildEffectiveCharactersList } from '../utils/characters.js'
 import { generateForeshadowConstraints } from '../../utils/foreshadow-constraints.js'
 import {
@@ -113,7 +112,9 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     }
   }
 
-  void appendTimelineSnapshot(state.story.id, {
+  const snapshot: import('../../types/timeline.js').StateSnapshot = {
+    id: generateId('ts'),
+    storyId: state.story.id,
     chapterNumber: chapterIndex + 1,
     snapshotType: 'chapter_complete',
     currentChapterIndex: chapterIndex,
@@ -124,7 +125,9 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
     issuesResolved: state.pendingIssues.filter(i => i.severity !== 'error').length,
     issuesPending: state.pendingIssues.filter(i => i.severity === 'error').length,
     stateJson: null,
-  })
+    createdAt: Date.now(),
+  }
+  const updatedTimeline = [...(state.timeline ?? []), snapshot]
 
   const newForeshadowConstraints = generateForeshadowConstraints(state.foreshadowStack, chapterIndex + 1)
   const updatedVerifiedConstraints = newForeshadowConstraints.length > 0
@@ -145,15 +148,13 @@ export async function finalize_chapter(state: ReducedGraphState): Promise<Partia
   await checkpointer.pruneIntermediateCheckpoints(state.story.outputDir).catch(() => {})
   await checkpointer.clearPendingWrites(state.story.outputDir).catch(() => {})
 
-  // checkpoint 是运行时唯一真相源；meta.json 是其导出视图。
-  await exportMetaFromCheckpoint(state.story.outputDir)
-
   return {
     currentChapterIndex: nextIndex,
     chapterSummaries: state.chapterSummaries,
     storyState: updatedStoryState,
     verifiedConstraints: updatedVerifiedConstraints,
     chapterReport,
+    timeline: updatedTimeline,
   }
 }
 

@@ -31,12 +31,23 @@ function colorize(level: LogLevel): string {
   }
 }
 
+function formatArg(arg: unknown): string {
+  if (arg instanceof Error) {
+    return arg.stack ?? arg.message ?? String(arg)
+  }
+  try {
+    return JSON.stringify(arg)
+  } catch {
+    return String(arg)
+  }
+}
+
 function log(level: LogLevel, prefix: string, message: string, ...args: unknown[]): void {
   if (level === 'debug' && !isDebugEnabled()) return
   const ts = formatTimestamp()
   const col = colorize(level)
   const prefixStr = prefix ? `[${prefix}] ` : ''
-  const msg = args.length > 0 ? `${message} ${JSON.stringify(args)}` : message
+  const msg = args.length > 0 ? `${message} ${args.map(formatArg).join(' ')}` : message
   console.error(`${ts} ${col}[${level.toUpperCase()}]${RESET} ${prefixStr}${msg}`)
 }
 

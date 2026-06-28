@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { auto_fix_warnings } from '../../src/graph/nodes.js'
+import { auto_fix_warnings } from '../../src/graph/nodes/finalization.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { Issue } from '../../src/types/agent.js'
 

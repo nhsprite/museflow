@@ -21,20 +21,3 @@ export interface Issue {
   suggestion?: string
 }
 
-export interface AgentResult {
-  success: boolean
-  content?: string
-  issues?: Issue[]
-  error?: string
-}
-
-export interface AgentInput {
-  idea?: string
-  world?: string
-  characters?: string
-  outline?: string
-  chapterContent?: string
-  genrePrompt?: string
-  chapterIndex?: number
-  totalChapters?: number
-}

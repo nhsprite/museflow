@@ -7,8 +7,6 @@ export interface CharacterWhitelist {
   canonical(name: string): string | undefined
 }
 
-export type CharacterClassification = 'official' | 'invented'
-
 function stripParentheticalAliases(name: string): string {
   return name.replace(/（[^）]*）/g, '').trim()
 }
@@ -49,9 +47,3 @@ export function buildCharacterWhitelist(characters: Character[]): CharacterWhite
   }
 }
 
-export function classifyCharacterName(
-  name: string,
-  whitelist: CharacterWhitelist,
-): CharacterClassification {
-  return whitelist.isOfficial(name) ? 'official' : 'invented'
-}

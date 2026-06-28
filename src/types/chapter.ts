@@ -7,25 +7,6 @@ export const CHAPTER_STATUSES = [
 ] as const
 export type ChapterStatus = (typeof CHAPTER_STATUSES)[number]
 
-export interface Foreshadow {
-  id: string
-  text: string
-  expectedFulfillChapter: number
-  createdAt: number
-}
-
-export interface WrittenChapter {
-  number: number
-  title: string
-  outline: string
-  content: string
-  summary: string
-  foreshadows: Foreshadow[]
-  status: ChapterStatus
-  createdAt: number
-  updatedAt: number
-}
-
 export interface ChapterMeta {
   id: string
   storyId: string

@@ -16,7 +16,7 @@ export class OutlineComplianceAgent extends BaseAgent {
 
     const userContent = this.fillTemplate(`<instruction>
   请检查以下章节是否严格遵循了大纲要求。
-  你是一位故事结构审核员。你的职责是确保章节**核心事件**与大纲一致，同时允许作者在概括性描述上进行合理的细节演绎。不要对大纲中的概括性措辞（如"四人"、"暗藏杀机"、"埋下伏笔"）做过度字面化解读。
+  你是一位故事结构审核员。你的职责是确保章节**核心事件**与大纲一致，同时允许作者在概括性描述上进行合理的细节演绎。不要对大纲中的概括性措辞做过度字面化解读。
 </instruction>
 
 <context>
@@ -40,7 +40,7 @@ export class OutlineComplianceAgent extends BaseAgent {
   </check_item>
 
   <check_item id="2" name="时间线检查">
-    <step>大纲中明确的时间要求（如"三日后""次日""凌晨"）是否在正文中精确体现</step>
+    <step>大纲中明确的时间要求是否在正文中精确体现</step>
     <step>正文的时间跨度是否与大纲一致</step>
     <step>事件顺序是否与大纲一致</step>
   </check_item>
@@ -100,7 +100,7 @@ export class OutlineComplianceAgent extends BaseAgent {
     return [
       this.systemMessage(`你是一位极其严格的故事结构审核员，负责确保每个章节都严格遵循既定的大纲。你对偏离大纲的行为保持零容忍态度。你必须逐条检查大纲中的每个情节点，绝不能遗漏任何要求。
 
-特别注意：本章只能包含当前大纲要求的事件。你必须对照下一章大纲，判断本章是否把下一章才应出现的核心结果（如对方的明确回应、条件交换、真相揭示、事件收束等）提前完成。如果本章提前落地了下一章的核心结果，必须判为 outline_violation。`),
+特别注意：本章只能包含当前大纲要求的事件。你必须对照下一章大纲，判断本章是否把下一章才应出现的核心结果提前完成。如果本章提前落地了下一章的核心结果，必须判为 outline_violation。`),
       this.userMessage(userContent),
     ]
   }
@@ -109,7 +109,7 @@ export class OutlineComplianceAgent extends BaseAgent {
     return parseJsonFromLLM(content)
   }
 
-  processOutput(output: AgentOutput): { issues: Issue[]; isCompliant: boolean } {
+  async processOutput(output: AgentOutput): Promise<{ issues: Issue[]; isCompliant: boolean }> {
     if (!output.success || !output.data) {
       return { issues: [], isCompliant: true }
     }
@@ -149,10 +149,9 @@ export class OutlineComplianceAgent extends BaseAgent {
       }
     }
 
-    const deviationIssues = normalizeIssues(data.deviations, 'outline_deviation', {
+    const deviationIssues = (await normalizeIssues(data.deviations, 'outline_deviation', this.provider, {
       mapType: dev => dev.type === 'missing_event' ? 'outline_violation' : 'outline_deviation',
-      filter: () => true,
-    }).map(issue => {
+    })).map(issue => {
       // Trust the agent's judgment: bridge-like or extra-event deviations should not be escalated above warning
       // unless the model explicitly marked them as error for a non-bridge reason.
       const dev = data.deviations?.find(d => d.description && issue.description.includes(d.description)) ?? {}

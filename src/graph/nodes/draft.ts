@@ -6,11 +6,9 @@ import { writeChapterContent, readChapterContent } from '../../storage/filesyste
 import { createChapterMeta } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
-import { buildCharacterFactTimeline, buildKeyEventsTimeline, formatStoryState } from '../utils/story-state.js'
+import { buildCharacterFactTimeline, buildKeyEventsTimeline, formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent } from './planning.js'
-
-import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
 
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent()
@@ -34,7 +32,7 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
-  const { reconciledState, stateConflicts } = prepareStoryStateForChapter(state, chapterIndex)
+  const { reconciledState, stateConflicts } = await prepareStoryStateForChapter(state, chapterIndex)
   const storyStateStr = formatStoryState(reconciledState)
 
   const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor

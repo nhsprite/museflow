@@ -1,5 +1,5 @@
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
-import { continueStory, getState } from '../../core/runner.js'
+import { runOneChapter, getState, type RunOneChapterOptions } from '../../core/runner.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import type { StoryStatus, Story } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -116,10 +116,15 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
   const chapterNum = chapterIndex + 1
   const totalChapters = state.totalChapters
 
+  const runOptions: RunOneChapterOptions = {
+    mode: 'draft',
+    targetChapterIndex: chapterIndex,
+  }
+
   try {
     const result = await withSpinner(
       `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
-      () => continueStory(storyId, undefined, chapterIndex, { isRewrite: false }),
+      () => runOneChapter(storyId, runOptions),
       `✅ 第 ${chapterNum} 章撰写完成`,
       (result) => !result.rewriteRequested
     )

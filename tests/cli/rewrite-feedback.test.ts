@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const runChapterGraphMock = vi.fn()
-const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
-const deleteChapterContentMock = vi.fn().mockResolvedValue(undefined)
-const getChapterCheckpointMock = vi.fn().mockResolvedValue(null)
+const runOneChapterMock = vi.fn()
 
 const initialState = {
   story: { id: 'story-1', outputDir: '/tmp/test-story' },
@@ -54,31 +51,8 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
 
 vi.mock('../../src/core/runner.js', () => ({
   getState: vi.fn().mockResolvedValue(initialState),
-  getOutputDirFromStoryId: vi.fn().mockReturnValue('/tmp/test-story'),
-  getGraph: vi.fn().mockReturnValue({
-    getState: vi.fn().mockResolvedValue({
-      values: {
-        ...initialState,
-        pendingIssues: [],
-      },
-    }),
-  }),
-  runChapterGraph: runChapterGraphMock,
+  runOneChapter: runOneChapterMock,
 }))
-
-vi.mock('../../src/graph/checkpointer.js', () => ({
-  getCheckpointer: () => ({
-    clearPendingWrites: clearPendingWritesMock,
-    saveChapterCheckpoint: vi.fn().mockResolvedValue(undefined),
-    pruneIntermediateCheckpoints: vi.fn().mockResolvedValue(undefined),
-    getChapterCheckpoint: getChapterCheckpointMock,
-  }),
-}))
-
-vi.mock('../../src/storage/filesystem/writer.js', () => ({
-  deleteChapterContent: deleteChapterContentMock,
-}))
-
 
 vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg, fn) => fn()),
@@ -93,10 +67,10 @@ vi.mock('../../src/utils/chapter-display.js', () => ({
 describe('rewrite command retry feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    runChapterGraphMock.mockImplementation(async (_storyId, _outputDir, workingState) => ({
-      ...workingState,
+    runOneChapterMock.mockImplementation(async (_storyId, options) => ({
+      ...initialState,
       rewriteRequested: true,
-      pendingIssues: workingState.pendingIssues,
+      pendingIssues: options.retryIssues ?? [],
     }))
   })
 
@@ -105,12 +79,12 @@ describe('rewrite command retry feedback', () => {
 
     await rewrite('story-1', { storyId: 'story-1' })
 
-    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
 
-    const call = runChapterGraphMock.mock.calls[0]
-    const workingState = call?.[2]
+    const options = runOneChapterMock.mock.calls[0]?.[1]
 
-    expect(workingState?.pendingIssues).toEqual(initialState.pendingIssues)
-    expect(workingState?.rewriteApproved).toBe(true)
+    expect(options?.retryIssues).toEqual(initialState.pendingIssues)
+    expect(options?.userResponse).toBe(true)
+    expect(options?.mode).toBe('rewrite')
   })
 })

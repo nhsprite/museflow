@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger.js'
 import type { ReducedGraphState } from '../graph/state.js'
-import { plan_chapter_with_override } from '../graph/nodes.js'
+import { plan_chapter_with_override } from '../graph/nodes/planning.js'
 import {
   buildNextChapterBoundaryHint,
   reconcileOutlineWithState,
@@ -8,9 +8,11 @@ import {
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 import { readChapterContent } from '../storage/filesystem/writer.js'
-import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation } from '../utils/chapter-planning.js'
-import { extractChineseKeywords } from '../utils/text.js'
+import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation, type CoreSectionJudge } from '../utils/chapter-planning.js'
 import type { Issue } from '../types/agent.js'
+import { createProvider } from '../model/registry.js'
+import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
+import { batchValidateTimeAnchors } from '../utils/context-judge.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -18,40 +20,88 @@ export interface ExpandedOutline {
   pendingIssues?: Issue[]
 }
 
-const COMPLETION_MARKERS = /已(?:落地|完成|收束|结束|办妥|解决|处理)/g
-const PREVIOUS_TIME_MARKERS = /昨[日天]|上一章|前章|前一日/g
+const CORE_SECTION_JUDGE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    results: {
+      type: 'array',
+      items: { type: 'boolean' },
+    },
+  },
+  required: ['results'],
+}
 
-export function validateChapterTimeAnchor(
+async function judgeCoreSectionsWithModel(
+  provider: ModelProvider,
+  outlineDescription: string | undefined,
+  sections: ChapterPlan['sections']
+): Promise<boolean[]> {
+  if (!outlineDescription || sections.length === 0) {
+    return sections.map(() => true)
+  }
+
+  const sectionsText = sections
+    .map((s, i) => {
+      const parts = [
+        `${i + 1}. 标题：${s.title || '未命名'}`,
+        `摘要：${s.summary || ''}`,
+        `事件：${(s.events ?? []).join('、')}`,
+        `字数：${s.wordCount ?? 0}`,
+      ]
+      return parts.join('\n')
+    })
+    .join('\n\n')
+
+  const messages: Message[] = [
+    {
+      role: 'system',
+      content: `你是小说章节规划校验助手。请根据本章大纲描述，判断每个 section 是否直接服务于大纲核心事件。
+
+判断标准：
+1. section 的标题、摘要或事件必须与大纲描述中的核心情节、核心动作、核心冲突直接相关，才算核心事件。
+2. 如果只是铺垫、过渡、回忆、支线、前章遗留差事、背景介绍、气氛描写，不算核心事件。
+3. 不要过度宽容，只有明显属于大纲核心事件的 section 才返回 true。
+4. 只输出 JSON，格式为 {"results": [true, false, ...]}，顺序与输入 section 一致，不要解释。`,
+    },
+    {
+      role: 'user',
+      content: `【本章大纲描述】\n${outlineDescription}\n\n【章节规划 sections】\n${sectionsText}`,
+    },
+  ]
+
+  try {
+    if (provider.chatStructured) {
+      const response = await provider.chatStructured<{ results: boolean[] }>(
+        messages,
+        CORE_SECTION_JUDGE_SCHEMA,
+        0.3
+      )
+      return response.results
+    }
+
+    const text = await provider.chat(messages, 0.3)
+    const parsed = JSON.parse(text) as { results: boolean[] }
+    return parsed.results
+  } catch (err) {
+    logger.warn('[MuseFlow] 模型判断核心事件失败，回退到宽松模式:', err)
+    return sections.map(() => true)
+  }
+}
+
+export async function validateChapterTimeAnchor(
   chapterPlan: ChapterPlan,
-  previousChapterContent: string | null
-): { valid: boolean; reason?: string } {
+  previousChapterContent: string | null,
+  provider: ModelProvider
+): Promise<{ valid: boolean; reason?: string }> {
   const anchor = chapterPlan.chapterTimeAnchor ?? ''
   if (!anchor || !previousChapterContent || previousChapterContent.trim().length === 0) {
     return { valid: true }
   }
 
-  if (!PREVIOUS_TIME_MARKERS.test(anchor)) {
-    return { valid: true }
-  }
-
-  const matches = anchor.matchAll(COMPLETION_MARKERS)
-  for (const match of matches) {
-    const markerIndex = match.index ?? 0
-    const prefix = anchor.slice(0, markerIndex)
-    const eventPhrase = prefix.match(/[\u4e00-\u9fff]{2,}(?=[，、；：]?$)/)?.[0] ?? ''
-    if (eventPhrase.length === 0) continue
-
-    const eventKeywords = extractChineseKeywords(eventPhrase)
-    const hasOverlap = eventKeywords.some(kw => previousChapterContent.includes(kw))
-    if (!hasOverlap) {
-      return {
-        valid: false,
-        reason: `chapterTimeAnchor 声称上一章已完成"${eventPhrase}"，但上一章正文未提及该事件`,
-      }
-    }
-  }
-
-  return { valid: true }
+  const results = await batchValidateTimeAnchors(provider, [
+    { anchor, previousContent: previousChapterContent },
+  ])
+  return results[0] ?? { valid: true }
 }
 
 export async function expandOutlineForChapter(
@@ -67,8 +117,12 @@ export async function expandOutlineForChapter(
 
   const planningConfig = getChapterPlanningConfig(state.genre)
 
+  const provider = createProvider()
+  const judgeCoreSections: CoreSectionJudge = (description, sections) =>
+    judgeCoreSectionsWithModel(provider, description, sections)
+
   const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
-  const pendingTasksHint = reconcileOutlineWithState(state, chapterIndex, planningConfig)
+  const pendingTasksHint = await reconcileOutlineWithState(state, chapterIndex, planningConfig, provider)
   const boundaryHints = [nextBoundaryHint].filter(h => h.length > 0)
 
   const formattedOutline = [
@@ -99,7 +153,9 @@ export async function expandOutlineForChapter(
   }
 
   // 强制预算循环：校验核心事件占比和非核心段落字数，不合格则带约束重试
-  let budgetValidation = validateChapterPlanBudget(chapterPlan, planningConfig)
+  const outlineDescription = outlineItem.description
+
+  let budgetValidation = await validateChapterPlanBudget(chapterPlan, planningConfig, outlineDescription, judgeCoreSections)
   let budgetAttempts = 0
   const maxBudgetAttempts = 3
 
@@ -120,7 +176,7 @@ export async function expandOutlineForChapter(
     if (!replanned) break
 
     chapterPlan = replanned
-    budgetValidation = validateChapterPlanBudget(chapterPlan, planningConfig)
+    budgetValidation = await validateChapterPlanBudget(chapterPlan, planningConfig, outlineDescription, judgeCoreSections)
     budgetAttempts++
   }
 
@@ -140,7 +196,7 @@ export async function expandOutlineForChapter(
 
   if (chapterIndex > 0) {
     const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)
-    const validation = validateChapterTimeAnchor(chapterPlan, previousContent)
+    const validation = await validateChapterTimeAnchor(chapterPlan, previousContent, provider)
     if (!validation.valid) {
       logger.warn(`[MuseFlow] ${validation.reason}`)
       logger.warn('[MuseFlow] 时间锚点与上一章正文不一致，将使用 storyState 时间作为参考')

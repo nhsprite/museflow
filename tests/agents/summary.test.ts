@@ -318,4 +318,76 @@ describe('SummaryAgent prompt', () => {
     const result = processSummaryOutput(output, 3)
     expect(result?.storyState?.canonicalFacts?.[0].value).toBe('样本A在实验室B')
   })
+
+  it('auto-promotes source-like critical keyItems to canonicalFacts', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [
+          { text: '长命锁：鹤卿颈上的金银错丝长命锁，是苏家打的满月礼', importance: 'critical' },
+        ],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 8)
+    expect(result?.storyState?.canonicalFacts?.length).toBeGreaterThanOrEqual(1)
+    const sourceFact = result?.storyState?.canonicalFacts?.find(f => f.attribute === '来源' || f.attribute === '制造者')
+    expect(sourceFact).toBeDefined()
+    expect(sourceFact?.subject).toContain('长命锁')
+    expect(sourceFact?.value).toContain('苏家')
+  })
+
+  it('does not duplicate canonical facts when source fact already extracted by model', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [
+          { text: '长命锁：是苏家打的满月礼', importance: 'critical' },
+        ],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            { subject: '长命锁', attribute: '来源', value: '苏家打的满月礼', establishedIn: 8 },
+          ],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 8)
+    expect(result?.storyState?.canonicalFacts?.length).toBe(1)
+  })
 })

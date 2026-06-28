@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { finalize_chapter } from '../../src/graph/nodes.js'
+import { finalize_chapter } from '../../src/graph/nodes/finalization.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { Issue } from '../../src/types/agent.js'
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
@@ -34,15 +34,6 @@ vi.mock('../../src/agents/index.js', async () => {
     }),
   }
 })
-
-vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
-  appendTimelineSnapshot: vi.fn().mockReturnValue({}),
-  saveForeshadowStack: vi.fn(),
-  saveForeshadowAlerts: vi.fn(),
-  getTimeline: vi.fn().mockReturnValue([]),
-  getLatestSnapshot: vi.fn().mockReturnValue(null),
-  getForeshadowAlertsFromDb: vi.fn().mockReturnValue([]),
-}))
 
 vi.mock('../../src/graph/checkpointer.js', () => ({
   getCheckpointer: vi.fn().mockReturnValue({

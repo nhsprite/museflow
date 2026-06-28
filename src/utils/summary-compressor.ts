@@ -33,7 +33,7 @@ interface ChapterSummaryData {
   mood?: string
 }
 
-function getImportanceThreshold(level: CompressionLevel): ImportanceLevel {
+export function getImportanceThreshold(level: CompressionLevel): ImportanceLevel {
   switch (level) {
     case 'full':
       return 'minor'
@@ -176,7 +176,7 @@ function compressSummaryByImportance(
   return result
 }
 
-export function compressSummaryLegacy(
+function compressSummaryLegacy(
   summary: string,
   level: CompressionLevel
 ): string {
@@ -246,49 +246,6 @@ export function buildLayeredSummaries(
   return result.join('\n\n')
 }
 
-export function estimateCompressedLength(
-  summaries: string[],
-  currentChapterIndex: number
-): number {
-  let total = 0
-  for (let i = 0; i < summaries.length && i < currentChapterIndex; i++) {
-    const level = getCompressionLevel(i, currentChapterIndex)
-    const summary = summaries[i] || ''
-    const data = parseSummaryJson(summary)
-
-    if (data) {
-      const threshold = getImportanceThreshold(level)
-      let sectionCount = 0
-
-      sectionCount += filterByImportance(data.keyEvents, threshold).length
-      sectionCount += filterByImportance(data.locations, threshold).length
-      sectionCount += filterByImportance(data.keyItems, threshold).length
-      sectionCount += filterByImportance(data.activePlots, threshold).length
-
-      const characterFactLines = formatCharacterFacts(data.characterFacts, threshold)
-      sectionCount += characterFactLines.length
-
-      if (data.characters && data.characters.length > 0) sectionCount++
-      if (data.mood) sectionCount++
-
-      total += Math.min(summary.length, sectionCount * 50 + 100)
-    } else {
-      switch (level) {
-        case 'full':
-          total += summary.length
-          break
-        case 'medium':
-          total += Math.min(summary.length, DEFAULT_CONFIG.mediumLimit)
-          break
-        case 'minimal':
-          total += Math.min(summary.length, DEFAULT_CONFIG.minimalLimit)
-          break
-      }
-    }
-  }
-  return total
-}
-
 export function filterCharacterFactsByImportance(
   summaryJson: string,
   threshold: ImportanceLevel
@@ -315,4 +272,3 @@ export function filterKeyEventsByImportance(
   return filterByImportance(data.keyEvents, threshold)
 }
 
-export { getImportanceThreshold, meetsImportanceThreshold }

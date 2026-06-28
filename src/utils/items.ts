@@ -1,23 +1,16 @@
-export const DEFAULT_UNIT_WORDS = [
-  '一个', '一件', '一本', '一张', '一封', '一份', '一把',
-  '这个', '那个', '这件', '那件', '这张', '那张', '这封', '那封', '这份', '那份',
-  '这块', '那块',
-]
-
 const DESCRIPTIVE_SUFFIXES = /[（(][^）)]*[）)]/g
 
-export function canonicalizeItemName(name: string, customUnitWords?: string[]): string {
-  let normalized = name
+/**
+ * 规范化物品名。
+ *
+ * 删除书名号、括号注释等装饰性内容，使不同表述形式的同一物品更容易匹配。
+ * 不维护任何中文词汇列表或量词集合。
+ */
+export function canonicalizeItemName(name: string): string {
+  const normalized = name
     .replace(DESCRIPTIVE_SUFFIXES, '')
     .replace(/^[《〈「『【（\u005b\u007b\s]+|[》〉」』】）\u005d\u007d\s]+$/g, '')
     .trim()
-
-  const unitWords = customUnitWords ?? DEFAULT_UNIT_WORDS
-  for (const unit of unitWords) {
-    if (normalized.startsWith(unit)) {
-      normalized = normalized.slice(unit.length).trim()
-    }
-  }
 
   return normalized.replace(/\s+/g, ' ').trim()
 }

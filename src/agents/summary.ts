@@ -4,9 +4,11 @@ import type { Character } from '../types/character.js'
 import type { StoryState } from '../types/story-state.js'
 import type { Message } from '../model/provider.js'
 
-import { sanitizeStoryState } from '../utils/story-state-validation.js'
+import { sanitizeStoryState } from '../graph/utils/reconciler.js'
 import { OFFICIAL_CHARACTER_RULES, STATE_AUTHORITY_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { parseJsonFromLLM } from '../utils/json.js'
+import { generateId } from '../utils/id.js'
+import type { CanonicalFact } from '../types/story-state.js'
 
 export class SummaryAgent extends BaseAgent {
   constructor() {
@@ -81,16 +83,16 @@ ${STATE_AUTHORITY_RULES}
     "mood": "本章整体氛围/情绪",
     "supersededFacts": [
       {
-        "subject": "被覆盖的事实主体（如某物品/角色）",
+        "subject": "被覆盖的事实主体",
         "oldFact": "本章中提到的、但已知被后续大纲覆盖的旧事实",
-        "reason": "被覆盖的原因（如'后续大纲已更新此设定'）"
+        "reason": "被覆盖的原因"
       }
     ],
     "storyState": {
       "characterLocations": { "角色名": "当前所在地点" },
-      "characterStatus": { "角色名": "当前状态（受伤/中毒/健康/情绪等）" },
+      "characterStatus": { "角色名": "当前状态" },
       "keyItemsLocation": { "物品名": "当前位置或持有者" },
-      "keyItemsState": { "物品名": "当前状态（活跃/沉寂/受损/充能中/封印等）" },
+      "keyItemsState": { "物品名": "当前状态" },
       "activePlots": ["进行中情节线"],
       "revealedSecrets": ["本章新揭示的秘密"],
       "pendingTasks": [
@@ -117,21 +119,20 @@ ${STATE_AUTHORITY_RULES}
         }
       ],
       "currentScene": "本章主要场景",
-      "storyTime": "故事内时间（如第三天傍晚）"
+      "storyTime": "故事内时间"
     }
   }
 </output_format>
 
 <importance_criteria>
-  <critical>对后续章节有决定性影响，远距离章节也必须保留。例如：角色死亡、重大身份揭露、核心物品获得、关键伏笔埋下</critical>
-  <major>对近期章节有影响，中期距离保留。例如：角色关系变化、新能力获得、重要对话承诺</major>
-  <minor>仅对本章或极近期有参考价值，远距离可丢弃。例如：场景细节描写、临时情绪反应、次要角色互动</minor>
+  <critical>对后续章节有决定性影响，远距离章节也必须保留</critical>
+  <major>对近期章节有影响，中期距离保留</major>
+  <minor>仅对本章或极近期有参考价值，远距离可丢弃</minor>
 </importance_criteria>
 
   <character_identity_continuity>
   <requirement>描述角色身份时，必须沿用前文已建立的核心身份，不要因本章临时承担的任务而改变核心定位</requirement>
-  <requirement>例如：如果某角色在前文是"助理"，本章即使临时帮忙整理文件、传话或跑腿，也应描述为"助理，本章临时协助整理文件"，而不是改写为"秘书"或"司机"</requirement>
-  <requirement>核心身份变化必须基于明确的剧情事件（如被正式收房、被逐出府邸、身份揭露），不能因临时任务而变化</requirement>
+  <requirement>核心身份变化必须基于明确的剧情事件，不能因临时任务而变化</requirement>
   <requirement>如果本章确实发生了导致身份变化的事件，在 characterFacts 中明确标注，并在 summary 中说明变化原因</requirement>
   </character_identity_continuity>
 
@@ -153,7 +154,6 @@ ${STATE_AUTHORITY_RULES}
 
 <pending_tasks_requirements>
   <requirement>提取本章中角色领受的、需要在后续章节执行的差事或任务</requirement>
-  <requirement>包括"明日去某处"、"后日办某事"、"三日期限内完成"等明确行动指令</requirement>
   <requirement>如果本章完成了前章遗留的差事，将其 status 标记为 "done"</requirement>
   <requirement>如果本章推迟了前章遗留的差事，保持 status 为 "pending" 并更新 dueTime 或 dueChapter</requirement>
   <requirement>如果后续大纲已覆盖某条差事，将其 status 标记为 "superseded"</requirement>
@@ -161,9 +161,8 @@ ${STATE_AUTHORITY_RULES}
 </pending_tasks_requirements>
 
 <superseded_facts_requirements>
-  <requirement>如果本章提到的某个"事实"已知被后续章节的大纲覆盖或更新（如某物品的位置、某个角色的身份等），请在 supersededFacts 中记录该旧事实</requirement>
+  <requirement>如果本章提到的某个事实已知被后续章节的大纲覆盖或更新，请在 supersededFacts 中记录该旧事实</requirement>
   <requirement>这有助于后续章节避免将旧事实当作当前有效信息来使用</requirement>
-  <example>如果本章说"样本在实验室A"，但后续大纲已更新为"样本在实验室B"，则记录 supersededFact: {subject: "样本", oldFact: "样本在实验室A", reason: "后续大纲已更新位置"}</example>
 </superseded_facts_requirements>
 
 <canonical_facts_requirements>
@@ -171,10 +170,15 @@ ${STATE_AUTHORITY_RULES}
   <requirement>每个权威事实必须包含：subject（事实主体）、attribute（属性维度）、value（权威值）</requirement>
   <requirement>如果某个权威事实覆盖了前文章节中的旧认知，必须填写 supersedes 数组，指明被覆盖的章节索引和旧值</requirement>
   <requirement>章节索引从0开始计数：第1章对应0，第2章对应1，以此类推</requirement>
-  <requirement>示例：某物品在本章从"实验室A"转移到"实验室B"，则记录 canonicalFact: {subject: "该物品", attribute: "所在位置", value: "实验室B", establishedIn: 当前章节索引, supersedes: [{chapter: 旧章节索引, oldValue: "实验室A"}]}</requirement>
   <requirement>只记录本章有明确变化或重新确认的事实；没有变化的事实不必重复记录</requirement>
   <requirement>权威事实的 value 必须使用完整、无歧义的名称，禁止使用"此物"、"该物"、"前述物品"、"此件"、"那件"等依赖上下文的代词。value 中必须重复使用 subject 的完整名称，或写出能唯一识别该物品的完整描述；如果涉及多个同类物品，必须分别写明其完整名称和用途。</requirement>
   <requirement>如果某个事实涉及"某物品不用于某用途"，必须同时写明该物品的完整名称和该用途的完整名称，避免后续章节将两个不同用途的物品混淆。</requirement>
+  <requirement>【关键】必须提取以下高约束性事实，并标记为 critical 重要性：
+    - 关键物品/设定的来源、制造者、赠予者、材质、来历（attribute 建议为"来源"、"制造者"或"材质"）
+    - 角色之间明确达成的承诺、约定、交易条件、限制、底线
+    - 角色制定的计划、策略及其关键约束条件
+    - 关键物品/角色的身份、归属、持有者
+  </requirement>
 </canonical_facts_requirements>
 
   <story_state_requirements>
@@ -183,7 +187,7 @@ ${STATE_AUTHORITY_RULES}
   <requirement>keyItemsLocation: 关键物品在本章结束时的唯一位置或持有者。同一物品只能有一条记录；如果位置发生变化，只记录本章结束时的最终位置，不得同时保留旧位置</requirement>
   <requirement>keyItemsLocation 必须使用统一、标准的物品名称，禁止同一物品以多个别名并存</requirement>
   <requirement>如果某个关键物品位置没有变化，直接省略该物品或使用"同前"，不要重复记录相同位置</requirement>
-  <requirement>keyItemsState: 关键物品在本章结束时的状态（如"活跃/沉寂/受损/充能中/封印"）。如果物品状态发生变化，必须记录新状态</requirement>
+  <requirement>keyItemsState: 关键物品在本章结束时的状态。如果物品状态发生变化，必须记录新状态</requirement>
   <requirement>activePlots: 本章结束时尚未完结的情节线</requirement>
   <requirement>revealedSecrets: 本章中新揭示的秘密或真相（之前未揭示的）</requirement>
   <requirement>pendingTasks: 本章中角色新领受的、或前章遗留并在本章状态发生变化的待办差事</requirement>
@@ -205,6 +209,95 @@ ${STATE_AUTHORITY_RULES}
   protected parse(content: string): AgentOutput {
     return parseJsonFromLLM(content)
   }
+}
+
+interface ImportanceObject {
+  text: string
+  importance: string
+}
+
+const SOURCE_PATTERNS = [
+  // subject + 由 + value + 打造/铸造/制造/所铸/制成
+  { regex: /^(.+?)由(.+?)(?:打造|铸造|制造|所铸|制成)$/, attribute: '制造者' },
+  // subject + 是 + value + 赠予/所赐/给予/赠送/送予/打的/制作/所做/所制
+  { regex: /^(.+?)是(.+?)(?:赠予|所赐|给予|赠送|送予|打的|制作|所做|所制)$/, attribute: '来源' },
+  // subject + 来自/源于/出自 + value
+  { regex: /^(.+?)(?:来自|源于|出自|来源自)(.+)$/, attribute: '来源' },
+  // subject + 的 + (制造者|来源|持有者|身份) + 是 + value
+  { regex: /^(.+?)的(?:制造者|来源|持有者|身份)是(.+)$/, attribute: '来源' },
+  // subject + 为 + value + 所铸/所制/所打/打造/持有/所有
+  { regex: /^(.+?)为(.+?)(?:所铸|所制|所打|打造|持有|所有)$/, attribute: '来源' },
+]
+
+const SOURCE_KEYWORDS = /(?:由|是)(?:[^，。]+?)(?:打造|铸造|制造|所铸|制成|赠予|所赐|给予|赠送|送予|打的|制作|所做|所制)|(?:来自|源于|出自|来源自)[^，。]+|(?:制造者|来源|持有者|身份)是[^，。]+|为[^，。]+?(?:所铸|所制|所打|打造|持有|所有)/g
+
+function extractSourceFactsFromText(text: string, defaultSubject: string, chapterIndex: number): CanonicalFact[] {
+  const facts: CanonicalFact[] = []
+  const cleanedText = text.replace(/[\s\n]+/g, '').trim()
+
+  for (const pattern of SOURCE_PATTERNS) {
+    const match = cleanedText.match(pattern.regex)
+    if (match && match[1] && match[2]) {
+      const subject = match[1].trim()
+      const value = match[2].trim()
+      if (subject.length > 0 && value.length > 0) {
+        facts.push({
+          id: generateId('fact'),
+          subject,
+          attribute: pattern.attribute,
+          value,
+          establishedIn: chapterIndex,
+        })
+      }
+    }
+  }
+
+  // Fallback: if no structured pattern matched but source keywords exist,
+  // create a fact with the default subject and the source snippet as value.
+  if (facts.length === 0 && SOURCE_KEYWORDS.test(cleanedText)) {
+    const sourceMatch = cleanedText.match(SOURCE_KEYWORDS)
+    if (sourceMatch && sourceMatch[0]) {
+      facts.push({
+        id: generateId('fact'),
+        subject: defaultSubject,
+        attribute: '来源',
+        value: sourceMatch[0].trim(),
+        establishedIn: chapterIndex,
+      })
+    }
+  }
+
+  return facts
+}
+
+function extractSourceFacts(data: Record<string, unknown>, chapterIndex: number): CanonicalFact[] {
+  const facts: CanonicalFact[] = []
+
+  const keyItems = Array.isArray(data['keyItems']) ? data['keyItems'] as ImportanceObject[] : []
+  for (const item of keyItems) {
+    if (!item || typeof item !== 'object' || item.importance !== 'critical') continue
+    const text = item.text || ''
+    // Key item text format is typically "物品名: 描述"
+    const [subjectPart, ...descParts] = text.split(/[:：]/)
+    const subject = subjectPart ? subjectPart.trim() : text.trim()
+    const description = descParts.join('：').trim()
+    const targetText = description.length > 0 ? description : text
+    facts.push(...extractSourceFactsFromText(targetText, subject, chapterIndex))
+  }
+
+  const characterFacts = Array.isArray(data['characterFacts']) ? data['characterFacts'] as Array<{ character?: string; facts?: ImportanceObject[] }> : []
+  for (const entry of characterFacts) {
+    if (!entry || typeof entry !== 'object') continue
+    const character = entry.character || ''
+    const factsList = Array.isArray(entry.facts) ? entry.facts : []
+    for (const fact of factsList) {
+      if (!fact || typeof fact !== 'object' || fact.importance !== 'critical') continue
+      // Character facts about source usually mention an item; use the fact text itself as default subject.
+      facts.push(...extractSourceFactsFromText(fact.text, character, chapterIndex))
+    }
+  }
+
+  return facts
 }
 
 export function processSummaryOutput(
@@ -341,6 +434,20 @@ export function processSummaryOutput(
   })
 
   let storyState = extractStoryState()
+
+  // Auto-promote source-like critical facts to canonicalFacts as a safety net.
+  if (storyState) {
+    const sourceFacts = extractSourceFacts(data, chapterIndex ?? 0)
+    if (sourceFacts.length > 0) {
+      const existingFacts = storyState.canonicalFacts ?? []
+      const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}`))
+      const newFacts = sourceFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}`))
+      if (newFacts.length > 0) {
+        logger.info(`[MuseFlow] SummaryAgent 自动提升 ${newFacts.length} 条来源类权威事实`)
+        storyState.canonicalFacts = [...existingFacts, ...newFacts]
+      }
+    }
+  }
 
   if (storyState && characters && characters.length > 0) {
     const report = sanitizeStoryState(storyState, characters, { preserveExisting: true, existingStoryState, chapterIndex })

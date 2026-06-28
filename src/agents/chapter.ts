@@ -1,10 +1,10 @@
 import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ChapterMeta } from '../types/chapter.js'
-import type { ForeshadowItem } from '../types/foreshadow.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
+import { calculateKeywordOverlap } from '../utils/text-similarity.js'
 import {
   AI_PHRASE_PROHIBITIONS,
   TIMELINE_RULES,
@@ -71,7 +71,7 @@ ${FACT_CONSISTENCY_RULES}
 <mandatory>【必须处理的上游状态冲突 - 写正文前必须解决】</mandatory>
 ${state.stateConflicts}
 
-<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作（递交、接取、拾取、放置、转交、藏匿等）完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>
+<mandatory>【强制要求】如果上述冲突涉及物品位置矛盾，本章必须明确该物品的唯一当前位置，并通过清晰的角色动作完成转移，不得让同一物品同时出现在两个位置；如果涉及歧义物品名，本章必须使用统一标准名称，禁止同一物品以多个别名并存。</mandatory>
 </state_conflicts>`
       : ''
 
@@ -80,7 +80,7 @@ ${state.stateConflicts}
 - 本章只能呈现大纲中明确列出的情节点，不得擅自添加大纲未提及的新情节、新场景或新角色
 - 如果大纲中某角色被定位为隐藏观察者、暗中保护者或类似非公开定位，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
 - 不得擅自增加大纲未提及的、以考验或测试角色为核心目的的情节
-- 不得擅自改变大纲中明确指定的角色关系（如隐藏身份不得变为正式入队）
+- 不得擅自改变大纲中明确指定的角色关系
 - 如果本章规划（chapterPlan）将某条前章遗留差事标记为 postponed 或 background，本章只需一句话带过或承认其待办状态，不得展开为完整场景
 - 如果大纲中出现"后续章节边界提示"或"跨章节边界冲突"，必须严格遵守其中的强制要求：不要把后续章节的核心事件提前解决、不要重复处理前章已解决的事件
 </outline_compliance>`
@@ -165,7 +165,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 - 标记为 executed 的差事：本章必须完整呈现其执行过程
 - 标记为 postponed 的差事：本章只需承认其待办/推迟状态，不得展开执行
 - 标记为 superseded 的差事：本章不得提及，已被后续大纲覆盖
-- 标记为 background 的差事：本章只能用一句话带过（如"某事已安排"、"某事改日再办"），不得超过 {MAX_BACKGROUND_TASK_WORD_COUNT} 字，不得写成独立场景
+- 标记为 background 的差事：本章只能用一句话带过，不得超过 {MAX_BACKGROUND_TASK_WORD_COUNT} 字，不得写成独立场景
 </task_resolutions>`
       : ''
 
@@ -216,7 +216,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 <title>标题：${chapterInfo.title}</title>
 <description>核心事件：${chapterInfo.description}</description>
 
-<important>【重要】大纲中的每个情节点都必须完整呈现！如果大纲中提到"与此同时"、"另外"、"并且"等连接的多个事件，必须在章节中呈现所有事件，不可遗漏任何情节点！</important>
+<important>【重要】大纲中的每个情节点都必须完整呈现！如果大纲中用连接词串联多个事件，必须在章节中呈现所有事件，不可遗漏任何情节点！</important>
 </chapter_outline>
 
 <world_setting>
@@ -391,7 +391,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
 
     const facts: string[] = []
     if (canonicalFacts) {
-      facts.push(`【权威事实】\n${canonicalFacts}`)
+      facts.push(`【权威事实】\n${this.sortCanonicalFactsByOutlineRelevance(canonicalFacts, state.outline)}`)
     }
     if (characterLocations) {
       facts.push(`【角色位置】\n${characterLocations}`)
@@ -412,11 +412,26 @@ ${FORESHADOW_DISCIPLINE_RULES}
     return buildCanonicalFactsSection(facts)
   }
 
+  private sortCanonicalFactsByOutlineRelevance(canonicalFactsText: string, outline: string): string {
+    const lines = canonicalFactsText.split('\n').filter(line => line.trim().length > 0)
+    if (lines.length === 0) return ''
+
+    const scored = lines.map(line => ({
+      line,
+      score: calculateKeywordOverlap(line, outline),
+    }))
+
+    scored.sort((a, b) => b.score - a.score)
+    return scored.map(s => s.line).join('\n')
+  }
+
   private buildAbsoluteConstraints(state: Required<AgentState>): string {
     const constraints: string[] = [
       '本章不得提前完成或彻底收尾下一章大纲中的核心行动。',
       '本章不得重复呈现上一章已标记为"已完成/已揭示"的核心事件。',
       '本章对关键物品状态的改变必须与上一章结束时的权威事实一致，并有明确的角色动作支撑。',
+      '涉及关键物品/设定的来源、制造者、来历、赠予者时，必须与【权威事实】中的记录一致；若权威事实未记录且大纲未明确引入新来源，必须保持来源未说明，严禁 invent 具体来源。',
+      '本章执行大纲动作所需的新执行者/地点，必须优先从已建立角色、大纲登场角色或前文已登场角色中选择；若均不适合，只能虚构一个无姓名、无背景、不进入 storyState 的功能性角色，且不得在 storyState 中留下记录。',
     ]
 
     if (state.nextChapterBoundary) {
@@ -582,38 +597,5 @@ ${FORESHADOW_DISCIPLINE_RULES}
     }
     const middle = paragraphs.slice(1, -1)
     return middle.join(' ').substring(0, 300) + '...'
-  }
-
-  extractForeshadows(content: string, chapterIndex: number): ForeshadowItem[] {
-    const foreshadowPatterns = [
-      /(?:注意到?|发现|觉察到?|预感到?|感觉到?)(.+)（为(.+)埋下伏笔）/gi,
-      /(.+)似乎暗示着(.+)/gi,
-      /(?:他|她|它|他们)(?:似乎?|仿佛)?(.+)（这为(.+)留下了悬念）/gi,
-    ]
-
-    const foreshadows: ForeshadowItem[] = []
-    const seen = new Set<string>()
-
-    for (const pattern of foreshadowPatterns) {
-      let match
-      while ((match = pattern.exec(content)) !== null) {
-        const text = match[1]?.trim() || match[0]
-        const futureChapter = match[3] ? parseInt(match[3]) : chapterIndex + 5
-        if (!seen.has(text) && text.length > 5) {
-          seen.add(text)
-          foreshadows.push({
-            id: generateId(),
-            text,
-            expectedFulfillChapter: Math.min(futureChapter, chapterIndex + 10),
-            createdAt: Date.now(),
-            createdAtChapter: chapterIndex + 1,
-            status: 'planted',
-            isExplicit: false,
-          })
-        }
-      }
-    }
-
-    return foreshadows.slice(0, 5)
   }
 }

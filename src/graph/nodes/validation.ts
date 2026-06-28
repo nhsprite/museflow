@@ -12,58 +12,10 @@ import { generateId } from '../../utils/id.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { isSemanticallyRelated } from '../../utils/text-similarity.js'
-import { buildCharacterFactTimeline, formatStoryState } from '../utils/story-state.js'
+import { buildCharacterFactTimeline, formatStoryState } from '../utils/reconciler.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent, buildConsistencyOutlineContext } from './planning.js'
 import { countChineseWords } from '../../utils/text.js'
-import type { Issue } from '../../types/agent.js'
-import type { CanonicalFact } from '../../types/story-state.js'
-
-/**
- * 保守过滤：如果某个 consistency issue 的描述直接否定了 canonicalFact 中记录的事实，
- * 则视为校验器自身违背 canonical_facts_authority 规则，予以丢弃。
- * 该函数只处理明显矛盾，避免误伤合理的质疑。
- */
-export function filterIssuesAgainstCanonicalFacts(issues: Issue[], canonicalFacts: CanonicalFact[]): Issue[] {
-  if (canonicalFacts.length === 0) return issues
-
-  const negationMarkers = /不应|不应该|不可能|并非|不是|不在|没有|错误|矛盾|冲突/g
-
-  return issues.filter(issue => {
-    if (issue.type !== 'consistency') return true
-    const text = `${issue.description ?? ''} ${issue.suggestion ?? ''}`
-    if (!negationMarkers.test(text)) return true
-
-    for (const fact of canonicalFacts) {
-      const subject = fact.subject?.trim() ?? ''
-      const value = fact.value?.trim() ?? ''
-      if (subject.length < 2 || value.length < 5) continue
-
-      // 如果 issue 连事实主体都没提到，不可能是在否定该事实。
-      if (!text.includes(subject)) continue
-
-      // 提取 value 中除 subject 之外的核心断言（如"在实验室A"）。
-      // 如果 issue 文本包含该核心断言，同时又包含否定词，
-      // 则认为 issue 在直接否定该 canonicalFact。
-      const coreAssertion = value.replaceAll(subject, '').trim()
-      if (coreAssertion.length >= 2 && text.includes(coreAssertion)) {
-        logger.warn(
-          `[MuseFlow] consistency issue 与 canonicalFact 直接矛盾，已过滤: ${issue.description?.slice(0, 80)}... (fact: ${fact.subject}/${fact.attribute})`
-        )
-        return false
-      }
-
-      // 兜底：如果 issue 文本完整包含权威事实 value，也视为直接矛盾。
-      if (text.includes(value)) {
-        logger.warn(
-          `[MuseFlow] consistency issue 与 canonicalFact 直接矛盾，已过滤: ${issue.description?.slice(0, 80)}... (fact: ${fact.subject}/${fact.attribute})`
-        )
-        return false
-      }
-    }
-    return true
-  })
-}
 
 export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
@@ -146,7 +98,7 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
   }
 
   const output = await agent.run(agentState)
-  const { issues } = agent.processOutput(output)
+  const { issues } = await agent.processOutput(output)
 
   const updatedChapter = {
     ...chapter,
@@ -194,7 +146,7 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
   }
 
   const output = await agent.run(agentState)
-  let foreshadowStack = agent.processOutput(output, chapterIndex, cleanedForeshadowStack, content || undefined)
+  let foreshadowStack = await agent.processOutput(output, chapterIndex, cleanedForeshadowStack, content || undefined)
 
   const finalStack = foreshadowStack.filter(f => {
     if (f.createdAtChapter === currentChapter && f.text.length < 40 && !f.fulfilledChapter) {
@@ -235,7 +187,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
   }
 
   const output = await agent.run(agentState)
-  const issues = agent.processOutput(output)
+  const issues = await agent.processOutput(output)
 
   return issues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...issues] } : {}
 }
@@ -283,8 +235,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
   }
 
   const output = await agent.run(agentState)
-  const rawIssues = agent.processOutput(output)
-  const issues = filterIssuesAgainstCanonicalFacts(rawIssues, state.storyState?.canonicalFacts ?? [])
+  const issues = await agent.processOutput(output, state.storyState?.canonicalFacts ?? [])
 
   return issues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...issues] } : {}
 }
@@ -313,7 +264,7 @@ export async function verify_outline_compliance(state: ReducedGraphState): Promi
   }
 
   const output = await agent.run(agentState)
-  const { issues, isCompliant } = agent.processOutput(output)
+  const { issues, isCompliant } = await agent.processOutput(output)
 
   if (!isCompliant) {
     return {

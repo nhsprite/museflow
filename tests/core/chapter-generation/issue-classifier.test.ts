@@ -1,169 +1,84 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import * as contextJudge from '../../../src/utils/context-judge.js'
 import {
   isStateCorruptionIssue,
-  isItemLocationConflictIssue,
-  isInventedCharacterIssue,
-  isOutlineStateConflictIssue,
   isStructuralIssue,
 } from '../../../src/core/chapter-generation/issue-classifier.js'
 import type { Issue } from '../../../src/types/agent.js'
+import type { ModelProvider } from '../../../src/model/provider.js'
+
+vi.mock('../../../src/utils/context-judge.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof contextJudge>()
+  return {
+    ...actual,
+    batchClassifyIssues: vi.fn(),
+  }
+})
+
+function createProvider(): ModelProvider {
+  return { chat: vi.fn() }
+}
+
+function baseClassification(overrides: Partial<contextJudge.IssueClassification> = {}): contextJudge.IssueClassification {
+  return {
+    isStructural: false,
+    isCrossChapter: false,
+    isTaskConsistency: false,
+    isItemLocationConflict: false,
+    isInventedCharacter: false,
+    isOutlineStateConflict: false,
+    isLocal: false,
+    isStateCorruption: false,
+    isInterpretive: false,
+    ...overrides,
+  }
+}
 
 describe('isStateCorruptionIssue', () => {
-  it('returns true for item location conflict issues', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: '血封信笺同时出现在妆台抽屉和东院正房妆台暗屉，物品位置矛盾',
-    }
-    expect(isStateCorruptionIssue(issue)).toBe(true)
+  beforeEach(() => {
+    vi.mocked(contextJudge.batchClassifyIssues).mockReset()
   })
 
-  it('returns true for invented character issues', () => {
-    const issue: Issue = {
-      id: '2',
-      type: 'hallucination',
-      severity: 'error',
-      description: '本章 introduces 虚构角色“李四”，不在官方角色列表中',
-    }
-    expect(isStateCorruptionIssue(issue)).toBe(true)
+  it('returns true when the model classifies the issue as state corruption', async () => {
+    const issue: Issue = { id: '1', type: 'consistency', severity: 'error', description: 'sample' }
+    const provider = createProvider()
+    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStateCorruption: true })])
+    expect(await isStateCorruptionIssue(provider, issue)).toBe(true)
+    expect(contextJudge.batchClassifyIssues).toHaveBeenCalledWith(provider, [issue])
   })
 
-  it('returns true for outline state conflict issues', () => {
-    const issue: Issue = {
-      id: '3',
-      type: 'consistency',
-      severity: 'error',
-      description: '本章与权威事实冲突：canonical fact 中样本位置为实验室A，本章写为实验室B',
-    }
-    expect(isStateCorruptionIssue(issue)).toBe(true)
+  it('returns false when the model classifies the issue as not state corruption', async () => {
+    const issue: Issue = { id: '2', type: 'quality', severity: 'error', description: 'sample' }
+    const provider = createProvider()
+    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStateCorruption: false })])
+    expect(await isStateCorruptionIssue(provider, issue)).toBe(false)
   })
 
-  it('returns false for local quality issues', () => {
-    const issue: Issue = {
-      id: '4',
-      type: 'quality',
-      severity: 'error',
-      description: '用词重复',
-    }
-    expect(isStateCorruptionIssue(issue)).toBe(false)
-  })
-
-  it('returns false for local consistency issues without state corruption markers', () => {
-    const issue: Issue = {
-      id: '5',
-      type: 'consistency',
-      severity: 'error',
-      description: '本章内部时间顺序不一致',
-    }
-    expect(isStateCorruptionIssue(issue)).toBe(false)
-  })
-
-  it('returns false for interpretive issues', () => {
-    const issue: Issue = {
-      id: '6',
-      type: 'consistency',
-      severity: 'error',
-      description: '角色反应过于平淡，表达方式可以更好',
-    }
-    expect(isStateCorruptionIssue(issue)).toBe(false)
-  })
-})
-
-describe('isItemLocationConflictIssue', () => {
-  it('detects location conflict keywords', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: '关键物品位置冲突',
-    }
-    expect(isItemLocationConflictIssue(issue)).toBe(true)
-  })
-})
-
-describe('isInventedCharacterIssue', () => {
-  it('detects invented character keywords', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'hallucination',
-      severity: 'error',
-      description: '虚构角色不在官方角色列表中',
-    }
-    expect(isInventedCharacterIssue(issue)).toBe(true)
-  })
-})
-
-describe('isOutlineStateConflictIssue', () => {
-  it('detects canonical fact conflict keywords', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: '与权威事实冲突',
-    }
-    expect(isOutlineStateConflictIssue(issue)).toBe(true)
+  it('falls back conservatively when no provider is given', async () => {
+    const issue: Issue = { id: '3', type: 'state_corruption', severity: 'error', description: 'sample' }
+    expect(await isStateCorruptionIssue(undefined, issue)).toBe(true)
   })
 })
 
 describe('isStructuralIssue', () => {
-  it('returns true for outline violations', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'outline_violation',
-      severity: 'error',
-      description: '缺少大纲要求的核心事件',
-    }
-    expect(isStructuralIssue(issue)).toBe(true)
+  beforeEach(() => {
+    vi.mocked(contextJudge.batchClassifyIssues).mockReset()
   })
 
-  it('returns true for cross-chapter issues referencing previous chapters', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: '前章中角色A已知某事实，本章却表现得像第一次听说',
-    }
-    expect(isStructuralIssue(issue)).toBe(true)
+  it('returns the model classification for structural issues', async () => {
+    const issue: Issue = { id: '1', type: 'outline_violation', severity: 'error', description: 'sample' }
+    const provider = createProvider()
+    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: true })])
+    expect(await isStructuralIssue(provider, issue)).toBe(true)
   })
 
-  it('returns true for issues referencing canonical facts', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: '本章与权威事实冲突',
-    }
-    expect(isStructuralIssue(issue)).toBe(true)
+  it('falls back to severity-based structural detection when no provider is given', async () => {
+    const issue: Issue = { id: '2', type: 'quality', severity: 'error', description: 'sample' }
+    expect(await isStructuralIssue(undefined, issue)).toBe(true)
   })
 
-  it('returns true for issues referencing pending tasks', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: '角色B未执行已确立的差事',
-    }
-    expect(isStructuralIssue(issue)).toBe(true)
-  })
-
-  it('returns false for local internal consistency issues', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: '本章内部时间顺序不一致',
-    }
-    expect(isStructuralIssue(issue)).toBe(false)
-  })
-
-  it('returns false for quality issues', () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'quality',
-      severity: 'error',
-      description: '用词重复',
-    }
-    expect(isStructuralIssue(issue)).toBe(false)
+  it('falls back to non-structural for warnings when no provider is given', async () => {
+    const issue: Issue = { id: '3', type: 'quality', severity: 'warning', description: 'sample' }
+    expect(await isStructuralIssue(undefined, issue)).toBe(false)
   })
 })

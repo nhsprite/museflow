@@ -96,7 +96,7 @@ describe('detect_consistency validation context', () => {
   })
 
   it('passes canonical facts to consistency agent', async () => {
-    const { detect_consistency } = await import('../../src/graph/nodes.ts')
+    const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
     const state = buildBaseState()
     state.storyState.canonicalFacts = [
@@ -110,7 +110,7 @@ describe('detect_consistency validation context', () => {
   })
 
   it('filters superseded facts from timeline when canonical facts exist', async () => {
-    const { detect_consistency } = await import('../../src/graph/nodes.ts')
+    const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
     const state = buildBaseState()
     state.currentChapterIndex = 2
@@ -157,7 +157,7 @@ describe('detect_consistency validation context', () => {
   })
 
   it('passes authoritative story state instead of only the reconciled state', async () => {
-    const { detect_consistency } = await import('../../src/graph/nodes.ts')
+    const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
     await detect_consistency({
       story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },
@@ -212,7 +212,7 @@ describe('detect_consistency validation context', () => {
   })
 
   it('redacts future chapter descriptions from consistency outline context', async () => {
-    const { detect_consistency } = await import('../../src/graph/nodes.ts')
+    const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
     await detect_consistency({
       story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },

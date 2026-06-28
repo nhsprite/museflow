@@ -1,12 +1,14 @@
 import { countChineseWords } from './text.js'
+import type { ModelProvider } from '../model/provider.js'
+import { batchValidateFixedContent } from './context-judge.js'
 
-export interface ValidationOptions {
+interface ValidationOptions {
   chapterIndex: number
   minWordCount?: number
   maxWordCount?: number
 }
 
-export interface ValidationResult {
+interface ValidationResult {
   valid: boolean
   content?: string
   error?: string
@@ -16,6 +18,28 @@ const CHINESE_NUMERALS: Record<string, number> = {
   '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
   '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
   '百': 100, '千': 1000, '万': 10000,
+}
+
+const REVISION_PLAN_KEYWORDS = [
+  '问题分析',
+  '修复建议',
+  '修改建议',
+  '改进建议',
+  '修改计划',
+  '修订计划',
+  '问题清单',
+  '修复清单',
+  '修改点',
+  '需修改',
+  '待修复',
+]
+
+function detectRevisionPlanShape(text: string): boolean {
+  let hitCount = 0
+  for (const keyword of REVISION_PLAN_KEYWORDS) {
+    if (text.includes(keyword)) hitCount++
+  }
+  return hitCount >= 2
 }
 
 function parseChineseNumber(str: string): number | null {
@@ -64,52 +88,11 @@ function findChapterHeading(text: string): string | null {
   return null
 }
 
-function looksLikeRevisionPlan(text: string): boolean {
-  const indicators = [
-    /问题分析\s*[：:]/,
-    /修复建议\s*[：:]/,
-    /修改建议\s*[：:]/,
-    /改进建议\s*[：:]/,
-    /问题梳理\s*[：:]/,
-    /需要修改\s*[：:]/,
-    /应该.*增加/,
-    /应该.*补充/,
-    /可以.*加入/,
-    /可以.*修改/,
-    /需要.*重写/,
-    /建议.*调整/,
-    /^\s*1\.\s+/m,
-    /^\s*2\.\s+/m,
-  ]
-
-  const indicatorHits = indicators.filter(pattern => pattern.test(text)).length
-  if (indicatorHits >= 2) return true
-
-  const modalMatches = text.match(/(应该|可以|需要|建议|必须|应当|最好)/g) ?? []
-  const wordCount = countChineseWords(text)
-  if (wordCount === 0) return false
-  const modalDensity = modalMatches.length / wordCount
-  if (modalDensity > 0.05) return true
-
-  return false
-}
-
-function containsChecklistArtifacts(text: string): boolean {
-  const artifacts = [
-    /预写对齐检查表/,
-    /自检清单/,
-    /\|\s*检查项\s*\|/,
-    /\|\s*来源\s*\|/,
-    /\[\s*x?\s*\]\s*大纲中的每个情节点/,
-    /\[\s*x?\s*\]\s*没有发现与大纲矛盾/,
-  ]
-  return artifacts.some(pattern => pattern.test(text))
-}
-
-export function validateFixedChapterContent(
+export async function validateFixedChapterContent(
   rawContent: string,
-  options: ValidationOptions
-): ValidationResult {
+  options: ValidationOptions,
+  provider?: ModelProvider
+): Promise<ValidationResult> {
   const { chapterIndex, minWordCount = 1500, maxWordCount } = options
 
   if (!rawContent || rawContent.trim().length === 0) {
@@ -130,6 +113,10 @@ export function validateFixedChapterContent(
     }
   }
 
+  if (detectRevisionPlanShape(rawContent)) {
+    return { valid: false, error: '修复后的内容疑似修改计划或问题分析，不是正文' }
+  }
+
   const wordCount = countChineseWords(rawContent)
   if (wordCount < minWordCount) {
     return {
@@ -145,12 +132,14 @@ export function validateFixedChapterContent(
     }
   }
 
-  if (looksLikeRevisionPlan(rawContent)) {
-    return { valid: false, error: '修复后的内容疑似修改计划或问题分析，不是正文' }
-  }
-
-  if (containsChecklistArtifacts(rawContent)) {
-    return { valid: false, error: '修复后的内容包含预写检查表残留' }
+  if (provider) {
+    const [validation] = await batchValidateFixedContent(provider, [rawContent])
+    if (validation?.looksLikeRevisionPlan) {
+      return { valid: false, error: '修复后的内容疑似修改计划或问题分析，不是正文' }
+    }
+    if (validation?.containsChecklistArtifacts) {
+      return { valid: false, error: '修复后的内容包含预写检查表残留' }
+    }
   }
 
   return { valid: true, content: rawContent }

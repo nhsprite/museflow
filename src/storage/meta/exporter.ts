@@ -8,6 +8,7 @@ import type { WorldContent } from '../../types/world.js'
 import type { ChapterOutline } from '../../types/outline.js'
 import type { ForeshadowItem } from '../../types/foreshadow.js'
 import type { StoryState } from '../../types/story-state.js'
+import type { StateSnapshot } from '../../types/timeline.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { logger } from '../../utils/logger.js'
 import { writeFileAtomic, ensureDir } from '../../utils/fs.js'
@@ -19,6 +20,7 @@ interface CheckpointState {
   outline: ChapterOutline[]
   chapters: (ChapterMeta | null)[]
   foreshadowStack: ForeshadowItem[]
+  timeline?: StateSnapshot[] | undefined
   storyState: StoryState
 }
 
@@ -82,7 +84,7 @@ export async function exportMetaFromCheckpoint(outputDir: string): Promise<void>
         updatedAt: Date.now(),
       }
     }),
-    timeline: existing?.timeline ?? [],
+    timeline: state.timeline ?? existing?.timeline ?? [],
     foreshadowStack: state.foreshadowStack,
     foreshadowAlerts: [],
     storyState: state.storyState,

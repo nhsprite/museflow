@@ -2,6 +2,15 @@ import type { ChapterPlanningConfig, GenreSkill } from '../types/genre.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
 import { getGenreSkill } from '../genres/registry.js'
 
+/**
+ * 判断章节规划中哪些 section 直接服务于大纲核心事件。
+ * 由调用方注入实现：可以是模型语义判断，也可以是基于规则的回退。
+ */
+export type CoreSectionJudge = (
+  outlineDescription: string | undefined,
+  sections: ChapterPlan['sections']
+) => Promise<boolean[]> | boolean[]
+
 export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = {
   coreEventRatioMin: 0.3,
   coreEventRatioTarget: 0.5,
@@ -16,6 +25,7 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   minSections: 3,
   maxSections: 6,
   minCoreSections: 2,
+  criticalFactAttributes: ['来源', '制造者', '赠予者', '持有者', '身份', '状态', '位置'],
 }
 
 export function getChapterPlanningConfig(genreName: string): Required<ChapterPlanningConfig> {
@@ -23,7 +33,7 @@ export function getChapterPlanningConfig(genreName: string): Required<ChapterPla
   return mergeChapterPlanningConfig(skill)
 }
 
-export function mergeChapterPlanningConfig(skill: GenreSkill | null): Required<ChapterPlanningConfig> {
+function mergeChapterPlanningConfig(skill: GenreSkill | null): Required<ChapterPlanningConfig> {
   return {
     ...DEFAULT_CHAPTER_PLANNING_CONFIG,
     ...(skill?.chapterPlanning ?? {}),
@@ -39,29 +49,41 @@ export interface ChapterPlanBudgetValidation {
   maxNonCoreWordCount: number
 }
 
-export function validateChapterPlanBudget(
+export async function validateChapterPlanBudget(
   plan: ChapterPlan,
   config: ChapterPlanningConfig,
-): ChapterPlanBudgetValidation {
+  outlineDescription?: string,
+  judgeCoreSections?: CoreSectionJudge,
+): Promise<ChapterPlanBudgetValidation> {
   const sections = plan.sections
   if (!sections || sections.length === 0) {
     return { valid: true, reason: undefined, totalWordCount: 0, coreWordCount: 0, coreRatio: 0, maxNonCoreWordCount: 0 }
   }
 
-  const coreSectionTitles = new Set(
-    (plan.outlineCheck ?? [])
-      .filter(c => c.fulfilled && c.section)
-      .map(c => c.section!.trim())
-  )
+  // 优先使用注入的语义判断函数（如模型调用）。
+  // 若未提供，则回退到 outlineCheck 中标注的 fulfilled section 标题匹配。
+  let coreFlags: boolean[]
+  if (judgeCoreSections) {
+    coreFlags = await judgeCoreSections(outlineDescription, sections)
+  } else {
+    const coreSectionTitles = new Set(
+      (plan.outlineCheck ?? [])
+        .filter(c => c.fulfilled && c.section)
+        .map(c => c.section!.trim())
+    )
+    coreFlags = sections.map(s => coreSectionTitles.has(s.title?.trim() ?? ''))
+  }
 
   let totalWordCount = 0
   let coreWordCount = 0
   let maxNonCoreWordCount = 0
 
-  for (const section of sections) {
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]
+    if (!section) continue
     const wordCount = section.wordCount ?? 0
     totalWordCount += wordCount
-    const isCore = coreSectionTitles.has(section.title?.trim() ?? '')
+    const isCore = coreFlags[i] ?? false
     if (isCore) {
       coreWordCount += wordCount
     } else {

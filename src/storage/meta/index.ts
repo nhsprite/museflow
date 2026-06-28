@@ -29,38 +29,12 @@ export interface StoryMeta {
   storyState?: StoryState
 }
 
-export function ensureStoryDir(storyId: string): string {
-  const dir = join(getOutputsDir(), storyId)
-  ensureDir(dir)
-  return dir
-}
-
-export function getStoryMetaPath(storyId: string): string {
-  return join(getOutputsDir(), storyId, 'meta.json')
-}
-
-export function getStoryMetaPathFromOutputDir(outputDir: string): string {
+function getStoryMetaPathFromOutputDir(outputDir: string): string {
   return join(outputDir, 'meta.json')
 }
 
-export async function readMetaJson(storyId: string): Promise<StoryMeta | null> {
-  const path = getStoryMetaPath(storyId)
-  if (!existsSync(path)) return null
-  try {
-    const content = readFileSync(path, 'utf-8')
-    return JSON.parse(content) as StoryMeta
-  } catch (err) {
-    logger.error(`Failed to read meta.json for story ${storyId}: ${err}`)
-    return null
-  }
-}
-
-export async function writeMetaJson(storyId: string, meta: StoryMeta): Promise<void> {
-  const outputDir = meta.story.outputDir
-  ensureDir(outputDir)
-  const path = getStoryMetaPathFromOutputDir(outputDir)
-  writeFileAtomic(path, JSON.stringify(meta, null, 2))
-  logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
+function getStoryMetaPath(storyId: string): string {
+  return join(getOutputsDir(), storyId, 'meta.json')
 }
 
 export function readMetaJsonSync(storyId: string): StoryMeta | null {
@@ -102,18 +76,6 @@ export function readMetaJsonSync(storyId: string): StoryMeta | null {
   return null
 }
 
-export function readMetaJsonSyncFromOutputDir(outputDir: string): StoryMeta | null {
-  const path = getStoryMetaPathFromOutputDir(outputDir)
-  if (!existsSync(path)) return null
-  try {
-    const content = readFileSync(path, 'utf-8')
-    return JSON.parse(content) as StoryMeta
-  } catch (err) {
-    logger.error(`Failed to read meta.json at ${outputDir}: ${err}`)
-    return null
-  }
-}
-
 export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
   const outputDir = meta.story.outputDir
   ensureDir(outputDir)
@@ -122,9 +84,3 @@ export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
   logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
 }
 
-// Re-export types used by other modules
-export type { Story, StoryCreateInput, StoryStatus } from '../../types/story.js'
-export type { ChapterMeta, ChapterStatus } from '../../types/chapter.js'
-export type { Character, CharacterCreateInput } from '../../types/character.js'
-export type { WorldContent } from '../../types/world.js'
-export type { StateSnapshot } from '../../types/timeline.js'

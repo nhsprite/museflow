@@ -1,11 +1,9 @@
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
-import { getState, getGraph, getOutputDirFromStoryId, runChapterGraph } from '../../core/runner.js'
+import { runOneChapter, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
-import { withSpinner, stopStepProgress, stopStepProgressQuiet } from '../utils/spinner.js'
+import { withSpinner } from '../utils/spinner.js'
 import { printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
-import { deleteChapterContent } from '../../storage/filesystem/writer.js'
-import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
 import { requireStoryState } from '../utils/story-loader.js'
@@ -41,9 +39,6 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
   let targetChapterIndex: number | undefined
 
   if (state.pendingIssues.length > 0) {
-    // rewriteRequested 为 true 说明上一章已在图节点里走到 request_rewrite，错误属于当前章。
-    // 但某些异常路径（如图抛错、checkpoint 未同步）会导致 rewriteRequested 仍为 false，
-    // 而 pendingIssues 中实际包含 error。因此以 issue severity 兜底判断。
     const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
     const currentChapterHasErrors = state.rewriteRequested || hasErrors
     targetChapterIndex = currentChapterHasErrors
@@ -101,7 +96,12 @@ async function handleRewrite(
   try {
     const result = await withSpinner(
       `正在重写第 ${chapterNum}/${totalChapters} 章...`,
-      () => rewriteChapter(storyId, userResponse, targetChapterIndex, retryIssues),
+      () => runOneChapter(storyId, {
+        mode: 'rewrite',
+        targetChapterIndex,
+        userResponse,
+        retryIssues,
+      }),
       `✅ 第 ${chapterNum} 章重写完成`,
       (result) => !result.rewriteRequested
     )
@@ -156,142 +156,6 @@ async function handleRewrite(
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
     updateStatus('error')
     process.exit(1)
-  }
-}
-
-function isForeshadowLikelyPolluted(item: ReducedGraphState['foreshadowStack'][number]): boolean {
-  const text = item.text
-  // Concise foreshadow hints are unlikely to be prompt pollution.
-  if (text.length <= 30) return false
-  // Outline-derived items are typically prompt/outline pollution rather than organic foreshadows.
-  if (item.source === 'outline') return true
-  // Multi-sentence text with narrative punctuation is likely narrative content, not a compact foreshadow.
-  const sentenceDelimiters = /[.!?。！？…]+/
-  const sentences = text.split(sentenceDelimiters).filter(s => s.trim().length > 0)
-  if (sentences.length >= 2 && text.length > 60) return true
-  // Very long single-sentence items are also suspect.
-  if (text.length > 120) return true
-  return false
-}
-
-async function loadRewriteBaseState(
-  storyId: string,
-  outputDir: string,
-  targetChapterIndex?: number
-): Promise<ReducedGraphState> {
-  const graph = getGraph()
-  const checkpointer = getCheckpointer()
-
-  if (targetChapterIndex === undefined) {
-    await checkpointer.clearPendingWrites(outputDir)
-    const snapshot = await graph.getState({ configurable: { thread_id: storyId, outputDir } })
-    return snapshot.values as ReducedGraphState
-  }
-
-  let checkpointId: string | undefined
-  const prevCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex)
-  if (prevCheckpoint) {
-    checkpointId = prevCheckpoint.checkpointId
-    console.log(`[MuseFlow] 已恢复第 ${targetChapterIndex} 章完成时的状态`)
-  } else {
-    const sameCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, targetChapterIndex + 1)
-    if (sameCheckpoint) {
-      checkpointId = sameCheckpoint.checkpointId
-      console.log(`[MuseFlow] 未找到第 ${targetChapterIndex} 章的 checkpoint，已恢复第 ${targetChapterIndex + 1} 章完成时的状态（将清理该章状态）`)
-    } else {
-      console.log('[MuseFlow] 未找到相关 checkpoint，将从当前状态继续')
-    }
-  }
-
-  const snapshot = await graph.getState({
-    configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
-  })
-  return snapshot.values as ReducedGraphState
-}
-
-async function rewriteChapter(
-  storyId: string,
-  userResponse: boolean,
-  targetChapterIndex?: number,
-  retryIssues: Issue[] = []
-): Promise<ReducedGraphState> {
-  console.log('[MuseFlow] 查找输出目录...')
-  const outputDir = getOutputDirFromStoryId(storyId)
-  if (!outputDir) {
-    throw new Error(`Story ${storyId} not found`)
-  }
-
-  console.log('[MuseFlow] 初始化 checkpoint 和 graph...')
-  const checkpointer = getCheckpointer()
-
-  console.log('[MuseFlow] 加载 graph state...')
-  const checkpointState = await loadRewriteBaseState(storyId, outputDir, targetChapterIndex)
-  console.log('[MuseFlow] graph state 加载完成')
-
-  const rewriteIndex = targetChapterIndex ?? (checkpointState.currentChapterIndex > 0 ? checkpointState.currentChapterIndex : 0)
-
-  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
-  for (let i = 0; i < rewriteIndex; i++) {
-    rewrittenChapters[i] = checkpointState.chapters[i] ?? null
-  }
-
-  const cleanedSummaries = checkpointState.chapterSummaries.slice(0, rewriteIndex)
-  const cleanedForeshadowStack = checkpointState.foreshadowStack.filter(
-    f => f.createdAtChapter < rewriteIndex + 1 && !isForeshadowLikelyPolluted(f)
-  )
-  const removedForeshadowCount = checkpointState.foreshadowStack.length - cleanedForeshadowStack.length
-  if (removedForeshadowCount > 0) {
-    console.log(`[MuseFlow] 清理 ${removedForeshadowCount} 个疑似由大纲污染生成的伏笔项`)
-  }
-
-  const cleanedPendingIssues = checkpointState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
-
-  const workingState: ReducedGraphState = {
-    ...checkpointState,
-    currentChapterIndex: rewriteIndex,
-    chapters: rewrittenChapters,
-    chapterSummaries: cleanedSummaries,
-    foreshadowStack: cleanedForeshadowStack,
-    chapterTimeAnchor: undefined,
-    pendingIssues: retryIssues.length > 0 ? retryIssues : cleanedPendingIssues,
-    rewriteApproved: userResponse,
-    rewriteRequested: false,
-    isWriting: true,
-    writeOneChapterOnly: true,
-    chapterPlan: targetChapterIndex !== undefined ? null : checkpointState.chapterPlan,
-    rewriteAttempts: 0,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: undefined,
-  }
-
-  if (targetChapterIndex !== undefined) {
-    console.log('[MuseFlow] 清理后续章节内容...')
-    for (let ch = targetChapterIndex + 1; ch <= checkpointState.totalChapters; ch++) {
-      await deleteChapterContent(outputDir, ch)
-    }
-  }
-  console.log('[MuseFlow] 开始生成章节...')
-
-  try {
-    console.log('[MuseFlow] 调用章节写作 graph...')
-    const result = await runChapterGraph(storyId, outputDir, workingState)
-    console.log('[MuseFlow] 章节写作 graph 完成')
-
-    if (!result.rewriteRequested && targetChapterIndex !== undefined) {
-      await checkpointer.pruneIntermediateCheckpoints(outputDir)
-    }
-
-    if (!result.rewriteRequested) {
-      stopStepProgress('章节重写完成')
-    }
-
-    return result
-  } catch (err) {
-    stopStepProgressQuiet()
-    throw err
   }
 }
 

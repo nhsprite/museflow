@@ -67,31 +67,10 @@ vi.mock('../../src/agents/index.js', () => ({
         },
       }
     }
+    processOutput(output: { content?: string }) {
+      return { content: output.content ?? '', chapterMeta: {} }
+    }
   },
-}))
-
-vi.mock('../../src/storage/meta/stores/story-state.js', () => ({
-  getStoryState: vi.fn().mockReturnValue(null),
-  saveStoryState: vi.fn(),
-  createEmptyStoryState: vi.fn().mockReturnValue({
-    characterLocations: {},
-    characterStatus: {},
-    keyItemsLocation: {},
-    keyItemsState: {},
-    activePlots: [],
-    revealedSecrets: [],
-    pendingTasks: [],
-    currentScene: '',
-    storyTime: '',
-  }),
-}))
-
-vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
-  appendTimelineSnapshot: vi.fn(),
-  getLatestSnapshot: vi.fn().mockReturnValue(null),
-  saveForeshadowStack: vi.fn(),
-  saveForeshadowAlerts: vi.fn(),
-  getForeshadowAlerts: vi.fn().mockReturnValue([]),
 }))
 
 vi.mock('../../src/utils/id.js', () => ({
@@ -110,6 +89,43 @@ vi.mock('../../src/genres/registry.js', () => ({
   getGenreSkill: vi.fn().mockReturnValue(null),
 }))
 
+vi.mock('../../src/graph/utils/reconciler.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/graph/utils/reconciler.js')>()
+  return {
+    ...actual,
+    prepareStoryStateForChapter: vi.fn().mockResolvedValue({
+      reconciledState: {
+        characterLocations: {},
+        characterStatus: {},
+        keyItemsLocation: {},
+        keyItemsState: {},
+        activePlots: [],
+        revealedSecrets: [],
+        pendingTasks: [],
+        currentScene: '',
+        storyTime: '',
+      },
+    }),
+  }
+})
+
+const mockFixAgent = {
+  run: vi.fn().mockResolvedValue({
+    success: true,
+    content: 'fixed paragraph 1\n\nfixed paragraph 2\n\nfixed paragraph 3',
+    data: {
+      modifiedParagraphs: [
+        { index: 0, content: 'fixed paragraph 1' },
+      ],
+    },
+  }),
+  processOutput: vi.fn().mockReturnValue({ content: 'fixed paragraph 1\n\nfixed paragraph 2\n\nfixed paragraph 3', chapterMeta: { id: 'fixed' } }),
+}
+
+vi.mock('../../src/graph/agent-factory.js', () => ({
+  getFixAgent: vi.fn().mockReturnValue(mockFixAgent),
+}))
+
 describe('auto_fix_warnings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -117,7 +133,7 @@ describe('auto_fix_warnings', () => {
   })
 
   it('calls fix_chapter when warnings exist and returns cleared pendingIssues', async () => {
-    const { auto_fix_warnings } = await import('../../src/graph/nodes.js')
+    const { auto_fix_warnings } = await import('../../src/graph/nodes/finalization.js')
 
     const state: ReducedGraphState = {
       story: { id: 'story-1', outputDir: '/tmp/test', title: 'Test' },
@@ -177,7 +193,7 @@ describe('auto_fix_warnings', () => {
   })
 
   it('preserves abstract quality warnings instead of trying to fix them', async () => {
-    const { auto_fix_warnings } = await import('../../src/graph/nodes.js')
+    const { auto_fix_warnings } = await import('../../src/graph/nodes/finalization.js')
 
     const state: ReducedGraphState = {
       story: { id: 'story-1', outputDir: '/tmp/test', title: 'Test' },
@@ -218,7 +234,7 @@ describe('auto_fix_warnings', () => {
   })
 
   it('returns empty object when errors exist (does not fix warnings)', async () => {
-    const { auto_fix_warnings } = await import('../../src/graph/nodes.js')
+    const { auto_fix_warnings } = await import('../../src/graph/nodes/finalization.js')
 
     const state: ReducedGraphState = {
       story: { id: 'story-1', outputDir: '/tmp/test', title: 'Test' },
@@ -264,7 +280,7 @@ describe('auto_fix_warnings', () => {
   })
 
   it('returns empty object when no warnings exist', async () => {
-    const { auto_fix_warnings } = await import('../../src/graph/nodes.js')
+    const { auto_fix_warnings } = await import('../../src/graph/nodes/finalization.js')
 
     const state: ReducedGraphState = {
       story: { id: 'story-1', outputDir: '/tmp/test', title: 'Test' },
@@ -304,7 +320,7 @@ describe('auto_fix_warnings', () => {
   })
 
   it('does not fix when max attempts reached (3) and preserves pendingIssues', async () => {
-    const { auto_fix_warnings } = await import('../../src/graph/nodes.js')
+    const { auto_fix_warnings } = await import('../../src/graph/nodes/finalization.js')
 
     const state: ReducedGraphState = {
       story: { id: 'story-1', outputDir: '/tmp/test', title: 'Test' },

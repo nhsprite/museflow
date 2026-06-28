@@ -3,11 +3,9 @@ import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import { getFixAgent } from '../agent-factory.js'
 import { readChapterContent, writeChapterContent } from '../../storage/filesystem/writer.js'
-import { createChapterMeta } from '../../utils/agent-output.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { validateFixedChapterContent } from '../../utils/chapter-content-validation.js'
-import { buildCharacterFactTimeline, formatStoryState } from '../utils/story-state.js'
-import { prepareStoryStateForChapter } from '../utils/chapter-state-prep.js'
+import { buildCharacterFactTimeline, formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
@@ -18,11 +16,6 @@ import {
   extractIssueKeywords,
   findAffectedSentences,
   splitParagraphIntoSentences,
-  mergeSentenceFixes,
-  mergeParagraphFixes,
-  applyParagraphDiffProtection,
-  deduplicateSentences,
-  deduplicateParagraphBlocks,
 } from '../utils/text-patching.js'
 
 export async function fix_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -147,7 +140,7 @@ async function runSentenceFix(
   const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
   const context = contextParagraphs.join('\n\n')
 
-  const { reconciledState } = prepareStoryStateForChapter(state, chapterIndex)
+  const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex)
   const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
@@ -174,45 +167,17 @@ async function runSentenceFix(
 
   const output = await agent.run(agentState)
 
-  let content = existingContent
-  if (output.data && (output.data as { modifiedSentences?: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences) {
-    const modifiedSentences = (output.data as { modifiedSentences: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences
-    const modifiedParagraphs = new Map<number, Array<{ index: number; content: string }>>()
+  const affectedIndices = Array.from(new Set(sentenceFixes.map(s => s.paragraphIndex)))
+  const { content, chapterMeta: updatedChapter } = agent.processOutput(
+    output,
+    existingContent,
+    paragraphs,
+    affectedIndices,
+    state.story.id,
+    chapterIndex + 1
+  )
 
-    for (const s of modifiedSentences) {
-      if (!modifiedParagraphs.has(s.paragraphIndex)) {
-        modifiedParagraphs.set(s.paragraphIndex, [])
-      }
-      modifiedParagraphs.get(s.paragraphIndex)!.push({ index: s.sentenceIndex, content: s.content })
-    }
-
-    const resultParagraphs = [...paragraphs]
-    for (const [pIdx, sentences] of modifiedParagraphs) {
-      const originalParagraph = paragraphs[pIdx]
-      if (originalParagraph) {
-        resultParagraphs[pIdx] = mergeSentenceFixes(originalParagraph, sentences)
-      }
-    }
-    content = resultParagraphs.join('\n\n')
-  } else {
-    if (!output.success && output.error) {
-      throw new Error(`第 ${chapterIndex + 1} 章修复失败：${output.error}`)
-    }
-    content = output.content ?? ''
-    if (!content || content.trim().length === 0) {
-      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
-    }
-    const affectedIndices = Array.from(new Set(sentenceFixes.map(s => s.paragraphIndex)))
-    content = applyParagraphDiffProtection(existingContent, content, affectedIndices)
-  }
-
-  content = deduplicateSentences(content)
-  content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
-
-  const updatedChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
-    outline: outlineItem?.description || null,
-  })
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
@@ -259,7 +224,7 @@ async function runParagraphFix(
   const contextParagraphs = Array.from(contextIndices).sort((a, b) => a - b).map(idx => paragraphs[idx])
   const context = contextParagraphs.join('\n\n')
 
-  const { reconciledState } = prepareStoryStateForChapter(state, chapterIndex)
+  const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex)
   const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
@@ -286,28 +251,16 @@ async function runParagraphFix(
 
   const output = await agent.run(agentState)
 
-  let content: string
-  if (output.data && (output.data as { modifiedParagraphs?: Array<{ index: number; content: string }> }).modifiedParagraphs) {
-    const modifiedParagraphs = (output.data as { modifiedParagraphs: Array<{ index: number; content: string }> }).modifiedParagraphs
-    content = mergeParagraphFixes(paragraphs, modifiedParagraphs, affectedIndices)
-  } else {
-    if (!output.success && output.error) {
-      throw new Error(`第 ${chapterIndex + 1} 章修复失败：${output.error}`)
-    }
-    content = output.content ?? ''
-    if (!content || content.trim().length === 0) {
-      throw new Error(`第 ${chapterIndex + 1} 章修复后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
-    }
-    content = applyParagraphDiffProtection(existingContent, content, affectedIndices)
-  }
+  const { content, chapterMeta: updatedChapter } = agent.processOutput(
+    output,
+    existingContent,
+    paragraphs,
+    affectedIndices,
+    state.story.id,
+    chapterIndex + 1
+  )
 
-  content = deduplicateSentences(content)
-  content = deduplicateParagraphBlocks(content)
   await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
-
-  const updatedChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
-    outline: outlineItem?.description || null,
-  })
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
@@ -327,7 +280,7 @@ export async function runLegacyFix(
   timelineSnapshot: string,
   nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
-  const { reconciledState } = prepareStoryStateForChapter(state, chapterIndex)
+  const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex)
   const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
@@ -356,8 +309,8 @@ export async function runLegacyFix(
     throw new Error(`第 ${chapterIndex + 1} 章重写失败：${output.error}`)
   }
 
-  let content = output.content ?? ''
-  if (!content || content.trim().length === 0) {
+  let rawContent = output.content ?? ''
+  if (!rawContent || rawContent.trim().length === 0) {
     throw new Error(`第 ${chapterIndex + 1} 章重写后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
   }
 
@@ -365,7 +318,7 @@ export async function runLegacyFix(
   const min = genre?.chapterWordCountMin ?? 1500
   const max = genre?.chapterWordCountMax ?? 8000
 
-  const validation = validateFixedChapterContent(content, {
+  const validation = await validateFixedChapterContent(rawContent, {
     chapterIndex,
     minWordCount: min,
     maxWordCount: max,
@@ -375,14 +328,18 @@ export async function runLegacyFix(
     throw new Error(`第 ${chapterIndex + 1} 章重写后内容校验失败：${validation.error}`)
   }
 
-  content = validation.content ?? content
-  content = deduplicateSentences(content)
-  content = deduplicateParagraphBlocks(content)
-  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+  rawContent = validation.content ?? rawContent
+  const paragraphs = splitIntoParagraphs(existingContent)
+  const { content, chapterMeta: updatedChapter } = agent.processOutput(
+    { ...output, content: rawContent },
+    existingContent,
+    paragraphs,
+    [],
+    state.story.id,
+    chapterIndex + 1
+  )
 
-  const updatedChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
-    outline: outlineItem?.description || null,
-  })
+  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
@@ -392,17 +349,3 @@ export async function runLegacyFix(
   }
 }
 
-// Re-export text-patching helpers used by tests and other modules
-export {
-  splitIntoParagraphs,
-  extractLocationInfo,
-  extractIssueKeywords,
-  findAffectedParagraphs,
-  splitParagraphIntoSentences,
-  findAffectedSentences,
-  mergeSentenceFixes,
-  mergeParagraphFixes,
-  applyParagraphDiffProtection,
-  deduplicateSentences,
-  deduplicateParagraphBlocks,
-} from '../utils/text-patching.js'

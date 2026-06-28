@@ -53,10 +53,10 @@ ${state.chapterContent || '（无内容）'}
 <rules>
   【评判依据边界 - 严格遵守】
   - 你的主要依据包括：上方明确提供的"世界观设定"、"人物设定"、"故事大纲"和"已埋伏笔"。
-  - 基本逻辑与常识（如时间、空间、因果关系、物理规律）可作为辅助判断依据。
+  - 基本逻辑与常识可作为辅助判断依据。
   - 你**无权**以任何外部来源的信息作为否定本章内容的评判标准。未在上方提供的背景知识、公共知识库中的信息均不得作为判定幻觉的依据。
   - 只有当内容违反**本故事自身**已建立的设定或基本逻辑时，才应报告为幻觉。
-  - **重要**：故事大纲中已明确提及的角色、事件和设定，等同于"已介绍元素"。例如：如果大纲中已写明"某角色加入团队"，则该角色的出现不应报为"未介绍元素"。
+  - **重要**：故事大纲中已明确提及的角色、事件和设定，等同于"已介绍元素"，不应再报为"未介绍元素"。
   - **重要**：前面章节摘要（chapterSummaries）中已出现的人物和事件，以及上方【前文已建立角色】列表中的人物，都应视为"已介绍"。
   - 本章首次登场的新角色，如果与大纲或故事后续设定明显冲突，才报为"未介绍元素"；若只是本章合理引入的配角或路人，不报 error。
 </rules>
@@ -64,9 +64,9 @@ ${state.chapterContent || '（无内容）'}
 <severity_levels>
   【分级标准 - 严格按此执行】
   - **error**：严重世界观冲突：
-    - 时代背景严重错误（如在前文已确立的时代背景下使用了不符合该时代的元素）
-    - 已建立的世界规则被违反（如设定中某人已死却在本章中正常出现）
-    - 人物性格完全崩坏（如设定中胆小的人物突然变得无所畏惧且无铺垫）
+    - 时代背景严重错误
+    - 已建立的世界规则被违反
+    - 人物性格完全崩坏且无铺垫
   - **warning**：轻微设定偏差：
     - 人物言行略有偏差但不影响整体形象
     - 时间线有轻微模糊但不构成矛盾
@@ -78,7 +78,7 @@ ${state.chapterContent || '（无内容）'}
 
 <dimensions>
   【幻觉检测维度】
-  1. **世界规则冲突**：描述与已建立的世界规则（如魔法体系、科技水平、地理设定）相悖的内容
+  1. **世界规则冲突**：描述与已建立的世界规则相悖的内容
   1b. **战力体系冲突**：${POWER_SYSTEM_RULES}
    2. **人物性格冲突**：人物言行与其已建立的性格特点不符
   3. **事实矛盾**：与前文已确立的事实相矛盾
@@ -103,7 +103,7 @@ ${state.chapterContent || '（无内容）'}
         "description": "问题描述",
         "conflict_with": "与什么设定冲突",
         "location": "具体位置",
-        "suggestion": "具体的修复建议（如：将不符合时代背景的元素替换为符合该背景的等价物）"
+        "suggestion": "具体的修复建议"
       }
     ]
   }
@@ -121,7 +121,7 @@ ${state.chapterContent || '（无内容）'}
     return parseJsonFromLLM(content)
   }
 
-  processOutput(output: AgentOutput): Issue[] {
+  async processOutput(output: AgentOutput): Promise<Issue[]> {
     if (!output.success || !output.data) return []
     const data = output.data as {
       is_consistent?: boolean
@@ -139,6 +139,6 @@ ${state.chapterContent || '（无内容）'}
       return []
     }
 
-    return normalizeIssues(data.issues, 'hallucination')
+    return normalizeIssues(data.issues, 'hallucination', this.provider)
   }
 }

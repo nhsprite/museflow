@@ -5,12 +5,6 @@ const readChapterContent = vi.fn().mockResolvedValue('chapter content')
 const saveChapterCheckpoint = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const clearPendingWrites = vi.fn().mockResolvedValue(undefined)
-const appendTimelineSnapshot = vi.fn().mockReturnValue({})
-const saveForeshadowStack = vi.fn()
-const saveForeshadowAlerts = vi.fn()
-const getForeshadowAlerts = vi.fn().mockReturnValue([])
-const saveStoryState = vi.fn()
-const getStoryState = vi.fn().mockReturnValue(null)
 const updateStoryStatus = vi.fn()
 const chapterPlannerRun = vi.fn().mockResolvedValue({
   success: true,
@@ -101,26 +95,6 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({ id: 'story-1', title: 'Test', outputDir: '/tmp/test', status: 'writing' }),
   updateStoryStatus,
   initStoryDb: vi.fn().mockResolvedValue(undefined),
-}))
-vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
-  appendTimelineSnapshot,
-  getLatestSnapshot: vi.fn().mockReturnValue(null),
-  saveForeshadowStack,
-  saveForeshadowAlerts,
-  getForeshadowAlerts,
-}))
-vi.mock('../../src/storage/meta/stores/story-state.js', () => ({
-  saveStoryState,
-  getStoryState,
-  createEmptyStoryState: vi.fn().mockReturnValue({
-    characterLocations: {},
-    characterStatus: {},
-    keyItemsLocation: {},
-    activePlots: [],
-    revealedSecrets: [],
-    currentScene: '',
-    storyTime: '',
-  }),
 }))
 vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockReturnValue(null) }))
 vi.mock('../../src/utils/paths.js', () => ({

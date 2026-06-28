@@ -41,7 +41,7 @@ describe('verify_outline_compliance bridge hint', () => {
   })
 
   it('includes generic next-chapter boundary hint in outline', async () => {
-    const { verify_outline_compliance } = await import('../../src/graph/nodes.ts')
+    const { verify_outline_compliance } = await import('../../src/graph/nodes/validation.js')
 
     await verify_outline_compliance({
       story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },
@@ -74,7 +74,7 @@ describe('verify_outline_compliance bridge hint', () => {
   })
 
   it('does not include bridge hint when no terminal resolution is needed', async () => {
-    const { verify_outline_compliance } = await import('../../src/graph/nodes.ts')
+    const { verify_outline_compliance } = await import('../../src/graph/nodes/validation.js')
 
     await verify_outline_compliance({
       story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },

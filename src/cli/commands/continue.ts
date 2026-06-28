@@ -1,5 +1,5 @@
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
-import { continueStory } from '../../core/runner.js'
+import { runOneChapter } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { requireStoryState } from '../utils/story-loader.js'
@@ -69,7 +69,7 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
   try {
     const result = await withSpinner(
       '正在处理章节...',
-      () => continueStory(storyId, userResponse),
+      () => runOneChapter(storyId, { mode: 'continue', userResponse }),
       undefined,
       (result) => !result.rewriteRequested
     )

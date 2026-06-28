@@ -3,7 +3,7 @@ import {
   mergeStoryState,
   filterSupersededFactsFromTimeline,
   filterSupersededEventsFromTimeline,
-} from '../../src/graph/nodes.js'
+} from '../../src/graph/utils/reconciler.js'
 import type { StoryState } from '../../src/types/story-state.js'
 
 function emptyState(): StoryState {
@@ -114,19 +114,19 @@ describe('mergeStoryState', () => {
     expect(merged.keyItemsLocation['血封信笺']).toBeUndefined()
   })
 
-  it('normalizes item state aliases', () => {
+  it('normalizes item state aliases by stripping parenthetical descriptions', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsState: { '血封信笺': '完整' },
     }
     const delta: StoryState = {
       ...emptyState(),
-      keyItemsState: { '一封血封信笺': '焚毁' },
+      keyItemsState: { '血封信笺（柏字残画）': '焚毁' },
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsState)).toEqual(['一封血封信笺'])
-    expect(merged.keyItemsState['一封血封信笺']).toBe('焚毁')
+    expect(Object.keys(merged.keyItemsState)).toEqual(['血封信笺（柏字残画）'])
+    expect(merged.keyItemsState['血封信笺（柏字残画）']).toBe('焚毁')
   })
 
   it('clears all canonical aliases when item location changes, avoiding lingering conflicts', () => {
@@ -147,12 +147,12 @@ describe('mergeStoryState', () => {
     expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
   })
 
-  it('clears conflicting base entries even when delta uses a different alias', () => {
+  it('clears conflicting base entries when delta uses a canonical alias', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
         '血封信笺（柏字残画）': '苏半城妆台抽屉附近',
-        '一封血封信笺': '东院正房妆台暗屉最里层薄油纸内',
+        '血封信笺': '东院正房妆台暗屉最里层薄油纸内',
       },
     }
     const delta: StoryState = {

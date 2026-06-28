@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as contextJudge from '../../src/utils/context-judge.js'
 import {
   reconcileOutlineWithState,
 } from '../../src/utils/outline-boundary.js'
 import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../src/utils/chapter-planning.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { PendingTask } from '../../src/types/story-state.js'
+import type { ModelProvider } from '../../src/model/provider.js'
+
+vi.mock('../../src/utils/context-judge.js', () => ({
+  batchJudgeTaskRelevance: vi.fn().mockResolvedValue([]),
+}))
 
 function buildState(
   outlineDescription: string,
@@ -52,8 +58,12 @@ function buildState(
   }
 }
 
+function createProvider(): ModelProvider {
+  return { chat: vi.fn() }
+}
+
 describe('reconcileOutlineWithState filters stale pending tasks', () => {
-  it('does not inject expired future plans from previous chapter', () => {
+  it('does not inject expired future plans from previous chapter', async () => {
     const state = buildState('买办商人陈裕堂主动登门。', [
       {
         id: 't1',
@@ -73,12 +83,12 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
+    const hint = await reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
 
     expect(hint).toBe('')
   })
 
-  it('includes tasks whose description overlaps with current outline', () => {
+  it('includes tasks whose description overlaps with current outline', async () => {
     const state = buildState('买办商人陈裕堂主动登门，自称愿以洋行势力相助翻案。', [
       {
         id: 't1',
@@ -97,13 +107,14 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
+    vi.mocked(contextJudge.batchJudgeTaskRelevance).mockResolvedValueOnce([true])
+    const hint = await reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG, createProvider())
 
     expect(hint).toContain('陈裕堂登门拜访苏半城')
     expect(hint).not.toContain('回话亲王')
   })
 
-  it('includes tasks explicitly due at the current chapter', () => {
+  it('includes tasks explicitly due at the current chapter', async () => {
     const state = buildState('主角在客栈休息。', [
       {
         id: 't1',
@@ -115,12 +126,12 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
+    const hint = await reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
 
     expect(hint).toContain('第三日清晨出发')
   })
 
-  it('advises postponement when pending task conflicts with core event', () => {
+  it('advises postponement when pending task conflicts with core event', async () => {
     const state = buildState('买办商人陈裕堂主动登门。', [
       {
         id: 't1',
@@ -132,7 +143,8 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
       },
     ])
 
-    const hint = reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG)
+    vi.mocked(contextJudge.batchJudgeTaskRelevance).mockResolvedValueOnce([false])
+    const hint = await reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG, createProvider())
 
     expect(hint).toContain('回话亲王')
     expect(hint).toContain('postponed')

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getStateMock = vi.fn()
-const runChapterGraphMock = vi.fn().mockResolvedValue({
+const runOneChapterMock = vi.fn().mockResolvedValue({
   story: { id: 'story-1', outputDir: '/tmp/test-story' },
   currentChapterIndex: 5,
   totalChapters: 10,
@@ -9,15 +9,10 @@ const runChapterGraphMock = vi.fn().mockResolvedValue({
   rewriteRequested: false,
 })
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
-const saveChapterCheckpointMock = vi.fn().mockResolvedValue(undefined)
-const pruneIntermediateCheckpointsMock = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('../../src/graph/checkpointer.js', () => ({
   getCheckpointer: () => ({
     clearPendingWrites: clearPendingWritesMock,
-    saveChapterCheckpoint: saveChapterCheckpointMock,
-    pruneIntermediateCheckpoints: pruneIntermediateCheckpointsMock,
-    getChapterCheckpoint: vi.fn().mockResolvedValue(null),
   }),
 }))
 
@@ -62,7 +57,7 @@ vi.mock('../../src/core/runner.js', () => ({
   getGraph: vi.fn().mockReturnValue({
     getState: vi.fn().mockResolvedValue({ values: mockGraphState }),
   }),
-  runChapterGraph: runChapterGraphMock,
+  runOneChapter: runOneChapterMock,
 }))
 
 vi.mock('../../src/graph/novel.graph.js', () => ({
@@ -175,13 +170,6 @@ vi.mock('../../src/storage/meta/stores/world.js', () => ({
   saveWorld: vi.fn(),
 }))
 
-vi.mock('../../src/storage/meta/stores/timeline.js', () => ({
-  appendTimelineSnapshot: vi.fn(),
-  getLatestSnapshot: vi.fn().mockReturnValue(null),
-  saveForeshadowStack: vi.fn(),
-  saveForeshadowAlerts: vi.fn(),
-}))
-
 vi.mock('../../src/utils/id.js', () => ({
   generateId: vi.fn().mockReturnValue('test-id'),
 }))
@@ -198,7 +186,7 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
 describe('rewrite command state consistency', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    runChapterGraphMock.mockResolvedValue({
+    runOneChapterMock.mockResolvedValue({
       story: { id: 'story-1', outputDir: '/tmp/test-story' },
       currentChapterIndex: 5,
       totalChapters: 10,
@@ -245,7 +233,7 @@ describe('rewrite command state consistency', () => {
       lastTimelineSnapshot: null,
     })
 
-    runChapterGraphMock.mockResolvedValue({
+    runOneChapterMock.mockResolvedValue({
       story: { id: 'story-1', outputDir: '/tmp/test-story' },
       currentChapterIndex: 5,
       totalChapters: 10,
@@ -255,10 +243,10 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
-    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
-    const invokedState = runChapterGraphMock.mock.calls[0]![2] as Record<string, unknown>
-    expect(invokedState.rewriteApproved).toBe(true)
-    expect(invokedState.currentChapterIndex).toBe(5)
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    const options = runOneChapterMock.mock.calls[0]![1] as Record<string, unknown>
+    expect(options.userResponse).toBe(true)
+    expect(options.targetChapterIndex).toBe(5)
   })
 
   it('should target current chapter when rewriteRequested is true (errors in current chapter)', async () => {
@@ -443,10 +431,10 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
-    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
-    const invokedState = runChapterGraphMock.mock.calls[0]![2] as Record<string, unknown>
-    expect(invokedState.currentChapterIndex).toBe(5)
-    expect(invokedState.rewriteApproved).toBe(true)
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    const options = runOneChapterMock.mock.calls[0]![1] as Record<string, unknown>
+    expect(options.targetChapterIndex).toBe(5)
+    expect(options.userResponse).toBe(true)
   })
 
   it('should honor --chapter flag regardless of pending issues state', async () => {
@@ -494,9 +482,9 @@ describe('rewrite command state consistency', () => {
     expect(targetLog).toBeDefined()
     expect(String(targetLog![0])).toContain('目标章节: 3/10')
 
-    expect(runChapterGraphMock).toHaveBeenCalledTimes(1)
-    const invokedState = runChapterGraphMock.mock.calls[0]![2] as Record<string, unknown>
-    expect(invokedState.currentChapterIndex).toBe(2)
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    const options = runOneChapterMock.mock.calls[0]![1] as Record<string, unknown>
+    expect(options.targetChapterIndex).toBe(2)
 
     logSpy.mockRestore()
   })

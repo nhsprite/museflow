@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const continueStoryMock = vi.fn().mockResolvedValue({
+const runOneChapterMock = vi.fn().mockResolvedValue({
   story: { id: 'story-1', outputDir: '/tmp/test-story' },
   currentChapterIndex: 1,
   totalChapters: 3,
@@ -47,7 +47,7 @@ const loadPendingWritesForThreadMock = vi.fn().mockResolvedValue([])
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('../../src/core/runner.js', () => ({
-  continueStory: continueStoryMock,
+  runOneChapter: runOneChapterMock,
   getState: getStateMock,
 }))
 
@@ -95,7 +95,7 @@ vi.mock('node:fs', () => ({
 describe('write command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    continueStoryMock.mockResolvedValue({
+    runOneChapterMock.mockResolvedValue({
       story: { id: 'story-1', outputDir: '/tmp/test-story' },
       currentChapterIndex: 1,
       totalChapters: 3,
@@ -109,13 +109,13 @@ describe('write command', () => {
     })
   })
 
-  it('calls continueStory with isRewrite false', async () => {
+  it('calls runOneChapter in draft mode', async () => {
     const { write } = await import('../../src/cli/commands/write.ts')
 
     await write('story-1', { storyId: 'story-1' })
 
-    expect(continueStoryMock).toHaveBeenCalledTimes(1)
-    expect(continueStoryMock).toHaveBeenCalledWith('story-1', undefined, 0, { isRewrite: false })
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(runOneChapterMock).toHaveBeenCalledWith('story-1', { mode: 'draft', targetChapterIndex: 0 })
   })
 
 })

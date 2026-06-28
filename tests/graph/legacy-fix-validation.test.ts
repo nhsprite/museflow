@@ -1,8 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { runLegacyFix } from '../../src/graph/nodes.js'
+import { runLegacyFix } from '../../src/graph/nodes/fix.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+
+vi.mock('../../src/graph/utils/reconciler.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/graph/utils/reconciler.js')>()
+  return {
+    ...actual,
+    prepareStoryStateForChapter: vi.fn().mockResolvedValue({
+      reconciledState: {
+        characterLocations: {},
+        characterStatus: {},
+        keyItemsLocation: {},
+        keyItemsState: {},
+        activePlots: [],
+        revealedSecrets: [],
+        pendingTasks: [],
+        currentScene: '',
+        storyTime: '',
+      },
+    }),
+  }
+})
 
 const buildState = (outputDir: string): ReducedGraphState => ({
   story: { id: 'test', title: 'Test', outputDir, genre: 'default', totalChapters: 10 },
@@ -44,6 +64,7 @@ describe('runLegacyFix validation', () => {
 
     const agent = {
       run: vi.fn().mockResolvedValue({ success: true, content: planContent }),
+      processOutput: vi.fn().mockReturnValue({ content: planContent, chapterMeta: {} }),
     }
 
     const state = buildState(outputDir)

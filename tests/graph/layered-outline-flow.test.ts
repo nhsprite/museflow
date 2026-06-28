@@ -95,7 +95,7 @@ describe('layered outline flow', () => {
   })
 
   it('calls expandOutlineForChapter before drafting', async () => {
-    const { draft_chapter } = await import('../../src/graph/nodes.js')
+    const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
     await draft_chapter(baseState)
 
@@ -104,7 +104,7 @@ describe('layered outline flow', () => {
 
   describe('create_outline', () => {
     it('always uses HighLevelOutlineAgent', async () => {
-      const { create_outline } = await import('../../src/graph/nodes.js')
+      const { create_outline } = await import('../../src/graph/nodes/story-creation.js')
 
       const result = await create_outline(baseState)
 

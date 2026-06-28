@@ -7,9 +7,3 @@ export interface Character {
   createdAt: number
 }
 
-export interface CharacterCreateInput {
-  storyId: string
-  name: string
-  description?: string
-  dialogueStyle?: string
-}

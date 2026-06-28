@@ -1,5 +1,6 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
+import type { CanonicalFact } from '../types/story-state.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
 import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { parseJsonFromLLM } from '../utils/json.js'
@@ -71,7 +72,7 @@ export class ConsistencyAgent extends BaseAgent {
     ${state.chapterPlan?.chapterTimeAnchor || state.chapterTimeAnchor || '（未指定，默认以本章自身时间线为准）'}
 
     <important>以本章时间锚点作为判断时间推进是否合理的依据。本章允许采用回忆、倒叙或跨日叙事，只要与本章时间锚点一致，不视为与上一章结束时间矛盾。</important>
-    <important>如果本章时间锚点明确标注了"三日期限第 X 天"、"还剩 Y 天"等信息，正文中的倒计时表述必须与此一致。如有冲突，报 error。</important>
+    <important>如果本章时间锚点明确标注了倒计时或剩余时间信息，正文中的时间表述必须与此一致。如有冲突，报 error。</important>
   </chapter_time_anchor>
 
   <superseded_facts>
@@ -112,18 +113,18 @@ export class ConsistencyAgent extends BaseAgent {
     <dimension name="time" priority="high">事件时间顺序是否合理，是否存在时间跳跃未标注、同一时间点发生矛盾事件等问题</dimension>
     <dimension name="space" priority="high">人物移动、位置变化是否连贯</dimension>
     <dimension name="causality" priority="high">事件因果关系是否合理</dimension>
-    <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫（如欺骗、试探），否则视为矛盾。参见 supplementary_rules 中的 "deliberation_vs_discovery" 和 "inference_from_limited_information"：角色对已知情形的沉思推演和合理推断不视为矛盾。</dimension>
+    <dimension name="character_knowledge" priority="critical">角色对某信息的了解/态度是否与前章矛盾。检查每个角色在前章中已知/承认/说过的事实，对比该角色在本章中对这些事实的态度/反应。标记"角色在前章已知某事实，本章却表现得像第一次听说"这类严重矛盾。注意：如果角色故意装作不知道，必须有合理的动机铺垫，否则视为矛盾。参见 supplementary_rules 中的 "deliberation_vs_discovery" 和 "inference_from_limited_information"：角色对已知情形的沉思推演和合理推断不视为矛盾。</dimension>
     <dimension name="character_whitelist" priority="critical">
       检查本章出现的所有有名有姓、有亲属关系、有 POV 或持续身份的角色是否都在【官方角色】、【大纲登场角色】或【前文已建立角色】列表中。
-      如果本章 introduces 新名字（如"某个未登记的路人"、"某个未说明身份的亲戚"），且不在上述任一列表中，报 error。
-      如果本章把某个已建立角色冠以新的亲属关系（如称"胞兄"），而该关系未被官方设定、前文摘要或故事状态确认，报 error。
-      临时龙套（柜上伙计、轿夫、门房等无名角色）不构成 invented character，前提是他们没有名字、没有亲属关系、不进入 storyState。
+      如果本章 introduces 不在上述任一列表中的新名字，报 error。
+      如果本章把某个已建立角色冠以新的亲属关系，而该关系未被官方设定、前文摘要或故事状态确认，报 error。
+      无名功能性角色不构成 invented character，前提是他们没有名字、没有亲属关系、不进入 storyState。
     </dimension>
     <dimension name="timeline_anchor" priority="critical">
-      角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的、或在超现实场景（如预言、梦境、幻象）中看到的。
+      角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的、或在超现实场景中看到的。
       严禁角色将尚未发生的事件描述为已发生的回忆。
       如果角色提及未来事件，必须使用前瞻性的措辞，且必须是在明确的超现实场景中。
-      特别注意：涉及非线性叙事（如闪回、预言、多重时间线）时，必须严格区分"已发生的回忆"和"未发生的预示"。
+      特别注意：涉及非线性叙事时，必须严格区分"已发生的回忆"和"未发生的预示"。
     </dimension>
     <dimension name="dialogue" priority="critical">角色说过的话是否前后矛盾。前一章角色亲口说的内容，本章不能自相矛盾</dimension>
     <dimension name="information" priority="high">关键信息（物品、消息、秘密）的传递和知悉情况是否前后一致</dimension>
@@ -147,15 +148,14 @@ export class ConsistencyAgent extends BaseAgent {
   <supplementary_rules>
     <rule type="knowledge_vs_reaction">
       区分"已知事实"与"对事实的反应/措辞"：
-      - 如果角色在前章已经知道某个事实（如自己的使命、身份），本章中对该事实产生情绪反应（震惊、沉思、感慨）是正常的人物刻画，不要报 error。
+      - 如果角色在前章已经知道某个事实，本章中对该事实产生情绪反应是正常的人物刻画，不要报 error。
       - 如果本章只是用不同的措辞表达与前章相同的概念，不要报 error。
       - 只有当角色对某个事实的认知本身发生矛盾（前章明确不知道，本章却表现得像已知道；或前章已否认，本章却断言为真）时，才报 error。
     </rule>
 
     <rule type="deliberation_vs_discovery">
       区分"对已知情形的沉思推演"与"首次发现/认知"：
-      - 角色对已经知道的条件、计划、风险进行反复掂量、权衡、在心里过秤，属于正常的人物刻画和决策描写，**不是**知识矛盾。
-      - 例如：角色已知前章明确告知的交易条件或约定，本章开头仍在心里"把条件过了一遍"、"掂量利弊"、"比较两害相权"，这是合理的沉思过程，不应视为"仿佛第一次推演"。
+      - 角色对已经知道的条件、计划、风险进行反复掂量、权衡，属于正常的人物刻画和决策描写，不应视为首次发现或重新学习。
       - 只有当角色表现出对前章已明确告知的信息感到陌生、意外、或需要重新学习时，才构成知识矛盾。
       - 判断标准：角色的内心活动是否使用了"已知信息"作为前提进行推演（合理），还是把已知信息当作新发现来呈现（矛盾）。
     </rule>
@@ -164,7 +164,7 @@ export class ConsistencyAgent extends BaseAgent {
       区分"合理推断"与"无来源全知"：
       - 角色可以根据本章新获得的信息、前章已揭示的事实、以及人物自身的经验和智力，做出合理的推断或猜测。
       - 如果推断过程有清晰的逻辑链条（即使链条较短），不应视为 knowledge 矛盾。
-      - 只有当角色突然掌握其不可能知道的具体细节（如他人秘密计划的具体步骤、未出现人物的真实身份、未发生事件的精确结果）时，才报 error。
+      - 只有当角色突然掌握其不可能知道的具体细节时，才报 error。
       - 对于"知道某人大致意图"与"知道其全部具体布局"之间的灰色地带，应报 warning 而非 error，除非细节精确到不可能。
     </rule>
 
@@ -172,17 +172,17 @@ export class ConsistencyAgent extends BaseAgent {
       前章角色领受的差事属于"待办"而非"已发生事实"：
       - 如果本章通过角色对话、旁白或规划说明该差事被推迟、取消、改期或已完成 → 不要报 consistency error。
       - 只有当差事完全未出现、未解释，且本章时间已到截止日期时 → 才报 error。
-      - 判断是否有解释：检查本章是否有任何文字说明该差事"改日再办"、"已被其他事取代"、"不必办了"或"已办毕"。
-      - 如果前章任务以精确文本确立了执行方式（如"一律回某话"、"不得来某处回报"、"通过某渠道传话"），本章对该方式的任何改写都视为 contradiction，报 error。
-      - 如果本章只是通过其他合理渠道获知任务结果（如第三方传话、眼线回报），且文本明确交代了信息来源，不视为违反"不得来某处回报"类约束。
+      - 判断是否有解释：检查本章是否有任何文字说明该差事被推迟、取消、改期或已完成。
+      - 如果前章任务以精确文本确立了执行方式，本章对该方式的任何改写都视为 contradiction，报 error。
+      - 如果本章只是通过其他合理渠道获知任务结果，且文本明确交代了信息来源，不视为违反前章确立的执行方式约束。
     </rule>
 
     <rule type="item_operation_vs_location">
       区分「物证当前真迹位置」与「本章操作对象」：
-      - 如果本章明确说明角色操作的是副本、抄件、诱饵，或明确说明真迹已于别处转移，则不要因"物证出现在场景中"而报 location 矛盾。
-      - 只有当本章未加说明地让物证出现在与权威事实冲突的位置，或同时声称物证在 A 地又在 B 地时，才报 error。
-      - 角色对物证进行查看、比对、压存等操作，本身不违反"分散藏匿"原则；关键看文本是否交代了操作对象的性质。
-      - 判断标准：如果文本能让读者理解"桌上的是副本/诱饵，真迹在别处"，则不构成矛盾；如果文本让读者认为所有底牌都集中在同一处，则报 error。
+      - 如果本章明确说明角色操作的是副本、替代品或诱饵，或明确说明真迹已于别处转移，则不要因"物证出现在场景中"而报 location 矛盾。
+      - 只有当本章未加说明地让物证出现在与权威事实冲突的位置，或同时声称物证在不同位置时，才报 error。
+      - 角色对物证进行常规操作，本身不违反"分散藏匿"原则；关键看文本是否交代了操作对象的性质。
+      - 判断标准：如果文本明确区分了操作对象与真迹位置，则不构成矛盾；如果文本让读者误以为真迹就在操作现场，则报 error。
     </rule>
 
     ${FORESHADOW_BOUNDARY_RULES}
@@ -206,13 +206,9 @@ export class ConsistencyAgent extends BaseAgent {
     </rule>
 
     <rule type="chapter_explanation">
-    当前章节可以通过以下方式补充前面章节缺失的铺垫，这些情况不应视为剧情断裂：
-    - 回忆/倒叙：本章开头用回忆补充说明"昨夜发生了X事件"
-    - 角色对话揭示：本章中角色说"三日前我已安排人手..."
-    - 旁白补充：作者在本章用旁白交代"原来在读者不知道的时候，X已经发生了"
-    - 秘密行动揭示：本章揭示前面章节未写的秘密行动（如营救、潜入、调查）
+    当前章节可以通过回忆、角色对话、旁白或秘密行动揭示等方式补充前面章节缺失的铺垫，这些情况不应视为剧情断裂。
     判定标准：
-    - 如果本章明确给出了解释（无论这个解释是通过回忆、对话还是旁白），说明角色状态变化的原因 → 不要报 error
+    - 如果本章明确给出了解释，说明角色状态变化的原因 → 不要报 error
     - 如果本章完全没有解释，角色状态突然改变且没有任何说明 → 报 error
   </rule>
 
@@ -237,7 +233,7 @@ export class ConsistencyAgent extends BaseAgent {
     2. 被权威事实明确标记为"覆盖"的旧事实，不应作为当前章节的矛盾依据。
     3. 只有当角色对权威事实中当前有效的值表现出不合理态度时，才报 consistency error。
     4. 本章内容若与权威事实中的当前值一致，即使与旧摘要中的旧值不同，也不构成矛盾。
-    5. <mandatory>【执行约束】在输出最终 issues 前，你必须逐条审查每个候选 issue。如果某个候选 issue 的描述或建议与 canonicalFacts 中的任何一条事实直接矛盾（例如 canonicalFact 记录"某物在 A 处"，而 issue 声称"某物不应在 A 处"），则必须删除该候选 issue，不得在最终 JSON 中报告。</mandatory>
+    5. <mandatory>【执行约束】在输出最终 issues 前，你必须逐条审查每个候选 issue。如果某个候选 issue 的描述或建议与 canonicalFacts 中的任何一条事实直接矛盾，则必须删除该候选 issue，不得在最终 JSON 中报告。</mandatory>
     6. <mandatory>【执行约束】如果 canonicalFacts 已经明确记录了某个信息的传递方式、物品位置或角色行动，本章只要与该记录一致，就不应报 consistency error，即使该记录与你的常识推断不同。</mandatory>
   </rule>
 
@@ -291,7 +287,7 @@ export class ConsistencyAgent extends BaseAgent {
     return parseJsonFromLLM(content)
   }
 
-  processOutput(output: AgentOutput): Issue[] {
+  async processOutput(output: AgentOutput, canonicalFacts?: CanonicalFact[]): Promise<Issue[]> {
     if (!output.success || !output.data) return []
     const data = output.data as {
       is_consistent?: boolean
@@ -309,6 +305,6 @@ export class ConsistencyAgent extends BaseAgent {
       return []
     }
 
-    return normalizeIssues(data.issues, 'consistency')
+    return normalizeIssues(data.issues, 'consistency', this.provider, { canonicalFacts })
   }
 }

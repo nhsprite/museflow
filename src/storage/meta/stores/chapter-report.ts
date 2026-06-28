@@ -1,4 +1,3 @@
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ChapterReport } from '../../../types/chapter-report.js'
 import { writeFileAtomic, ensureDir } from '../../../utils/fs.js'
@@ -19,31 +18,4 @@ export function saveChapterReport(outputDir: string, report: ChapterReport): voi
   writeFileAtomic(path, data)
 }
 
-export function readChapterReport(outputDir: string, chapterIndex: number): ChapterReport | null {
-  const path = getChapterReportPath(outputDir, chapterIndex)
-  if (!existsSync(path)) return null
-  try {
-    const content = readFileSync(path, 'utf-8')
-    return JSON.parse(content) as ChapterReport
-  } catch {
-    return null
-  }
-}
 
-export function listChapterReports(outputDir: string): ChapterReport[] {
-  const reportsDir = getReportsDir(outputDir)
-  if (!existsSync(reportsDir)) return []
-
-  const reports: ChapterReport[] = []
-  const files = readdirSync(reportsDir).filter(f => f.endsWith('.report.json'))
-  for (const file of files) {
-    const match = file.match(/^chapter_(\d+)\.report\.json$/)
-    if (!match) continue
-    const chapterIndex = parseInt(match[1]!, 10) - 1
-    const report = readChapterReport(outputDir, chapterIndex)
-    if (report) {
-      reports.push(report)
-    }
-  }
-  return reports.sort((a, b) => a.chapterIndex - b.chapterIndex)
-}

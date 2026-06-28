@@ -2,30 +2,20 @@ import type { ChapterOutline } from '../types/outline.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import { filterRelevantPendingTasks } from './pending-tasks.js'
 import type { ChapterPlanningConfig } from '../types/genre.js'
-
-export function buildOutlineBridgeHint(
-  _outline: ChapterOutline[],
-  _chapterIndex: number
-): string {
-  // 不再使用关键词列表检测相邻章节事件重叠。
-  // 跨章节连续性约束由 buildNextChapterBoundaryHint 的通用提示覆盖。
-  return ''
-}
+import type { ModelProvider } from '../model/provider.js'
 
 export function buildNextChapterBoundaryHint(
   outline: ChapterOutline[],
   chapterIndex: number
 ): string {
   const next = outline[chapterIndex + 1]
-  if (!next?.description) return ''
-
-  const nextChapterSummary = `第${next.number}章"${next.title}"大纲：${next.description}`
+  if (!next?.title) return ''
 
   return `<next_chapter_boundary>
 <important>【后续章节边界提示】</important>
-${nextChapterSummary}
+下一章为第${next.number}章"${next.title}"。本章结尾必须为其保留合理过渡空间，不要把后续章节的核心事件提前解决或收尾。如果本章与第${next.number}章存在事件连续性，本章只负责推进到合适的中转状态，不要代替后续章节完成其核心事件。
 
-<mandatory>【强制要求】本章结尾必须为第${next.number}章的内容保留合理过渡空间，不要把后续章节的核心事件提前解决或收尾。如果本章与第${next.number}章存在事件连续性，本章只负责推进到合适的中转状态，不要代替后续章节完成其核心事件。</mandatory>
+<mandatory>【强制要求】严禁在本章写出下一章标题所暗示的具体情节、角色行动或秘密揭示；本章只能铺垫、留白或制造悬念。</mandatory>
 </next_chapter_boundary>`
 }
 
@@ -37,19 +27,21 @@ export function shouldForceTemporaryReplan(
   return false
 }
 
-export function reconcileOutlineWithState(
+export async function reconcileOutlineWithState(
   state: ReducedGraphState,
   chapterIndex: number,
   config: ChapterPlanningConfig,
-): string {
+  provider?: ModelProvider,
+): Promise<string> {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) return ''
 
   const pendingTasks = state.storyState?.pendingTasks ?? []
-  const relevantTasks = filterRelevantPendingTasks(
+  const relevantTasks = await filterRelevantPendingTasks(
     pendingTasks,
     chapterIndex,
-    outlineItem.description
+    outlineItem.description,
+    provider,
   )
   if (relevantTasks.length === 0) return ''
 

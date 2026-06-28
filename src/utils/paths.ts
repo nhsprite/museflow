@@ -8,7 +8,7 @@ export function expandPath(path: string): string {
   return resolve(path)
 }
 
-export function slugify(title: string): string {
+function slugify(title: string): string {
   return title
     .trim()
     .replace(/\s+/g, '_')
@@ -17,16 +17,12 @@ export function slugify(title: string): string {
     .replace(/_{2,}/g, '_')
 }
 
-export function getGlobalConfigDir(): string {
+function getGlobalConfigDir(): string {
   return expandPath('~/.museflow')
 }
 
-export function getProjectConfigDir(): string {
+function getProjectConfigDir(): string {
   return join(process.cwd(), '.museflow')
-}
-
-export function getConfigDir(): string {
-  return getGlobalConfigDir()
 }
 
 export function getOutputsDir(): string {
@@ -52,10 +48,6 @@ export function getGlobalConfigFilePath(): string {
 
 export function getProjectConfigFilePath(): string {
   return join(getProjectConfigDir(), 'config.json')
-}
-
-export function getConfigFilePath(): string {
-  return getGlobalConfigFilePath()
 }
 
 function getStoryShortId(storyId: string): string {

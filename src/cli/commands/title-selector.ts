@@ -2,12 +2,7 @@ import inquirer from 'inquirer'
 import { createProvider } from '../../model/registry.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import type { JsonSchema } from '../../model/provider.js'
-
-export interface WorldDirection {
-  powerSystem?: string
-  coreConflict: string
-  worldFeatures: string[]
-}
+import type { WorldDirection } from '../../types/story.js'
 
 export interface TitleOption {
   title: string

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
 import { getChapterFilePath } from '../../utils/paths.js'
 
-export async function ensureStoryDir(outputDir: string): Promise<void> {
+async function ensureStoryDir(outputDir: string): Promise<void> {
   if (!existsSync(outputDir)) {
     await mkdir(outputDir, { recursive: true })
     logger.debug(`Created story output directory: ${outputDir}`)

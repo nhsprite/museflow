@@ -2,7 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import { AI_PHRASE_PROHIBITIONS, SEVERITY_INSTRUCTIONS } from './prompt-fragments.js'
 import { parseJsonFromLLM } from '../utils/json.js'
-import { normalizeIssues, isPositiveFeedback } from '../utils/agent-output.js'
+import { normalizeIssues } from '../utils/agent-output.js'
 
 export class QualityAgent extends BaseAgent {
   constructor() {
@@ -78,7 +78,7 @@ ${state.chapterContent || '（无内容）'}
       "severity": "error|warning|info",
       "description": "问题描述",
       "location": "具体位置或章节",
-      "suggestion": "具体的修复建议（如：将'值得一提的是'改为具体的人物动作或场景描写）"
+      "suggestion": "具体的修复建议"
     }
   ],
   "suggestions": ["改进建议1", "改进建议2"]
@@ -96,7 +96,7 @@ ${state.chapterContent || '（无内容）'}
     return parseJsonFromLLM(content)
   }
 
-  processOutput(output: AgentOutput): { issues: Issue[]; qualityScore?: number } {
+  async processOutput(output: AgentOutput): Promise<{ issues: Issue[]; qualityScore?: number }> {
     if (!output.success || !output.data) return { issues: [] }
     const data = output.data as {
       quality_score?: number
@@ -109,9 +109,8 @@ ${state.chapterContent || '（无内容）'}
       }>
     }
 
-    const issues = normalizeIssues(data.issues, 'quality', {
+    const issues = await normalizeIssues(data.issues, 'quality', this.provider, {
       defaultSeverity: 'info',
-      filter: issue => !isPositiveFeedback(issue.description || ''),
     })
 
     const result: { issues: Issue[]; qualityScore?: number } = { issues }

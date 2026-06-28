@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
 
-import { getStoryOutputDir } from '../../src/utils/paths.ts'
+import { getStoryOutputDir } from '../../src/utils/paths.js'
 
 describe('story output paths', () => {
   it('builds title-based directories from normalized titles and stable short ids', () => {
