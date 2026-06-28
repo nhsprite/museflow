@@ -231,6 +231,7 @@ export async function prepare_chapter(
     forceStructuralRewrite: false,
     autoFixAttempts: 0,
     routingDecision: undefined,
+    authorDecisions: {},
   }
 }
 

@@ -10,10 +10,16 @@ import {
   detectItemLocationConflicts,
   detectCharacterStatusConflicts,
   classifyConflicts,
+  applyAuthorOverrides,
+  formatStoryState,
+  prepareStoryStateForChapter,
 } from '../../../src/graph/utils/reconciler.js'
-import type { StoryState, Conflict } from '../../../src/types/story-state.js'
+import { BlockingConflictError } from '../../../src/utils/errors.js'
+import type { StoryState, Conflict, StateOverride } from '../../../src/types/story-state.js'
 import type { Character } from '../../../src/types/character.js'
 import type { ModelProvider } from '../../../src/model/provider.js'
+import type { ReducedGraphState } from '../../../src/graph/state.js'
+import { createProvider as registryCreateProvider } from '../../../src/model/registry.js'
 
 vi.mock('../../../src/utils/context-judge.js', async (importOriginal) => {
   const actual = await importOriginal<typeof contextJudge>()
@@ -51,10 +57,10 @@ function makeConflict(overrides: Partial<Conflict>): Conflict {
   return {
     id: 'test',
     type: 'retcon',
-    subject: '血封信笺',
+    subject: '密信',
     attribute: '所在位置',
-    oldValue: '妆台抽屉',
-    newValue: '刑部证物房',
+    oldValue: '书桌抽屉',
+    newValue: '官府仓库',
     outlineReference: '',
     severity: 'auto',
     description: '',
@@ -63,8 +69,8 @@ function makeConflict(overrides: Partial<Conflict>): Conflict {
 }
 
 const characters: Character[] = [
-  { id: '1', storyId: 's', name: '苏半城', description: '', createdAt: 1 },
-  { id: '2', storyId: 's', name: '何氏（奶娘）', description: '', createdAt: 2 },
+  { id: '1', storyId: 's', name: '主角', description: '', createdAt: 1 },
+  { id: '2', storyId: 's', name: '侍女', description: '', createdAt: 2 },
 ]
 
 describe('mergeStoryState', () => {
@@ -72,8 +78,8 @@ describe('mergeStoryState', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
-        '血封信笺（柏字残画）': '妆台抽屉附近',
-        '血封信笺（密函）': '东院正房妆台暗屉',
+        '密信（残片）': '书桌抽屉附近',
+        '密信（副本）': '主卧暗屉',
       },
     }
     const delta: StoryState = {
@@ -82,38 +88,38 @@ describe('mergeStoryState', () => {
     }
     const merged = mergeStoryState(existing, delta)
     expect(Object.keys(merged.keyItemsLocation).length).toBe(1)
-    expect(Object.values(merged.keyItemsLocation)[0]).toBe('东院正房妆台暗屉')
+    expect(Object.values(merged.keyItemsLocation)[0]).toBe('主卧暗屉')
   })
 
   it('overrides old canonical entries with delta entries', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
-        '血封信笺（柏字残画）': '妆台抽屉附近',
-        '血封信笺（密函）': '东院正房妆台暗屉',
+        '密信（残片）': '书桌抽屉附近',
+        '密信（副本）': '主卧暗屉',
       },
     }
     const delta: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
-        '血封信笺': '袖袋中',
+        '密信': '口袋中',
       },
     }
     const merged = mergeStoryState(existing, delta)
     expect(Object.keys(merged.keyItemsLocation).length).toBe(1)
-    expect(merged.keyItemsLocation['血封信笺']).toBe('袖袋中')
+    expect(merged.keyItemsLocation['密信']).toBe('口袋中')
   })
 
   it('merges supersededFacts and canonicalFacts without duplicates', () => {
     const existing: StoryState = {
       ...emptyState(),
-      supersededFacts: [{ subject: '血封信笺', oldFact: '妆台抽屉附近', reason: '冲突', chapterIndex: 1 }],
-      canonicalFacts: [{ id: 'cf1', subject: '血封信笺', attribute: '所在位置', value: '东院正房妆台暗屉', establishedIn: 1 }],
+      supersededFacts: [{ subject: '密信', oldFact: '书桌抽屉附近', reason: '冲突', chapterIndex: 1 }],
+      canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 }],
     }
     const delta: StoryState = {
       ...emptyState(),
-      supersededFacts: [{ subject: '血封信笺', oldFact: '妆台抽屉附近', reason: '冲突', chapterIndex: 1 }],
-      canonicalFacts: [{ id: 'cf1', subject: '血封信笺', attribute: '所在位置', value: '东院正房妆台暗屉', establishedIn: 1 }],
+      supersededFacts: [{ subject: '密信', oldFact: '书桌抽屉附近', reason: '冲突', chapterIndex: 1 }],
+      canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 }],
     }
     const merged = mergeStoryState(existing, delta)
     expect(merged.supersededFacts?.length).toBe(1)
@@ -123,11 +129,11 @@ describe('mergeStoryState', () => {
   it('keeps distinct canonical facts for different subjects', () => {
     const existing: StoryState = {
       ...emptyState(),
-      canonicalFacts: [{ id: 'cf1', subject: '血封信笺', attribute: '所在位置', value: '东院正房妆台暗屉', establishedIn: 1 }],
+      canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 }],
     }
     const delta: StoryState = {
       ...emptyState(),
-      canonicalFacts: [{ id: 'cf2', subject: '小银刀', attribute: '所在位置', value: '袖袋', establishedIn: 2 }],
+      canonicalFacts: [{ id: 'cf2', subject: '匕首', attribute: '所在位置', value: '口袋', establishedIn: 2 }],
     }
     const merged = mergeStoryState(existing, delta)
     expect(merged.canonicalFacts?.length).toBe(2)
@@ -138,39 +144,39 @@ describe('sanitizeStoryState', () => {
   it('removes invented characters from locations/status', () => {
     const state: StoryState = {
       ...emptyState(),
-      characterLocations: { 苏半城: '正房', 苏孟祥: '门外', 陆廷樑: '灵堂' },
-      characterStatus: { 苏半城: '冷静', 苏孟祥: '疲惫' },
+      characterLocations: { 主角: '正厅', 配角甲: '门外', 配角乙: '大厅' },
+      characterStatus: { 主角: '冷静', 配角甲: '疲惫' },
     }
     const report = sanitizeStoryState(state, characters)
-    expect(report.state.characterLocations).toEqual({ 苏半城: '正房' })
-    expect(report.state.characterStatus).toEqual({ 苏半城: '冷静' })
-    expect(report.removedCharacters).toContain('苏孟祥')
-    expect(report.removedCharacters).toContain('陆廷樑')
+    expect(report.state.characterLocations).toEqual({ 主角: '正厅' })
+    expect(report.state.characterStatus).toEqual({ 主角: '冷静' })
+    expect(report.removedCharacters).toContain('配角甲')
+    expect(report.removedCharacters).toContain('配角乙')
   })
 
   it('keeps established characters when preserveExisting is true', () => {
     const existingStoryState: StoryState = {
       ...emptyState(),
-      characterLocations: { 苏半城: '正房', 亲王: '王府' },
-      characterStatus: { 苏半城: '冷静', 亲王: '阴沉' },
+      characterLocations: { 主角: '正厅', 权贵: '王府' },
+      characterStatus: { 主角: '冷静', 权贵: '阴沉' },
     }
     const state: StoryState = {
       ...existingStoryState,
-      characterLocations: { ...existingStoryState.characterLocations, 苏孟祥: '门外' },
-      characterStatus: { ...existingStoryState.characterStatus, 苏孟祥: '疲惫' },
+      characterLocations: { ...existingStoryState.characterLocations, 配角甲: '门外' },
+      characterStatus: { ...existingStoryState.characterStatus, 配角甲: '疲惫' },
     }
     const report = sanitizeStoryState(state, characters, { preserveExisting: true, existingStoryState })
-    expect(report.state.characterLocations).toEqual({ 苏半城: '正房', 亲王: '王府' })
-    expect(report.state.characterStatus).toEqual({ 苏半城: '冷静', 亲王: '阴沉' })
-    expect(report.removedCharacters).toContain('苏孟祥')
+    expect(report.state.characterLocations).toEqual({ 主角: '正厅', 权贵: '王府' })
+    expect(report.state.characterStatus).toEqual({ 主角: '冷静', 权贵: '阴沉' })
+    expect(report.removedCharacters).toContain('配角甲')
   })
 
   it('detects conflicting item locations', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
-        '廷樾手记': '妆台抽屉',
-        '《廷樾手记》': '樟木箱暗格',
+        '手记': '书桌抽屉',
+        '《手记》': '木箱暗格',
       },
     }
     const report = sanitizeStoryState(state, characters)
@@ -181,73 +187,73 @@ describe('sanitizeStoryState', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
-        '血封信笺（柏字残画）': '妆台抽屉附近',
-        '血封信笺（密函）': '东院正房妆台暗屉',
+        '密信（残片）': '书桌抽屉附近',
+        '密信（副本）': '主卧暗屉',
       },
     }
     const report = sanitizeStoryState(state, characters, { chapterIndex: 5 })
     expect(Object.keys(report.state.keyItemsLocation).length).toBe(1)
-    expect(Object.values(report.state.keyItemsLocation)[0]).toBe('东院正房妆台暗屉')
+    expect(Object.values(report.state.keyItemsLocation)[0]).toBe('主卧暗屉')
     expect(report.state.supersededFacts?.length).toBe(1)
-    expect(report.state.supersededFacts?.[0].subject).toBe('血封信笺')
+    expect(report.state.supersededFacts?.[0].subject).toBe('密信')
     expect(report.state.canonicalFacts?.length).toBe(1)
-    expect(report.state.canonicalFacts?.[0].subject).toBe('血封信笺')
+    expect(report.state.canonicalFacts?.[0].subject).toBe('密信')
     expect(report.state.canonicalFacts?.[0].attribute).toBe('所在位置')
-    expect(report.state.canonicalFacts?.[0].value).toBe('东院正房妆台暗屉')
+    expect(report.state.canonicalFacts?.[0].value).toBe('主卧暗屉')
   })
 
   it('removes facts that reference invented characters', () => {
     const state: StoryState = {
       ...emptyState(),
-      activePlots: ['苏孟祥出门办事'],
-      revealedSecrets: ['陆廷樑偷了东西'],
+      activePlots: ['配角甲出门办事'],
+      revealedSecrets: ['配角乙偷了东西'],
     }
     const report = sanitizeStoryState(state, characters)
     expect(report.state.activePlots).toEqual([])
     expect(report.state.revealedSecrets).toEqual([])
-    expect(report.removedFacts).toContain('苏孟祥出门办事')
-    expect(report.removedFacts).toContain('陆廷樑偷了东西')
+    expect(report.removedFacts).toContain('配角甲出门办事')
+    expect(report.removedFacts).toContain('配角乙偷了东西')
   })
 
   it('detects ambiguous item names at same location', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
-        '廷樾手记': '妆台抽屉',
-        '《廷樾手记》': '妆台抽屉',
+        '手记': '书桌抽屉',
+        '《手记》': '书桌抽屉',
       },
     }
     const report = sanitizeStoryState(state, characters)
     expect(report.ambiguousItems.length).toBeGreaterThan(0)
-    expect(report.ambiguousItems[0].items).toContain('廷樾手记')
+    expect(report.ambiguousItems[0].items).toContain('手记')
   })
 
   it('formats state conflicts into instructions', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
-        '廷樾手记': '妆台抽屉',
-        '《廷樾手记》': '樟木箱暗格',
+        '手记': '书桌抽屉',
+        '《手记》': '木箱暗格',
       },
     }
     const report = sanitizeStoryState(state, characters)
     const formatted = formatStateConflicts(report)
     expect(formatted).toContain('物品位置冲突')
-    expect(formatted).toContain('妆台抽屉')
-    expect(formatted).toContain('樟木箱暗格')
+    expect(formatted).toContain('书桌抽屉')
+    expect(formatted).toContain('木箱暗格')
   })
 })
 
 describe('applyCanonicalFactsToState', () => {
   it('updates keyItemsLocation based on canonical fact', () => {
     const state = emptyState()
-    state.keyItemsLocation = { '血封信笺': '妆台抽屉', '另一物品': '书架' }
+    state.keyItemsLocation = { '密信': '书桌抽屉', '另一物品': '书架' }
     state.canonicalFacts = [
-      { id: 'f1', subject: '血封信笺', attribute: '所在位置', value: '刑部证物房', establishedIn: 9 },
+      { id: 'f1', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 9 },
     ]
 
     const result = applyCanonicalFactsToState(state)
-    expect(result.keyItemsLocation['血封信笺']).toBe('刑部证物房')
+    expect(result.keyItemsLocation['密信']).toBe('官府仓库')
     expect(result.keyItemsLocation['另一物品']).toBe('书架')
   })
 })
@@ -265,12 +271,12 @@ describe('reconcileStoryState', () => {
   function baseState(): StoryState {
     return {
       ...emptyState(),
-      characterLocations: { '苏半城': '正房' },
-      characterStatus: { '苏半城': '自由' },
-      keyItemsLocation: { '血封信笺': '妆台抽屉' },
-      keyItemsState: { '血封信笺': '完整' },
-      revealedSecrets: ['苏半城是主谋'],
-      storyTime: '民国三年三月初五',
+      characterLocations: { '主角': '正厅' },
+      characterStatus: { '主角': '自由' },
+      keyItemsLocation: { '密信': '书桌抽屉' },
+      keyItemsState: { '密信': '完整' },
+      revealedSecrets: ['主角是主谋'],
+      storyTime: '故事时间第一天',
     }
   }
 
@@ -286,21 +292,21 @@ describe('reconcileStoryState', () => {
   it('auto-resolves item location retcon', async () => {
     const state = baseState()
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([
-      { skip: false, location: '刑部证物房', state: null },
+      { skip: false, location: '官府仓库', state: null },
     ])
 
-    const report = await reconcileStoryState(state, '第10章：血封信笺被转移至刑部证物房。', [], 9, createProvider())
-    expect(report.autoResolved.some(c => c.subject === '血封信笺')).toBe(true)
-    expect(report.state.keyItemsLocation['血封信笺']).toBe('刑部证物房')
+    const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createProvider())
+    expect(report.autoResolved.some(c => c.subject === '密信')).toBe(true)
+    expect(report.state.keyItemsLocation['密信']).toBe('官府仓库')
     expect(report.state.canonicalFacts).toHaveLength(1)
-    expect(report.state.canonicalFacts?.[0].value).toBe('刑部证物房')
+    expect(report.state.canonicalFacts?.[0].value).toBe('官府仓库')
   })
 
   it('surfaces contradiction for repeated secret reveal', async () => {
     const state = baseState()
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
 
-    const report = await reconcileStoryState(state, '第10章：真相大白，苏半城是主谋。', [], 9, createProvider())
+    const report = await reconcileStoryState(state, '第10章：真相大白，主角是主谋。', [], 9, createProvider())
     expect(report.requiresAuthorDecision.length).toBeGreaterThan(0)
     expect(report.requiresAuthorDecision[0].type).toBe('contradiction')
   })
@@ -308,16 +314,16 @@ describe('reconcileStoryState', () => {
   it('preserves canonical facts from input state and updates them', async () => {
     const state = baseState()
     state.canonicalFacts = [
-      { id: 'f1', subject: '血封信笺', attribute: '所在位置', value: '妆台抽屉', establishedIn: 8 },
+      { id: 'f1', subject: '密信', attribute: '所在位置', value: '书桌抽屉', establishedIn: 8 },
     ]
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([
-      { skip: false, location: '刑部证物房', state: null },
+      { skip: false, location: '官府仓库', state: null },
     ])
 
-    const report = await reconcileStoryState(state, '第10章：血封信笺被转移至刑部证物房。', [], 9, createProvider())
-    const fact = report.state.canonicalFacts?.find(f => f.subject === '血封信笺')
+    const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createProvider())
+    const fact = report.state.canonicalFacts?.find(f => f.subject === '密信')
     expect(fact).toBeDefined()
-    expect(fact?.value).toBe('刑部证物房')
+    expect(fact?.value).toBe('官府仓库')
     expect(fact?.establishedIn).toBe(10)
     expect(fact?.supersedes?.length).toBeGreaterThan(0)
     expect(fact?.supersedes?.[0].chapter).toBe(8)
@@ -345,9 +351,9 @@ describe('detectOutlineStateConflicts', () => {
       canonicalFacts: [
         {
           id: 'cf1',
-          subject: '鹤卿第三条退路',
+          subject: '秘密退路',
           attribute: '限制',
-          value: '不写在账册上、不托付任何人，仅苏半城自己知道',
+          value: '不写在账册上、不托付任何人，仅主角自己知道',
           establishedIn: 11,
         },
       ],
@@ -357,12 +363,12 @@ describe('detectOutlineStateConflicts', () => {
       chat: vi.fn(async (): Promise<string> => JSON.stringify({
         conflicts: [
           {
-            subject: '鹤卿第三条退路',
+            subject: '秘密退路',
             attribute: '限制',
             oldValue: '不托付任何人',
             newValue: '寄养于外姓友人',
             severity: 'warning',
-            description: '大纲要求将鹤卿寄养于外姓友人，与权威事实存在张力',
+            description: '大纲要求将幼子寄养于外姓友人，与权威事实存在张力',
           },
         ],
         constraints: [
@@ -371,7 +377,7 @@ describe('detectOutlineStateConflicts', () => {
       })),
     } as unknown as ModelProvider
 
-    const result = await detectOutlineStateConflicts(state, '苏半城被迫将幼子寄养于外姓友人家中', 16, provider)
+    const result = await detectOutlineStateConflicts(state, '主角被迫将幼子寄养于外姓友人家中', 16, provider)
     expect(result.conflicts).toHaveLength(1)
     expect(result.conflicts[0].severity).toBe('warning')
     expect(result.conflicts[0].type).toBe('contradiction')
@@ -400,28 +406,28 @@ describe('conflict detection & classification', () => {
 
   it('detects item location retcon', async () => {
     const state = emptyState()
-    state.keyItemsLocation = { '血封信笺': '妆台抽屉' }
+    state.keyItemsLocation = { '密信': '书桌抽屉' }
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValueOnce([
-      { skip: false, location: '刑部证物房', state: null },
+      { skip: false, location: '官府仓库', state: null },
     ])
 
-    const conflicts = await detectItemLocationConflicts(state, '第10章：血封信笺被转移至刑部证物房。', createProvider())
+    const conflicts = await detectItemLocationConflicts(state, '第10章：密信被转移至官府仓库。', createProvider())
     expect(conflicts).toHaveLength(1)
-    expect(conflicts[0].subject).toBe('血封信笺')
-    expect(conflicts[0].newValue).toBe('刑部证物房')
+    expect(conflicts[0].subject).toBe('密信')
+    expect(conflicts[0].newValue).toBe('官府仓库')
     expect(conflicts[0].type).toBe('retcon')
   })
 
   it('detects character status retcon', async () => {
     const state = emptyState()
-    state.characterStatus = { '苏半城': '自由' }
+    state.characterStatus = { '主角': '自由' }
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValueOnce([
       { skip: false, location: null, state: '身受重伤' },
     ])
 
-    const conflicts = await detectCharacterStatusConflicts(state, '第10章：苏半城已身受重伤。', createProvider())
+    const conflicts = await detectCharacterStatusConflicts(state, '第10章：主角已身受重伤。', createProvider())
     expect(conflicts).toHaveLength(1)
-    expect(conflicts[0].subject).toBe('苏半城')
+    expect(conflicts[0].subject).toBe('主角')
     expect(conflicts[0].attribute).toBe('状态')
   })
 
@@ -441,5 +447,198 @@ describe('conflict detection & classification', () => {
     const result = await classifyConflicts([conflict], createProvider())
     expect(result[0].type).toBe('contradiction')
     expect(result[0].severity).toBe('blocking')
+  })
+})
+
+
+describe('applyAuthorOverrides', () => {
+  it('applies author location overrides to characters and items', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterLocations: { '主角': '家中' },
+      keyItemsLocation: { '钥匙': '口袋', '钥匙（箱用）': '口袋' },
+    }
+    const overrides: StateOverride[] = [
+      {
+        id: 'o1',
+        subject: '主角',
+        attribute: '所在位置',
+        oldValue: '家中',
+        newValue: '城外',
+        reason: 'test',
+        source: 'author',
+        chapterIndex: 9,
+        createdAt: 1,
+      },
+      {
+        id: 'o2',
+        subject: '钥匙',
+        attribute: '所在位置',
+        oldValue: '口袋',
+        newValue: '箱内',
+        reason: 'test',
+        source: 'author',
+        chapterIndex: 9,
+        createdAt: 2,
+      },
+    ]
+
+    const result = applyAuthorOverrides({ ...state, overrides })
+    expect(result.characterLocations['主角']).toBe('城外')
+    expect(result.keyItemsLocation['钥匙']).toBe('箱内')
+    expect(result.keyItemsLocation['钥匙（箱用）']).toBe('箱内')
+    expect(result.canonicalFacts?.some(f => f.subject === '主角' && f.value === '城外')).toBe(true)
+    expect(result.canonicalFacts?.some(f => f.subject === '钥匙' && f.value === '箱内')).toBe(true)
+  })
+
+  it('applies author status overrides', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterStatus: { '主角': '健康' },
+      keyItemsState: { '宝箱': '锁着' },
+    }
+    const overrides: StateOverride[] = [
+      {
+        id: 'o1',
+        subject: '主角',
+        attribute: '状态',
+        oldValue: '健康',
+        newValue: '负伤',
+        reason: 'test',
+        source: 'author',
+        chapterIndex: 5,
+        createdAt: 1,
+      },
+    ]
+
+    const result = applyAuthorOverrides({ ...state, overrides })
+    expect(result.characterStatus['主角']).toBe('负伤')
+    expect(result.canonicalFacts?.[0].attribute).toBe('状态')
+    expect(result.canonicalFacts?.[0].value).toBe('负伤')
+  })
+})
+
+describe('formatStoryState', () => {
+  it('deduplicates item aliases by canonical name', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: {
+        '长剑': '墙上',
+        '《长剑》': '墙上',
+        '长剑（祖传）': '墙上',
+        '血书': '怀中',
+      },
+      keyItemsState: {
+        '长剑': '锋利',
+        '《长剑》': '锋利',
+      },
+    }
+    const text = formatStoryState(state)
+    expect(text).toContain('长剑')
+    expect(text).toContain('亦称')
+    expect(text).toContain('血书：怀中')
+    expect(text).toContain('锋利')
+    expect(text).not.toMatch(/^\s*《长剑》/m)
+  })
+})
+
+describe('prepareStoryStateForChapter', () => {
+  beforeEach(() => {
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockReset()
+    vi.mocked(contextJudge.batchDetectTimeJumps).mockReset()
+    vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockReset()
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
+    vi.mocked(contextJudge.batchDetectTimeJumps).mockResolvedValue([false])
+    vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValue([false])
+  })
+
+  function makeState(): ReducedGraphState {
+    return {
+      story: { id: 's1', title: 'Test', outputDir: '/tmp', createdAt: 1, updatedAt: 1, status: 'writing', genre: 'default', totalChapters: 3 } as ReducedGraphState['story'],
+      idea: '',
+      genre: 'default',
+      totalChapters: 3,
+      world: null,
+      characters: [{ id: 'c1', storyId: 's1', name: '主角', description: '', createdAt: 1 }],
+      outline: [{ id: 'o1', number: 1, title: 'Test', description: '主角秘密抵达京城。' }],
+      chapters: [],
+      currentChapterIndex: 0,
+      foreshadowStack: [],
+      timeline: undefined,
+      chapterSummaries: [],
+      pendingIssues: [],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: false,
+      writeOneChapterOnly: false,
+      lastPrintedChapter: -1,
+      lastTimelineSnapshot: null,
+      chapterPlan: null,
+      storyState: {
+        ...emptyState(),
+        characterLocations: { '主角': '家中' },
+        canonicalFacts: [{ id: 'f1', subject: '主角', attribute: '所在位置', value: '家中', establishedIn: 1 }],
+      },
+      chapterTimeAnchor: undefined,
+      autoFixAttempts: 0,
+      verifiedConstraints: [],
+      chapterReport: null,
+      rewriteAttempts: 0,
+      errorRewriteAttempts: 0,
+      previousIssues: [],
+      previousRawErrorCount: 0,
+      forceStructuralRewrite: false,
+      routingDecision: undefined,
+      authorDecisions: {},
+    }
+  }
+
+  it('throws BlockingConflictError when outline contradicts canonical fact at blocking severity', async () => {
+    const state = makeState()
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        conflicts: [
+          {
+            subject: '主角',
+            attribute: '所在位置',
+            oldValue: '家中',
+            newValue: '京城',
+            severity: 'blocking',
+            description: '大纲要求主角抵达京城，与权威事实冲突',
+          },
+        ],
+        constraints: [],
+      })),
+    } as unknown as ModelProvider
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
+    vi.mocked(registryCreateProvider).mockReturnValue(provider)
+
+    await expect(prepareStoryStateForChapter(state, 0)).rejects.toBeInstanceOf(BlockingConflictError)
+  })
+
+  it('skips blocking conflicts that have an author decision', async () => {
+    const state = makeState()
+    state.authorDecisions = { 'outline-state:主角:所在位置:0': 'canonical' }
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        conflicts: [
+          {
+            subject: '主角',
+            attribute: '所在位置',
+            oldValue: '家中',
+            newValue: '京城',
+            severity: 'blocking',
+            description: '大纲要求主角抵达京城，与权威事实冲突',
+          },
+        ],
+        constraints: [],
+      })),
+    } as unknown as ModelProvider
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
+    vi.mocked(registryCreateProvider).mockReturnValue(provider)
+
+    const result = await prepareStoryStateForChapter(state, 0)
+    expect(result).toBeDefined()
+    expect(result.stateConflicts).toContain('大纲要求主角抵达京城')
   })
 })

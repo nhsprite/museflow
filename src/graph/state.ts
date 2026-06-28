@@ -46,6 +46,9 @@ export const GraphState = Annotation.Root({
   previousRawErrorCount: Annotation<number>,
   forceStructuralRewrite: Annotation<boolean>,
   routingDecision: Annotation<string | undefined>,
+
+  // author resolutions for blocking outline-vs-canonical conflicts in the current chapter
+  authorDecisions: Annotation<Record<string, 'outline' | 'canonical'>>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

@@ -1,6 +1,6 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
-import { POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, FORESHADOW_BOUNDARY_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
+import { CAPABILITY_CONSISTENCY_RULES, SEVERITY_INSTRUCTIONS, FORESHADOW_BOUNDARY_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { normalizeIssues } from '../utils/agent-output.js'
 
@@ -32,9 +32,9 @@ ${buildCharacterWhitelistSection({
   establishedCharacters: state.establishedCharacters,
 })}
 
-<outline>
-${state.outline || '（暂无大纲）'}
-</outline>
+<outline_context>
+${state.outline || '（暂无大纲上下文）'}
+</outline_context>
 
 ${state.chapterSummaries && state.chapterSummaries.length > 0 ? `<chapter_summaries>
 ${state.chapterSummaries.join('\n---\n')}
@@ -52,13 +52,13 @@ ${state.chapterContent || '（无内容）'}
 
 <rules>
   【评判依据边界 - 严格遵守】
-  - 你的主要依据包括：上方明确提供的"世界观设定"、"人物设定"、"故事大纲"和"已埋伏笔"。
+  - 你的主要依据包括：上方明确提供的"世界观设定"、"人物设定"、"当前及前章大纲上下文"和"已埋伏笔"。
   - 基本逻辑与常识可作为辅助判断依据。
   - 你**无权**以任何外部来源的信息作为否定本章内容的评判标准。未在上方提供的背景知识、公共知识库中的信息均不得作为判定幻觉的依据。
   - 只有当内容违反**本故事自身**已建立的设定或基本逻辑时，才应报告为幻觉。
-  - **重要**：故事大纲中已明确提及的角色、事件和设定，等同于"已介绍元素"，不应再报为"未介绍元素"。
+  - **重要**：当前及前章大纲上下文中已明确提及的角色、事件和设定，等同于"已介绍元素"，不应再报为"未介绍元素"。
   - **重要**：前面章节摘要（chapterSummaries）中已出现的人物和事件，以及上方【前文已建立角色】列表中的人物，都应视为"已介绍"。
-  - 本章首次登场的新角色，如果与大纲或故事后续设定明显冲突，才报为"未介绍元素"；若只是本章合理引入的配角或路人，不报 error。
+  - 本章首次登场的新角色，如果与已建立设定明显冲突，才报为"未介绍元素"；若只是本章合理引入的配角或路人，不报 error。
 </rules>
 
 <severity_levels>
@@ -79,7 +79,7 @@ ${state.chapterContent || '（无内容）'}
 <dimensions>
   【幻觉检测维度】
   1. **世界规则冲突**：描述与已建立的世界规则相悖的内容
-  1b. **战力体系冲突**：${POWER_SYSTEM_RULES}
+  1b. **战力体系/能力状态冲突**：${CAPABILITY_CONSISTENCY_RULES}
    2. **人物性格冲突**：人物言行与其已建立的性格特点不符
   3. **事实矛盾**：与前文已确立的事实相矛盾
   4. **不可能发生**：基于已建立规则，某些事件不可能发生

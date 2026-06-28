@@ -5,11 +5,12 @@ import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { calculateKeywordOverlap } from '../utils/text-similarity.js'
+import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 import {
   AI_PHRASE_PROHIBITIONS,
   TIMELINE_RULES,
   FACT_CONSISTENCY_RULES,
-  POWER_SYSTEM_RULES,
+  CAPABILITY_CONSISTENCY_RULES,
   CROSS_CHAPTER_CONTINUITY_RULES,
   FORESHADOW_BOUNDARY_RULES,
   CHAPTER_OUTPUT_RULES,
@@ -78,7 +79,7 @@ ${state.stateConflicts}
     const outlineComplianceSection = `<outline_compliance>
 <mandatory>【大纲遵循 - 强制要求】</mandatory>
 - 本章只能呈现大纲中明确列出的情节点，不得擅自添加大纲未提及的新情节、新场景或新角色
-- 如果大纲中某角色被定位为隐藏观察者、暗中保护者或类似非公开定位，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
+- 如果大纲中某角色被定位为不在本章公开登场的角色，该角色不得在本章中公开出现在主角团队面前，不得与主角团队公开互动
 - 不得擅自增加大纲未提及的、以考验或测试角色为核心目的的情节
 - 不得擅自改变大纲中明确指定的角色关系
 - 如果本章规划（chapterPlan）将某条前章遗留差事标记为 postponed 或 background，本章只需一句话带过或承认其待办状态，不得展开为完整场景
@@ -282,6 +283,7 @@ ${closingReminder ? closingReminder + '\n\n' : ''}${existingChapterSection}
 |--------|------|----------|-------------|----------|
 ${outlineKeyPoints.map((point, i) => `| 大纲情节点${i + 1} | 大纲 | ${point} | （请填写：本章如何呈现该情节点） | （请填写：第几段） |`).join('\n')}
 ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`).join('\n')}
+${state.stateConflicts ? `| 大纲-权威事实冲突 | stateConflicts | 本章存在需要处理的冲突：${state.stateConflicts.replace(/\n/g, '；')} | （请填写：每个冲突选择以谁为准、通过什么角色动作或叙事过渡实现） | （请填写） |` : ''}
 | 关键台词 | 大纲 | （如有大纲要求的台词，请列出） | （请填写：由谁说、在什么场景说） | （请填写） |
 | 事实核查 | 权威事实 | 本章涉及的事实是否已核对？ | （请填写：核对结果） | （请填写） |
 | 时间线 | 大纲/规划 | （如有时间要求，请列出） | （请填写：时间如何推进） | （请填写） |
@@ -308,25 +310,25 @@ ${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${se
 ${CHAPTER_OUTPUT_RULES}
 <rule id="1"><mandatory>【必须】</mandatory>严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现</rule>
 <rule id="2"><mandatory>【必须】</mandatory>主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字</rule>
-<rule id="3"><mandatory>【必须】</mandatory>物品名称、技能/能力名称、专有名词等必须与大纲完全一致</rule>
+<rule id="3"><mandatory>【必须】</mandatory>物品名称、专有名词、特殊设定名称等必须与大纲完全一致</rule>
 ${TIMELINE_RULES}
 <rule id="5"><mandatory>【必须】</mandatory>关键台词必须原样出现：
    - 大纲中明确要求的台词必须一字不差地出现
    - 不能擅自改写为意思相近但措辞不同的句子</rule>
-<rule id="6"><mandatory>【必须】</mandatory>叙述视角保持一致（第三人称限制性视角），避免出现视角跳跃</rule>
+<rule id="6"><mandatory>【必须】</mandatory>叙述视角保持一致，避免出现视角跳跃</rule>
 <rule id="7"><mandatory>【必须】</mandatory>因果关系明确：前一事件的结果必须自然导致后一事件，不能生硬跳转</rule>
 <rule id="8"><mandatory>【必须】</mandatory>信息一致性：本章内所有描述必须自洽，不能前后矛盾</rule>
 ${AI_PHRASE_PROHIBITIONS}
 <rule id="10">注重人物对话和心理描写</rule>
 <rule id="11">适时埋下伏笔，为后续章节留下悬念</rule>
 <rule id="12"><mandatory>【必须】</mandatory>每章字数要求：
+     - 本章总字数应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间
      - 每章字数应均匀分布，避免出现过短章节
-     - 如果本章字数明显少于其他章节，必须扩充内容直至篇幅均衡
      - 严禁用几句话草率收尾，每章都必须有充实的情节展开</rule>
 ${CROSS_CHAPTER_CONTINUITY_RULES}
 ${FACT_CONSISTENCY_RULES}
 ${FORESHADOW_BOUNDARY_RULES}
-${POWER_SYSTEM_RULES}
+${CAPABILITY_CONSISTENCY_RULES}
 ${ABSTRACT_OUTCOME_RULES}
 ${PENDING_TASK_AUTHORITY_RULES}
 ${TIME_ANCHOR_AUTHORITY_RULES}
@@ -343,6 +345,8 @@ ${FORESHADOW_DISCIPLINE_RULES}
     const templatedContent = this.fillTemplate(userContent, {
       MAX_BACKGROUND_TASK_WORD_COUNT: planningConfig.maxBackgroundTaskWordCount,
       CLOSING_FORESHADOW_RECOVERY_PERCENT: Math.round(planningConfig.closingForeshadowRecoveryRatio * 100),
+      CHAPTER_WORD_COUNT_MIN: genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN,
+      CHAPTER_WORD_COUNT_MAX: genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX,
     })
 
     return [

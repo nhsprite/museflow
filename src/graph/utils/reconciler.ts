@@ -30,6 +30,7 @@ import { tokenizeWords } from '../../utils/text.js'
 import { buildCharacterWhitelist } from '../../utils/character-whitelist.js'
 import { createProvider } from '../../model/registry.js'
 import { generateId } from '../../utils/id.js'
+import { BlockingConflictError } from '../../utils/errors.js'
 import type { Character } from '../../types/character.js'
 
 // ----- Chapter state preparation -----
@@ -61,16 +62,118 @@ function buildPendingTasksConstraints(tasks: PendingTask[]): string {
   return lines.join('\n')
 }
 
+function findMatchingKey(record: Record<string, string>, subject: string): string | undefined {
+  if (record[subject] !== undefined) return subject
+  const canonicalSubject = canonicalizeItemName(subject)
+  if (canonicalSubject.length === 0) return undefined
+  for (const key of Object.keys(record)) {
+    if (canonicalizeItemName(key) === canonicalSubject) return key
+  }
+  return undefined
+}
+
+function findMatchingKeys(record: Record<string, string>, subject: string): string[] {
+  const keys: string[] = []
+  const canonicalSubject = canonicalizeItemName(subject)
+  const hasCanonical = canonicalSubject.length > 0
+  for (const key of Object.keys(record)) {
+    if (key === subject) {
+      keys.push(key)
+      continue
+    }
+    if (hasCanonical && canonicalizeItemName(key) === canonicalSubject) {
+      keys.push(key)
+    }
+  }
+  return keys
+}
+
+/**
+ * 将作者通过 CLI 做出的裁决（source='author' 的 overrides）应用到 storyState。
+ *
+ * 这是通用机制：它根据 override 的 attribute 更新角色/物品位置或状态，
+ * 并同步更新 canonicalFacts，使后续 agent 把作者裁决视为权威事实。
+ */
+export function applyAuthorOverrides(state: StoryState): StoryState {
+  const overrides = state.overrides?.filter(o => o.source === 'author') ?? []
+  if (overrides.length === 0) return state
+
+  const result: StoryState = { ...state }
+  const canonicalFacts = [...(state.canonicalFacts ?? [])]
+
+  for (const override of overrides) {
+    const { subject, attribute, newValue, chapterIndex } = override
+
+    if (attribute === '所在位置') {
+      const characterKey = findMatchingKey(result.characterLocations, subject)
+      if (characterKey) {
+        result.characterLocations[characterKey] = newValue
+      }
+      for (const itemKey of findMatchingKeys(result.keyItemsLocation, subject)) {
+        result.keyItemsLocation[itemKey] = newValue
+      }
+    } else if (attribute === '状态') {
+      const characterKey = findMatchingKey(result.characterStatus, subject)
+      if (characterKey) {
+        result.characterStatus[characterKey] = newValue
+      }
+      for (const itemKey of findMatchingKeys(result.keyItemsState, subject)) {
+        result.keyItemsState[itemKey] = newValue
+      }
+    }
+
+    const existingIndex = canonicalFacts.findIndex(
+      f => f.subject === subject && f.attribute === attribute
+    )
+    const fact: CanonicalFact = {
+      id: existingIndex >= 0 ? canonicalFacts[existingIndex]!.id : generateId('fact'),
+      subject,
+      attribute,
+      value: newValue,
+      establishedIn: chapterIndex + 1,
+      supersedes:
+        existingIndex >= 0
+          ? [
+              ...(canonicalFacts[existingIndex]!.supersedes ?? []),
+              {
+                chapter: canonicalFacts[existingIndex]!.establishedIn,
+                oldValue: canonicalFacts[existingIndex]!.value,
+              },
+            ]
+          : [{ chapter: Math.max(1, chapterIndex), oldValue: override.oldValue }],
+    }
+    if (existingIndex >= 0) {
+      canonicalFacts[existingIndex] = fact
+    } else {
+      canonicalFacts.push(fact)
+    }
+  }
+
+  result.canonicalFacts = canonicalFacts
+  return result
+}
+
+function conflictIsDecided(
+  conflict: Conflict,
+  authorDecisions: Record<string, 'outline' | 'canonical'> | undefined
+): boolean {
+  if (!authorDecisions) return false
+  return authorDecisions[conflict.id] !== undefined
+}
+
 export async function prepareStoryStateForChapter(
   state: ReducedGraphState,
   chapterIndex: number
 ): Promise<PreparedStoryState> {
+
   const outlineItem = state.outline[chapterIndex]
   let reconciledState: StoryState = state.storyState ?? createEmptyStoryState()
   let stateConflicts = ''
   let itemLocationConflicts: Array<{ item: string; locations: string[] }> = []
 
   if (outlineItem?.description) {
+    reconciledState = applyAuthorOverrides(reconciledState)
+
     const provider = createProvider()
     const reconciliationReport = await reconcileStoryState(
       reconciledState,
@@ -101,6 +204,16 @@ export async function prepareStoryStateForChapter(
       chapterIndex,
       provider
     )
+
+    const undecidedBlockingConflicts = [
+      ...reconciliationReport.requiresAuthorDecision.filter(c => !conflictIsDecided(c, state.authorDecisions)),
+      ...outlineStateCheck.conflicts.filter(
+        c => c.severity === 'blocking' && !conflictIsDecided(c, state.authorDecisions)
+      ),
+    ]
+    if (undecidedBlockingConflicts.length > 0) {
+      throw new BlockingConflictError(undecidedBlockingConflicts, chapterIndex)
+    }
 
     const sanitizationReport = sanitizeStoryState(reconciledState, state.characters, {
       preserveExisting: true,
@@ -470,6 +583,43 @@ export async function reconcileStoryState(
   }
 }
 
+function formatCanonicalItemEntries(
+  entries: Record<string, string>,
+  sectionTitle: string
+): string[] {
+  const items = Object.entries(entries)
+  if (items.length === 0) return []
+
+  const groups = new Map<
+    string,
+    { representative: string; aliases: string[]; value: string }
+  >()
+
+  for (const [item, value] of items) {
+    const canonical = canonicalizeItemName(item)
+    const existing = groups.get(canonical)
+    if (!existing) {
+      groups.set(canonical, { representative: item, aliases: [], value })
+      continue
+    }
+
+    if (item.length < existing.representative.length) {
+      existing.aliases.push(existing.representative)
+      existing.representative = item
+    } else if (item !== existing.representative) {
+      existing.aliases.push(item)
+    }
+    existing.value = value
+  }
+
+  const lines = [sectionTitle]
+  for (const { representative, aliases, value } of groups.values()) {
+    const aliasNote = aliases.length > 0 ? `（亦称：${aliases.join('、')}）` : ''
+    lines.push(`  ${representative}${aliasNote}：${value}`)
+  }
+  return lines
+}
+
 export function formatStoryState(storyState: StoryState): string {
   const lines: string[] = []
 
@@ -489,21 +639,8 @@ export function formatStoryState(storyState: StoryState): string {
     }
   }
 
-  const items = Object.entries(storyState.keyItemsLocation)
-  if (items.length > 0) {
-    lines.push('【关键物品】')
-    for (const [item, loc] of items) {
-      lines.push(`  ${item}：${loc}`)
-    }
-  }
-
-  const itemStates = Object.entries(storyState.keyItemsState ?? {})
-  if (itemStates.length > 0) {
-    lines.push('【关键物品状态】')
-    for (const [item, state] of itemStates) {
-      lines.push(`  ${item}：${state}`)
-    }
-  }
+  lines.push(...formatCanonicalItemEntries(storyState.keyItemsLocation, '【关键物品】'))
+  lines.push(...formatCanonicalItemEntries(storyState.keyItemsState ?? {}, '【关键物品状态】'))
 
   if (storyState.activePlots.length > 0) {
     lines.push('【进行中的情节】')

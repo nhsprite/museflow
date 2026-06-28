@@ -10,6 +10,7 @@ import { getCheckpointer } from '../graph/checkpointer.js'
 import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 import { deleteChapterContent } from '../storage/filesystem/writer.js'
 import type { Issue } from '../types/agent.js'
+import type { StateOverride } from '../types/story-state.js'
 
 let _graph: ReturnType<typeof buildNovelGraph> | null = null
 
@@ -87,6 +88,7 @@ export async function runStory(input: {
     previousRawErrorCount: 0,
     forceStructuralRewrite: false,
     routingDecision: undefined,
+    authorDecisions: {},
   }
 
   const config: RunnableConfig = {
@@ -211,6 +213,7 @@ export async function runOneChapter(
     previousRawErrorCount: 0,
     forceStructuralRewrite: false,
     routingDecision: undefined,
+    authorDecisions: {},
   }
 
   if (options.mode === 'rewrite') {
@@ -242,6 +245,42 @@ export async function continueStory(
     mode: 'continue',
     targetChapterIndex: currentChapterIndex,
     userResponse,
+  })
+}
+
+export async function applyStateOverrides(
+  storyId: string,
+  overrides: StateOverride[],
+  constraints: string[],
+  authorDecisions: Record<string, 'outline' | 'canonical'>
+): Promise<void> {
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    throw new Error(`Story ${storyId} not found`)
+  }
+
+  const state = await getState(storyId)
+  if (!state) {
+    throw new Error(`Story ${storyId} state not found`)
+  }
+
+  const storyState = state.storyState ?? createEmptyStoryState()
+  const existingOverrides = storyState.overrides ?? []
+  const existingConstraints = state.verifiedConstraints ?? []
+  const existingDecisions = state.authorDecisions ?? {}
+
+  const updatedStoryState = {
+    ...storyState,
+    overrides: [...existingOverrides, ...overrides],
+  }
+  const updatedConstraints = [...existingConstraints, ...constraints]
+  const updatedDecisions = { ...existingDecisions, ...authorDecisions }
+
+  const checkpointer = getCheckpointer()
+  await checkpointer.updateLatestState(outputDir, {
+    storyState: updatedStoryState,
+    verifiedConstraints: updatedConstraints,
+    authorDecisions: updatedDecisions,
   })
 }
 

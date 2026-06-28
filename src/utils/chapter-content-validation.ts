@@ -1,6 +1,7 @@
 import { countChineseWords } from './text.js'
 import type { ModelProvider } from '../model/provider.js'
 import { batchValidateFixedContent } from './context-judge.js'
+import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 
 interface ValidationOptions {
   chapterIndex: number
@@ -93,7 +94,7 @@ export async function validateFixedChapterContent(
   options: ValidationOptions,
   provider?: ModelProvider
 ): Promise<ValidationResult> {
-  const { chapterIndex, minWordCount = 1500, maxWordCount } = options
+  const { chapterIndex, minWordCount = DEFAULT_CHAPTER_WORD_COUNT_MIN, maxWordCount = DEFAULT_CHAPTER_WORD_COUNT_MAX } = options
 
   if (!rawContent || rawContent.trim().length === 0) {
     return { valid: false, error: '修复后的内容为空' }

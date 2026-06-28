@@ -5,6 +5,8 @@ import { readFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../utils/logger.js'
 import { writeFileAtomic, ensureDir } from '../utils/fs.js'
+import { generateId } from '../utils/id.js'
+import type { ReducedGraphState } from './state.js'
 
 interface CheckpointRecord {
   checkpointId: string
@@ -351,6 +353,46 @@ return results.sort((a, b) => a.chapterNumber - b.chapterNumber)
       unlinkSync(path)
       logger.debug(`Cleared pending writes: ${path}`)
     }
+  }
+
+  /**
+   * 在最新 checkpoint 上直接合并部分状态字段，用于图外应用作者裁决。
+   * 原 checkpoint 文件保留，通过生成新 id 实现安全回滚。
+   */
+  async updateLatestState(
+    outputDir: string,
+    partialState: Partial<ReducedGraphState>
+  ): Promise<void> {
+    const pointer = this.readLatestCheckpointId(outputDir)
+    if (!pointer) {
+      throw new Error('No latest checkpoint found')
+    }
+
+    const record = this.loadCheckpointRecord(outputDir, pointer.checkpointId)
+    if (!record) {
+      throw new Error(`Latest checkpoint ${pointer.checkpointId} not found`)
+    }
+
+    const channelValues = record.checkpoint.channel_values as ReducedGraphState
+    const mergedValues = { ...channelValues, ...partialState }
+    const newCheckpointId = generateId('ckpt')
+
+    const newRecord: CheckpointRecord = {
+      checkpointId: newCheckpointId,
+      parentCheckpointId: record.parentCheckpointId ?? null,
+      checkpoint: {
+        ...record.checkpoint,
+        id: newCheckpointId,
+        channel_values: mergedValues,
+      },
+      metadata: record.metadata,
+    }
+
+    const dir = this.ensureCheckpointDir(outputDir)
+    const path = join(dir, `${newCheckpointId}.json`)
+    writeFileAtomic(path, JSON.stringify(newRecord, null, 2))
+    this.writeLatestCheckpointId(outputDir, newCheckpointId, record.checkpoint.ts)
+    logger.debug(`Checkpoint updated via author decision: ${path}`)
   }
 }
 

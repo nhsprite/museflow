@@ -4,6 +4,7 @@ import type { AgentState } from '../../agents/base.js'
 import { getFixAgent } from '../agent-factory.js'
 import { readChapterContent, writeChapterContent } from '../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../genres/registry.js'
+import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
 import { validateFixedChapterContent } from '../../utils/chapter-content-validation.js'
 import { buildCharacterFactTimeline, formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
@@ -315,8 +316,8 @@ export async function runLegacyFix(
   }
 
   const genre = getGenreSkill(state.genre)
-  const min = genre?.chapterWordCountMin ?? 1500
-  const max = genre?.chapterWordCountMax ?? 8000
+  const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
+  const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
 
   const validation = await validateFixedChapterContent(rawContent, {
     chapterIndex,

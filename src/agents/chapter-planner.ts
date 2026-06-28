@@ -4,6 +4,7 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { parseJsonFromLLM } from '../utils/json.js'
+import { DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN, DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX } from '../types/genre.js'
 
 export interface ChapterPlan {
   sections: Array<{
@@ -46,8 +47,8 @@ export class ChapterPlannerAgent extends BaseAgent {
     const outline = state.outline || ''
     const genreSkill = this.getGenre(state.genre)
     const planningConfig = getChapterPlanningConfig(state.genre)
-    const chapterWordCountMin = genreSkill?.chapterWordCountMin ?? 4000
-    const chapterWordCountMax = genreSkill?.chapterWordCountMax ?? 7000
+    const chapterWordCountMin = genreSkill?.chapterWordCountMin ?? DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN
+    const chapterWordCountMax = genreSkill?.chapterWordCountMax ?? DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX
 
     const characterWhitelistSection = buildCharacterWhitelistSection({
       charactersList: state.charactersList,
@@ -139,11 +140,11 @@ ${stateConflictsSection}
 1. 将本章拆分为 {MIN_SECTIONS}-{MAX_SECTIONS} 个段落/场景
 2. 对每个段落，明确：
    - 段落标题（简短）
-   - 内容摘要（1-2句话）
+   - 内容摘要（简短概括，不写细节）
    - 预计字数
    - 涉及的事件（必须对应大纲中的情节点）
    - 出场人物
-   - 时间标记（如"当天夜晚""三日后""凌晨寅时"等，必须明确）
+   - 时间标记（使用故事内明确的具体时间，如相对时间、绝对时间或该世界观下的计时方式）
   3. 列出完整的时间线，确保：
      - 时间顺序正确，不能出现时间回退或跳跃未交代的情况
      - 每个关键事件都有明确的时间标记
@@ -158,7 +159,7 @@ ${stateConflictsSection}
      - 本章必须有一个明确的核心事件（通常是大纲标题或第一句描述的事件）
      - 核心事件必须占据本章总字数的 {CORE_EVENT_RATIO_TARGET_PERCENT}% 以上，这是硬性要求，任何情况下不得突破
      - 非核心事件（如前章遗留差事、过渡衔接、背景交代）必须压缩为简短的过渡段落，单段字数不得超过 {MAX_NON_CORE_SECTION_WORD_COUNT} 字，不得发展成独立大场景
-     - 如果本章大纲只要求"接触""试探""登场""递帖"等初步事件，不得在本章把该事件完整解决或过度展开
+     - 如果本章大纲只要求初步、试探性或登场类事件，不得在本章把该事件完整解决或过度展开
      - 规划的总场景数不得超过 {MAX_SECTIONS} 个，核心事件场景不得少于 {MIN_CORE_SECTIONS} 个
      - 【硬性优先级】当核心事件与前章遗留差事、Deadline 到期事项发生冲突时，永远优先保证核心事件篇幅；不得以"差事到期"为由把无关差事扩展成大场景
   6. 【前章遗留差事处理 - 必须执行】
@@ -172,13 +173,13 @@ ${stateConflictsSection}
      - 【绝对规则】判断一条 pending task 能否标记为 executed 的唯一标准：该 task 的描述与第 ${displayChapterNumber} 章大纲描述存在明确的关键词重叠。没有关键词重叠的 task，即使 deadline 落在本章，resolution 也只能是 postponed 或 background，禁止 executed。
      - 【绝对规则】如果某条 pending task 与第 ${displayChapterNumber} 章大纲核心事件无关，即使其 deadline 落在本章，也必须选择 postponed 或 background（或在一句话内 background 处理），总字数不得超过 {MAX_BACKGROUND_TASK_WORD_COUNT} 字，不得在 sections 中为其分配独立场景或超过 {MAX_EXECUTED_TASK_RATIO_PERCENT}% 的总字数
      - 【硬性规则】如果 taskResolutions 中某条差事为 postponed 或 background，sections 中不得出现专门执行该差事的场景；只允许在过渡句中提及
-  7. 【核心物证操作规则 - 必须执行】
-     - 如果本章需要角色在场景中查看、比对、拆阅或传递核心物证，必须明确区分：
-       1) 「真迹位置」：由前章权威事实锁定，本章未声明转移则不变；
-       2) 「本章操作对象」：可以是副本、抄件、诱饵或经授权取出的真迹。
-     - 任何让核心物证出现在角色可操作位置的情节，必须在规划或正文中说明操作对象是真迹还是副本；不得让读者/检查者误以为所有底牌都被集中到同一处。
-     - 如果本章确实需要转移真迹，必须在 timeline 或 section events 中明确标注转移动作、起点与终点。
-     - 如果 state_conflicts 中提示某物品存在位置冲突，本章必须选择唯一位置作为真迹位置，并通过清晰动作完成转移；禁止让同一物品同时处于两个位置。
+  7. 【关键物品操作规则 - 必须执行】
+     - 如果本章需要角色在场景中查看、比对、拆阅或传递关键物品/道具，必须明确区分：
+       1) 「原始物品位置」：由前章权威事实锁定，本章未声明转移则不变；
+       2) 「本章操作对象」：可以是副本、抄件、诱饵或经授权取出的原始物品。
+     - 任何让关键物品出现在角色可操作位置的情节，必须在规划或正文中说明操作对象是原始物品还是替代物；不得让读者/检查者误以为所有关键物品都被集中到同一处。
+     - 如果本章确实需要转移原始物品，必须在 timeline 或 section events 中明确标注转移动作、起点与终点。
+     - 如果 state_conflicts 中提示某物品存在位置冲突，本章必须选择唯一位置作为该物品的当前位置，并通过清晰动作完成转移；禁止让同一物品同时处于两个位置。
   8. 【角色完整性检查 - 必须执行】
    - 扫描人物设定和前几章摘要，识别哪些角色已加入团队/组织或已成为常驻角色
    - 对于每个已加入的常驻角色，必须在本章规划中明确安排：
@@ -194,13 +195,12 @@ ${stateConflictsSection}
      - 衔接段落内容：通过角色对话、简短回忆或旁白，解释关键状态的变化过程
      - 衔接段落只能承接已知事实，不得为了修补前文矛盾而发明新事实、新来源、新因果或新设定
      - 不得让角色说出其未在前文获得的信息；如果当前资料不足以解释，只能保持模糊或待解
-     - 示例：某角色长期处于某种特殊状态后在本章出现 → 增加一段回忆说明状态变化过程
 
   10. 【本章时间锚点 - 必须输出】
       在输出 JSON 的根级别增加字段 "chapterTimeAnchor"（字符串）。
       规则：
       - 如果本章从上一章结束时间继续推进：chapterTimeAnchor = 上一章结束时间（或写"继续推进：{storyTime}"）。
-      - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日卯时（回溯覆盖第5章后三日）"）。
+      - 如果本章大纲要求回溯、倒叙或跨越一段时间：chapterTimeAnchor = 本章叙事起点时间，并注明时间模式（如"三日期限第一日（回溯覆盖第5章后三日）"）。
       - 如果本章包含时间限制、倒计时或截止期限等时间压力：chapterTimeAnchor 必须明确标注当前处于期限的哪个阶段、还剩多少。
       - 如果无法判断：chapterTimeAnchor = "未指定"。
       - chapterTimeAnchor 将成为本章写作者和一致性检查者的时间原点，必须准确。

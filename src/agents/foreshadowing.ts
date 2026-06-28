@@ -3,6 +3,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ForeshadowItem, ForeshadowStatus } from '../types/foreshadow.js'
 import { generateId } from '../utils/id.js'
 import { isSemanticallyRelated } from '../utils/text-similarity.js'
+import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 
 export class ForeshadowingAgent extends BaseAgent {
   private lastTotalChapters: number | undefined
@@ -16,7 +17,8 @@ export class ForeshadowingAgent extends BaseAgent {
     const totalChapters = state.totalChapters ?? currentChapter
     this.lastTotalChapters = totalChapters
 
-    const noNewThreshold = Math.max(3, Math.floor(totalChapters * 0.15))
+    const planningConfig = getChapterPlanningConfig(state.genre ?? 'default')
+    const noNewThreshold = Math.max(3, Math.floor(totalChapters * planningConfig.closingPhaseRatio))
     const isClosingPhase = currentChapter > totalChapters - noNewThreshold
 
     const overdueForeshadows = existingForeshadows.filter(
@@ -50,9 +52,9 @@ export class ForeshadowingAgent extends BaseAgent {
 <strict_rules>
   <rule>【禁止从大纲/规划生成伏笔】你不得把故事大纲、章节规划或未来剧情摘要中的内容登记为新伏笔。新伏笔必须源自本章正文中的具体细节、对话或场景，而不是源自对后续章节的预先了解。</rule>
   <rule>【禁止把当前叙事登记为伏笔】如果某句话或某个细节在本章中已经得到解释、已经实现或已经完整呈现，它不是伏笔，而是本章叙事的一部分。例如：角色当面对话中明确说出的条件、角色已经完成的决定、本章已经揭晓的信息，都不得登记为伏笔。</rule>
-  <rule>【禁止登记短文本或通用细节】长度低于 40 字的条目、以及"角色注意到某事"这类过于笼统的描述，不得作为新伏笔。</rule>
+  <rule>【禁止登记短文本或通用细节】长度低于 {FORESHADOW_MIN_LENGTH} 字的条目、以及"角色注意到某事"这类过于笼统的描述，不得作为新伏笔。</rule>
   <rule>【禁止登记未来台词】不得把角色未来才可能说的话、未来才可能产生的想法提前登记为伏笔。伏笔必须是本章中实际出现的、可被读者感知到的暗示。</rule>
-  <rule>【预期回收章节必须合理】新伏笔的预期回收章节应当是本章之后 2-8 章的范围内。除非有非常强的叙事理由，否则不得把伏笔预期回收章节设置得过远（如当前章节 +10 章以上），以免被误判为"提前剧透"。</rule>
+  <rule>【预期回收章节必须合理】新伏笔的预期回收章节应当是本章之后 {FORESHADOW_MIN_FULFILL_DISTANCE}-{FORESHADOW_MAX_FULFILL_DISTANCE} 章的范围内。除非有非常强的叙事理由，否则不得把伏笔预期回收章节设置得过远，以免被误判为"提前剧透"。</rule>
 </strict_rules>
 
 <chapter_content>
@@ -83,9 +85,9 @@ export class ForeshadowingAgent extends BaseAgent {
 
 <guidelines>
   <foreshadow_types>
-    <type>人物言行中暗示未来命运或选择的内容</type>
+    <type>人物言行中暗示未来走向或选择的内容</type>
     <type>环境中不寻常的细节，可能在未来产生重要影响</type>
-    <type>人物对话中的承诺、预言、预感</type>
+    <type>人物对话中的承诺、预兆、预感</type>
     <type>看似无关紧要的物品、事件在未来可能的关键作用</type>
     <type>人物内心深处的秘密或矛盾</type>
   </foreshadow_types>
@@ -115,9 +117,15 @@ export class ForeshadowingAgent extends BaseAgent {
   如果本章没有发现值得埋下的伏笔，new_foreshadows 返回空数组 []。
 </output_format>`
 
+    const templatedContent = this.fillTemplate(userContent, {
+      FORESHADOW_MIN_LENGTH: planningConfig.foreshadowMinLength,
+      FORESHADOW_MIN_FULFILL_DISTANCE: planningConfig.foreshadowMinFulfillDistance,
+      FORESHADOW_MAX_FULFILL_DISTANCE: planningConfig.foreshadowMaxFulfillDistance,
+    })
+
     return [
       this.systemMessage('<role>你是一位擅长埋伏笔和制造悬念的作家，擅长在叙述中埋下不引人注意但回味无穷的线索。</role>'),
-      this.userMessage(userContent),
+      this.userMessage(templatedContent),
     ]
   }
 
@@ -155,6 +163,10 @@ export class ForeshadowingAgent extends BaseAgent {
     }
 
     const currentChapter = chapterIndex + 1
+    const planningConfig = getChapterPlanningConfig('default')
+    const defaultFulfillDistance = Math.round(
+      (planningConfig.foreshadowMinFulfillDistance + planningConfig.foreshadowMaxFulfillDistance) / 2
+    )
 
     const updatedStack: ForeshadowItem[] = existingStack.map(item => {
       if (item.fulfilledChapter) return item
@@ -181,7 +193,7 @@ export class ForeshadowingAgent extends BaseAgent {
           logger.info(`[MuseFlow] 伏笔过滤: 剔除本章叙事内容 "${item.text!.substring(0, 30)}..."`)
           return false
         }
-        if (item.text!.length < 40) {
+        if (item.text!.length < planningConfig.foreshadowMinLength) {
           logger.info(`[MuseFlow] 伏笔过滤: 剔除短文本叙事细节 "${item.text!.substring(0, 30)}..."`)
           return false
         }
@@ -192,9 +204,12 @@ export class ForeshadowingAgent extends BaseAgent {
         return !isSelfReferential
       })
       .map(item => {
-        const rawExpected = item.expected_fulfill_chapter ?? currentChapter + 5
-        const farFutureCap = Math.min(currentChapter + 8, this.lastTotalChapters ?? currentChapter + 8)
-        const expectedFulfillChapter = Math.max(currentChapter + 1, Math.min(rawExpected, farFutureCap))
+        const rawExpected = item.expected_fulfill_chapter ?? currentChapter + defaultFulfillDistance
+        const farFutureCap = Math.min(
+          currentChapter + planningConfig.foreshadowMaxFulfillDistance,
+          this.lastTotalChapters ?? currentChapter + planningConfig.foreshadowMaxFulfillDistance
+        )
+        const expectedFulfillChapter = Math.max(currentChapter + planningConfig.foreshadowMinFulfillDistance, Math.min(rawExpected, farFutureCap))
         return {
           id: generateId(),
           text: item.text!,
@@ -220,6 +235,6 @@ export class ForeshadowingAgent extends BaseAgent {
     const unfufilled = updatedStack.filter(item => !item.fulfilledChapter)
     const fulfilled = updatedStack.filter(item => item.fulfilledChapter)
     const merged = [...unfufilled, ...fulfilled, ...newItems]
-    return merged.slice(0, 20)
+    return merged.slice(0, planningConfig.foreshadowMaxStackSize)
   }
 }

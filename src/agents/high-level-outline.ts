@@ -2,6 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { ChapterOutline } from '../types/outline.js'
 import { generateId } from '../utils/id.js'
 import { parseJsonFromLLM } from '../utils/json.js'
+import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 
 export interface HighLevelOutlineData {
   chapters: ChapterOutline[]
@@ -13,6 +14,7 @@ export class HighLevelOutlineAgent extends BaseAgent {
   }
 
   protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
+    const planningConfig = getChapterPlanningConfig(state.genre ?? 'default')
     const userContent = `请为一部 ${state.totalChapters} 章的长篇小说生成高层次的章节大纲。
 
 <idea>
@@ -32,9 +34,9 @@ ${state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''}
 ${state.characters ? `<characters>\n${state.characters}\n</characters>` : ''}
 
   <requirements>
-- 每章只写 1–2 句话，控制在 30–60 字
+- 每章只写 {OUTLINE_SENTENCE_COUNT_MIN}–{OUTLINE_SENTENCE_COUNT_MAX} 句话，控制在 {OUTLINE_LENGTH_MIN}–{OUTLINE_LENGTH_MAX} 字
 - 只描述核心转折或关键事件，不写具体细节、对话或场景执行
-- 不要把后续章节的事件提前解决；如果某章暂时制服敌人，请明确为"暂时""待后续处置"
+- 不要把后续章节的事件提前解决；如果某章的结果是阶段性或临时性的，请使用表示未彻底解决的措辞
 - 相邻章节之间不应重复处理同一核心事件
 - 章节描述中不要出现英文双引号（"），否则会导致 JSON 解析失败；如需强调词语，请使用中文引号（「」）或书名号（《》）
 - 对每一章，明确列出本章首次登场、有名有姓的新角色（含带身份称呼的角色，如"某府管家"）。如果本章没有新角色，使用空数组。
@@ -46,9 +48,16 @@ ${state.characters ? `<characters>\n${state.characters}\n</characters>` : ''}
   }
 </requirements>`
 
+    const templatedContent = this.fillTemplate(userContent, {
+      OUTLINE_LENGTH_MIN: planningConfig.outlineDescriptionLengthMin,
+      OUTLINE_LENGTH_MAX: planningConfig.outlineDescriptionLengthMax,
+      OUTLINE_SENTENCE_COUNT_MIN: planningConfig.outlineDescriptionSentenceCountMin,
+      OUTLINE_SENTENCE_COUNT_MAX: planningConfig.outlineDescriptionSentenceCountMax,
+    })
+
     return [
       this.systemMessage('你是一位擅长故事结构的小说策划。你的任务是为长篇小说生成高层次的章节弧线，每章只写核心转折，不写细节。'),
-      this.userMessage(userContent),
+      this.userMessage(templatedContent),
     ]
   }
 

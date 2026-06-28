@@ -12,7 +12,7 @@ export const TIMELINE_RULES = `<timeline_rules>
 - 时间跳跃必须通过明确的时间标记进行过渡。
 - 不能出现时间回退或状态逻辑矛盾。
 - 角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的。
-- 严禁角色将尚未发生的事件描述为已发生的回忆；若提及未来事件，必须使用前瞻性措辞，且必须处于明确的预言、梦境或超现实场景中。
+- 严禁角色将尚未发生的事件描述为已发生的回忆；若提及未来事件，必须使用前瞻性措辞，且必须处于明确的特殊叙事框架或超现实场景中。
 </timeline_rules>`
 
 export const FACT_CONSISTENCY_RULES = `<fact_consistency_rules>
@@ -24,15 +24,17 @@ export const FACT_CONSISTENCY_RULES = `<fact_consistency_rules>
 - 如果大纲引入新设定与已确立事实冲突，必须标注为"大纲新设定"并说明区别。
 - <mandatory>涉及多个用途、来源或归属不同的同类物品时，必须使用完整名称或精确限定语明确区分，不得以模糊指代将不同物品混为一谈。</mandatory>
 - <mandatory>不得为已有关键物品/设定 invent 新的来源、新的制造者或新的来历；也不得把已有的来源/制造者替换为另一个。</mandatory>
+- <mandatory>锁闭容器一致性：若某容器在本章中被描述为"锁着/封闭/上锁"，后文出现第三方查看、使用或获取其内容时，必须明确写出"开锁 / 撬锁 / 破坏锁"的动作；不得让锁着的容器被直接看到内部。</mandatory>
+- <mandatory>过去动作与当前状态：描写"某物品曾被取出核对 / 检视 / 翻看"等过去动作时，必须使用不会让读者误以为该物品已被移走或当前不在原处的措辞；若确实已移走，必须写出明确的转移动作。</mandatory>
 </fact_consistency_rules>`
 
-export const POWER_SYSTEM_RULES = `<power_system_rules>
-<mandatory>【必须】能力/力量体系必须保持一致</mandatory>
-- 角色实战表现必须与其已确立的能力等级、状态保持一致。
-- 虚弱、受伤或未恢复状态的角色不得展现全盛期持续战斗力。
-- 低等级角色与高等级角色交手时，必须明确给出能支撑的理由（地形、外力、对方留手等），不能默认势均力敌。
+export const CAPABILITY_CONSISTENCY_RULES = `<capability_consistency_rules>
+<mandatory>【必须】角色能力与状态必须保持一致</mandatory>
+- 角色在本章的表现必须与其已确立的能力、状态、处境保持一致；超出已确立范围的表现必须有明确叙事支撑。
+- 受伤、虚弱或未恢复状态的角色，不得展现与其状态不符的持续行动力。
+- 当明显处于劣势的角色与优势方对抗时，必须给出合理的支撑条件（如地形、外力、对方留手、信息差等），不能默认势均力敌。
 - 大纲中"长时间缠斗"等描述应理解为难以速胜，而非双方战力完全相等。
-</power_system_rules>`
+</capability_consistency_rules>`
 
 export const CROSS_CHAPTER_CONTINUITY_RULES = `<cross_chapter_continuity_rules>
 <mandatory>【必须】跨章节衔接自然且不重复</mandatory>

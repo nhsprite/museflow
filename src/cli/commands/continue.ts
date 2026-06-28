@@ -3,6 +3,8 @@ import { runOneChapter } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { requireStoryState } from '../utils/story-loader.js'
+import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
+import type { ReducedGraphState } from '../../graph/state.js'
 
 interface ContinueOptions {
   storyId: string
@@ -67,12 +69,24 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
   }
 
   try {
-    const result = await withSpinner(
-      '正在处理章节...',
-      () => runOneChapter(storyId, { mode: 'continue', userResponse }),
-      undefined,
-      (result) => !result.rewriteRequested
-    )
+    async function runWithConflictResolution(): Promise<ReducedGraphState> {
+      try {
+        return await withSpinner(
+          '正在处理章节...',
+          () => runOneChapter(storyId, { mode: 'continue', userResponse }),
+          undefined,
+          (result) => !result.rewriteRequested
+        )
+      } catch (err) {
+        if (isBlockingConflictError(err)) {
+          await resolveBlockingConflicts(storyId, err)
+          return runWithConflictResolution()
+        }
+        throw err
+      }
+    }
+
+    const result = await runWithConflictResolution()
 
     const currentChapter = result.currentChapterIndex
     const totalChapters = result.totalChapters

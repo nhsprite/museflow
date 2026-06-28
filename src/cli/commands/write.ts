@@ -2,12 +2,14 @@ import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { runOneChapter, getState, type RunOneChapterOptions } from '../../core/runner.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import type { StoryStatus, Story } from '../../types/story.js'
+import type { ReducedGraphState } from '../../graph/state.js'
 import { withSpinner } from '../utils/spinner.js'
 import { printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
 import { getChapterFilePath } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { requireStoryState } from '../utils/story-loader.js'
+import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
 
 interface WriteOptions {
   storyId: string
@@ -122,12 +124,24 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
   }
 
   try {
-    const result = await withSpinner(
-      `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
-      () => runOneChapter(storyId, runOptions),
-      `✅ 第 ${chapterNum} 章撰写完成`,
-      (result) => !result.rewriteRequested
-    )
+    async function runWithConflictResolution(): Promise<ReducedGraphState> {
+      try {
+        return await withSpinner(
+          `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
+          () => runOneChapter(storyId, runOptions),
+          `✅ 第 ${chapterNum} 章撰写完成`,
+          (result) => !result.rewriteRequested
+        )
+      } catch (err) {
+        if (isBlockingConflictError(err)) {
+          await resolveBlockingConflicts(storyId, err)
+          return runWithConflictResolution()
+        }
+        throw err
+      }
+    }
+
+    const result = await runWithConflictResolution()
 
     if (result.rewriteRequested) {
       const errors = result.pendingIssues.filter(i => i.severity === 'error')

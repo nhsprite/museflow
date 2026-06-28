@@ -26,6 +26,15 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   maxSections: 6,
   minCoreSections: 2,
   criticalFactAttributes: ['来源', '制造者', '赠予者', '持有者', '身份', '状态', '位置'],
+  outlineDescriptionLengthMin: 30,
+  outlineDescriptionLengthMax: 60,
+  outlineDescriptionSentenceCountMin: 1,
+  outlineDescriptionSentenceCountMax: 2,
+  foreshadowMinLength: 40,
+  foreshadowMinFulfillDistance: 2,
+  foreshadowMaxFulfillDistance: 8,
+  foreshadowMaxStackSize: 20,
+  closingPhaseRatio: 0.15,
 }
 
 export function getChapterPlanningConfig(genreName: string): Required<ChapterPlanningConfig> {

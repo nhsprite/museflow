@@ -2,7 +2,7 @@ import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import type { CanonicalFact } from '../types/story-state.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
-import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, POWER_SYSTEM_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
+import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, CAPABILITY_CONSISTENCY_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { normalizeIssues } from '../utils/agent-output.js'
 
@@ -142,7 +142,7 @@ export class ConsistencyAgent extends BaseAgent {
       秘密揭示一致性：本章新揭示的秘密是否已经被记录在"已揭示的秘密"中，或是否属于合理的新揭示
       时间推进一致性：故事时间是否合理推进，不能倒退或与"故事当前状态"中的时间标记矛盾
     </dimension>
-    <dimension name="power_system" priority="high">${POWER_SYSTEM_RULES}</dimension>
+    <dimension name="capability_consistency" priority="high">${CAPABILITY_CONSISTENCY_RULES}</dimension>
   </check_dimensions>
 
   <supplementary_rules>
@@ -178,11 +178,11 @@ export class ConsistencyAgent extends BaseAgent {
     </rule>
 
     <rule type="item_operation_vs_location">
-      区分「物证当前真迹位置」与「本章操作对象」：
-      - 如果本章明确说明角色操作的是副本、替代品或诱饵，或明确说明真迹已于别处转移，则不要因"物证出现在场景中"而报 location 矛盾。
-      - 只有当本章未加说明地让物证出现在与权威事实冲突的位置，或同时声称物证在不同位置时，才报 error。
-      - 角色对物证进行常规操作，本身不违反"分散藏匿"原则；关键看文本是否交代了操作对象的性质。
-      - 判断标准：如果文本明确区分了操作对象与真迹位置，则不构成矛盾；如果文本让读者误以为真迹就在操作现场，则报 error。
+      区分「关键物品/道具当前位置」与「本章操作对象」：
+      - 如果本章明确说明角色操作的是副本、替代品或诱饵，或明确说明原始物品已于别处转移，则不要因"关键物品出现在场景中"而报 location 矛盾。
+      - 只有当本章未加说明地让关键物品出现在与权威事实冲突的位置，或同时声称关键物品在不同位置时，才报 error。
+      - 角色对关键物品进行常规操作，本身不违反"分散管理"原则；关键看文本是否交代了操作对象的性质。
+      - 判断标准：如果文本明确区分了操作对象与物品当前位置，则不构成矛盾；如果文本让读者误以为原始物品就在操作现场，则报 error。
     </rule>
 
     ${FORESHADOW_BOUNDARY_RULES}
@@ -246,7 +246,7 @@ export class ConsistencyAgent extends BaseAgent {
   </rule>
 
   <rule type="future_information_boundary">
-    未来信息边界：角色不得在本章明确提及或确认尚未发生的事件，除非处于明确的预言、梦境或超现实场景中。如果角色提前计算章节进度、提前揭示未来章节的核心反派或核心事件，且没有合理的知识来源铺垫，报 error。
+    未来信息边界：角色不得在本章明确提及或确认尚未发生的事件，除非处于明确的特殊叙事框架或超现实场景中。如果角色提前计算章节进度、提前揭示未来章节的核心反派或核心事件，且没有合理的知识来源铺垫，报 error。
   </rule>
 
   <rule type="core_actor_consistency">

@@ -16,6 +16,7 @@ import { buildCharacterFactTimeline, formatStoryState } from '../utils/reconcile
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent, buildConsistencyOutlineContext } from './planning.js'
 import { countChineseWords } from '../../utils/text.js'
+import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
 
 export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
@@ -37,8 +38,8 @@ export async function validate_chapter(state: ReducedGraphState): Promise<Partia
 
   const wordCount = countChineseWords(content)
   const genre = getGenreSkill(state.genre)
-  const min = genre?.chapterWordCountMin ?? 1500
-  const max = genre?.chapterWordCountMax ?? 8000
+  const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
+  const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
 
   const newIssues = [...state.pendingIssues]
 
@@ -93,7 +94,7 @@ export async function quality_pass(state: ReducedGraphState): Promise<Partial<Re
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
+    outline: buildConsistencyOutlineContext(state, chapterIndex),
     ...(content ? { chapterContent: content } : {}),
   }
 
@@ -146,17 +147,9 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
   }
 
   const output = await agent.run(agentState)
-  let foreshadowStack = await agent.processOutput(output, chapterIndex, cleanedForeshadowStack, content || undefined)
+  const foreshadowStack = await agent.processOutput(output, chapterIndex, cleanedForeshadowStack, content || undefined)
 
-  const finalStack = foreshadowStack.filter(f => {
-    if (f.createdAtChapter === currentChapter && f.text.length < 40 && !f.fulfilledChapter) {
-      logger.info(`[MuseFlow] 伏笔清理: 移除agent误判的短文本伏笔 "${f.text.substring(0, 30)}..."`)
-      return false
-    }
-    return true
-  })
-
-  return { foreshadowStack: finalStack }
+  return { foreshadowStack }
 }
 
 export async function detect_hallucination(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
@@ -180,7 +173,7 @@ export async function detect_hallucination(state: ReducedGraphState): Promise<Pa
     charactersList: effectiveCharacters,
     outlineCharacters,
     establishedCharacters,
-    outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
+    outline: buildConsistencyOutlineContext(state, chapterIndex),
     ...(content ? { chapterContent: content } : {}),
     chapterSummaries: state.chapterSummaries,
     foreshadowStack: state.foreshadowStack,
