@@ -1871,6 +1871,22 @@ export function sanitizeStoryState(
 export function formatStateConflicts(report: SanitizationReport): string {
   const lines: string[] = []
 
+  if (report.removedCharacters.length > 0) {
+    lines.push('【非官方角色已移除】')
+    for (const name of report.removedCharacters) {
+      lines.push(`  - ${name}`)
+    }
+    lines.push('  说明：以上角色不在官方角色、大纲登场角色或前文已建立角色列表中。如果确需登场，请先通过大纲或角色设定明确引入。')
+  }
+
+  if (report.removedFacts.length > 0) {
+    lines.push('【不关联官方角色的情节线/秘密已移除】')
+    for (const fact of report.removedFacts) {
+      lines.push(`  - ${fact}`)
+    }
+    lines.push('  说明：以上情节线或秘密因未关联任何官方角色而被过滤。如果确需保留，请确保其文本中明确出现官方角色名。')
+  }
+
   if (report.itemLocationConflicts.length > 0) {
     lines.push('【物品位置冲突 - 已自动协调】')
     for (const conflict of report.itemLocationConflicts) {

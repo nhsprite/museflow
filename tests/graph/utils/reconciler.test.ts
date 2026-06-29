@@ -280,6 +280,16 @@ describe('sanitizeStoryState', () => {
     expect(report.ambiguousItems[0].items).toContain('手记')
   })
 
+  it('formatStateConflicts includes removed characters and facts', () => {
+    const state = emptyState()
+    state.characterLocations['无名路人甲'] = '街上'
+    const characters: Character[] = []
+    const report = sanitizeStoryState(state, characters, { preserveExisting: false })
+    const text = formatStateConflicts(report)
+    expect(text).toContain('非官方角色已移除')
+    expect(text).toContain('无名路人甲')
+  })
+
   it('formats state conflicts into instructions', () => {
     const state: StoryState = {
       ...emptyState(),
