@@ -5,7 +5,7 @@ const saveChapterCheckpoint = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('old chapter content')
-let mockChapterContentValue = 'rewritten chapter content'
+let mockChapterContentValue = 'rewritten chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600)
 
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
@@ -149,7 +149,7 @@ describe('rewrite flow regression', () => {
     expect(draftResult.rewriteApproved).toBeUndefined()
     expect(draftResult.pendingIssues).toBeUndefined()
     expect(readChapterContent).toHaveBeenCalledWith('/tmp/story', 1)
-    expect(writeChapterContent).toHaveBeenCalledWith('/tmp/story', 1, '# 第1章 Chapter 1\n\nrewritten chapter content')
+    expect(writeChapterContent).toHaveBeenCalledWith('/tmp/story', 1, `# 第1章 Chapter 1\n\n${mockChapterContentValue}`)
     expect(draftResult.chapters?.[0]?.status).toBe('drafting')
   })
 

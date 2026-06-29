@@ -79,7 +79,7 @@ describe('layered outline flow', () => {
       chapterPlan: { sections: [] },
       boundaryHints: [],
     })
-    runAgentMock.mockReturnValue('chapter content')
+    runAgentMock.mockReturnValue('chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600))
     highLevelOutlineRunMock.mockResolvedValue({
       success: true,
       data: {

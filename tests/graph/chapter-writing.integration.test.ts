@@ -42,7 +42,7 @@ vi.mock('../../src/graph/utils/reconciler.js', () => ({
   mergeStoryState: vi.fn((existing: unknown, update: unknown) => ({ ...(existing as object), ...(update as object) })),
 }))
 
-const longChapterContent = '# 第1章 测试章节\n\n' + '主角走在路上，心中思绪万千。'.repeat(800)
+const longChapterContent = '# 第1章 测试章节\n\n' + '主角走在路上，心中思绪万千。'.repeat(600)
 
 const mockChapterAgent = {
   run: vi.fn(async () => ({
