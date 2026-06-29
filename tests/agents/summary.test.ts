@@ -391,3 +391,41 @@ describe('SummaryAgent prompt', () => {
     expect(result?.storyState?.canonicalFacts?.length).toBe(1)
   })
 })
+
+import { processSummaryOutput } from '../../src/agents/summary.js'
+
+describe('processSummaryOutput sourceFacts', () => {
+  it('promotes explicit sourceFacts to canonicalFacts', () => {
+    const output = {
+      success: true,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [{ text: '龙纹玉佩：主角随身玉佩', importance: 'critical' }],
+        activePlots: [],
+        mood: '沉重',
+        sourceFacts: [
+          { subject: '龙纹玉佩', attribute: '制造者', value: '前朝铸玉大师周子衡' },
+        ],
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: { '龙纹玉佩': '主角怀中' },
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          currentScene: '客栈',
+          storyTime: '子时',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 2)
+    expect(result).not.toBeNull()
+    const facts = result!.storyState?.canonicalFacts ?? []
+    expect(facts.some(f => f.subject === '龙纹玉佩' && f.attribute === '制造者' && f.value === '前朝铸玉大师周子衡')).toBe(true)
+  })
+})

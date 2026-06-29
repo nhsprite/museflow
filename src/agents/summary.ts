@@ -88,6 +88,13 @@ ${STATE_AUTHORITY_RULES}
         "reason": "被覆盖的原因"
       }
     ],
+    "sourceFacts": [
+      {
+        "subject": "事实主体（角色或物品完整名称）",
+        "attribute": "来源|制造者|赠予者|持有者|身份|材质",
+        "value": "完整无歧义的值，禁止用此物/该物等代词"
+      }
+    ],
     "storyState": {
       "characterLocations": { "角色名": "当前所在地点" },
       "characterStatus": { "角色名": "当前状态" },
@@ -184,6 +191,7 @@ ${STATE_AUTHORITY_RULES}
   </requirement>
   <requirement>【关键】把上述高约束性事实同时写入 characterFacts（importance=critical）和 storyState.canonicalFacts，确保一致性检查能直接读取。</requirement>
   <requirement> canonicalFacts 是后续章节一致性检查的唯一事实依据，必须完整、准确、无歧义。</requirement>
+  <requirement>【关键】如果本章明确建立了关键物品/角色的来源、制造者、赠予者、持有者、身份、材质等约束性事实，除了在 storyState.canonicalFacts 中记录外，还必须在 sourceFacts 数组中单独列出，确保提取不依赖正则匹配。</requirement>
 </canonical_facts_requirements>
 
   <story_state_requirements>
@@ -381,6 +389,14 @@ export function processSummaryOutput(
     })
   }
 
+  const disambiguateValue = (value: string, subject: string): string => {
+    // 权威事实中禁止使用依赖上下文的代词；如果 LLM 仍然生成了，用完整 subject 兜底替换。
+    const ambiguousPronouns = /此物|该物|前述物品|此件|那件/g
+    if (!ambiguousPronouns.test(value)) return value
+    logger.warn(`[MuseFlow] canonicalFact 中发现模糊指代，将用 '${subject}' 兜底澄清: ${value}`)
+    return value.replace(ambiguousPronouns, subject)
+  }
+
   const extractStoryState = (): StoryState | undefined => {
     const raw = data['storyState']
     if (!raw || typeof raw !== 'object') return undefined
@@ -413,14 +429,6 @@ export function processSummaryOutput(
         dueTime: typeof item['dueTime'] === 'string' ? item['dueTime'] : undefined,
         status: (typeof item['status'] === 'string' ? item['status'] : 'pending') as import('../types/story-state.js').PendingTask['status'],
       })).filter(item => item.assignee.length > 0 && item.description.length > 0)
-    }
-
-    const disambiguateValue = (value: string, subject: string): string => {
-      // 权威事实中禁止使用依赖上下文的代词；如果 LLM 仍然生成了，用完整 subject 兜底替换。
-      const ambiguousPronouns = /此物|该物|前述物品|此件|那件/g
-      if (!ambiguousPronouns.test(value)) return value
-      logger.warn(`[MuseFlow] canonicalFact 中发现模糊指代，将用 '${subject}' 兜底澄清: ${value}`)
-      return value.replace(ambiguousPronouns, subject)
     }
 
     const toCanonicalFacts = (val: unknown): import('../types/story-state.js').CanonicalFact[] => {
@@ -480,6 +488,33 @@ export function processSummaryOutput(
   })
 
   let storyState = extractStoryState()
+
+  const rawSourceFacts = data['sourceFacts']
+  if (storyState && Array.isArray(rawSourceFacts)) {
+    const parsedSourceFacts: import('../types/story-state.js').CanonicalFact[] = rawSourceFacts
+      .filter((item): item is Record<string, unknown> => item && typeof item === 'object')
+      .map((item, idx) => {
+        const subject = typeof item['subject'] === 'string' ? item['subject'] : ''
+        const value = typeof item['value'] === 'string' ? item['value'] : ''
+        return {
+          id: `cf_${chapterIndex ?? 0}_source_${idx}`,
+          subject,
+          attribute: typeof item['attribute'] === 'string' ? item['attribute'] : '',
+          value: disambiguateValue(value, subject),
+          establishedIn: chapterIndex ?? 0,
+        }
+      })
+      .filter(f => f.subject.length > 0 && f.attribute.length > 0 && f.value.length > 0)
+
+    const existingFacts = storyState.canonicalFacts ?? []
+    const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}|${f.value}`))
+    const newFacts = parsedSourceFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
+
+    if (newFacts.length > 0) {
+      logger.info(`[MuseFlow] SummaryAgent 显式 sourceFacts 提升 ${newFacts.length} 条权威事实`)
+      storyState.canonicalFacts = [...existingFacts, ...newFacts]
+    }
+  }
 
   // Auto-promote source-like and character critical facts to canonicalFacts as a safety net.
   if (storyState) {
