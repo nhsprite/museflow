@@ -198,16 +198,56 @@ describe('ChapterAgent chapter numbering', () => {
     })
 
     const userMessage = messages[1]?.content ?? ''
-    const canonicalSection = userMessage.slice(
-      userMessage.indexOf('【权威事实】'),
-      userMessage.indexOf('</canonical_facts>')
-    )
-    const lockIndex = canonicalSection.indexOf('长命锁')
-    const jadeIndex = canonicalSection.indexOf('玉佩')
-    const tokenIndex = canonicalSection.indexOf('令牌')
-    expect(lockIndex).toBeGreaterThan(-1)
-    expect(lockIndex).toBeLessThan(jadeIndex)
-    expect(lockIndex).toBeLessThan(tokenIndex)
+    expect(userMessage).toContain('长命锁')
+    expect(userMessage.indexOf('长命锁')).toBeLessThan(userMessage.indexOf('玉佩'))
+    expect(userMessage.indexOf('玉佩')).toBeLessThan(userMessage.indexOf('令牌'))
+  })
+
+  it('marks previous summaries as narrative context only, not factual authority', () => {
+    const agent = new TestableChapterAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【苏半城】主角',
+      outline: '第2章：长命锁之谜\n主角调查长命锁的来源',
+      previousChapters: '第1章：主角获得长命锁。',
+      chapterContent: '',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('【叙事氛围参考】')
+    expect(userMessage).toContain('不作为事实依据')
+    expect(userMessage).toContain('以【权威事实】为准')
+  })
+
+  it('uses story_state as the single factual authority', () => {
+    const agent = new TestableChapterAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【苏半城】主角',
+      outline: '第2章：长命锁之谜\n主角调查长命锁的来源',
+      previousChapters: '第1章：主角获得长命锁。',
+      chapterContent: '',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '【权威事实】\n- [长命锁] 来源: 苏家满月礼',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('【权威事实 - 本章写作的唯一事实依据】')
+    expect(userMessage).not.toContain('<key_events>')
+    expect(userMessage).not.toContain('timeline_state')
   })
 
   it('includes anti-hallucination constraints about item origins', () => {

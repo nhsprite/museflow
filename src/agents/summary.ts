@@ -173,12 +173,17 @@ ${STATE_AUTHORITY_RULES}
   <requirement>只记录本章有明确变化或重新确认的事实；没有变化的事实不必重复记录</requirement>
   <requirement>权威事实的 value 必须使用完整、无歧义的名称，禁止使用"此物"、"该物"、"前述物品"、"此件"、"那件"等依赖上下文的代词。value 中必须重复使用 subject 的完整名称，或写出能唯一识别该物品的完整描述；如果涉及多个同类物品，必须分别写明其完整名称和用途。</requirement>
   <requirement>如果某个事实涉及"某物品不用于某用途"，必须同时写明该物品的完整名称和该用途的完整名称，避免后续章节将两个不同用途的物品混淆。</requirement>
-  <requirement>【关键】必须提取以下高约束性事实，并标记为 critical 重要性：
+  <requirement>【关键】必须提取以下高约束性事实：
     - 关键物品/设定的来源、制造者、赠予者、材质、来历（attribute 建议为"来源"、"制造者"或"材质"）
-    - 角色之间明确达成的承诺、约定、交易条件、限制、底线
-    - 角色制定的计划、策略及其关键约束条件
-    - 关键物品/角色的身份、归属、持有者
+    - 角色之间明确达成的承诺、约定、交易条件、限制、底线（attribute 建议为"承诺"、"约定"或"条件"）
+    - 角色明确知道的关键信息或秘密（attribute 建议为"已知信息"）
+    - 角色制定的计划、策略及其关键约束条件（attribute 建议为"计划"或"策略"）
+    - 关键物品/角色的身份、归属、持有者（attribute 建议为"身份"、"归属"或"持有者"）
+    - 角色在本章做出的重大决定或态度转变（attribute 建议为"决定"或"态度"）
+    - 对后续章节有决定性影响的关键事件（attribute 建议为"关键事件"）
   </requirement>
+  <requirement>【关键】把上述高约束性事实同时写入 characterFacts（importance=critical）和 storyState.canonicalFacts，确保一致性检查能直接读取。</requirement>
+  <requirement> canonicalFacts 是后续章节一致性检查的唯一事实依据，必须完整、准确、无歧义。</requirement>
 </canonical_facts_requirements>
 
   <story_state_requirements>
@@ -294,6 +299,47 @@ function extractSourceFacts(data: Record<string, unknown>, chapterIndex: number)
       if (!fact || typeof fact !== 'object' || fact.importance !== 'critical') continue
       // Character facts about source usually mention an item; use the fact text itself as default subject.
       facts.push(...extractSourceFactsFromText(fact.text, character, chapterIndex))
+    }
+  }
+
+  return facts
+}
+
+function inferAttributeFromCharacterFact(text: string): string {
+  if (/承诺|约定|交易|条件|底线|誓言/.test(text)) return '承诺'
+  if (/计划|策略|打算|方案|布局/.test(text)) return '计划'
+  if (/知道|了解|获悉|得知|明白|掌握/.test(text)) return '已知信息'
+  if (/决定|决心|选择|抉择/.test(text)) return '决定'
+  if (/态度|立场|看法|观点/.test(text)) return '态度'
+  return '已知信息'
+}
+
+/**
+ * 把 characterFacts 中 importance=critical 的条目提升为 canonical facts。
+ * 这些高约束性角色事实是一致性检查的主要依据。
+ */
+function extractCharacterFactsAsCanonical(data: Record<string, unknown>, chapterIndex: number): CanonicalFact[] {
+  const facts: CanonicalFact[] = []
+  const characterFacts = Array.isArray(data['characterFacts'])
+    ? data['characterFacts'] as Array<{ character?: string; facts?: ImportanceObject[] }>
+    : []
+
+  for (const entry of characterFacts) {
+    if (!entry || typeof entry !== 'object') continue
+    const character = entry.character || ''
+    if (character.length === 0) continue
+    const factsList = Array.isArray(entry.facts) ? entry.facts : []
+    for (const fact of factsList) {
+      if (!fact || typeof fact !== 'object' || fact.importance !== 'critical') continue
+      const text = fact.text || ''
+      if (text.length === 0) continue
+      facts.push({
+        id: generateId('fact'),
+        subject: character,
+        attribute: inferAttributeFromCharacterFact(text),
+        value: text,
+        establishedIn: chapterIndex,
+      })
     }
   }
 
@@ -435,15 +481,17 @@ export function processSummaryOutput(
 
   let storyState = extractStoryState()
 
-  // Auto-promote source-like critical facts to canonicalFacts as a safety net.
+  // Auto-promote source-like and character critical facts to canonicalFacts as a safety net.
   if (storyState) {
     const sourceFacts = extractSourceFacts(data, chapterIndex ?? 0)
-    if (sourceFacts.length > 0) {
+    const characterFacts = extractCharacterFactsAsCanonical(data, chapterIndex ?? 0)
+    const autoFacts = [...sourceFacts, ...characterFacts]
+    if (autoFacts.length > 0) {
       const existingFacts = storyState.canonicalFacts ?? []
       const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}`))
-      const newFacts = sourceFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}`))
+      const newFacts = autoFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}`))
       if (newFacts.length > 0) {
-        logger.info(`[MuseFlow] SummaryAgent 自动提升 ${newFacts.length} 条来源类权威事实`)
+        logger.info(`[MuseFlow] SummaryAgent 自动提升 ${newFacts.length} 条角色/来源类权威事实`)
         storyState.canonicalFacts = [...existingFacts, ...newFacts]
       }
     }

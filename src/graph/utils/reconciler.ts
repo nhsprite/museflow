@@ -132,6 +132,7 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
       attribute,
       value: newValue,
       establishedIn: chapterIndex + 1,
+      source: 'author',
       supersedes:
         existingIndex >= 0
           ? [
@@ -222,6 +223,28 @@ export async function prepareStoryStateForChapter(
       throw new BlockingConflictError(undecidedBlockingConflicts, chapterIndex, proposal ?? undefined)
     }
 
+    const outlineAuthorizedFacts = await authorizeOutlineFacts(
+      reconciledState,
+      outlineItem.description,
+      chapterIndex,
+      provider
+    )
+    if (outlineAuthorizedFacts.length > 0) {
+      const mergedFacts = [...(reconciledState.canonicalFacts ?? [])]
+      for (const fact of outlineAuthorizedFacts) {
+        const existingIndex = mergedFacts.findIndex(
+          f => f.subject === fact.subject && f.attribute === fact.attribute && f.value === fact.value
+        )
+        if (existingIndex < 0) {
+          mergedFacts.push(fact)
+        }
+      }
+      reconciledState = {
+        ...reconciledState,
+        canonicalFacts: mergedFacts,
+      }
+    }
+
     const sanitizationReport = sanitizeStoryState(reconciledState, state.characters, {
       preserveExisting: true,
       existingStoryState: state.storyState,
@@ -309,16 +332,94 @@ export function filterSupersededEventsFromTimeline(
   return events.filter(event => !isSupersededFact(event, canonicalFacts))
 }
 
+function groupCanonicalFactsByChapter(
+  facts: CanonicalFact[],
+  upToChapterIndex: number
+): Map<number, CanonicalFact[]> {
+  const groups = new Map<number, CanonicalFact[]>()
+  for (const fact of facts) {
+    const chapterIndex = fact.establishedIn
+    if (chapterIndex < 0 || chapterIndex > upToChapterIndex) continue
+    const list = groups.get(chapterIndex) ?? []
+    list.push(fact)
+    groups.set(chapterIndex, list)
+  }
+  return groups
+}
+
+function formatCanonicalFact(fact: CanonicalFact): string {
+  const supersedesNote = (fact.supersedes ?? []).length > 0
+    ? `（覆盖：${fact.supersedes!.map(s => s.oldValue).join('、')}）`
+    : ''
+  return `  - [${fact.subject}] ${fact.attribute}: ${fact.value}${supersedesNote}`
+}
+
+/**
+ * 直接从 canonical facts 构建按章节排列的权威事实时间线。
+ * 这是 Agent 应优先使用的历史事实视图，避免从摘要二次提取带来的漂移。
+ */
+export function buildCanonicalFactTimeline(
+  state: ReducedGraphState,
+  upToChapterIndex: number
+): string {
+  const canonicalFacts = state.storyState?.canonicalFacts ?? []
+  if (canonicalFacts.length === 0) return '（暂无权威事实记录）'
+
+  const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
+  if (groups.size === 0) return '（暂无权威事实记录）'
+
+  const sortedChapters = Array.from(groups.keys()).sort((a, b) => a - b)
+  const result: string[] = []
+  for (const chapterIndex of sortedChapters) {
+    const facts = groups.get(chapterIndex)
+    if (!facts || facts.length === 0) continue
+    const chapterNum = chapterIndex + 1
+    result.push(`第${chapterNum}章权威事实：\n${facts.map(formatCanonicalFact).join('\n')}`)
+  }
+
+  return result.join('\n\n')
+}
+
+function isCharacterSubject(subject: string, characters: Array<{ name: string }>): boolean {
+  return characters.some(c => subject.includes(c.name) || c.name.includes(subject))
+}
+
+function isCharacterFact(fact: CanonicalFact, characters: Array<{ name: string }>): boolean {
+  const characterAttributes = ['所在位置', '状态', '已知信息', '承诺', '态度', '对话', '决定', '计划']
+  return isCharacterSubject(fact.subject, characters) && characterAttributes.includes(fact.attribute)
+}
+
+function isKeyEventFact(fact: CanonicalFact): boolean {
+  const eventAttributes = ['关键事件', '事件', '发生', '结果', '转折']
+  return eventAttributes.includes(fact.attribute)
+}
+
 export function buildCharacterFactTimeline(
   state: ReducedGraphState,
   upToChapterIndex: number
 ): string {
+  const canonicalFacts = state.storyState?.canonicalFacts ?? []
+
+  // 当存在权威事实时，优先从权威事实构建时间线。
+  if (canonicalFacts.length > 0) {
+    const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
+    const result: string[] = []
+    for (const chapterIndex of Array.from(groups.keys()).sort((a, b) => a - b)) {
+      const facts = groups.get(chapterIndex)?.filter(f => isCharacterFact(f, state.characters))
+      if (!facts || facts.length === 0) continue
+      const chapterNum = chapterIndex + 1
+      result.push(`第${chapterNum}章角色事实：\n${facts.map(formatCanonicalFact).join('\n')}`)
+    }
+    if (result.length > 0) {
+      return result.join('\n\n')
+    }
+  }
+
+  // 回退：从摘要构建（保留旧行为，用于未启用 canonical facts 的场景）。
   const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
   if (!summaries.length) return '（暂无历史记录）'
 
-  const canonicalFacts = state.storyState?.canonicalFacts ?? []
   const result: string[] = []
-
   for (let i = 0; i < summaries.length; i++) {
     const summary = summaries[i]
     if (!summary) continue
@@ -343,12 +444,28 @@ export function buildKeyEventsTimeline(
   state: ReducedGraphState,
   upToChapterIndex: number
 ): string {
+  const canonicalFacts = state.storyState?.canonicalFacts ?? []
+
+  // 当存在权威事实时，优先从权威事实构建关键事件时间线。
+  if (canonicalFacts.length > 0) {
+    const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
+    const result: string[] = []
+    for (const chapterIndex of Array.from(groups.keys()).sort((a, b) => a - b)) {
+      const facts = groups.get(chapterIndex)?.filter(isKeyEventFact)
+      if (!facts || facts.length === 0) continue
+      const chapterNum = chapterIndex + 1
+      result.push(`第${chapterNum}章关键事件：\n${facts.map(formatCanonicalFact).join('\n')}`)
+    }
+    if (result.length > 0) {
+      return result.join('\n\n')
+    }
+  }
+
+  // 回退：从摘要构建。
   const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
   if (!summaries.length) return '（暂无历史记录）'
 
-  const canonicalFacts = state.storyState?.canonicalFacts ?? []
   const result: string[] = []
-
   for (let i = 0; i < summaries.length; i++) {
     const summary = summaries[i]
     if (!summary) continue
@@ -414,11 +531,13 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
 
   const mergedCanonicalFacts = [...(base.canonicalFacts ?? [])]
   for (const fact of delta.canonicalFacts ?? []) {
-    const isDuplicate = mergedCanonicalFacts.some(
-      existing => existing.subject === fact.subject && existing.attribute === fact.attribute && existing.value === fact.value
+    const existingIndex = mergedCanonicalFacts.findIndex(
+      existing => existing.subject === fact.subject && existing.attribute === fact.attribute
     )
-    if (!isDuplicate) {
+    if (existingIndex < 0) {
       mergedCanonicalFacts.push(fact)
+    } else if ((fact.establishedIn ?? -1) >= (mergedCanonicalFacts[existingIndex]!.establishedIn ?? -1)) {
+      mergedCanonicalFacts[existingIndex] = fact
     }
   }
 
@@ -995,6 +1114,165 @@ export async function detectAllConflicts(
   ]
 }
 
+interface OutlineAuthorizedFact {
+  subject: string
+  attribute: string
+  value: string
+  contradictsExisting: boolean
+}
+
+const OUTLINE_AUTHORIZATION_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    facts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          subject: { type: 'string' },
+          attribute: { type: 'string' },
+          value: { type: 'string' },
+          contradictsExisting: { type: 'boolean' },
+        },
+        required: ['subject', 'attribute', 'value', 'contradictsExisting'],
+      },
+    },
+  },
+  required: ['facts'],
+}
+
+function canonicalFactExists(
+  facts: CanonicalFact[] | undefined,
+  subject: string,
+  attribute: string,
+  value: string
+): boolean {
+  if (!facts || facts.length === 0) return false
+  return facts.some(
+    f =>
+      f.subject === subject &&
+      f.attribute === attribute &&
+      f.value === value
+  )
+}
+
+function canonicalFactConflicts(
+  facts: CanonicalFact[] | undefined,
+  subject: string,
+  attribute: string
+): boolean {
+  if (!facts || facts.length === 0) return false
+  return facts.some(f => f.subject === subject && f.attribute === attribute)
+}
+
+/**
+ * 从本章大纲中提取首次引入、且不与已有 canonicalFacts 矛盾的具体事实，
+ * 作为本章起草前的预授权权威事实写入 storyState。
+ *
+ * 这是通用机制：不针对特定书籍、题材或章节，仅基于大纲文本和已有权威事实做判断。
+ */
+export async function authorizeOutlineFacts(
+  state: StoryState,
+  outline: string,
+  chapterIndex: number,
+  provider?: ModelProvider
+): Promise<CanonicalFact[]> {
+  if (!provider || !outline || outline.trim().length === 0) {
+    return []
+  }
+
+  const existingFacts = state.canonicalFacts ?? []
+  const factsText = formatCanonicalFacts(state)
+
+  const messages: Message[] = [
+    {
+      role: 'system',
+      content: `你是故事大纲事实提取助手。你的任务是从本章大纲中提取本章首次引入的、具体的故事事实，用于写入权威事实库。
+
+提取范围（只提取具体、持久、会影响后续章节一致性的事实）：
+1. 新地点：角色或物品前往、所在、转移到的具体地点。
+2. 新物品细节：物品新增的外观特征、来源、归属、状态变化。
+3. 新角色状态/关系：由本章大纲确立的持久状态、身份关系、约束条件。
+
+判断规则：
+- 只提取大纲中明确写入的事实，不要推测或补全。
+- 如果某个事实已经在"已确立的权威事实"中记录，不要重复提取。
+- 如果某个事实与"已确立的权威事实"直接矛盾（同一 subject + attribute 但值不同），将 contradictsExisting 设为 true，不要返回它。
+- 不要提取一次性动作、情绪描写、氛围描写、纯过渡内容。
+- attribute 请使用简洁中文标签，如"所在位置"、"状态"、"来源"、"归属"、"关系"等。
+
+请输出 JSON，格式为 {"facts": [{"subject": "...", "attribute": "...", "value": "...", "contradictsExisting": false}, ...]}。`,
+    },
+    {
+      role: 'user',
+      content: `【本章大纲】\n${outline}\n\n【已确立的权威事实】\n${factsText}\n\n请输出 JSON。`,
+    },
+  ]
+
+  try {
+    let raw: unknown
+    if (provider.chatStructured) {
+      raw = await provider.chatStructured<{ facts: OutlineAuthorizedFact[] }>(
+        messages,
+        OUTLINE_AUTHORIZATION_SCHEMA,
+        0.3
+      )
+    } else {
+      const text = await provider.chat(messages, 0.3)
+      raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
+    }
+
+    const parsed = raw as { facts?: OutlineAuthorizedFact[] }
+    const facts: CanonicalFact[] = []
+    const skipped: string[] = []
+
+    for (const fact of parsed.facts ?? []) {
+      if (!fact.subject || !fact.attribute || !fact.value) continue
+      const subject = fact.subject.trim()
+      const attribute = fact.attribute.trim()
+      const value = fact.value.trim()
+      if (subject.length < 2 || attribute.length < 2 || value.length < 3) continue
+
+      if (fact.contradictsExisting || canonicalFactConflicts(existingFacts, subject, attribute)) {
+        skipped.push(`${subject}/${attribute}`)
+        continue
+      }
+
+      if (canonicalFactExists(existingFacts, subject, attribute, value)) {
+        continue
+      }
+
+      facts.push({
+        id: generateId('fact'),
+        subject,
+        attribute,
+        value,
+        establishedIn: chapterIndex + 1,
+        source: 'outline',
+      })
+    }
+
+    if (facts.length > 0) {
+      logger.info(`[MuseFlow] 大纲预授权 ${facts.length} 个新事实：`)
+      for (const f of facts) {
+        logger.info(`  - [${f.subject}] ${f.attribute}: ${f.value}`)
+      }
+    }
+
+    if (skipped.length > 0) {
+      logger.info(`[MuseFlow] 大纲预授权跳过 ${skipped.length} 个与权威事实冲突/重复的条目：`)
+      for (const s of skipped) {
+        logger.info(`  - ${s}`)
+      }
+    }
+
+    return facts
+  } catch (err) {
+    logger.warn('[MuseFlow] 大纲事实预授权失败，跳过:', err instanceof Error ? err.message : String(err))
+    return []
+  }
+}
+
 // ----- Conflict classification -----
 async function detectContradictions(
   conflicts: Conflict[],
@@ -1070,6 +1348,7 @@ function generateCanonicalFact(
     attribute: conflict.attribute,
     value: conflict.newValue,
     establishedIn: chapterNumber,
+    source: 'inferred',
     supersedes: existing
       ? [...(existing.supersedes ?? []), { chapter: existing.establishedIn, oldValue: existing.value }]
       : [{ chapter: Math.max(1, chapterNumber - 1), oldValue: conflict.oldValue }],
@@ -1482,6 +1761,7 @@ export function sanitizeStoryState(
         attribute: '所在位置',
         value: winner.value,
         establishedIn: chapterIndex,
+        source: 'inferred',
         supersedes: supersededFacts.map(f => ({
           chapter: chapterIndex,
           oldValue: f.oldFact,

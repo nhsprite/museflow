@@ -31,71 +31,64 @@ function baseClassification(overrides: Partial<contextJudge.IssueClassification>
   }
 }
 
-describe('isStructuralIssue', () => {
+describe('isStructuralIssue rule-based classification', () => {
   beforeEach(() => {
     vi.mocked(contextJudge.batchClassifyIssues).mockReset()
   })
 
-  it('returns the model classification for outline violations', async () => {
+  it('classifies outline violations as structural by rule', async () => {
     const issue: Issue = { id: '1', type: 'outline_violation', severity: 'error', description: '缺少大纲事件' }
     const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: true })])
     expect(await isStructuralIssue(provider, issue)).toBe(true)
+    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
   })
 
-  it('returns the model classification for generic outline deviation issues', async () => {
+  it('classifies outline deviation errors as structural by rule', async () => {
     const issue: Issue = { id: '1', type: 'outline_deviation', severity: 'error', description: '偏离大纲' }
     const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: false })])
-    expect(await isStructuralIssue(provider, issue)).toBe(false)
-  })
-
-  it('returns the model classification for outline deviation issues involving missing core events', async () => {
-    const issue: Issue = { id: '1', type: 'outline_deviation', severity: 'error', description: '缺少核心事件：主角未出现' }
-    const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: true })])
     expect(await isStructuralIssue(provider, issue)).toBe(true)
+    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
   })
 
-  it('returns the model classification for local quality issues', async () => {
+  it('classifies quality errors as non-structural (local) by rule', async () => {
     const issue: Issue = { id: '1', type: 'quality', severity: 'error', description: '用词重复' }
     const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: false })])
     expect(await isStructuralIssue(provider, issue)).toBe(false)
+    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
   })
 
-  it('returns the model classification for generic consistency issues without cross-chapter markers', async () => {
+  it('classifies consistency errors as structural by rule', async () => {
     const issue: Issue = { id: '1', type: 'consistency', severity: 'error', description: 'cross-chapter fact mismatch' }
     const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: false })])
-    expect(await isStructuralIssue(provider, issue)).toBe(false)
-  })
-
-  it('returns the model classification for consistency issues referencing previous chapters', async () => {
-    const issue: Issue = { id: '1', type: 'consistency', severity: 'error', description: '第29章中六耳猕猴已被封入锦囊，本章却写他被如来降伏' }
-    const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: true })])
     expect(await isStructuralIssue(provider, issue)).toBe(true)
+    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
   })
 
-  it('returns the model classification for consistency issues referencing story state', async () => {
-    const issue: Issue = { id: '1', type: 'consistency', severity: 'error', description: '与story_state记录的角色位置矛盾' }
-    const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: true })])
-    expect(await isStructuralIssue(provider, issue)).toBe(true)
-  })
-
-  it('returns the model classification for hallucination issues referencing previous chapters', async () => {
-    const issue: Issue = { id: '1', type: 'hallucination', severity: 'error', description: '上一章已说明六耳猕猴被封印，本章却写他逃脱', location: '开篇段落' }
-    const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: true })])
-    expect(await isStructuralIssue(provider, issue)).toBe(true)
-  })
-
-  it('returns the model classification for local hallucination issues', async () => {
+  it('classifies hallucination errors as structural by rule', async () => {
     const issue: Issue = { id: '1', type: 'hallucination', severity: 'error', description: '使用了未介绍的人物' }
     const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: false })])
-    expect(await isStructuralIssue(provider, issue)).toBe(false)
+    expect(await isStructuralIssue(provider, issue)).toBe(true)
+    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
+  })
+})
+
+describe('isStructuralIssue optional LLM复核', () => {
+  beforeEach(() => {
+    vi.mocked(contextJudge.batchClassifyIssues).mockReset()
+  })
+
+  it('uses LLM classification when preferLLM is true', async () => {
+    const issue: Issue = { id: '1', type: 'quality', severity: 'error', description: '用词重复' }
+    const provider = createProvider()
+    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isStructural: true })])
+    expect(await isStructuralIssue(provider, issue, true)).toBe(true)
+    expect(contextJudge.batchClassifyIssues).toHaveBeenCalledWith(provider, [issue])
+  })
+
+  it('falls back to rule classification when LLM fails', async () => {
+    const issue: Issue = { id: '1', type: 'quality', severity: 'error', description: '用词重复' }
+    const provider = createProvider()
+    vi.mocked(contextJudge.batchClassifyIssues).mockRejectedValueOnce(new Error('LLM failed'))
+    expect(await isStructuralIssue(provider, issue, true)).toBe(false)
   })
 })

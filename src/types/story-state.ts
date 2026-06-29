@@ -11,6 +11,7 @@ export interface CanonicalFact {
   attribute: string
   value: string
   establishedIn: number
+  source?: 'outline' | 'author' | 'inferred' | undefined
   supersedes?: Array<{
     chapter: number
     oldValue: string

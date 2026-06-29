@@ -7,6 +7,7 @@ import type { Issue } from '../types/agent.js'
 import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { ChapterPlan } from './chapter-planner.js'
 import type { Character } from '../types/character.js'
+import type { CanonicalFact } from '../types/story-state.js'
 import { logger } from '../utils/logger.js'
 
 export abstract class BaseAgent {
@@ -115,6 +116,7 @@ export interface AgentState {
   outlineCharacters?: Character[]
   establishedCharacters?: Character[]
   stateConflicts?: string
+  canonicalFacts?: CanonicalFact[] | undefined
 }
 
 export interface AgentOutput {

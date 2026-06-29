@@ -6,7 +6,7 @@ import { writeChapterContent, readChapterContent } from '../../storage/filesyste
 import { createChapterMeta } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
-import { buildCharacterFactTimeline, buildKeyEventsTimeline, formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
+import { formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
 import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent } from './planning.js'
 
@@ -24,9 +24,9 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ...(state.rewriteApproved ? (state.pendingIssues ?? []) : []),
   ]
 
-  const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
-  const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
-  const keyEventsTimeline = buildKeyEventsTimeline(state, chapterIndex)
+  // previousChapters 仅作为叙事氛围/风格连续性参考，不作为事实依据。
+  // 已确立的事实统一由 storyState + canonicalFacts 提供，避免多版本历史上下文冲突。
+  const narrativeContext = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
 
   const existingContent = state.rewriteApproved
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
@@ -49,13 +49,11 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     outlineCharacters,
     establishedCharacters,
     outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
-    previousChapters,
+    previousChapters: narrativeContext,
     chapterIndex,
-    chapterSummaries: state.chapterSummaries,
-    timelineSnapshot,
-    keyEventsTimeline,
     foreshadowStack: state.foreshadowStack,
     storyState: storyStateStr,
+    canonicalFacts: reconciledState.canonicalFacts,
     ...(stateConflicts ? { stateConflicts } : {}),
     chapterTimeAnchor,
     ...(mergedIssues.length > 0 ? { issues: mergedIssues } : {}),

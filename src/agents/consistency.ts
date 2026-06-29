@@ -1,10 +1,10 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import type { CanonicalFact } from '../types/story-state.js'
-import { buildLayeredSummaries } from '../utils/summary-compressor.js'
 import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, CAPABILITY_CONSISTENCY_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { normalizeIssues } from '../utils/agent-output.js'
+import { logger } from '../utils/logger.js'
 
 export class ConsistencyAgent extends BaseAgent {
   constructor() {
@@ -26,6 +26,16 @@ export class ConsistencyAgent extends BaseAgent {
       outlineCharacters: state.outlineCharacters,
       establishedCharacters: state.establishedCharacters,
     })
+
+    const outlineAuthorizedFacts = (state.canonicalFacts ?? []).filter(
+      f => f.establishedIn === chapterIndex && f.source === 'outline'
+    )
+    const outlineAuthorizedFactsSection = outlineAuthorizedFacts.length > 0
+      ? `<outline_authorized_facts>
+<mandatory>【本章大纲已授权的新事实】以下事实由本章大纲首次引入，已写入权威事实。本章内容中出现这些事实不属于"擅自发明"或"状态污染"，不得据此报 consistency error：</mandatory>
+${outlineAuthorizedFacts.map(f => `  - [${f.subject}] ${f.attribute}: ${f.value}`).join('\n')}
+</outline_authorized_facts>`
+      : ''
 
     const userContent = `<instruction>
   你是一位逻辑严谨的编辑，擅长发现故事中的逻辑漏洞，尤其擅长发现跨章节的角色知识和对话矛盾。
@@ -54,17 +64,11 @@ export class ConsistencyAgent extends BaseAgent {
     ${state.outline || '（暂无大纲）'}
   </outline>
 
-  <timeline>
-    ${state.timelineSnapshot || '（暂无历史记录）'}
-  </timeline>
-
-  <chapter_summaries>
-    ${buildLayeredSummaries(state.chapterSummaries ?? [], state.chapterIndex ?? 0)}
-  </chapter_summaries>
-
   <story_state>
-    【上一章结束时间参考】
+    【权威事实 - 一致性检查的唯一事实依据】
     ${state.storyState || '（暂无状态记录）'}
+
+    <mandatory>【执行约束】一致性检查必须以本区域中的【权威事实】和【已被覆盖的旧事实】为准。如果本章内容与【权威事实】中的当前有效值一致，即使与旧摘要或旧时间线中的旧值不同，也不构成矛盾。</mandatory>
   </story_state>
 
   <chapter_time_anchor>
@@ -215,16 +219,16 @@ export class ConsistencyAgent extends BaseAgent {
   <rule type="data_source_priority">
     数据来源优先级（非常重要）：
     1. chapterTimeAnchor（本章时间锚点）是本章时间推进的最高权威。如果本章有明确的 chapterTimeAnchor，以它判断时间是否合理，而不是以 storyState.storyTime。
-    2. storyState（上一章结束时间参考）是角色位置、物品状态、已揭示秘密的最高权威，但不是本章唯一时间原点。
+    2. storyState 中的【权威事实】是角色位置、物品状态、已揭示秘密、角色对话/承诺/已知信息的最高权威。本章内容必须与【权威事实】中的当前有效值保持一致。
     3. outline（大纲）是未来章节事实规划的最高权威。
-    4. timelineSnapshot 和 chapter summaries 是历史章节的压缩记录，可能包含已被覆盖或修正的旧认知。
-    
+    4. 【已被覆盖的旧事实】记录了过去已被更新的事实，仅用于判断角色是否对已覆盖的旧事实表现出不合理态度；不应将本章与旧事实一致的内容误判为矛盾。
+
     判定跨章节矛盾时：
     - 如果当前章节与 chapterTimeAnchor 冲突 → 报 error
-    - 如果当前章节与 storyState 冲突，但与 chapterTimeAnchor 一致 → 不视为时间矛盾
-    - 如果当前章节与 storyState 冲突，且无 chapterTimeAnchor → 报 error
+    - 如果当前章节与【权威事实】冲突，且无 chapterTimeAnchor 解释 → 报 error
     - 如果当前章节与 outline 冲突 → 报 error
-    - 只有当角色对已被 storyState/outline 确立的事实表现出矛盾态度时，才报 error
+    - 只有当角色对已被【权威事实】/outline 确立的事实表现出矛盾态度时，才报 error
+    - 如果本章内容与【权威事实】当前值一致，即使与旧摘要中的旧值不同，也不构成矛盾
   </rule>
 
   <rule type="canonical_facts_authority">
@@ -235,7 +239,10 @@ export class ConsistencyAgent extends BaseAgent {
     4. 本章内容若与权威事实中的当前值一致，即使与旧摘要中的旧值不同，也不构成矛盾。
     5. <mandatory>【执行约束】在输出最终 issues 前，你必须逐条审查每个候选 issue。如果某个候选 issue 的描述或建议与 canonicalFacts 中的任何一条事实直接矛盾，则必须删除该候选 issue，不得在最终 JSON 中报告。</mandatory>
     6. <mandatory>【执行约束】如果 canonicalFacts 已经明确记录了某个信息的传递方式、物品位置或角色行动，本章只要与该记录一致，就不应报 consistency error，即使该记录与你的常识推断不同。</mandatory>
+    7. <mandatory>【执行约束】如果【本章大纲已授权的新事实】中记录了某个事实，本章内容中出现该事实属于正常叙事推进，不得将其判定为"擅自发明"、"无来源引入"或"状态污染"。</mandatory>
   </rule>
+
+  ${outlineAuthorizedFactsSection}
 
   <rule type="addressing_consistency">
     人物称呼一致性：检查角色对彼此的称呼是否与前文已建立的称呼习惯一致。如果本章中某角色突然用新的称呼指代另一角色，且没有明确交代原因，报 error。
@@ -287,7 +294,11 @@ export class ConsistencyAgent extends BaseAgent {
     return parseJsonFromLLM(content)
   }
 
-  async processOutput(output: AgentOutput, canonicalFacts?: CanonicalFact[]): Promise<Issue[]> {
+  async processOutput(
+    output: AgentOutput,
+    canonicalFacts?: CanonicalFact[],
+    outlineAuthorizedFacts?: CanonicalFact[]
+  ): Promise<Issue[]> {
     if (!output.success || !output.data) return []
     const data = output.data as {
       is_consistent?: boolean
@@ -305,6 +316,58 @@ export class ConsistencyAgent extends BaseAgent {
       return []
     }
 
-    return normalizeIssues(data.issues, 'consistency', this.provider, { canonicalFacts })
+    const normalized = await normalizeIssues(data.issues, 'consistency', this.provider, { canonicalFacts })
+    if (!outlineAuthorizedFacts || outlineAuthorizedFacts.length === 0) {
+      return normalized
+    }
+
+    return filterOutlineAuthorizedIssues(normalized, outlineAuthorizedFacts)
   }
+}
+
+/**
+ * 过滤掉针对本章大纲已授权事实的误报。
+ * 如果某条 consistency issue 明显在指责一个 outline-authorized 的事实是"新引入/无来源/invent"，
+ * 则视为 prompt 未被完全遵循，直接丢弃，避免重写死锁。
+ *
+ * 匹配策略：优先用 fact.value 匹配（新地点、新物品、新关系通常有具体名称）。
+ * 仅匹配 subject 会过于宽泛（很多 issue 都会提到角色名），因此只在同时命中
+ * subject 与 attribute 相关词，或命中明确的价值描述时才过滤。
+ */
+function filterOutlineAuthorizedIssues(
+  issues: Issue[],
+  outlineAuthorizedFacts: CanonicalFact[]
+): Issue[] {
+  const inventionMarkers = /invent|擅自|新引入|无来源|未在权威事实|未在前面章节|未确立|新增加|新增|凭空|额外创造/g
+
+  return issues.filter(issue => {
+    if (issue.type !== 'consistency') return true
+    const text = `${issue.description ?? ''} ${issue.location ?? ''} ${issue.suggestion ?? ''}`
+    if (!inventionMarkers.test(text)) return true
+
+    for (const fact of outlineAuthorizedFacts) {
+      const subject = fact.subject?.trim() ?? ''
+      const value = fact.value?.trim() ?? ''
+
+      // 优先匹配具体值（新地点、新物品细节、新关系名）
+      if (value.length >= 3 && text.includes(value)) {
+        logger.warn(`[MuseFlow] consistency issue 命中本章大纲已授权事实（${value}），已过滤: ${issue.description?.slice(0, 80)}...`)
+        return false
+      }
+
+      // 对短值回退：同时命中 subject 与 attribute 关键词
+      if (subject.length >= 2 && value.length > 0 && value.length < 3) {
+        const attributeMarkers = new RegExp(
+          `${fact.attribute}|状态|所在|位置|来源|归属|关系`,
+          'g'
+        )
+        if (text.includes(subject) && attributeMarkers.test(text) && text.includes(value)) {
+          logger.warn(`[MuseFlow] consistency issue 命中本章大纲已授权事实（${subject}/${fact.attribute}=${value}），已过滤: ${issue.description?.slice(0, 80)}...`)
+          return false
+        }
+      }
+    }
+
+    return true
+  })
 }

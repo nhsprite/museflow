@@ -10,10 +10,7 @@ import {
   isStateCorruptionIssue,
   isInterpretiveIssue,
 } from '../../core/chapter-generation/issue-classifier.js'
-import {
-  deduplicateIssuesSemantically,
-  issueFingerprint,
-} from '../../utils/issue-deduplication.js'
+import { deduplicateIssuesSemantically, ruleBasedFingerprint } from '../../utils/issue-deduplication.js'
 import { createProvider } from '../../model/registry.js'
 import type { StoryState } from '../../types/story-state.js'
 import type { Issue, IssueSeverity } from '../../types/agent.js'
@@ -31,6 +28,8 @@ export interface RewriteRoutingConfig {
   maxVerifiedConstraints: number
   issueSetSimilarityThreshold: number
   downgradeInterpretiveErrors: boolean
+  /** 是否使用 LLM 对 issue 进行二次分类复核。默认 false，使用确定性规则分类。 */
+  useLLMForIssueClassification: boolean
 }
 
 export const DEFAULT_REWRITE_ROUTING_CONFIG: Required<RewriteRoutingConfig> = {
@@ -39,6 +38,7 @@ export const DEFAULT_REWRITE_ROUTING_CONFIG: Required<RewriteRoutingConfig> = {
   maxVerifiedConstraints: 20,
   issueSetSimilarityThreshold: 0.5,
   downgradeInterpretiveErrors: true,
+  useLLMForIssueClassification: false,
 }
 
 export interface RewriteConvergenceResult {
@@ -88,14 +88,19 @@ export function capNonErrorIssuesByType(
   return result
 }
 
+function buildLightweightFingerprint(issue: Issue): string {
+  return ruleBasedFingerprint(issue)
+}
+
 export async function calculateIssueSetSimilarity(
   prev: Issue[],
   curr: Issue[],
-  issueFingerprint: (issue: Issue) => Promise<string>
+  issueFingerprint?: (issue: Issue) => Promise<string>
 ): Promise<number> {
   if (prev.length === 0 || curr.length === 0) return 0
-  const prevFps = await Promise.all(prev.map(issueFingerprint))
-  const currFps = await Promise.all(curr.map(issueFingerprint))
+  const fingerprintFn = issueFingerprint ?? (async issue => buildLightweightFingerprint(issue))
+  const prevFps = await Promise.all(prev.map(fingerprintFn))
+  const currFps = await Promise.all(curr.map(fingerprintFn))
   const prevSet = new Set(prevFps)
   const currSet = new Set(currFps)
   let intersection = 0
@@ -185,6 +190,7 @@ function buildRoutingConfig(genre: string): Required<RewriteRoutingConfig> {
  * 当 structural rewrite 未收敛时，清理当前章节由大纲解析自动写入的
  * canonicalFacts / supersededFacts。当前章节尚未 finalize，其权威事实
  * 应主要来自前章正文；大纲解析结果只应作为提示，不应持续污染状态。
+ * 作者通过 CLI 做出的裁决（source='author'）属于外部权威输入，不应被清理。
  */
 function cleanCurrentChapterInferredFacts(state: ReducedGraphState): StoryState | undefined {
   const storyState = state.storyState
@@ -197,7 +203,7 @@ function cleanCurrentChapterInferredFacts(state: ReducedGraphState): StoryState 
   const supersededFacts = storyState.supersededFacts ?? []
 
   const cleanedCanonicalFacts = canonicalFacts.filter(
-    f => f.establishedIn !== currentDisplayChapter
+    f => f.establishedIn !== currentDisplayChapter || f.source === 'author'
   )
   const cleanedSupersededFacts = supersededFacts.filter(
     f => f.chapterIndex !== currentChapterIndex
@@ -210,7 +216,7 @@ function cleanCurrentChapterInferredFacts(state: ReducedGraphState): StoryState 
   if (!hasChanges) return undefined
 
   logger.info(
-    `[MuseFlow] 重写未收敛，清理当前章节由大纲解析自动生成的 ${canonicalFacts.length - cleanedCanonicalFacts.length} 条权威事实与 ${supersededFacts.length - cleanedSupersededFacts.length} 条覆盖记录`
+    `[MuseFlow] 重写未收敛，清理当前章节由大纲自动预授权/推断的 ${canonicalFacts.length - cleanedCanonicalFacts.length} 条权威事实与 ${supersededFacts.length - cleanedSupersededFacts.length} 条覆盖记录`
   )
 
   return {
@@ -275,7 +281,8 @@ async function decideRoutingStrategy(
   feedbackIssues: Issue[]
   rewriteApproved: boolean
 }> {
-  const provider = createProvider()
+  const config = buildRoutingConfig(state.genre)
+  const preferLLM = config.useLLMForIssueClassification
   const chapterIndex = state.currentChapterIndex
   const rewriteApproved = state.rewriteApproved
   const pendingIssues = state.pendingIssues
@@ -286,7 +293,7 @@ async function decideRoutingStrategy(
   if (
     rewriteApproved &&
     errorIssues.length > 0 &&
-    (await allIssuesMatch(errorIssues, issue => isStateCorruptionIssue(provider, issue)))
+    (await allIssuesMatch(errorIssues, issue => isStateCorruptionIssue(undefined, issue, preferLLM)))
   ) {
     logger.warn('[MuseFlow] 剩余错误均为上游状态污染，停止重写循环，请求人工处理...')
     return {
@@ -325,12 +332,12 @@ async function decideRoutingStrategy(
       feedbackIssues = errorIssues
     } else {
       const hasStructural =
-        (await anyIssueMatches(errorIssues, issue => isStructuralIssue(provider, issue))) ||
+        (await anyIssueMatches(errorIssues, issue => isStructuralIssue(undefined, issue, preferLLM))) ||
         (state.forceStructuralRewrite || false)
-      const hasLocal = await anyIssueMatches(errorIssues, issue => isLocalIssue(provider, issue))
+      const hasLocal = await anyIssueMatches(errorIssues, issue => isLocalIssue(undefined, issue, preferLLM))
       const hasTaskConsistency = await anyIssueMatches(
         errorIssues,
-        issue => isTaskConsistencyIssue(provider, issue)
+        issue => isTaskConsistencyIssue(undefined, issue, preferLLM)
       )
 
       if (hasTaskConsistency) {
@@ -371,10 +378,12 @@ async function decideRoutingStrategy(
 async function convergenceCheck(
   state: ReducedGraphState
 ): Promise<RewriteConvergenceResult> {
-  const provider = createProvider()
   const config = buildRoutingConfig(state.genre)
+  const preferLLM = config.useLLMForIssueClassification
 
-  let dedupedIssues = await deduplicateIssuesSemantically(provider, state.pendingIssues)
+  let dedupedIssues = config.useLLMForIssueClassification
+    ? await deduplicateIssuesSemantically(createProvider(), state.pendingIssues)
+    : state.pendingIssues
   dedupedIssues = capNonErrorIssuesByType(
     dedupedIssues,
     config.maxNonErrorIssuesPerType,
@@ -384,17 +393,13 @@ async function convergenceCheck(
   const currentRawErrorCount = dedupedIssues.filter(i => i.severity === 'error').length
   const currentErrorIssues = dedupedIssues.filter(i => i.severity === 'error')
   const previousErrors = state.previousIssues.filter(i => i.severity === 'error')
-  const similarity = await calculateIssueSetSimilarity(
-    previousErrors,
-    currentErrorIssues,
-    issue => issueFingerprint(provider, issue)
-  )
+  const similarity = await calculateIssueSetSimilarity(previousErrors, currentErrorIssues)
 
   let forceStructuralRewrite = false
   const currentRemainingErrors = dedupedIssues.filter(i => i.severity === 'error')
   const onlyInterpretiveErrors =
     currentRemainingErrors.length > 0 &&
-    (await allIssuesMatch(currentRemainingErrors, issue => isInterpretiveIssue(provider, issue)))
+    (await allIssuesMatch(currentRemainingErrors, issue => isInterpretiveIssue(undefined, issue, preferLLM)))
 
   const errorCountIncreased = currentRawErrorCount > (state.previousRawErrorCount || 0)
   const issuesHighlySimilar =
@@ -402,7 +407,7 @@ async function convergenceCheck(
 
   const hasStateCorruptionError = await anyIssueMatches(
     currentErrorIssues,
-    issue => isStateCorruptionIssue(provider, issue)
+    issue => isStateCorruptionIssue(undefined, issue, preferLLM)
   )
 
   const errorRewriteAttempts = state.errorRewriteAttempts || 0
@@ -432,7 +437,7 @@ async function convergenceCheck(
     )
     const downgrade = await downgradeInterpretiveErrors(
       dedupedIssues,
-      issue => isInterpretiveIssue(provider, issue)
+      issue => isInterpretiveIssue(undefined, issue, preferLLM)
     )
     dedupedIssues = downgrade.issues
   }
@@ -440,7 +445,7 @@ async function convergenceCheck(
   const { constraints: newConstraints } = await buildVerifiedConstraints(
     state.previousIssues,
     dedupedIssues,
-    issue => isInterpretiveIssue(provider, issue),
+    issue => isInterpretiveIssue(undefined, issue, preferLLM),
     config.maxVerifiedConstraints,
     (level, message, ...meta) => logger[level](message, ...meta)
   )
@@ -478,7 +483,7 @@ async function convergenceCheck(
   } else if (errorRewriteAttempts >= config.maxErrorRewriteAttempts) {
     const corruptionCount = await countMatchingIssues(
       remainingErrors,
-      issue => isStateCorruptionIssue(provider, issue)
+      issue => isStateCorruptionIssue(undefined, issue, preferLLM)
     )
     if (corruptionCount > 0) {
       logger.error(

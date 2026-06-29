@@ -39,26 +39,9 @@ export class ChapterAgent extends BaseAgent {
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
-    const timelineSection = state.timelineSnapshot
-      ? `<timeline_state>
-上一章结束时的状态：
-${state.timelineSnapshot}
-
-请在继续写作时保持与上述状态的一致性。</timeline_state>`
-      : ''
-
-    const keyEventsSection = state.keyEventsTimeline
-      ? `<key_events>
-<important>【重要 - 已发生的关键事件】以下事件已在前面章节中发生，后续章节必须承认并遵循这些事实，不可遗漏、遗忘或矛盾：</important>
-${state.keyEventsTimeline}
-
-<mandatory>【强制要求】以上关键事件是已确立的叙事事实，本章写作时必须保持一致。如果本章涉及这些事件的后续发展，必须给出合理的因果衔接，不可凭空改变事件结果。</mandatory>
-</key_events>`
-      : ''
-
     const storyStateSection = state.storyState
       ? `<story_state>
-<mandatory>【上一章结束时间 - 叙事参考起点】</mandatory>
+<mandatory>【权威事实 - 本章写作的唯一事实依据】</mandatory>
 ${state.storyState}
 
 ${FACT_CONSISTENCY_RULES}
@@ -233,15 +216,12 @@ ${state.characters || '（尚未创建）'}
 ${characterWhitelistSection}
 
 <previous_summary>
-前几章摘要：
+<note>【叙事氛围参考】以下内容为前几章的压缩摘要，仅用于保持叙事风格、情绪基调和角色关系的连续性，不作为事实依据。</note>
+<note>【重要】已确立的事实必须以【权威事实】中的记录为准。如果本摘要与【权威事实】存在任何差异，以【权威事实】为准。</note>
 ${previousSummary}
 </previous_summary>
 
 ${chapterSupplement}
-
-${timelineSection}
-
-${keyEventsSection}
 
 ${storyStateSection}
 

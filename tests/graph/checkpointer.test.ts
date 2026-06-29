@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rm } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { validate as validateUuid } from 'uuid'
 
 import { JsonCheckpointer } from '../../src/graph/checkpointer.ts'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
@@ -113,5 +114,60 @@ describe('checkpointer', () => {
 
     const tuple = await saver.getTuple({ configurable: { thread_id: TEST_STORY_ID, outputDir } })
     expect(tuple?.checkpoint.id).toBe('cp-1')
+  })
+
+  it('updateLatestState writes a valid UUID checkpoint id', async () => {
+    const saver = new JsonCheckpointer()
+    const cp = makeCheckpoint('550e8400-e29b-41d4-a716-446655440000', '2024-01-01T00:00:00.000Z')
+    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp, makeMetadata(), {})
+
+    await saver.updateLatestState(outputDir, { idea: 'updated' })
+
+    const latestPath = join(outputDir, 'checkpoints', 'latest.json')
+    const latest = JSON.parse(readFileSync(latestPath, 'utf-8'))
+    expect(validateUuid(latest.checkpointId)).toBe(true)
+
+    const checkpointPath = join(outputDir, 'checkpoints', `${latest.checkpointId}.json`)
+    expect(existsSync(checkpointPath)).toBe(true)
+
+    const record = JSON.parse(readFileSync(checkpointPath, 'utf-8'))
+    expect(record.checkpointId).toBe(latest.checkpointId)
+    expect(record.checkpoint.id).toBe(latest.checkpointId)
+
+    const tuple = await saver.getTuple({ configurable: { thread_id: TEST_STORY_ID, outputDir } })
+    expect(tuple?.checkpoint.id).toBe(latest.checkpointId)
+    expect((tuple?.checkpoint.channel_values as Record<string, unknown>).idea).toBe('updated')
+  })
+
+  it('auto-repairs invalid checkpoint ids when loading', async () => {
+    const saver = new JsonCheckpointer()
+    const cp = makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z')
+    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp, makeMetadata(), {})
+
+    // Simulate a corrupted checkpoint written by an older version of the code.
+    const corruptedId = 'ckpt_invalidid123'
+    const corruptedRecord = {
+      checkpointId: corruptedId,
+      parentCheckpointId: null,
+      checkpoint: {
+        ...cp,
+        id: corruptedId,
+      },
+      metadata: makeMetadata(),
+    }
+    const corruptedPath = join(outputDir, 'checkpoints', `${corruptedId}.json`)
+    writeFileSync(corruptedPath, JSON.stringify(corruptedRecord, null, 2))
+
+    const latestPath = join(outputDir, 'checkpoints', 'latest.json')
+    writeFileSync(latestPath, JSON.stringify({ checkpointId: corruptedId, ts: cp.ts }, null, 2))
+
+    const tuple = await saver.getTuple({ configurable: { thread_id: TEST_STORY_ID, outputDir } })
+    const repairedId = tuple?.checkpoint.id ?? ''
+    expect(validateUuid(repairedId)).toBe(true)
+    expect(existsSync(corruptedPath)).toBe(false)
+    expect(existsSync(join(outputDir, 'checkpoints', `${repairedId}.json`))).toBe(true)
+
+    const latest = JSON.parse(readFileSync(latestPath, 'utf-8'))
+    expect(latest.checkpointId).toBe(repairedId)
   })
 })

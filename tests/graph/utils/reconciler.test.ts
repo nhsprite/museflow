@@ -14,6 +14,7 @@ import {
   applyAuthorOverrides,
   formatStoryState,
   prepareStoryStateForChapter,
+  authorizeOutlineFacts,
 } from '../../../src/graph/utils/reconciler.js'
 import { BlockingConflictError } from '../../../src/utils/errors.js'
 import type { StoryState, Conflict, StateOverride } from '../../../src/types/story-state.js'
@@ -147,6 +148,35 @@ describe('mergeStoryState', () => {
     const merged = mergeStoryState(existing, delta)
     expect(merged.canonicalFacts?.length).toBe(2)
   })
+
+  it('keeps the latest canonical fact when subject and attribute collide', () => {
+    const existing: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 }],
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [{ id: 'cf2', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 5 }],
+    }
+    const merged = mergeStoryState(existing, delta)
+    expect(merged.canonicalFacts?.length).toBe(1)
+    expect(merged.canonicalFacts?.[0].value).toBe('官府仓库')
+    expect(merged.canonicalFacts?.[0].establishedIn).toBe(5)
+  })
+
+  it('does not overwrite newer canonical facts with older delta facts', () => {
+    const existing: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 5 }],
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [{ id: 'cf2', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 }],
+    }
+    const merged = mergeStoryState(existing, delta)
+    expect(merged.canonicalFacts?.length).toBe(1)
+    expect(merged.canonicalFacts?.[0].value).toBe('官府仓库')
+  })
 })
 
 describe('sanitizeStoryState', () => {
@@ -222,6 +252,18 @@ describe('sanitizeStoryState', () => {
     expect(report.state.revealedSecrets).toEqual([])
     expect(report.removedFacts).toContain('配角甲出门办事')
     expect(report.removedFacts).toContain('配角乙偷了东西')
+  })
+
+  it('keeps plots and secrets that reference official characters', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      activePlots: ['主角追查密信下落'],
+      revealedSecrets: ['主角发现密信被转移出王府'],
+    }
+    const report = sanitizeStoryState(state, characters)
+    expect(report.state.activePlots).toEqual(['主角追查密信下落'])
+    expect(report.state.revealedSecrets).toEqual(['主角发现密信被转移出王府'])
+    expect(report.removedFacts).toEqual([])
   })
 
   it('detects ambiguous item names at same location', () => {
@@ -682,5 +724,134 @@ describe('prepareStoryStateForChapter', () => {
     const result = await prepareStoryStateForChapter(state, 0)
     expect(result).toBeDefined()
     expect(result.stateConflicts).toContain('大纲要求主角抵达京城')
+  })
+
+  it('authorizes new facts introduced by the outline', async () => {
+    const state = makeState()
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        conflicts: [],
+        constraints: [],
+      })),
+    } as unknown as ModelProvider
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
+    vi.mocked(registryCreateProvider).mockReturnValue({
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        facts: [
+          { subject: '密信', attribute: '来源', value: '旧友暗中递送', contradictsExisting: false },
+          { subject: '暗桩', attribute: '关系', value: '主角旧部', contradictsExisting: false },
+        ],
+      })),
+    } as unknown as ModelProvider)
+
+    const result = await prepareStoryStateForChapter(state, 0)
+    expect(result.reconciledState.canonicalFacts?.some(
+      f => f.subject === '密信' && f.attribute === '来源' && f.value === '旧友暗中递送' && f.source === 'outline'
+    )).toBe(true)
+    expect(result.reconciledState.canonicalFacts?.some(
+      f => f.subject === '暗桩' && f.attribute === '关系' && f.value === '主角旧部' && f.establishedIn === 1
+    )).toBe(true)
+  })
+
+  it('does not authorize facts that contradict existing canonical facts', async () => {
+    const state = makeState()
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        conflicts: [],
+        constraints: [],
+      })),
+    } as unknown as ModelProvider
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
+    vi.mocked(registryCreateProvider).mockReturnValue({
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        facts: [
+          { subject: '主角', attribute: '所在位置', value: '京城', contradictsExisting: true },
+        ],
+      })),
+    } as unknown as ModelProvider)
+
+    const result = await prepareStoryStateForChapter(state, 0)
+    expect(result.reconciledState.canonicalFacts?.some(
+      f => f.subject === '主角' && f.value === '京城'
+    )).toBe(false)
+  })
+})
+
+describe('authorizeOutlineFacts', () => {
+  it('returns empty array when provider is missing', async () => {
+    const state = emptyState()
+    const result = await authorizeOutlineFacts(state, '大纲描述', 0, undefined)
+    expect(result).toHaveLength(0)
+  })
+
+  it('returns empty array when outline is empty', async () => {
+    const provider = { chat: vi.fn() } as unknown as ModelProvider
+    const result = await authorizeOutlineFacts(emptyState(), '', 0, provider)
+    expect(result).toHaveLength(0)
+    expect(provider.chat).not.toHaveBeenCalled()
+  })
+
+  it('extracts new facts from outline and marks them as outline source', async () => {
+    const state = emptyState()
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        facts: [
+          { subject: '主角', attribute: '所在位置', value: '废弃仓库', contradictsExisting: false },
+          { subject: '暗桩', attribute: '关系', value: '主角旧部', contradictsExisting: false },
+        ],
+      })),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(state, '主角秘密抵达废弃仓库，与旧部暗桩接头。', 4, provider)
+    expect(result).toHaveLength(2)
+    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline' })
+    expect(result[1]).toMatchObject({ subject: '暗桩', attribute: '关系', value: '主角旧部', establishedIn: 5, source: 'outline' })
+  })
+
+  it('skips facts already present in canonical facts', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 4 },
+      ],
+    }
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        facts: [
+          { subject: '主角', attribute: '所在位置', value: '废弃仓库', contradictsExisting: false },
+        ],
+      })),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(state, '主角在废弃仓库藏身。', 4, provider)
+    expect(result).toHaveLength(0)
+  })
+
+  it('skips facts flagged as contradicting existing facts', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        { id: 'f1', subject: '主角', attribute: '所在位置', value: '家中', establishedIn: 1 },
+      ],
+    }
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => JSON.stringify({
+        facts: [
+          { subject: '主角', attribute: '所在位置', value: '京城', contradictsExisting: true },
+        ],
+      })),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(state, '主角已抵达京城。', 4, provider)
+    expect(result).toHaveLength(0)
+  })
+
+  it('falls back to empty array on model error', async () => {
+    const provider = {
+      chat: vi.fn(async (): Promise<string> => { throw new Error('模型调用失败') }),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(emptyState(), '大纲描述', 0, provider)
+    expect(result).toHaveLength(0)
   })
 })

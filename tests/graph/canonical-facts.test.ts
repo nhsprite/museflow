@@ -3,8 +3,13 @@ import {
   mergeStoryState,
   filterSupersededFactsFromTimeline,
   filterSupersededEventsFromTimeline,
+  buildCanonicalFactTimeline,
+  buildCharacterFactTimeline,
+  buildKeyEventsTimeline,
 } from '../../src/graph/utils/reconciler.js'
 import type { StoryState } from '../../src/types/story-state.js'
+import type { ReducedGraphState } from '../../src/graph/state.js'
+import type { Character } from '../../src/types/character.js'
 
 function emptyState(): StoryState {
   return {
@@ -229,5 +234,117 @@ describe('filterSupersededEventsFromTimeline', () => {
     const filtered = filterSupersededEventsFromTimeline(events, canonicalFacts)
     expect(filtered).toHaveLength(1)
     expect(filtered[0]).toContain('昆仑山')
+  })
+})
+
+function makeGraphState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
+  const characters: Character[] = [
+    { id: '1', storyId: 's', name: '主角', description: '', createdAt: 1 },
+    { id: '2', storyId: 's', name: '侍女', description: '', createdAt: 2 },
+  ]
+  return {
+    story: { id: 's', title: '测试', idea: '', genre: 'default', totalChapters: 10, status: 'writing', provider: 'openai', outputDir: 'books/s', createdAt: 1, updatedAt: 1 },
+    idea: '',
+    genre: 'default',
+    totalChapters: 10,
+    world: null,
+    characters,
+    outline: [],
+    chapters: [],
+    currentChapterIndex: 0,
+    foreshadowStack: [],
+    chapterSummaries: [],
+    pendingIssues: [],
+    rewriteApproved: false,
+    rewriteRequested: false,
+    isWriting: true,
+    writeOneChapterOnly: true,
+    lastPrintedChapter: -1,
+    lastTimelineSnapshot: null,
+    chapterPlan: null,
+    storyState: emptyState(),
+    chapterTimeAnchor: undefined,
+    autoFixAttempts: 0,
+    verifiedConstraints: [],
+    chapterReport: null,
+    rewriteAttempts: 0,
+    errorRewriteAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    forceStructuralRewrite: false,
+    routingDecision: undefined,
+    authorDecisions: {},
+    ...overrides,
+  } as ReducedGraphState
+}
+
+describe('buildCanonicalFactTimeline', () => {
+  it('builds timeline grouped by chapter from canonical facts', () => {
+    const state = makeGraphState({
+      storyState: {
+        ...emptyState(),
+        canonicalFacts: [
+          { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '东方灵河旧址', establishedIn: 0 },
+          { id: 'cf2', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 2, supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }] },
+        ],
+      },
+    })
+
+    const timeline = buildCanonicalFactTimeline(state, 2)
+    expect(timeline).toContain('第1章权威事实')
+    expect(timeline).toContain('第3章权威事实')
+    expect(timeline).toContain('木之灵物')
+    expect(timeline).toContain('昆仑山')
+    expect(timeline).toContain('覆盖：东方灵河旧址')
+  })
+
+  it('returns empty marker when no canonical facts exist', () => {
+    const state = makeGraphState()
+    expect(buildCanonicalFactTimeline(state, 0)).toBe('（暂无权威事实记录）')
+  })
+})
+
+describe('buildCharacterFactTimeline', () => {
+  it('prefers canonical facts over summaries when available', () => {
+    const state = makeGraphState({
+      storyState: {
+        ...emptyState(),
+        canonicalFacts: [
+          { id: 'cf1', subject: '主角', attribute: '已知信息', value: '主角知道密信在书桌抽屉', establishedIn: 0 },
+          { id: 'cf2', subject: '侍女', attribute: '态度', value: '侍女对主角产生怀疑', establishedIn: 1 },
+        ],
+      },
+      chapterSummaries: ['第1章摘要：主角知道密信在木箱暗格'],
+    })
+
+    const timeline = buildCharacterFactTimeline(state, 1)
+    expect(timeline).toContain('第1章角色事实')
+    expect(timeline).toContain('主角')
+    expect(timeline).toContain('书桌抽屉')
+    expect(timeline).not.toContain('木箱暗格')
+  })
+
+  it('returns empty marker when no canonical facts and no summaries exist', () => {
+    const state = makeGraphState()
+    expect(buildCharacterFactTimeline(state, 0)).toBe('（暂无历史记录）')
+  })
+})
+
+describe('buildKeyEventsTimeline', () => {
+  it('prefers canonical facts with key event attribute', () => {
+    const state = makeGraphState({
+      storyState: {
+        ...emptyState(),
+        canonicalFacts: [
+          { id: 'cf1', subject: '密信', attribute: '关键事件', value: '密信被转移至官府仓库', establishedIn: 1 },
+        ],
+      },
+      chapterSummaries: ['第2章摘要：密信被转移至东院'],
+    })
+
+    const timeline = buildKeyEventsTimeline(state, 1)
+    expect(timeline).toContain('第2章关键事件')
+    expect(timeline).toContain('官府仓库')
+    expect(timeline).not.toContain('东院')
   })
 })

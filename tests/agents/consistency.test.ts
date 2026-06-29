@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
 import type { AgentState } from '../../src/agents/base.ts'
+import type { CanonicalFact } from '../../src/types/story-state.ts'
 
-const mockChat = vi.fn(async (): Promise<string> => '')
+const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [false] }))
 
 vi.mock('../../src/model/registry.ts', () => ({
   createProvider: (): ModelProvider => ({
@@ -50,5 +51,155 @@ describe('ConsistencyAgent time anchor', () => {
     expect(userMessage).toContain('三日期限第一日卯时')
     expect(userMessage).toContain('上一章结束时间')
     expect(userMessage).toContain('以本章时间锚点作为判断时间推进是否合理的依据')
+  })
+})
+
+describe('ConsistencyAgent outline-authorized facts', () => {
+  beforeEach(() => {
+    mockChat.mockClear()
+  })
+
+  it('includes outline-authorized facts in prompt', () => {
+    const agent = new TestableConsistencyAgent()
+    const canonicalFacts: CanonicalFact[] = [
+      { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 2, source: 'outline' },
+      { id: 'f2', subject: '密信', attribute: '来源', value: '旧友暗中递送', establishedIn: 2, source: 'outline' },
+    ]
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      chapterContent: '主角在废弃仓库收到旧友暗中递送的密信。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: ['第1章：主角离家。'],
+      storyState: '【上一章结束时间】\n故事时间第一日',
+      canonicalFacts,
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('本章大纲已授权的新事实')
+    expect(userMessage).toContain('废弃仓库')
+    expect(userMessage).toContain('旧友暗中递送')
+  })
+
+  it('filters issues that falsely flag outline-authorized facts as invented', async () => {
+    const ConsistencyAgent = (await import('../../src/agents/consistency.ts')).ConsistencyAgent
+    const agent = new ConsistencyAgent()
+    const outlineAuthorizedFacts: CanonicalFact[] = [
+      { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 2, source: 'outline' },
+    ]
+
+    const output = {
+      success: true,
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            type: 'consistency',
+            severity: 'error',
+            description: '本章新引入了"废弃仓库"这一地点，未在权威事实中记录，属于擅自发明。',
+            location: '主角抵达废弃仓库的段落',
+            suggestion: '删除废弃仓库，或在前文补充来源。',
+          },
+          {
+            type: 'consistency',
+            severity: 'error',
+            description: '主角在同一刻既在城东茶楼喝茶，又在城西驿站送信，时间线出现断裂。',
+            location: '茶楼与驿站两段场景',
+          },
+        ],
+      },
+    }
+
+    const issues = await agent.processOutput(output, [], outlineAuthorizedFacts)
+    expect(issues).toHaveLength(1)
+    expect(issues[0].description).toContain('时间线出现断裂')
+  })
+
+  it('keeps issues that do not reference outline-authorized facts', async () => {
+    const ConsistencyAgent = (await import('../../src/agents/consistency.ts')).ConsistencyAgent
+    const agent = new ConsistencyAgent()
+    const outlineAuthorizedFacts: CanonicalFact[] = [
+      { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 2, source: 'outline' },
+    ]
+
+    const output = {
+      success: true,
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            type: 'consistency',
+            severity: 'error',
+            description: '本章新引入了"秘密码头"这一地点，未在权威事实中记录，属于擅自发明。',
+            location: '主角抵达秘密码头的段落',
+          },
+        ],
+      },
+    }
+
+    const issues = await agent.processOutput(output, [], outlineAuthorizedFacts)
+    expect(issues).toHaveLength(1)
+    expect(issues[0].description).toContain('秘密码头')
+  })
+})
+
+describe('ConsistencyAgent canonical facts authority', () => {
+  beforeEach(() => {
+    mockChat.mockClear()
+  })
+
+  it('uses story_state as the single factual authority', () => {
+    const agent = new TestableConsistencyAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      chapterContent: '主角在废弃仓库收到密信。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: ['第1章：主角离家。'],
+      storyState: '【权威事实】\n- [主角] 所在位置: 城东茶楼\n- [密信] 来源: 旧友暗中递送',
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('【权威事实 - 一致性检查的唯一事实依据】')
+    expect(userMessage).not.toContain('<chapter_summaries>')
+    expect(userMessage).not.toContain('<timeline>')
+    expect(userMessage).not.toContain('前几章摘要')
+  })
+
+  it('emphasizes that canonical facts override old summaries', () => {
+    const agent = new TestableConsistencyAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      chapterContent: '主角在废弃仓库收到密信。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: ['第1章：主角离家。'],
+      storyState: '【权威事实】\n- [主角] 所在位置: 城东茶楼',
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('一致性检查必须以本区域中的【权威事实】和【已被覆盖的旧事实】为准')
+    expect(userMessage).toContain('如果本章内容与【权威事实】中的当前有效值一致，即使与旧摘要或旧时间线中的旧值不同，也不构成矛盾')
   })
 })

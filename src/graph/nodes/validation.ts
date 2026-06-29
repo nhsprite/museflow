@@ -206,6 +206,11 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
 
+  const canonicalFacts = state.storyState?.canonicalFacts ?? []
+  const outlineAuthorizedFacts = canonicalFacts.filter(
+    f => f.establishedIn === chapterIndex + 1 && f.source === 'outline'
+  )
+
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -222,13 +227,14 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
     timelineSnapshot,
     foreshadowStack: state.foreshadowStack,
     storyState: storyStateStr,
+    canonicalFacts,
     chapterPlan: state.chapterPlan ?? undefined,
     chapterTimeAnchor,
     supersededFacts: supersededFactsStr,
   }
 
   const output = await agent.run(agentState)
-  const issues = await agent.processOutput(output, state.storyState?.canonicalFacts ?? [])
+  const issues = await agent.processOutput(output, canonicalFacts, outlineAuthorizedFacts)
 
   return issues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...issues] } : {}
 }
