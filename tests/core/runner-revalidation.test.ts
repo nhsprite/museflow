@@ -125,11 +125,8 @@ vi.mock('../../src/agents/index.js', () => ({
       return chapterPlannerRun()
     }
   },
-  QualityAgent: class {},
   ForeshadowingAgent: class {},
-  HallucinationAgent: class {},
   ConsistencyAgent: class {},
-  OutlineComplianceAgent: class {},
   SummaryAgent: class {
     async run() {
       return {

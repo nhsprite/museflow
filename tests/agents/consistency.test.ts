@@ -87,67 +87,6 @@ describe('ConsistencyAgent outline-authorized facts', () => {
     expect(userMessage).toContain('废弃仓库')
     expect(userMessage).toContain('旧友暗中递送')
   })
-
-  it('filters issues that falsely flag outline-authorized facts as invented', async () => {
-    const ConsistencyAgent = (await import('../../src/agents/consistency.ts')).ConsistencyAgent
-    const agent = new ConsistencyAgent()
-    const outlineAuthorizedFacts: CanonicalFact[] = [
-      { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 2, source: 'outline' },
-    ]
-
-    const output = {
-      success: true,
-      data: {
-        is_consistent: false,
-        issues: [
-          {
-            type: 'consistency',
-            severity: 'error',
-            description: '本章新引入了"废弃仓库"这一地点，未在权威事实中记录，属于擅自发明。',
-            location: '主角抵达废弃仓库的段落',
-            suggestion: '删除废弃仓库，或在前文补充来源。',
-          },
-          {
-            type: 'consistency',
-            severity: 'error',
-            description: '主角在同一刻既在城东茶楼喝茶，又在城西驿站送信，时间线出现断裂。',
-            location: '茶楼与驿站两段场景',
-          },
-        ],
-      },
-    }
-
-    const issues = await agent.processOutput(output, [], outlineAuthorizedFacts)
-    expect(issues).toHaveLength(1)
-    expect(issues[0].description).toContain('时间线出现断裂')
-  })
-
-  it('keeps issues that do not reference outline-authorized facts', async () => {
-    const ConsistencyAgent = (await import('../../src/agents/consistency.ts')).ConsistencyAgent
-    const agent = new ConsistencyAgent()
-    const outlineAuthorizedFacts: CanonicalFact[] = [
-      { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 2, source: 'outline' },
-    ]
-
-    const output = {
-      success: true,
-      data: {
-        is_consistent: false,
-        issues: [
-          {
-            type: 'consistency',
-            severity: 'error',
-            description: '本章新引入了"秘密码头"这一地点，未在权威事实中记录，属于擅自发明。',
-            location: '主角抵达秘密码头的段落',
-          },
-        ],
-      },
-    }
-
-    const issues = await agent.processOutput(output, [], outlineAuthorizedFacts)
-    expect(issues).toHaveLength(1)
-    expect(issues[0].description).toContain('秘密码头')
-  })
 })
 
 describe('ConsistencyAgent canonical facts authority', () => {

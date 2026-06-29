@@ -1,50 +1,52 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import * as contextJudge from '../../../src/utils/context-judge.js'
-import * as issueDeduplication from '../../../src/utils/issue-deduplication.js'
 import {
-  decide_strategy,
-  convergence_check,
-  route_strategy,
-  route_convergence,
+  converge_and_decide,
+  route_by_decision,
+  route_after_validation,
 } from '../../../src/graph/nodes/chapter-orchestration.js'
+import { readChapterContent } from '../../../src/storage/filesystem/writer.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { Issue } from '../../../src/types/agent.js'
+
+vi.mock('../../../src/storage/filesystem/writer.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/storage/filesystem/writer.js')>()
+  return {
+    ...actual,
+    readChapterContent: vi.fn().mockResolvedValue('existing chapter content'),
+    writeChapterContent: vi.fn().mockResolvedValue(undefined),
+    deleteChapterContent: vi.fn().mockResolvedValue(undefined),
+  }
+})
+
+vi.mock('../../../src/utils/logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}))
+
+vi.mock('../../../src/core/chapter-generation/issue-classifier.js', () => ({
+  isStructuralIssue: vi.fn().mockResolvedValue(false),
+  isLocalIssue: vi.fn().mockResolvedValue(false),
+  isTaskConsistencyIssue: vi.fn().mockResolvedValue(false),
+  isStateCorruptionIssue: vi.fn().mockResolvedValue(false),
+  isInterpretiveIssue: vi.fn().mockResolvedValue(false),
+}))
+
+vi.mock('../../../src/utils/issue-deduplication.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/utils/issue-deduplication.js')>()
+  return {
+    ...actual,
+    deduplicateIssuesSemantically: vi.fn().mockImplementation(async (_provider: unknown, issues: unknown[]) => issues),
+    issueFingerprint: vi.fn().mockResolvedValue('fingerprint'),
+  }
+})
 
 vi.mock('../../../src/model/registry.js', () => ({
   createProvider: vi.fn().mockReturnValue({ chat: vi.fn() }),
 }))
-
-vi.mock('../../../src/utils/context-judge.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof contextJudge>()
-  return {
-    ...actual,
-    batchClassifyIssues: vi.fn(),
-    batchGenerateIssueFingerprints: vi.fn(),
-  }
-})
-
-vi.mock('../../../src/utils/issue-deduplication.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof issueDeduplication>()
-  return {
-    ...actual,
-    deduplicateIssuesSemantically: vi.fn(),
-    issueFingerprint: vi.fn(),
-  }
-})
-
-function defaultClassification(): contextJudge.IssueClassification {
-  return {
-    isStructural: false,
-    isCrossChapter: false,
-    isTaskConsistency: false,
-    isItemLocationConflict: false,
-    isInventedCharacter: false,
-    isOutlineStateConflict: false,
-    isLocal: false,
-    isStateCorruption: false,
-    isInterpretive: false,
-  }
-}
 
 function buildBaseState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
   return {
@@ -70,7 +72,7 @@ function buildBaseState(overrides: Partial<ReducedGraphState> = {}): ReducedGrap
     writeOneChapterOnly: true,
     lastPrintedChapter: 0,
     lastTimelineSnapshot: null,
-    chapterPlan: null,
+    chapterPlan: { scenes: [] as never[], summary: 'plan' },
     storyState: {
       characterLocations: {},
       characterStatus: {},
@@ -90,95 +92,91 @@ function buildBaseState(overrides: Partial<ReducedGraphState> = {}): ReducedGrap
     previousRawErrorCount: 0,
     forceStructuralRewrite: false,
     routingDecision: undefined,
+    authorDecisions: {},
     ...overrides,
   }
 }
 
-describe('decide_strategy', () => {
-  beforeEach(() => {
-    vi.mocked(contextJudge.batchClassifyIssues).mockReset()
-    vi.mocked(contextJudge.batchGenerateIssueFingerprints).mockReset()
-    vi.mocked(issueDeduplication.deduplicateIssuesSemantically).mockReset()
-    vi.mocked(issueDeduplication.issueFingerprint).mockReset()
+describe('converge_and_decide', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.mocked(readChapterContent).mockResolvedValue('existing chapter content')
+    const {
+      isStructuralIssue,
+      isLocalIssue,
+      isTaskConsistencyIssue,
+      isStateCorruptionIssue,
+      isInterpretiveIssue,
+    } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStructuralIssue).mockResolvedValue(false)
+    vi.mocked(isLocalIssue).mockResolvedValue(false)
+    vi.mocked(isTaskConsistencyIssue).mockResolvedValue(false)
+    vi.mocked(isStateCorruptionIssue).mockResolvedValue(false)
+    vi.mocked(isInterpretiveIssue).mockResolvedValue(false)
   })
 
-  it('escapes rewrite loop when all errors are state corruption issues', async () => {
-    const pendingIssues: Issue[] = [
-      { id: '1', type: 'consistency', severity: 'error', description: '血封信笺同时出现在两个位置，物品位置冲突' },
-      { id: '2', type: 'hallucination', severity: 'error', description: '虚构角色不在官方角色列表中' },
-    ]
-    vi.mocked(contextJudge.batchClassifyIssues).mockImplementation(async (_provider, issues) =>
-      issues.map(() => ({ ...defaultClassification(), isStateCorruption: true }))
-    )
+  it('finalizes when there are no errors and a chapter file already exists', async () => {
+    const state = buildBaseState({ rewriteApproved: false, pendingIssues: [] })
 
-    const state = buildBaseState({ rewriteApproved: true, rewriteAttempts: 1, pendingIssues })
-    const result = await decide_strategy(state)
+    const result = await converge_and_decide(state)
 
-    expect(result.routingDecision).toBe('request_rewrite')
-    expect(result.pendingIssues).toEqual(pendingIssues)
+    expect(result.routingDecision).toBe('finalize_chapter')
+    expect(result.rewriteApproved).toBe(false)
+    expect(result.autoFixAttempts).toBe(0)
+    expect(readChapterContent).toHaveBeenCalledWith('/tmp/story', 2)
   })
 
-  it('does not escape when there are normal errors alongside state corruption', async () => {
-    const pendingIssues: Issue[] = [
-      { id: '1', type: 'consistency', severity: 'error', description: '血封信笺同时出现在两个位置，物品位置冲突' },
-      { id: '2', type: 'consistency', severity: 'error', description: '本章内部时间顺序不一致' },
-    ]
-    vi.mocked(contextJudge.batchClassifyIssues).mockImplementation(async (_provider, issues) =>
-      issues.map((issue) =>
-        issue.description.includes('位置冲突')
-          ? { ...defaultClassification(), isStateCorruption: true }
-          : { ...defaultClassification(), isStateCorruption: false, isStructural: false, isLocal: true }
-      )
-    )
+  it('drafts the chapter when there is no existing chapter file', async () => {
+    vi.mocked(readChapterContent).mockResolvedValue(null)
 
-    const state = buildBaseState({ rewriteApproved: true, rewriteAttempts: 1, pendingIssues })
-    const result = await decide_strategy(state)
-
-    expect(result.routingDecision).not.toBe('request_rewrite')
-  })
-
-  it('does not escape on first draft when rewriteApproved is false', async () => {
-    const pendingIssues: Issue[] = [
-      { id: '1', type: 'consistency', severity: 'error', description: '血封信笺同时出现在两个位置，物品位置冲突' },
-    ]
-    const state = buildBaseState({ rewriteApproved: false, pendingIssues })
-
-    const result = await decide_strategy(state)
+    const state = buildBaseState({ rewriteApproved: false, pendingIssues: [] })
+    const result = await converge_and_decide(state)
 
     expect(result.routingDecision).toBe('draft_chapter')
-  })
-})
-
-describe('route_strategy', () => {
-  it('returns request_rewrite when policy decides to stop loop', () => {
-    const state = buildBaseState({ routingDecision: 'request_rewrite' })
-    expect(route_strategy(state)).toBe('request_rewrite')
+    expect(result.rewriteApproved).toBe(false)
   })
 
-  it('returns finalize_chapter as fallback when routingDecision is undefined', () => {
-    const state = buildBaseState({ routingDecision: undefined })
-    expect(route_strategy(state)).toBe('finalize_chapter')
-  })
-})
+  it('routes to fix_chapter for local consistency errors when rewrite is approved', async () => {
+    const { isLocalIssue, isStructuralIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isLocalIssue).mockResolvedValue(true)
+    vi.mocked(isStructuralIssue).mockResolvedValue(false)
 
-describe('convergence_check', () => {
-  beforeEach(() => {
-    vi.mocked(contextJudge.batchClassifyIssues).mockReset()
-    vi.mocked(contextJudge.batchGenerateIssueFingerprints).mockReset()
-    vi.mocked(issueDeduplication.deduplicateIssuesSemantically).mockReset()
-    vi.mocked(issueDeduplication.issueFingerprint).mockReset()
-  })
-
-  it('routes to request_rewrite after max attempts with state corruption majority', async () => {
     const pendingIssues: Issue[] = [
-      { id: '1', type: 'consistency', severity: 'error', description: '血封信笺同时出现在两个位置，物品位置冲突' },
-      { id: '2', type: 'hallucination', severity: 'error', description: '虚构角色不在官方角色列表中' },
+      { id: '1', type: 'consistency', severity: 'error', description: '局部时间顺序不一致' },
     ]
-    vi.mocked(contextJudge.batchClassifyIssues).mockImplementation(async (_provider, issues) =>
-      issues.map(() => ({ ...defaultClassification(), isStateCorruption: true }))
-    )
-    vi.mocked(issueDeduplication.deduplicateIssuesSemantically).mockImplementation(async (_provider, issues) => issues)
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues })
 
+    const result = await converge_and_decide(state)
+
+    expect(result.routingDecision).toBe('fix_chapter')
+    expect(result.rewriteApproved).toBe(true)
+    expect(result.errorRewriteAttempts).toBe(1)
+  })
+
+  it('routes to draft_chapter and discards the plan for structural errors', async () => {
+    const { isStructuralIssue, isLocalIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStructuralIssue).mockResolvedValue(true)
+    vi.mocked(isLocalIssue).mockResolvedValue(false)
+
+    const pendingIssues: Issue[] = [
+      { id: '1', type: 'consistency', severity: 'error', description: '整体情节与大纲严重偏离' },
+    ]
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues })
+
+    const result = await converge_and_decide(state)
+
+    expect(result.routingDecision).toBe('draft_chapter')
+    expect(result.chapterPlan).toBeNull()
+    expect(result.errorRewriteAttempts).toBe(1)
+  })
+
+  it('requests rewrite after max error rewrite attempts', async () => {
+    const { isStateCorruptionIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+
+    const pendingIssues: Issue[] = [
+      { id: '1', type: 'consistency', severity: 'error', description: '上游状态污染' },
+    ]
     const state = buildBaseState({
       rewriteApproved: true,
       errorRewriteAttempts: 3,
@@ -187,60 +185,105 @@ describe('convergence_check', () => {
       previousRawErrorCount: 0,
     })
 
-    const result = await convergence_check(state)
+    const result = await converge_and_decide(state)
 
     expect(result.routingDecision).toBe('request_rewrite')
     expect(result.rewriteApproved).toBe(false)
   })
 
-  it('returns to decide_strategy when below max attempts', async () => {
+  it('stops rewrite loop early when issues are highly similar and involve state corruption', async () => {
+    const { isStateCorruptionIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+
     const pendingIssues: Issue[] = [
-      { id: '1', type: 'consistency', severity: 'error', description: '血封信笺同时出现在两个位置，物品位置冲突' },
+      { id: '1', type: 'state_corruption', severity: 'error', description: '大纲与权威事实冲突' },
     ]
-    vi.mocked(contextJudge.batchClassifyIssues).mockImplementation(async (_provider, issues) =>
-      issues.map(() => ({ ...defaultClassification(), isStateCorruption: true }))
-    )
-    vi.mocked(issueDeduplication.deduplicateIssuesSemantically).mockImplementation(async (_provider, issues) => issues)
-
-    const state = buildBaseState({
-      rewriteApproved: true,
-      errorRewriteAttempts: 1,
-      pendingIssues,
-      previousIssues: [],
-      previousRawErrorCount: 0,
-    })
-
-    const result = await convergence_check(state)
-
-    expect(result.routingDecision).toBe('decide_strategy')
-    expect(result.rewriteApproved).toBe(true)
-  })
-
-  it('finalizes when no errors remain', async () => {
-    vi.mocked(issueDeduplication.deduplicateIssuesSemantically).mockImplementation(async (_provider, issues) => issues)
-
     const state = buildBaseState({
       rewriteApproved: true,
       errorRewriteAttempts: 2,
-      pendingIssues: [],
-      previousIssues: [],
-      previousRawErrorCount: 0,
+      previousIssues: pendingIssues,
+      previousRawErrorCount: 1,
+      pendingIssues,
     })
 
-    const result = await convergence_check(state)
+    const result = await converge_and_decide(state)
+
+    expect(result.routingDecision).toBe('request_rewrite')
+    expect(result.rewriteApproved).toBe(false)
+    expect(result.forceStructuralRewrite).toBe(false)
+  })
+
+  it('auto-fixes patchable warnings when no errors remain', async () => {
+    const pendingIssues: Issue[] = [
+      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },
+    ]
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 0 })
+
+    const result = await converge_and_decide(state)
+
+    expect(result.routingDecision).toBe('fix_chapter')
+    expect(result.autoFixAttempts).toBe(1)
+    expect(result.rewriteApproved).toBe(true)
+    expect(result.pendingIssues).toEqual(pendingIssues)
+  })
+
+  it('preserves abstract quality warnings and finalizes instead of fixing them', async () => {
+    const pendingIssues: Issue[] = [
+      { id: 'w1', type: 'consistency', severity: 'warning', description: '情感层次略显单一，应该增加内心描写', dimension: 'quality' },
+    ]
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 0 })
+
+    const result = await converge_and_decide(state)
 
     expect(result.routingDecision).toBe('finalize_chapter')
+    expect(result.autoFixAttempts).toBe(0)
+    expect(result.pendingIssues).toEqual(pendingIssues)
+  })
+
+  it('does not auto-fix warnings when errors still exist', async () => {
+    const { isLocalIssue, isStructuralIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isLocalIssue).mockResolvedValue(true)
+    vi.mocked(isStructuralIssue).mockResolvedValue(false)
+
+    const warning: Issue = { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' }
+    const error: Issue = { id: 'e1', type: 'consistency', severity: 'error', description: '时间顺序不一致' }
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues: [error, warning] })
+
+    const result = await converge_and_decide(state)
+
+    expect(result.routingDecision).toBe('fix_chapter')
+    expect(result.pendingIssues?.some(i => i.id === 'w1')).toBe(true)
+  })
+
+  it('does not auto-fix warnings when max auto-fix attempts reached', async () => {
+    const pendingIssues: Issue[] = [
+      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },
+    ]
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 3 })
+
+    const result = await converge_and_decide(state)
+
+    expect(result.routingDecision).toBe('finalize_chapter')
+    expect(result.autoFixAttempts).toBe(3)
+    expect(result.pendingIssues).toEqual(pendingIssues)
   })
 })
 
-describe('route_convergence', () => {
-  it('returns request_rewrite when policy decides to stop loop', () => {
+describe('route_by_decision', () => {
+  it('returns the routingDecision already set on state', () => {
     const state = buildBaseState({ routingDecision: 'request_rewrite' })
-    expect(route_convergence(state)).toBe('request_rewrite')
+    expect(route_by_decision(state)).toBe('request_rewrite')
   })
 
-  it('returns finalize_chapter as fallback when routingDecision is undefined', () => {
+  it('falls back to finalize_chapter when routingDecision is missing', () => {
     const state = buildBaseState({ routingDecision: undefined })
-    expect(route_convergence(state)).toBe('finalize_chapter')
+    expect(route_by_decision(state)).toBe('finalize_chapter')
+  })
+})
+
+describe('route_after_validation', () => {
+  it('always routes back to converge_and_decide', () => {
+    const state = buildBaseState()
+    expect(route_after_validation(state)).toBe('converge_and_decide')
   })
 })

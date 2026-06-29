@@ -47,6 +47,7 @@ export interface RewriteConvergenceResult {
   pendingIssues: Issue[]
   verifiedConstraints: string[]
   forceStructuralRewrite: boolean
+  autoFixAttempts: number
 }
 
 export interface InterpretiveDowngradeResult {
@@ -470,6 +471,7 @@ async function convergenceCheck(
       pendingIssues: dedupedIssues,
       verifiedConstraints: trimmedConstraints,
       forceStructuralRewrite: false,
+      autoFixAttempts: state.autoFixAttempts || 0,
     }
   }
 
@@ -478,8 +480,38 @@ async function convergenceCheck(
   let nextRewriteApproved = state.rewriteApproved
 
   if (remainingErrors.length === 0) {
-    decision = 'finalize_chapter'
-    nextRewriteApproved = false
+    const warnings = dedupedIssues.filter(i => i.severity === 'warning')
+    const patchableWarnings = warnings.filter(issue => {
+      if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
+      if (issue.type === 'consistency' && issue.dimension === 'quality' && issue.location) {
+        return /第\s*\d+\s*[段节]|段落\s*\d+|第\s*\d+\s*句/.test(issue.location)
+      }
+      return false
+    })
+    const autoFixAttempts = state.autoFixAttempts || 0
+
+    if (patchableWarnings.length > 0 && autoFixAttempts < 3) {
+      logger.warn(`\x1b[93m🔧 [MuseFlow] Auto-fixing ${patchableWarnings.length} warning(s) (attempt ${autoFixAttempts + 1}/3):\x1b[0m`)
+      for (const warning of patchableWarnings) {
+        logger.warn(`   \x1b[33m⚠️  [${warning.type}]\x1b[0m ${warning.description}`)
+      }
+      decision = 'fix_chapter'
+      nextRewriteApproved = true
+      dedupedIssues = patchableWarnings
+    } else if (!state.rewriteApproved) {
+      // 首次进入本章且尚无有效正文，应从起草开始，而不是直接 finalize。
+      const existingContent = await readChapterContent(state.story.outputDir, state.currentChapterIndex + 1)
+      if (existingContent !== null && existingContent.trim().length > 0) {
+        decision = 'finalize_chapter'
+        nextRewriteApproved = false
+      } else {
+        decision = 'draft_chapter'
+        nextRewriteApproved = false
+      }
+    } else {
+      decision = 'finalize_chapter'
+      nextRewriteApproved = false
+    }
   } else if (errorRewriteAttempts >= config.maxErrorRewriteAttempts) {
     const corruptionCount = await countMatchingIssues(
       remainingErrors,
@@ -497,25 +529,44 @@ async function convergenceCheck(
     nextRewriteApproved = true
   }
 
+  const nextAutoFixAttempts = decision === 'fix_chapter'
+    ? (state.autoFixAttempts || 0) + 1
+    : state.autoFixAttempts || 0
+
   return {
     decision,
     rewriteApproved: nextRewriteApproved,
     pendingIssues: dedupedIssues,
     verifiedConstraints: trimmedConstraints,
     forceStructuralRewrite,
+    autoFixAttempts: nextAutoFixAttempts,
   }
 }
 
-export async function decide_strategy(
+export async function converge_and_decide(
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
+  const convergenceResult = await convergenceCheck(state)
+
   const nextAttempts = (state.rewriteAttempts || 0) + 1
-  const errorIssues = state.pendingIssues.filter(i => i.severity === 'error')
+  const errorIssues = convergenceResult.pendingIssues.filter(i => i.severity === 'error')
   const nextErrorAttempts = errorIssues.length > 0
     ? (state.errorRewriteAttempts || 0) + 1
     : (state.errorRewriteAttempts || 0)
 
-  const strategy = await decideRoutingStrategy(state)
+  let routingDecision = convergenceResult.decision
+  let feedbackIssues = convergenceResult.pendingIssues
+
+  if (convergenceResult.decision === 'decide_strategy') {
+    const strategy = await decideRoutingStrategy({
+      ...state,
+      pendingIssues: convergenceResult.pendingIssues,
+      rewriteApproved: convergenceResult.rewriteApproved,
+      forceStructuralRewrite: convergenceResult.forceStructuralRewrite,
+    })
+    routingDecision = strategy.decision
+    feedbackIssues = strategy.feedbackIssues
+  }
 
   let chapterPlan = state.chapterPlan
   if (chapterPlan && shouldForceTemporaryReplan(state.outline, state.currentChapterIndex)) {
@@ -523,42 +574,33 @@ export async function decide_strategy(
     chapterPlan = null
   }
 
-  if (strategy.discardPlan) {
-    chapterPlan = null
+  if (routingDecision === 'draft_chapter') {
+    const strategy = await decideRoutingStrategy({
+      ...state,
+      pendingIssues: feedbackIssues,
+      rewriteApproved: convergenceResult.rewriteApproved,
+      forceStructuralRewrite: convergenceResult.forceStructuralRewrite,
+    })
+    if (strategy.discardPlan) {
+      chapterPlan = null
+    }
   }
 
-  return {
+  const update: Partial<ReducedGraphState> = {
+    pendingIssues: convergenceResult.pendingIssues,
+    verifiedConstraints: convergenceResult.verifiedConstraints,
+    previousIssues: convergenceResult.pendingIssues,
+    previousRawErrorCount: convergenceResult.pendingIssues.filter(i => i.severity === 'error').length,
+    forceStructuralRewrite: convergenceResult.forceStructuralRewrite,
+    rewriteApproved: convergenceResult.rewriteApproved,
+    routingDecision,
     rewriteAttempts: nextAttempts,
     errorRewriteAttempts: nextErrorAttempts,
     chapterPlan,
-    pendingIssues: strategy.feedbackIssues,
-    routingDecision: strategy.decision,
-    forceStructuralRewrite: false,
-    autoFixAttempts: 0,
-  }
-}
-
-export function route_strategy(state: ReducedGraphState): string {
-  return state.routingDecision ?? 'finalize_chapter'
-}
-
-export async function convergence_check(
-  state: ReducedGraphState
-): Promise<Partial<ReducedGraphState>> {
-  const result = await convergenceCheck(state)
-
-  const update: Partial<ReducedGraphState> = {
-    pendingIssues: result.pendingIssues,
-    verifiedConstraints: result.verifiedConstraints,
-    previousIssues: result.pendingIssues,
-    previousRawErrorCount: result.pendingIssues.filter(i => i.severity === 'error').length,
-    forceStructuralRewrite: result.forceStructuralRewrite,
-    rewriteApproved: result.rewriteApproved,
-    routingDecision: result.decision,
-    autoFixAttempts: 0,
+    autoFixAttempts: convergenceResult.autoFixAttempts,
   }
 
-  if (result.forceStructuralRewrite && result.decision === 'decide_strategy') {
+  if (convergenceResult.forceStructuralRewrite && routingDecision === 'draft_chapter') {
     const cleanedStoryState = cleanCurrentChapterInferredFacts(state)
     if (cleanedStoryState) {
       update.storyState = cleanedStoryState
@@ -568,16 +610,12 @@ export async function convergence_check(
   return update
 }
 
-export function route_convergence(state: ReducedGraphState): string {
+export function route_by_decision(state: ReducedGraphState): string {
   return state.routingDecision ?? 'finalize_chapter'
 }
 
 export function route_after_validation(state: ReducedGraphState): string {
-  const errors = state.pendingIssues.filter(i => i.severity === 'error')
-  if (errors.length > 0) {
-    return 'convergence_check'
-  }
-  return 'finalize_chapter'
+  return 'converge_and_decide'
 }
 
 export async function request_rewrite(

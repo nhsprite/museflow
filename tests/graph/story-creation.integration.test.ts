@@ -79,11 +79,8 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
   }),
   getChapterAgent: vi.fn(),
   getChapterPlannerAgent: vi.fn(),
-  getQualityAgent: vi.fn(),
   getForeshadowingAgent: vi.fn(),
-  getHallucinationAgent: vi.fn(),
   getConsistencyAgent: vi.fn(),
-  getOutlineComplianceAgent: vi.fn(),
   getFixAgent: vi.fn(),
   getSummaryAgent: vi.fn(),
 }))

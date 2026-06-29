@@ -5,16 +5,13 @@ import { getChapterAgent } from '../agent-factory.js'
 import { writeChapterContent, readChapterContent } from '../../storage/filesystem/writer.js'
 import { createChapterMeta } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
-import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
-import { formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
-import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { formatChapterOutlineForAgent } from './planning.js'
+import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 
 export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent()
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
-  const worldContent = state.world?.content
 
   const { chapterPlan, boundaryHints, pendingIssues: outlinePendingIssues } = await expandOutlineForChapter(state, chapterIndex)
   state = { ...state, chapterPlan }
@@ -24,42 +21,18 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ...(state.rewriteApproved ? (state.pendingIssues ?? []) : []),
   ]
 
-  // previousChapters 仅作为叙事氛围/风格连续性参考，不作为事实依据。
-  // 已确立的事实统一由 storyState + canonicalFacts 提供，避免多版本历史上下文冲突。
-  const narrativeContext = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
-
   const existingContent = state.rewriteApproved
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
-  const { reconciledState, stateConflicts } = await prepareStoryStateForChapter(state, chapterIndex)
-  const storyStateStr = formatStoryState(reconciledState)
+  const baseContext = await buildChapterAgentContext(state, chapterIndex)
 
-  const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor
-
-  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
-
-  const agentState: AgentState = {
-    idea: state.idea,
-    genre: state.genre,
-    totalChapters: state.totalChapters,
-    ...(worldContent ? { world: worldContent } : {}),
-    characters: charactersToString(state.characters),
-    charactersList: effectiveCharacters,
-    outlineCharacters,
-    establishedCharacters,
+  const agentState: AgentState = mergeAgentState(baseContext, {
     outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
-    previousChapters: narrativeContext,
-    chapterIndex,
-    foreshadowStack: state.foreshadowStack,
-    storyState: storyStateStr,
-    canonicalFacts: reconciledState.canonicalFacts,
-    ...(stateConflicts ? { stateConflicts } : {}),
-    chapterTimeAnchor,
     ...(mergedIssues.length > 0 ? { issues: mergedIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
-  }
+  })
 
   const output = await agent.run(agentState)
 

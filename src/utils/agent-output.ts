@@ -63,12 +63,14 @@ export async function normalizeIssues(
         severity,
         description: issue.description || '',
       }
-      const location = issue.location || issue.aspect || issue.conflict_with
-      if (location) {
-        result.location = location
+      if (issue.location) {
+        result.location = issue.location
       }
       if (issue.suggestion) {
         result.suggestion = issue.suggestion
+      }
+      if (issue.aspect) {
+        result.dimension = issue.aspect
       }
       return result
     })

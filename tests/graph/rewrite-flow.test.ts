@@ -36,7 +36,6 @@ vi.mock('../../src/agents/index.js', () => ({
       }
     }
   },
-  QualityAgent: class {},
   ForeshadowingAgent: class {
     async run() {
       return {
@@ -52,9 +51,7 @@ vi.mock('../../src/agents/index.js', () => ({
       return existingStack
     }
   },
-  HallucinationAgent: class {},
   ConsistencyAgent: class {},
-  OutlineComplianceAgent: class {},
 }))
 
 vi.mock('../../src/storage/filesystem/writer.js', () => ({

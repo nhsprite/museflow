@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReducedGraphState } from '../../src/graph/state.js'
 
 let capturedStoryState = ''
 let capturedOutline = ''
@@ -10,9 +11,7 @@ vi.mock('../../src/agents/index.js', () => ({
   OutlineAgent: class {},
   ChapterAgent: class {},
   ChapterPlannerAgent: class {},
-  QualityAgent: class {},
   ForeshadowingAgent: class {},
-  HallucinationAgent: class {},
   ConsistencyAgent: class {
     async run(state: { storyState?: string; outline?: string; timelineSnapshot?: string }) {
       capturedStoryState = state.storyState ?? ''
@@ -25,7 +24,6 @@ vi.mock('../../src/agents/index.js', () => ({
       return []
     }
   },
-  OutlineComplianceAgent: class {},
   FixAgent: class {},
   SummaryAgent: class {},
   processSummaryOutput: vi.fn(),
@@ -37,6 +35,28 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),
 }))
+
+vi.mock('../../src/graph/utils/reconciler.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/graph/utils/reconciler.js')>()
+  return {
+    ...actual,
+    prepareStoryStateForChapter: vi.fn(async (state: ReducedGraphState) => ({
+      reconciledState: state.storyState ?? {
+        characterLocations: {},
+        characterStatus: {},
+        keyItemsLocation: {},
+        keyItemsState: {},
+        activePlots: [],
+        revealedSecrets: [],
+        pendingTasks: [],
+        currentScene: '',
+        storyTime: '',
+      },
+      stateConflicts: '',
+      itemLocationConflicts: [],
+    })),
+  }
+})
 
 describe('detect_consistency validation context', () => {
   function buildBaseState(): Parameters<typeof detect_consistency>[0] {

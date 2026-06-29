@@ -1,11 +1,9 @@
 import type { ReducedGraphState } from '../state.js'
 import type { AgentState } from '../../agents/base.js'
 import { getChapterPlannerAgent } from '../agent-factory.js'
-import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
-import { buildCharacterFactTimeline, formatStoryState, prepareStoryStateForChapter } from '../utils/reconciler.js'
-import { buildEffectiveCharactersList, charactersToString } from '../utils/characters.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
+import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 
 async function runPlanChapter(
   state: ReducedGraphState,
@@ -13,37 +11,15 @@ async function runPlanChapter(
 ): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterPlannerAgent()
   const chapterIndex = state.currentChapterIndex
-  const worldContent = state.world?.content
 
-  const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
-  const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
+  const baseContext = await buildChapterAgentContext(state, chapterIndex)
 
-  const { reconciledState, stateConflicts } = await prepareStoryStateForChapter(state, chapterIndex)
-
-  const storyStateStr = formatStoryState(reconciledState)
-
-  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
-
-  const agentState: AgentState = {
-    idea: state.idea,
-    genre: state.genre,
-    totalChapters: state.totalChapters,
-    ...(worldContent ? { world: worldContent } : {}),
-    characters: charactersToString(state.characters),
-    charactersList: effectiveCharacters,
-    outlineCharacters,
-    establishedCharacters,
+  const agentState: AgentState = mergeAgentState(baseContext, {
     outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
-    previousChapters,
-    chapterIndex,
     chapterSummaries: state.chapterSummaries,
-    timelineSnapshot,
-    foreshadowStack: state.foreshadowStack,
-    ...(storyStateStr ? { storyState: storyStateStr } : {}),
-    ...(stateConflicts ? { stateConflicts } : {}),
     ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
     ...(state.verifiedConstraints && state.verifiedConstraints.length > 0 ? { verifiedConstraints: state.verifiedConstraints } : {}),
-  }
+  })
 
   const output = await agent.run(agentState)
 

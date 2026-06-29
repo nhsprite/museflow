@@ -23,11 +23,8 @@ vi.mock('../../src/agents/index.js', () => ({
     }
   },
   ChapterPlannerAgent: class {},
-  QualityAgent: class {},
   ForeshadowingAgent: class {},
-  HallucinationAgent: class {},
   ConsistencyAgent: class {},
-  OutlineComplianceAgent: class {},
   FixAgent: class {},
   SummaryAgent: class {},
   processSummaryOutput: vi.fn(),

@@ -1,9 +1,7 @@
 export type IssueSeverity = 'error' | 'warning' | 'info'
 
 export type IssueType =
-  | 'hallucination'
   | 'consistency'
-  | 'quality'
   | 'word_count'
   | 'outline_violation'
   | 'outline_deviation'
@@ -19,5 +17,6 @@ export interface Issue {
   description: string
   location?: string
   suggestion?: string
+  dimension?: string
 }
 

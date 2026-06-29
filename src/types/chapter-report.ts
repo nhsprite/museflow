@@ -89,9 +89,7 @@ export function createEmptyIssueSummary(): ChapterIssueSummary {
     warnings: 0,
     infos: 0,
     byType: {
-      hallucination: 0,
       consistency: 0,
-      quality: 0,
       word_count: 0,
       outline_violation: 0,
       outline_deviation: 0,

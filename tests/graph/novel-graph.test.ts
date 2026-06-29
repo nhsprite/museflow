@@ -18,12 +18,10 @@ describe('novel graph', () => {
       'create_outline',
       'validate_outline',
       'prepare_chapter',
-      'decide_strategy',
+      'converge_and_decide',
       'draft_chapter',
       'fix_chapter',
       'validate_chapter_comprehensive',
-      'auto_fix_warnings',
-      'convergence_check',
       'request_rewrite',
       'finalize_chapter',
       'finalize_story',
@@ -48,10 +46,9 @@ describe('novel graph', () => {
     }
     const edges = Array.from(graph.builder.edges).map(([from, to]) => `${from} -> ${to}`)
 
-    expect(edges).toContain('prepare_chapter -> decide_strategy')
+    expect(edges).toContain('prepare_chapter -> converge_and_decide')
     expect(edges).toContain('draft_chapter -> validate_chapter_comprehensive')
     expect(edges).toContain('fix_chapter -> validate_chapter_comprehensive')
-    expect(edges).toContain('validate_chapter_comprehensive -> auto_fix_warnings')
     expect(edges).toContain('request_rewrite -> __end__')
     expect(edges).toContain('finalize_story -> __end__')
   })
@@ -68,22 +65,15 @@ describe('novel graph', () => {
       prepare_chapter: 'prepare_chapter',
     })
 
-    expect(graph.builder.branches['decide_strategy']?.condition.ends).toEqual({
+    expect(graph.builder.branches['converge_and_decide']?.condition.ends).toEqual({
       draft_chapter: 'draft_chapter',
       fix_chapter: 'fix_chapter',
       finalize_chapter: 'finalize_chapter',
       request_rewrite: 'request_rewrite',
     })
 
-    expect(graph.builder.branches['auto_fix_warnings']?.condition.ends).toEqual({
-      convergence_check: 'convergence_check',
-      finalize_chapter: 'finalize_chapter',
-    })
-
-    expect(graph.builder.branches['convergence_check']?.condition.ends).toEqual({
-      decide_strategy: 'decide_strategy',
-      finalize_chapter: 'finalize_chapter',
-      request_rewrite: 'request_rewrite',
+    expect(graph.builder.branches['validate_chapter_comprehensive']?.condition.ends).toEqual({
+      converge_and_decide: 'converge_and_decide',
     })
 
     expect(graph.builder.branches['finalize_chapter']?.condition.ends).toEqual({

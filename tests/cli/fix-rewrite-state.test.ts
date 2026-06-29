@@ -105,38 +105,13 @@ vi.mock('../../src/agents/index.js', () => ({
       return { sections: [{ title: 'Section 1' }] }
     }
   },
-  QualityAgent: class {
-    async run() {
-      return { content: 'quality check failed' }
-    }
-    processOutput(output: string) {
-      return {
-        issues: [
-          {
-            id: 'quality-issue',
-            type: 'quality',
-            severity: 'error',
-            description: 'quality check failed',
-          },
-        ],
-      }
-    }
-  },
   ForeshadowingAgent: class {
-    async run() { return { content: '' } }
-    processOutput() { return [] }
-  },
-  HallucinationAgent: class {
     async run() { return { content: '' } }
     processOutput() { return [] }
   },
   ConsistencyAgent: class {
     async run() { return { content: '' } }
     processOutput() { return [] }
-  },
-  OutlineComplianceAgent: class {
-    async run() { return { content: '' } }
-    processOutput() { return { issues: [], isCompliant: true } }
   },
   FixAgent: class {
     async run() {

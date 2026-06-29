@@ -86,17 +86,15 @@ export function classifyIssueByRule(issue: Issue): IssueClassification {
 
   const isCrossChapter =
     issue.type === 'consistency' ||
-    issue.type === 'hallucination' ||
     isTaskConsistency
 
   const isInterpretive =
-    issue.type === 'quality' && !isError && looksInterpretive(issue)
+    (issue.dimension === 'quality' || looksInterpretive(issue)) && !isError
 
   const isStructural =
     isStructuralType ||
     isStateCorruption ||
-    (isError && issue.type === 'consistency') ||
-    (isError && issue.type === 'hallucination')
+    (isError && issue.type === 'consistency' && issue.dimension !== 'quality')
 
   const isLocal = isError && !isStructural
 

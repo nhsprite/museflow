@@ -52,29 +52,14 @@ const mockChapterAgent = {
   })),
 }
 
-const mockQualityAgent = {
-  run: vi.fn(async () => ({ success: true, content: '', data: { issues: [] } })),
-  processOutput: vi.fn(async () => ({ issues: [] as Issue[] })),
-}
-
 const mockForeshadowingAgent = {
   run: vi.fn(async () => ({ success: true, content: '', data: { planted: [], fulfilled: [] } })),
   processOutput: vi.fn(async (_output: unknown, _chapterIndex: number, existingStack: unknown) => existingStack),
 }
 
-const mockHallucinationAgent = {
-  run: vi.fn(async () => ({ success: true, content: '', data: { issues: [] } })),
-  processOutput: vi.fn(async () => [] as Issue[]),
-}
-
 const mockConsistencyAgent = {
   run: vi.fn(async () => ({ success: true, content: '', data: { issues: [] } })),
   processOutput: vi.fn(async () => [] as Issue[]),
-}
-
-const mockOutlineComplianceAgent = {
-  run: vi.fn(async () => ({ success: true, content: '', data: { isCompliant: true, issues: [] } })),
-  processOutput: vi.fn(async () => ({ isCompliant: true, issues: [] as Issue[] })),
 }
 
 const mockSummaryAgent = {
@@ -93,11 +78,8 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
   getHighLevelOutlineAgent: vi.fn(),
   getChapterAgent: () => mockChapterAgent,
   getChapterPlannerAgent: vi.fn(),
-  getQualityAgent: () => mockQualityAgent,
   getForeshadowingAgent: () => mockForeshadowingAgent,
-  getHallucinationAgent: () => mockHallucinationAgent,
   getConsistencyAgent: () => mockConsistencyAgent,
-  getOutlineComplianceAgent: () => mockOutlineComplianceAgent,
   getFixAgent: () => mockFixAgent,
   getSummaryAgent: () => mockSummaryAgent,
 }))

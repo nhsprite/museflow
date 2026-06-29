@@ -11,19 +11,16 @@ import { draft_chapter } from './nodes/draft.js'
 import { fix_chapter } from './nodes/fix.js'
 import { validate_chapter_comprehensive } from './nodes/validation.js'
 import {
-  auto_fix_warnings,
   finalize_chapter,
   finalize_story,
 } from './nodes/finalization.js'
 import {
   prepare_chapter,
-  decide_strategy,
-  convergence_check,
+  converge_and_decide,
   request_rewrite,
   route_mode,
-  route_strategy,
+  route_by_decision,
   route_after_validation,
-  route_convergence,
   route_after_finalize,
 } from './nodes/chapter-orchestration.js'
 import { getCheckpointer } from './checkpointer.js'
@@ -38,12 +35,10 @@ export function buildNovelGraph() {
     create_outline,
     validate_outline,
     prepare_chapter,
-    decide_strategy,
+    converge_and_decide,
     draft_chapter,
     fix_chapter,
     validate_chapter_comprehensive,
-    auto_fix_warnings,
-    convergence_check,
     request_rewrite,
     finalize_chapter,
     finalize_story,
@@ -61,8 +56,8 @@ export function buildNovelGraph() {
   b1.addEdge('validate_outline', 'finalize_story')
 
   // Chapter writing loop
-  b1.addEdge('prepare_chapter', 'decide_strategy')
-  b1.addConditionalEdges('decide_strategy', route_strategy, {
+  b1.addEdge('prepare_chapter', 'converge_and_decide')
+  b1.addConditionalEdges('converge_and_decide', route_by_decision, {
     draft_chapter: 'draft_chapter',
     fix_chapter: 'fix_chapter',
     finalize_chapter: 'finalize_chapter',
@@ -72,17 +67,8 @@ export function buildNovelGraph() {
   b1.addEdge('draft_chapter', 'validate_chapter_comprehensive')
   b1.addEdge('fix_chapter', 'validate_chapter_comprehensive')
 
-  b1.addEdge('validate_chapter_comprehensive', 'auto_fix_warnings')
-
-  b1.addConditionalEdges('auto_fix_warnings', route_after_validation, {
-    convergence_check: 'convergence_check',
-    finalize_chapter: 'finalize_chapter',
-  })
-
-  b1.addConditionalEdges('convergence_check', route_convergence, {
-    decide_strategy: 'decide_strategy',
-    finalize_chapter: 'finalize_chapter',
-    request_rewrite: 'request_rewrite',
+  b1.addConditionalEdges('validate_chapter_comprehensive', route_after_validation, {
+    converge_and_decide: 'converge_and_decide',
   })
 
   b1.addEdge('request_rewrite', END)

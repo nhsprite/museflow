@@ -34,8 +34,8 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
   const pendingIssues = state.pendingIssues
   const hasPatchableIssues = pendingIssues.some(issue => {
     if (issue.severity !== 'warning') return true
-    if (issue.type === 'consistency' || issue.type === 'hallucination') return true
-    if (issue.type === 'quality' && issue.location) {
+    if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
+    if (issue.type === 'consistency' && issue.dimension === 'quality' && issue.location) {
       return /第\s*\d+\s*[段节]|段落\s*\d+|第\s*\d+\s*句/.test(issue.location)
     }
     return false
@@ -62,7 +62,7 @@ export async function fix_chapter(state: ReducedGraphState): Promise<Partial<Red
   const AFFECTED_PARAGRAPH_RATIO_THRESHOLD = hasErrors ? 0.4 : 0.65
   const AFFECTED_PARAGRAPH_ABSOLUTE_THRESHOLD = hasErrors ? 20 : 35
   const isConsistencyOrHallucination = pendingIssues.every(
-    i => i.type === 'consistency' || i.type === 'hallucination'
+    i => i.type === 'consistency' && i.dimension !== 'quality'
   )
   const affectedRatio = paragraphs.length > 0 ? affectedIndices.length / paragraphs.length : 0
   if (

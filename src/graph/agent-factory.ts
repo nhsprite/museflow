@@ -4,11 +4,8 @@ import {
   HighLevelOutlineAgent,
   ChapterAgent,
   ChapterPlannerAgent,
-  QualityAgent,
   ForeshadowingAgent,
-  HallucinationAgent,
   ConsistencyAgent,
-  OutlineComplianceAgent,
   FixAgent,
   SummaryAgent,
 } from '../agents/index.js'
@@ -44,24 +41,12 @@ export function getChapterPlannerAgent(): ChapterPlannerAgent {
   return getAgentInstance('chapter-planner', ChapterPlannerAgent)
 }
 
-export function getQualityAgent(): QualityAgent {
-  return getAgentInstance('quality', QualityAgent)
-}
-
 export function getForeshadowingAgent(): ForeshadowingAgent {
   return getAgentInstance('foreshadowing', ForeshadowingAgent)
 }
 
-export function getHallucinationAgent(): HallucinationAgent {
-  return getAgentInstance('hallucination', HallucinationAgent)
-}
-
 export function getConsistencyAgent(): ConsistencyAgent {
   return getAgentInstance('consistency', ConsistencyAgent)
-}
-
-export function getOutlineComplianceAgent(): OutlineComplianceAgent {
-  return getAgentInstance('outline-compliance', OutlineComplianceAgent)
 }
 
 export function getFixAgent(): FixAgent {

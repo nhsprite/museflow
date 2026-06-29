@@ -71,22 +71,25 @@ describe('classifyIssueByRule', () => {
     expect(result.isCrossChapter).toBe(true)
   })
 
-  it('classifies hallucination errors as structural', () => {
-    const issue = makeIssue('hallucination', 'error', '发明了不存在的设定')
+  it('classifies world_integrity consistency errors as structural', () => {
+    const issue = makeIssue('consistency', 'error', '发明了不存在的设定')
+    issue.dimension = 'world_integrity'
     const result = classifyIssueByRule(issue)
     expect(result.isStructural).toBe(true)
   })
 
-  it('classifies quality warnings as interpretive when keywords match', () => {
-    const issue = makeIssue('quality', 'warning', '描写冗长拖沓')
+  it('classifies quality-dimension warnings as interpretive when keywords match', () => {
+    const issue = makeIssue('consistency', 'warning', '描写冗长拖沓')
+    issue.dimension = 'quality'
     const result = classifyIssueByRule(issue)
     expect(result.isInterpretive).toBe(true)
     expect(result.isStructural).toBe(false)
     expect(result.isLocal).toBe(false)
   })
 
-  it('classifies quality errors as local', () => {
-    const issue = makeIssue('quality', 'error', '段落重复')
+  it('classifies quality-dimension errors as local', () => {
+    const issue = makeIssue('consistency', 'error', '段落重复')
+    issue.dimension = 'quality'
     const result = classifyIssueByRule(issue)
     expect(result.isLocal).toBe(true)
     expect(result.isStructural).toBe(false)
@@ -135,7 +138,8 @@ describe('issue classifiers default to rule-based classification', () => {
   })
 
   it('does not call LLM for local classification by default', async () => {
-    const issue = makeIssue('quality', 'error', '段落重复')
+    const issue = makeIssue('consistency', 'error', '段落重复')
+    issue.dimension = 'quality'
     const provider = createProvider()
     const result = await isLocalIssue(provider, issue)
     expect(result).toBe(true)
@@ -143,7 +147,8 @@ describe('issue classifiers default to rule-based classification', () => {
   })
 
   it('does not call LLM for interpretive classification by default', async () => {
-    const issue = makeIssue('quality', 'warning', '描写冗长拖沓')
+    const issue = makeIssue('consistency', 'warning', '描写冗长拖沓')
+    issue.dimension = 'quality'
     const provider = createProvider()
     const result = await isInterpretiveIssue(provider, issue)
     expect(result).toBe(true)
@@ -165,7 +170,8 @@ describe('issue classifiers support optional LLM复核', () => {
   })
 
   it('calls LLM when preferLLM is true', async () => {
-    const issue = makeIssue('quality', 'error', '段落重复')
+    const issue = makeIssue('consistency', 'error', '段落重复')
+    issue.dimension = 'quality'
     const provider = createProvider()
     vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isLocal: true })])
     const result = await isLocalIssue(provider, issue, true)

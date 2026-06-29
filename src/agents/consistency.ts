@@ -1,10 +1,9 @@
 import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
 import type { Issue } from '../types/agent.js'
 import type { CanonicalFact } from '../types/story-state.js'
-import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, CAPABILITY_CONSISTENCY_RULES, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
+import { FACT_CONSISTENCY_RULES, FORESHADOW_BOUNDARY_RULES, CAPABILITY_CONSISTENCY_RULES, AI_PHRASE_PROHIBITIONS, SEVERITY_INSTRUCTIONS, OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './prompt-fragments.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { normalizeIssues } from '../utils/agent-output.js'
-import { logger } from '../utils/logger.js'
 
 export class ConsistencyAgent extends BaseAgent {
   constructor() {
@@ -147,6 +146,23 @@ ${outlineAuthorizedFacts.map(f => `  - [${f.subject}] ${f.attribute}: ${f.value}
       时间推进一致性：故事时间是否合理推进，不能倒退或与"故事当前状态"中的时间标记矛盾
     </dimension>
     <dimension name="capability_consistency" priority="high">${CAPABILITY_CONSISTENCY_RULES}</dimension>
+    <dimension name="world_integrity" priority="high">
+      世界规则冲突：描述与已建立的世界规则相悖的内容；时代背景严重错误；已建立的世界规则被违反。
+      检查本章是否引入了与官方设定不可调和的新规则或时代错误。
+    </dimension>
+    <dimension name="outline" priority="critical">
+      大纲合规检查：将当前章节正文与大纲（尤其是本章）进行逐条对照。检查本章是否覆盖了大纲要求的核心事件、时间线是否与大纲一致、关键台词是否按大纲出现、是否存在与大纲核心事件相矛盾或冲淡叙事重心的额外情节、人物出场顺序和行为是否符合大纲、章节内部逻辑是否连贯。
+      允许为承接前文而设置简短的桥接/过渡场景，但需满足：篇幅不超过配置比例、服务于核心事件的引入或后果承接、不提前完成后续章节的核心结果。对照下一章标题作为边界提示，避免本章提前落地后续章节的核心结果。
+    </dimension>
+    <dimension name="quality" priority="medium">
+      写作质量评审（注意：情节逻辑、事实矛盾、语义一致性已在上述维度中检查，本维度只关注表达层面）：
+      - 语言是否流畅、描写是否细腻、用词是否精准
+      - 节奏是否合适、是否存在拖沓或仓促
+      - 人物刻画是否立体、对话是否生动
+      - 是否存在 AI 惯用腔调或总结性套语
+      ${AI_PHRASE_PROHIBITIONS}
+      质量问题只报 warning 或 info，除非严重到影响读者理解。
+    </dimension>
   </check_dimensions>
 
   <supplementary_rules>
@@ -261,9 +277,9 @@ ${outlineAuthorizedFacts.map(f => `  - [${f.subject}] ${f.attribute}: ${f.value}
   </rule>
 
 <severity_levels>
-  <error>以下严重逻辑矛盾：跨章节的角色知识/对话矛盾、时间线严重矛盾、关键信息前后矛盾、因果关系完全断裂、必须回收的伏笔未回收、伏笔被提前剧透、伏笔回收方向矛盾、结构化状态矛盾。报 error 前请确认：该问题确实会让读者产生困惑，而不是作者刻意留下的叙事张力或 gradual revelation。</error>
-  <warning>一般性不一致：细节描述有轻微出入、时间标记不够明确、表述歧义、前面章节缺少铺垫但本章已补充说明、伏笔回收方式可以更好、角色对新信息的反应/联想存在多种解读可能</warning>
-  <info>建议性意见：可以加强因果关联、可以补充过渡段落、可以改进伏笔回收的冲击力</info>
+  <error>以下严重问题：跨章节的角色知识/对话矛盾、时间线严重矛盾、关键信息前后矛盾、因果关系完全断裂、必须回收的伏笔未回收、伏笔被提前剧透、伏笔回收方向矛盾、结构化状态矛盾、世界规则严重冲突、时代背景严重错误。报 error 前请确认：该问题确实会让读者产生困惑，而不是作者刻意留下的叙事张力或 gradual revelation。</error>
+  <warning>一般性不一致或中等质量问题：细节描述有轻微出入、时间标记不够明确、表述歧义、前面章节缺少铺垫但本章已补充说明、伏笔回收方式可以更好、角色对新信息的反应/联想存在多种解读可能、文笔略显平淡、节奏轻微失衡、个别 AI 腔调。</warning>
+  <info>建议性意见：可以加强因果关联、可以补充过渡段落、可以改进伏笔回收的冲击力、可以丰富描写层次。</info>
 </severity_levels>
 
 <output_format>
@@ -275,13 +291,13 @@ ${outlineAuthorizedFacts.map(f => `  - [${f.subject}] ${f.attribute}: ${f.value}
         "type": "consistency",
         "severity": "error|warning|info",
         "description": "问题描述（请明确指出涉及哪些章节的哪些内容）",
-        "aspect": "time|space|causality|character_knowledge|dialogue|information|foreshadowing|pace",
+        "aspect": "time|space|causality|character_knowledge|dialogue|information|foreshadowing|pace|world_integrity|outline|quality",
         "location": "具体位置",
         "suggestion": "具体的修复建议（指明如何修改以消除矛盾）"
       }
     ]
   }
-  如果没有任何逻辑问题，请返回 {"is_consistent": true, "issues": []}。
+  如果没有任何问题，请返回 {"is_consistent": true, "issues": []}。
 </output_format>`
 
     return [
@@ -296,8 +312,7 @@ ${outlineAuthorizedFacts.map(f => `  - [${f.subject}] ${f.attribute}: ${f.value}
 
   async processOutput(
     output: AgentOutput,
-    canonicalFacts?: CanonicalFact[],
-    outlineAuthorizedFacts?: CanonicalFact[]
+    canonicalFacts?: CanonicalFact[]
   ): Promise<Issue[]> {
     if (!output.success || !output.data) return []
     const data = output.data as {
@@ -316,58 +331,14 @@ ${outlineAuthorizedFacts.map(f => `  - [${f.subject}] ${f.attribute}: ${f.value}
       return []
     }
 
-    const normalized = await normalizeIssues(data.issues, 'consistency', this.provider, { canonicalFacts })
-    if (!outlineAuthorizedFacts || outlineAuthorizedFacts.length === 0) {
-      return normalized
-    }
-
-    return filterOutlineAuthorizedIssues(normalized, outlineAuthorizedFacts)
-  }
-}
-
-/**
- * 过滤掉针对本章大纲已授权事实的误报。
- * 如果某条 consistency issue 明显在指责一个 outline-authorized 的事实是"新引入/无来源/invent"，
- * 则视为 prompt 未被完全遵循，直接丢弃，避免重写死锁。
- *
- * 匹配策略：优先用 fact.value 匹配（新地点、新物品、新关系通常有具体名称）。
- * 仅匹配 subject 会过于宽泛（很多 issue 都会提到角色名），因此只在同时命中
- * subject 与 attribute 相关词，或命中明确的价值描述时才过滤。
- */
-function filterOutlineAuthorizedIssues(
-  issues: Issue[],
-  outlineAuthorizedFacts: CanonicalFact[]
-): Issue[] {
-  const inventionMarkers = /invent|擅自|新引入|无来源|未在权威事实|未在前面章节|未确立|新增加|新增|凭空|额外创造/g
-
-  return issues.filter(issue => {
-    if (issue.type !== 'consistency') return true
-    const text = `${issue.description ?? ''} ${issue.location ?? ''} ${issue.suggestion ?? ''}`
-    if (!inventionMarkers.test(text)) return true
-
-    for (const fact of outlineAuthorizedFacts) {
-      const subject = fact.subject?.trim() ?? ''
-      const value = fact.value?.trim() ?? ''
-
-      // 优先匹配具体值（新地点、新物品细节、新关系名）
-      if (value.length >= 3 && text.includes(value)) {
-        logger.warn(`[MuseFlow] consistency issue 命中本章大纲已授权事实（${value}），已过滤: ${issue.description?.slice(0, 80)}...`)
-        return false
-      }
-
-      // 对短值回退：同时命中 subject 与 attribute 关键词
-      if (subject.length >= 2 && value.length > 0 && value.length < 3) {
-        const attributeMarkers = new RegExp(
-          `${fact.attribute}|状态|所在|位置|来源|归属|关系`,
-          'g'
-        )
-        if (text.includes(subject) && attributeMarkers.test(text) && text.includes(value)) {
-          logger.warn(`[MuseFlow] consistency issue 命中本章大纲已授权事实（${subject}/${fact.attribute}=${value}），已过滤: ${issue.description?.slice(0, 80)}...`)
-          return false
+    return normalizeIssues(data.issues, 'consistency', this.provider, {
+      canonicalFacts,
+      mapType: issue => {
+        if (issue.aspect === 'outline') {
+          return issue.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'
         }
-      }
-    }
-
-    return true
-  })
+        return 'consistency'
+      },
+    })
+  }
 }

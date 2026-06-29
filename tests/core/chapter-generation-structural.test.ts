@@ -50,8 +50,8 @@ describe('isStructuralIssue rule-based classification', () => {
     expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
   })
 
-  it('classifies quality errors as non-structural (local) by rule', async () => {
-    const issue: Issue = { id: '1', type: 'quality', severity: 'error', description: '用词重复' }
+  it('classifies quality-dimension errors as non-structural (local) by rule', async () => {
+    const issue: Issue = { id: '1', type: 'consistency', severity: 'error', description: '用词重复', dimension: 'quality' }
     const provider = createProvider()
     expect(await isStructuralIssue(provider, issue)).toBe(false)
     expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
@@ -64,8 +64,8 @@ describe('isStructuralIssue rule-based classification', () => {
     expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
   })
 
-  it('classifies hallucination errors as structural by rule', async () => {
-    const issue: Issue = { id: '1', type: 'hallucination', severity: 'error', description: '使用了未介绍的人物' }
+  it('classifies world_integrity consistency errors as structural by rule', async () => {
+    const issue: Issue = { id: '1', type: 'consistency', severity: 'error', description: '使用了未介绍的人物', dimension: 'world_integrity' }
     const provider = createProvider()
     expect(await isStructuralIssue(provider, issue)).toBe(true)
     expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
