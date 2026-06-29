@@ -614,7 +614,7 @@ export function route_by_decision(state: ReducedGraphState): string {
   return state.routingDecision ?? 'finalize_chapter'
 }
 
-export function route_after_validation(state: ReducedGraphState): string {
+export function route_after_validation(_state: ReducedGraphState): string {
   return 'converge_and_decide'
 }
 
