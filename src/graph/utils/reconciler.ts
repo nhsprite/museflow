@@ -534,7 +534,10 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
   const mergedCanonicalFacts = [...(base.canonicalFacts ?? [])]
   for (const fact of delta.canonicalFacts ?? []) {
     const existingIndex = mergedCanonicalFacts.findIndex(
-      existing => existing.subject === fact.subject && existing.attribute === fact.attribute
+      existing =>
+        existing.subject === fact.subject &&
+        existing.attribute === fact.attribute &&
+        existing.value === fact.value
     )
     if (existingIndex < 0) {
       mergedCanonicalFacts.push(fact)

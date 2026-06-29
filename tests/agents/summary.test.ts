@@ -379,7 +379,7 @@ describe('SummaryAgent prompt', () => {
           revealedSecrets: [],
           pendingTasks: [],
           canonicalFacts: [
-            { subject: '长命锁', attribute: '来源', value: '苏家打的满月礼', establishedIn: 8 },
+            { subject: '长命锁', attribute: '来源', value: '是苏家打的', establishedIn: 8 },
           ],
           currentScene: '',
           storyTime: '',
@@ -427,5 +427,43 @@ describe('processSummaryOutput sourceFacts', () => {
     expect(result).not.toBeNull()
     const facts = result!.storyState?.canonicalFacts ?? []
     expect(facts.some(f => f.subject === '龙纹玉佩' && f.attribute === '制造者' && f.value === '前朝铸玉大师周子衡')).toBe(true)
+  })
+
+  it('keeps multiple canonical facts with same subject and attribute but different values', () => {
+    const output = {
+      success: true,
+      data: {
+        characters: [],
+        characterFacts: [
+          {
+            character: '顾承舟',
+            facts: [
+              { text: '顾承舟知道凶手是管家', importance: 'critical' },
+              { text: '顾承舟知道密信藏在书房', importance: 'critical' },
+            ],
+          },
+        ],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '紧张',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          currentScene: '书房',
+          storyTime: '深夜',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 3)
+    const facts = result!.storyState!.canonicalFacts ?? []
+    expect(facts.filter(f => f.subject === '顾承舟' && f.attribute === '已知信息').length).toBe(2)
   })
 })

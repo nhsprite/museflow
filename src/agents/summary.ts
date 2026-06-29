@@ -523,8 +523,8 @@ export function processSummaryOutput(
     const autoFacts = [...sourceFacts, ...characterFacts]
     if (autoFacts.length > 0) {
       const existingFacts = storyState.canonicalFacts ?? []
-      const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}`))
-      const newFacts = autoFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}`))
+      const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}|${f.value}`))
+      const newFacts = autoFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
       if (newFacts.length > 0) {
         logger.info(`[MuseFlow] SummaryAgent 自动提升 ${newFacts.length} 条角色/来源类权威事实`)
         storyState.canonicalFacts = [...existingFacts, ...newFacts]

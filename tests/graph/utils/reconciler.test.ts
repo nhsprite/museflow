@@ -150,10 +150,10 @@ describe('mergeStoryState', () => {
     expect(merged.canonicalFacts?.length).toBe(2)
   })
 
-  it('keeps the latest canonical fact when subject and attribute collide', () => {
+  it('keeps the latest canonical fact when subject, attribute and value collide', () => {
     const existing: StoryState = {
       ...emptyState(),
-      canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 }],
+      canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 1 }],
     }
     const delta: StoryState = {
       ...emptyState(),
@@ -165,18 +165,19 @@ describe('mergeStoryState', () => {
     expect(merged.canonicalFacts?.[0].establishedIn).toBe(5)
   })
 
-  it('does not overwrite newer canonical facts with older delta facts', () => {
+  it('does not overwrite newer canonical facts with older delta facts when value matches', () => {
     const existing: StoryState = {
       ...emptyState(),
       canonicalFacts: [{ id: 'cf1', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 5 }],
     }
     const delta: StoryState = {
       ...emptyState(),
-      canonicalFacts: [{ id: 'cf2', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 }],
+      canonicalFacts: [{ id: 'cf2', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 1 }],
     }
     const merged = mergeStoryState(existing, delta)
     expect(merged.canonicalFacts?.length).toBe(1)
     expect(merged.canonicalFacts?.[0].value).toBe('官府仓库')
+    expect(merged.canonicalFacts?.[0].establishedIn).toBe(5)
   })
 })
 
@@ -924,5 +925,18 @@ describe('detectSecretRevealConflicts', () => {
     const outline = '本章继续调查，发现真凶就是管家。'
     const conflicts = detectSecretRevealConflicts(state, outline)
     expect(conflicts.length).toBeGreaterThan(0)
+  })
+
+  it('mergeStoryState keeps canonical facts with same subject-attribute but different values', () => {
+    const base: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [{ id: 'f1', subject: '玉佩', attribute: '所在位置', value: '桌上', establishedIn: 1 }],
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [{ id: 'f2', subject: '玉佩', attribute: '所在位置', value: '主角怀中', establishedIn: 2 }],
+    }
+    const merged = mergeStoryState(base, delta)
+    expect(merged.canonicalFacts?.length).toBe(2)
   })
 })
