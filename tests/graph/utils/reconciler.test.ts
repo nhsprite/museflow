@@ -855,3 +855,40 @@ describe('authorizeOutlineFacts', () => {
     expect(result).toHaveLength(0)
   })
 })
+
+describe('applyCanonicalFactsToState', () => {
+  it('creates missing keyItemsLocation entry from canonical fact', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'f1',
+          subject: '龙纹玉佩',
+          attribute: '所在位置',
+          value: '主角怀中',
+          establishedIn: 2,
+        },
+      ],
+    }
+    const result = applyCanonicalFactsToState(state)
+    expect(result.keyItemsLocation['龙纹玉佩']).toBe('主角怀中')
+  })
+
+  it('creates missing characterStatus entry from canonical fact when characters list provided', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'f2',
+          subject: '顾承舟',
+          attribute: '状态',
+          value: '负伤',
+          establishedIn: 3,
+        },
+      ],
+    }
+    const characters: Character[] = [{ id: 'c1', storyId: 's1', name: '顾承舟', description: '', dialogueStyle: '', createdAt: 0 }]
+    const result = applyCanonicalFactsToState(state, characters)
+    expect(result.characterStatus['顾承舟']).toBe('负伤')
+  })
+})

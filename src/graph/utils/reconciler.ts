@@ -380,7 +380,8 @@ export function buildCanonicalFactTimeline(
   return result.join('\n\n')
 }
 
-function isCharacterSubject(subject: string, characters: Array<{ name: string }>): boolean {
+function isCharacterSubject(subject: string, characters?: Array<{ name: string }>): boolean {
+  if (!characters) return false
   return characters.some(c => subject.includes(c.name) || c.name.includes(subject))
 }
 
@@ -698,7 +699,7 @@ export async function reconcileStoryState(
   reconciled.canonicalFacts = canonicalFacts
   reconciled.supersededFacts = supersededFacts
 
-  const authoritativeState = applyCanonicalFactsToState(reconciled)
+  const authoritativeState = applyCanonicalFactsToState(reconciled, characters)
 
   return {
     state: authoritativeState,
@@ -1482,36 +1483,47 @@ export function generateOverrideSuggestions(
     .map(c => generateOverrideSuggestion(c, chapterIndex))
 }
 
-export function applyCanonicalFactsToState(state: StoryState): StoryState {
+export function applyCanonicalFactsToState(state: StoryState, characters?: Array<{ name: string }>): StoryState {
   const result: StoryState = { ...state }
   const facts = state.canonicalFacts ?? []
 
   for (const fact of facts) {
     if (fact.attribute === '所在位置') {
-      if (result.characterLocations[fact.subject] !== undefined) {
+      if (isCharacterSubject(fact.subject, characters)) {
         result.characterLocations[fact.subject] = fact.value
-      }
-      if (result.keyItemsLocation[fact.subject] !== undefined) {
+      } else {
         result.keyItemsLocation[fact.subject] = fact.value
       }
+
       const canonical = canonicalizeItemName(fact.subject)
       for (const key of Object.keys(result.keyItemsLocation)) {
         if (canonicalizeItemName(key) === canonical) {
           result.keyItemsLocation[key] = fact.value
         }
       }
-    }
-    if (fact.attribute === '状态') {
-      if (result.characterStatus[fact.subject] !== undefined) {
-        result.characterStatus[fact.subject] = fact.value
+      for (const key of Object.keys(result.characterLocations)) {
+        if (canonicalizeItemName(key) === canonical) {
+          result.characterLocations[key] = fact.value
+        }
       }
-      if (result.keyItemsState[fact.subject] !== undefined) {
+    }
+
+    if (fact.attribute === '状态') {
+      if (isCharacterSubject(fact.subject, characters)) {
+        result.characterStatus[fact.subject] = fact.value
+      } else {
         result.keyItemsState[fact.subject] = fact.value
       }
+
       const canonical = canonicalizeItemName(fact.subject)
       for (const key of Object.keys(result.keyItemsState)) {
         if (canonicalizeItemName(key) === canonical) {
           result.keyItemsState[key] = fact.value
+        }
+      }
+      for (const key of Object.keys(result.characterStatus)) {
+        if (canonicalizeItemName(key) === canonical) {
+          result.characterStatus[key] = fact.value
         }
       }
     }
