@@ -27,6 +27,7 @@ import {
   batchJudgeBlockingConflictDescriptions,
 } from '../../utils/context-judge.js'
 import { tokenizeWords } from '../../utils/text.js'
+import { isSemanticallyRelated } from '../../utils/text-similarity.js'
 import { buildCharacterWhitelist } from '../../utils/character-whitelist.js'
 import { createProvider } from '../../model/registry.js'
 import { generateId } from '../../utils/id.js'
@@ -1013,21 +1014,43 @@ export async function detectCharacterStatusConflicts(
   )
 }
 
+const COMPARISON_STOP_WORDS = new Set([
+  '的', '了', '在', '是', '我', '你', '他', '她', '它', '这', '那', '一个', '一些', '就', '却', '而', '但',
+  '与', '和', '或', '着', '过', '到', '从', '把', '被', '让', '给', '为', '以', '及', '等', '地', '得', '之',
+  '也', '很', '更', '最', '非常', '已经', '然后', '因为', '所以', '如果', '虽然', '但是', '不过', '只是',
+  '只要', '只有', '能够', '可以', '应该', '需要', '必须', '于', '会', '要', '将', '向', '对',
+])
+
+function normalizeForComparison(text: string): string {
+  let normalized = text.replace(/[^\u4e00-\u9fff]/g, '')
+  for (const word of COMPARISON_STOP_WORDS) {
+    normalized = normalized.split(word).join('')
+  }
+  return normalized
+}
+
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {
   const conflicts: Conflict[] = []
-  const outlineTokens = tokenizeWords(outline)
-  let index = 0
+  if (!outline || state.revealedSecrets.length === 0) return conflicts
 
+  const normalizedOutline = normalizeForComparison(outline)
+  let index = 0
   for (const secret of state.revealedSecrets) {
     const secretSentences = splitSentences(secret)
-    let maxOverlapRatio = 0
+    let reRevealed = false
+
     for (const secretSentence of secretSentences) {
-      const secretTokens = tokenizeWords(secretSentence)
-      const overlap = secretTokens.filter(t => outlineTokens.includes(t))
-      const overlapRatio = secretTokens.length > 0 ? overlap.length / secretTokens.length : 0
-      maxOverlapRatio = Math.max(maxOverlapRatio, overlapRatio)
+      const normalizedSecret = normalizeForComparison(secretSentence)
+      if (
+        normalizedSecret.length >= 4 &&
+        isSemanticallyRelated(normalizedSecret, normalizedOutline, 0.5)
+      ) {
+        reRevealed = true
+        break
+      }
     }
-    if (maxOverlapRatio < 0.3) continue
+
+    if (!reRevealed) continue
 
     const hintIndex = outline.indexOf(secret.slice(0, 20))
     const outlineReference =
@@ -1047,6 +1070,7 @@ export function detectSecretRevealConflicts(state: StoryState, outline: string):
       description: `大纲试图再次揭示此前已暴露的秘密：「${secret.slice(0, 50)}...」`,
     })
   }
+
   return conflicts
 }
 

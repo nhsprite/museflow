@@ -15,6 +15,7 @@ import {
   formatStoryState,
   prepareStoryStateForChapter,
   authorizeOutlineFacts,
+  detectSecretRevealConflicts,
 } from '../../../src/graph/utils/reconciler.js'
 import { BlockingConflictError } from '../../../src/utils/errors.js'
 import type { StoryState, Conflict, StateOverride } from '../../../src/types/story-state.js'
@@ -890,5 +891,28 @@ describe('applyCanonicalFactsToState', () => {
     const characters: Character[] = [{ id: 'c1', storyId: 's1', name: '顾承舟', description: '', dialogueStyle: '', createdAt: 0 }]
     const result = applyCanonicalFactsToState(state, characters)
     expect(result.characterStatus['顾承舟']).toBe('负伤')
+  })
+})
+
+
+describe('detectSecretRevealConflicts', () => {
+  it('does not flag re-reveal when only common words overlap', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      revealedSecrets: ['主角已经知道凶手是管家'],
+    }
+    const outline = '本章主角去了一个地方，发现了一些东西，和管家无关。'
+    const conflicts = detectSecretRevealConflicts(state, outline)
+    expect(conflicts).toHaveLength(0)
+  })
+
+  it('flags semantic re-reveal of a secret', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      revealedSecrets: ['真凶是管家'],
+    }
+    const outline = '本章继续调查，发现真凶就是管家。'
+    const conflicts = detectSecretRevealConflicts(state, outline)
+    expect(conflicts.length).toBeGreaterThan(0)
   })
 })
