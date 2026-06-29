@@ -39,6 +39,38 @@ function readExistingMeta(outputDir: string): StoryMeta | null {
   }
 }
 
+async function loadLatestCheckpointState(outputDir: string): Promise<CheckpointState | undefined> {
+  const checkpointer = getCheckpointer()
+  const checkpoint = await checkpointer.getTuple({ configurable: { thread_id: '', outputDir } })
+
+  if (checkpoint) {
+    return checkpoint.checkpoint.channel_values as unknown as CheckpointState | undefined
+  }
+
+  // Fallback: read latest.json and the referenced checkpoint file directly.
+  // This avoids depending on the checkpointer's thread_id -> outputDir mapping,
+  // which is only populated after a graph invocation has run.
+  const checkpointsDir = join(outputDir, 'checkpoints')
+  const latestPath = join(checkpointsDir, 'latest.json')
+  if (!existsSync(latestPath)) return undefined
+
+  try {
+    const latest = JSON.parse(readFileSync(latestPath, 'utf-8')) as { checkpointId?: string }
+    if (!latest.checkpointId) return undefined
+
+    const checkpointPath = join(checkpointsDir, `${latest.checkpointId}.json`)
+    if (!existsSync(checkpointPath)) return undefined
+
+    const record = JSON.parse(readFileSync(checkpointPath, 'utf-8')) as {
+      checkpoint?: { channel_values?: unknown }
+    }
+    return record.checkpoint?.channel_values as CheckpointState | undefined
+  } catch (err) {
+    logger.warn(`[MuseFlow] 读取 checkpoint 失败: ${err instanceof Error ? err.message : String(err)}`)
+    return undefined
+  }
+}
+
 /**
  * Export the latest checkpoint state into meta.json.
  *
@@ -47,17 +79,10 @@ function readExistingMeta(outputDir: string): StoryMeta | null {
  * commands and external inspection.
  */
 export async function exportMetaFromCheckpoint(outputDir: string): Promise<void> {
-  const checkpointer = getCheckpointer()
-  const checkpoint = await checkpointer.getTuple({ configurable: { thread_id: '', outputDir } })
+  const state = await loadLatestCheckpointState(outputDir)
 
-  if (!checkpoint) {
-    logger.debug(`[MuseFlow] No checkpoint found at ${outputDir}, skipping meta export`)
-    return
-  }
-
-  const state = checkpoint.checkpoint.channel_values as unknown as CheckpointState | undefined
   if (!state) {
-    logger.debug('[MuseFlow] Checkpoint has no channel values, skipping meta export')
+    logger.debug(`[MuseFlow] No checkpoint found at ${outputDir}, skipping meta export`)
     return
   }
 

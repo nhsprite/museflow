@@ -3,6 +3,7 @@ import { runStory } from '../../core/runner.js'
 import { initStoryDb } from '../../storage/meta/stores/story.js'
 import { getGenreRegistry } from '../../genres/registry.js'
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
+import { exportMetaFromCheckpoint } from '../../storage/meta/exporter.js'
 import { generateTitleOptions, selectTitleOption, type TitleOption } from './title-selector.js'
 import { withSpinner } from '../utils/spinner.js'
 import type { ModelConfig } from '../../types/config.js'
@@ -124,6 +125,8 @@ export async function start(options: StartOptions): Promise<void> {
     if (result.outline.length > 0) {
       console.log(`[MuseFlow] 大纲已生成，共 ${result.outline.length} 章\n`)
     }
+
+    await exportMetaFromCheckpoint(result.story.outputDir)
 
     updateStatus('outlining')
 
