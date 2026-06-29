@@ -38,10 +38,14 @@ vi.mock('../../src/core/chapter-generation/issue-classifier.js', () => ({
   isInterpretiveIssue: vi.fn().mockResolvedValue(false),
 }))
 
-vi.mock('../../src/utils/issue-deduplication.js', () => ({
-  deduplicateIssuesSemantically: vi.fn().mockImplementation(async (_provider: unknown, issues: unknown[]) => issues),
-  issueFingerprint: vi.fn().mockResolvedValue('fingerprint'),
-}))
+vi.mock('../../src/utils/issue-deduplication.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/issue-deduplication.js')>()
+  return {
+    ...actual,
+    deduplicateIssuesSemantically: vi.fn().mockImplementation(async (_provider: unknown, issues: unknown[]) => issues),
+    issueFingerprint: vi.fn().mockResolvedValue('fingerprint'),
+  }
+})
 
 vi.mock('../../src/model/registry.js', () => ({
   createProvider: vi.fn().mockReturnValue({ chat: vi.fn() }),
