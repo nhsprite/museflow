@@ -231,13 +231,24 @@ describe('converge_and_decide', () => {
     const pendingIssues: Issue[] = [
       { id: 'w1', type: 'consistency', severity: 'warning', description: '情感层次略显单一，应该增加内心描写', dimension: 'quality' },
     ]
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 0 })
+    // rewriteAttempts > 0 表示已经历过至少一次起草/验证循环
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 0, rewriteAttempts: 1 })
 
     const result = await converge_and_decide(state)
 
     expect(result.routingDecision).toBe('finalize_chapter')
     expect(result.autoFixAttempts).toBe(0)
     expect(result.pendingIssues).toEqual(pendingIssues)
+  })
+
+  it('routes to draft_chapter on first iteration when rewrite is approved and chapter file is missing', async () => {
+    vi.mocked(readChapterContent).mockResolvedValue(null)
+
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues: [], rewriteAttempts: 0 })
+    const result = await converge_and_decide(state)
+
+    expect(result.routingDecision).toBe('draft_chapter')
+    expect(result.rewriteApproved).toBe(true)
   })
 
   it('does not auto-fix warnings when errors still exist', async () => {
@@ -259,7 +270,7 @@ describe('converge_and_decide', () => {
     const pendingIssues: Issue[] = [
       { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },
     ]
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 3 })
+    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 3, rewriteAttempts: 1 })
 
     const result = await converge_and_decide(state)
 

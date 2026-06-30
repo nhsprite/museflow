@@ -508,6 +508,11 @@ async function convergenceCheck(
         decision = 'draft_chapter'
         nextRewriteApproved = false
       }
+    } else if ((state.rewriteAttempts || 0) === 0) {
+      // 用户显式请求重写（rewrite/continue --yes），且是本轮第一次决策：
+      // 即使当前没有错误，也应先走起草/修复流程，而不是直接 finalize。
+      decision = 'decide_strategy'
+      nextRewriteApproved = true
     } else {
       decision = 'finalize_chapter'
       nextRewriteApproved = false
