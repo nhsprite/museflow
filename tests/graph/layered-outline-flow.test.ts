@@ -3,7 +3,7 @@ import type { ReducedGraphState } from '../../src/graph/state.js'
 
 const expandOutlineMock = vi.fn()
 const runAgentMock = vi.fn()
-const highLevelOutlineRunMock = vi.fn()
+const storyArcRunMock = vi.fn()
 
 vi.mock('../../src/core/outline-expander.js', () => ({
   expandOutlineForChapter: expandOutlineMock,
@@ -12,11 +12,12 @@ vi.mock('../../src/core/outline-expander.js', () => ({
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
   CharacterAgent: class {},
-  HighLevelOutlineAgent: class {
+  StoryArcAgent: class {
     async run() {
-      return highLevelOutlineRunMock()
+      return storyArcRunMock()
     }
   },
+  ChapterOutlineAgent: class {},
   ChapterAgent: class {
     async run() {
       return { content: runAgentMock() }
@@ -45,6 +46,22 @@ vi.mock('../../src/genres/registry.js', () => ({
   getGenreSkill: vi.fn().mockReturnValue(null),
 }))
 
+const storyArc = {
+  totalChapters: 2,
+  acts: [
+    {
+      index: 1,
+      startChapter: 1,
+      endChapter: 2,
+      title: '启程',
+      theme: '主角踏上旅程',
+      function: '建立主角动机与初始张力',
+      mandatoryBeats: ['主角离开家乡'],
+    },
+  ],
+  keyBeats: [],
+}
+
 const baseState: ReducedGraphState = {
   story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
   idea: 'idea',
@@ -52,10 +69,14 @@ const baseState: ReducedGraphState = {
   totalChapters: 2,
   world: null,
   characters: [],
+  storyArc,
   outline: [
-    { number: 1, title: '启程', description: '主角离开家乡。' },
-    { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+    { number: 1, title: '', description: '' },
+    { number: 2, title: '', description: '' },
   ],
+  actProgress: {
+    1: { consumed: [], pending: ['主角离开家乡'] },
+  },
   chapters: [null, null],
   currentChapterIndex: 0,
   foreshadowStack: [],
@@ -80,14 +101,9 @@ describe('layered outline flow', () => {
       boundaryHints: [],
     })
     runAgentMock.mockReturnValue('chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600))
-    highLevelOutlineRunMock.mockResolvedValue({
+    storyArcRunMock.mockResolvedValue({
       success: true,
-      data: {
-        chapters: [
-          { number: 1, title: '启程', description: '主角离开家乡。' },
-          { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
-        ],
-      },
+      data: storyArc,
     })
   })
 
@@ -100,14 +116,17 @@ describe('layered outline flow', () => {
   })
 
   describe('create_outline', () => {
-    it('always uses HighLevelOutlineAgent', async () => {
+    it('uses StoryArcAgent to generate story arc', async () => {
       const { create_outline } = await import('../../src/graph/nodes/story-creation.js')
 
       const result = await create_outline(baseState)
 
-      expect(highLevelOutlineRunMock).toHaveBeenCalledTimes(1)
+      expect(storyArcRunMock).toHaveBeenCalledTimes(1)
+      expect(result.storyArc).toBeDefined()
+      expect(result.storyArc?.acts).toHaveLength(1)
       expect(result.outline).toHaveLength(2)
-      expect(result.outline![0]!.description.length).toBeLessThanOrEqual(60)
+      expect(result.outline![0]!.title).toBe('')
+      expect(result.outline![0]!.description).toBe('')
     })
   })
 })

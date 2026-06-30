@@ -1,0 +1,139 @@
+import { describe, expect, it } from 'vitest'
+import {
+  buildArcStatus,
+  buildClosingPhaseConstraint,
+  isClosingPhase,
+  proposeActBoundaryAdjustments,
+  validateActBoundaryAdjustment,
+} from '../../src/utils/story-arc.js'
+import type { StoryArc } from '../../src/types/outline.js'
+
+function makeStoryArc(): StoryArc {
+  return {
+    totalChapters: 20,
+    acts: [
+      { index: 1, startChapter: 1, endChapter: 5, title: '入局', theme: '卷入', function: '建立', mandatoryBeats: ['主角失去庇护', '反派首次施压'] },
+      { index: 2, startChapter: 6, endChapter: 10, title: '反击', theme: '成长', function: '对抗', mandatoryBeats: ['主角找到盟友'] },
+      { index: 3, startChapter: 11, endChapter: 15, title: '揭秘', theme: '真相', function: '揭露', mandatoryBeats: ['核心秘密揭晓'] },
+      { index: 4, startChapter: 16, endChapter: 20, title: '决战', theme: '高潮', function: '解决', mandatoryBeats: ['最终对决'] },
+    ],
+    keyBeats: [
+      { beat: '核心秘密被主角获悉', deadlineAct: 2 },
+      { beat: '最终对决', deadlineAct: 4 },
+    ],
+  }
+}
+
+describe('story-arc utilities', () => {
+  it('detects closing phase based on ratio', () => {
+    expect(isClosingPhase(20, 16)).toBe(true)
+    expect(isClosingPhase(20, 15)).toBe(false)
+    expect(isClosingPhase(20, 16, 0.2)).toBe(true)
+    expect(isClosingPhase(20, 15, 0.2)).toBe(true)
+    expect(isClosingPhase(20, 14, 0.2)).toBe(false)
+  })
+
+  it('builds arc status with current act and pending beats', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] },
+    }
+    const status = buildArcStatus(storyArc, actProgress, 1)
+
+    expect(status.currentAct?.index).toBe(1)
+    expect(status.beatsTotal).toBe(2)
+    expect(status.beatsConsumed).toBe(1)
+    expect(status.beatsPending).toEqual(['反派首次施压'])
+    expect(status.riskLevel).toBe('low')
+  })
+
+  it('marks high risk when pending beats exceed remaining chapters', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
+    }
+    const status = buildArcStatus(storyArc, actProgress, 3)
+
+    expect(status.beatsPending).toHaveLength(2)
+    expect(status.riskLevel).toBe('high')
+  })
+
+  it('marks high risk when key beat is overdue', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: ['主角失去庇护', '反派首次施压'], pending: [] },
+      2: { consumed: ['主角找到盟友'], pending: [] },
+      3: { consumed: [], pending: ['核心秘密揭晓'] },
+    }
+    const status = buildArcStatus(storyArc, actProgress, 10)
+
+    expect(status.overdueKeyBeats).toHaveLength(1)
+    expect(status.overdueKeyBeats[0]?.beat).toBe('核心秘密被主角获悉')
+    expect(status.riskLevel).toBe('high')
+  })
+
+  it('proposes extension when pending beats exceed capacity near boundary', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
+    }
+    const proposals = proposeActBoundaryAdjustments(storyArc, actProgress, 3)
+
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0]?.actIndex).toBe(1)
+    expect(proposals[0]?.proposedEndChapter).toBeGreaterThan(5)
+  })
+
+  it('proposes reduction when all beats consumed before boundary', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: ['主角失去庇护', '反派首次施压'], pending: [] },
+    }
+    const proposals = proposeActBoundaryAdjustments(storyArc, actProgress, 3)
+
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0]?.actIndex).toBe(1)
+    expect(proposals[0]?.proposedEndChapter).toBeLessThan(5)
+  })
+
+  it('does not propose adjustment far from boundary', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
+    }
+    const proposals = proposeActBoundaryAdjustments(storyArc, actProgress, 1)
+
+    expect(proposals).toHaveLength(0)
+  })
+
+  it('validates boundary adjustment', () => {
+    const storyArc = makeStoryArc()
+
+    expect(validateActBoundaryAdjustment(storyArc, 1, 6, 3).valid).toBe(true)
+    expect(validateActBoundaryAdjustment(storyArc, 1, 2, 3).valid).toBe(false)
+    expect(validateActBoundaryAdjustment(storyArc, 1, 12, 3).valid).toBe(false)
+    expect(validateActBoundaryAdjustment(storyArc, 99, 6, 3).valid).toBe(false)
+  })
+
+  it('builds closing phase constraint near the end', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] },
+      2: { consumed: [], pending: ['主角找到盟友'] },
+      3: { consumed: [], pending: ['核心秘密揭晓'] },
+      4: { consumed: [], pending: ['最终对决'] },
+    }
+    const constraint = buildClosingPhaseConstraint(storyArc, actProgress, 17)
+
+    expect(constraint).toContain('全书收尾阶段')
+    expect(constraint).toContain('禁止引入新的主要支线')
+    expect(constraint).toContain('最终对决')
+  })
+
+  it('returns undefined when not in closing phase', () => {
+    const storyArc = makeStoryArc()
+    const constraint = buildClosingPhaseConstraint(storyArc, {}, 5)
+
+    expect(constraint).toBeUndefined()
+  })
+})

@@ -11,6 +11,7 @@ import { genres } from './commands/genres.js'
 import { exportStory } from './commands/export.js'
 import { list } from './commands/list.js'
 import { del } from './commands/delete.js'
+import { adjustAct } from './commands/adjust-act.js'
 import { setDebugEnabled } from '../utils/logger.js'
 
 const program = new Command()
@@ -61,6 +62,13 @@ program.command('status')
   .description('查看故事进度')
   .argument('[story-id]', '故事ID')
   .action(status)
+
+program.command('adjust-act')
+  .description('手动调整幕边界')
+  .argument('<story-id>', '故事ID')
+  .requiredOption('--act <number>', '要调整的幕序号')
+  .requiredOption('--end-chapter <number>', '新的结束章节')
+  .action(adjustAct)
 
 program.command('info')
   .description('查看故事详细信息')

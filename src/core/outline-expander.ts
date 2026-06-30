@@ -7,17 +7,23 @@ import {
 } from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan } from '../agents/chapter-planner.js'
-import { readChapterContent } from '../storage/filesystem/writer.js'
+import { readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation, type CoreSectionJudge } from '../utils/chapter-planning.js'
 import type { Issue } from '../types/agent.js'
 import { createProvider } from '../model/registry.js'
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import { batchValidateTimeAnchors } from '../utils/context-judge.js'
+import { getChapterOutlineAgent } from '../graph/agent-factory.js'
+import type { AgentState } from '../agents/base.js'
+import { buildLayeredSummaries } from '../utils/summary-compressor.js'
+import { formatStoryState } from '../graph/utils/reconciler.js'
+import { charactersToString } from '../graph/utils/characters.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
   boundaryHints: string[]
   pendingIssues?: Issue[]
+  outline?: ReducedGraphState['outline']
 }
 
 const CORE_SECTION_JUDGE_SCHEMA: JsonSchema = {
@@ -104,10 +110,84 @@ export async function validateChapterTimeAnchor(
   return results[0] ?? { valid: true }
 }
 
+async function generateChapterOutlineIfNeeded(
+  state: ReducedGraphState,
+  chapterIndex: number
+): Promise<ReducedGraphState> {
+  const outlineItem = state.outline[chapterIndex]
+  if (!outlineItem) {
+    throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
+  }
+
+  // 已有具体描述，不需要重新生成
+  if (outlineItem.description.trim().length > 0) {
+    return state
+  }
+
+  if (!state.storyArc) {
+    throw new Error('未生成故事弧线，无法即时生成章节大纲')
+  }
+
+  const worldContent = state.world?.content
+  const agent = getChapterOutlineAgent()
+  const agentState: AgentState = {
+    idea: state.idea,
+    genre: state.genre,
+    totalChapters: state.totalChapters,
+    title: state.story.title,
+    chapterIndex,
+    storyArc: state.storyArc,
+    actProgress: state.actProgress,
+    ...(worldContent ? { world: worldContent } : {}),
+    characters: charactersToString(state.characters),
+    previousChapters: buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+    storyState: state.storyState ? formatStoryState(state.storyState) : '',
+    canonicalFacts: state.storyState?.canonicalFacts,
+    verifiedConstraints: state.verifiedConstraints,
+  }
+
+  const output = await agent.run(agentState)
+  if (!output.success || !output.data) {
+    throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：${output.error || '未知错误'}`)
+  }
+
+  const result = output.data as import('../agents/chapter-outline.js').ChapterOutlineResult
+  if (result.conflict) {
+    throw new Error(`第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${result.conflictReason || '未说明原因'}`)
+  }
+
+  const newOutline = [...state.outline]
+  const newOutlineItem: ReducedGraphState['outline'][number] = {
+    number: chapterIndex + 1,
+    title: result.title,
+    description: result.description,
+  }
+  if (result.introducedCharacters && result.introducedCharacters.length > 0) {
+    newOutlineItem.introducedCharacters = result.introducedCharacters
+  }
+  if (result.claimedBeats && result.claimedBeats.length > 0) {
+    newOutlineItem.claimedBeats = result.claimedBeats
+  }
+  newOutline[chapterIndex] = newOutlineItem
+
+  logger.info(`[MuseFlow] 已即时生成第 ${chapterIndex + 1} 章大纲：${result.title}`)
+  logger.info(`  ${result.description}`)
+  if (result.claimedBeats && result.claimedBeats.length > 0) {
+    logger.info(`  声称推进节拍：${result.claimedBeats.join('、')}`)
+  }
+
+  // 持久化更新后的 outline.md
+  await writeOutlineContent(state.story.outputDir, state.story.title, newOutline, state.storyArc)
+
+  return { ...state, outline: newOutline }
+}
+
 export async function expandOutlineForChapter(
   state: ReducedGraphState,
   chapterIndex: number
 ): Promise<ExpandedOutline> {
+  state = await generateChapterOutlineIfNeeded(state, chapterIndex)
+
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
     throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
@@ -121,15 +201,29 @@ export async function expandOutlineForChapter(
   const judgeCoreSections: CoreSectionJudge = (description, sections) =>
     judgeCoreSectionsWithModel(provider, description, sections)
 
-  const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
+  const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex, state.storyArc)
   const pendingTasksHint = await reconcileOutlineWithState(state, chapterIndex, planningConfig, provider)
   const boundaryHints = [nextBoundaryHint].filter(h => h.length > 0)
+
+  // 如果下一章进入新幕，优先使用幕边界提示；否则使用下一章具体描述作为边界
+  const currentAct = state.storyArc
+    ? state.storyArc.acts.find(a => (chapterIndex + 1) >= a.startChapter && (chapterIndex + 1) <= a.endChapter)
+    : undefined
+  const nextAct = state.storyArc
+    ? state.storyArc.acts.find(a => (chapterIndex + 2) >= a.startChapter && (chapterIndex + 2) <= a.endChapter)
+    : undefined
+  const entersNewAct = currentAct && nextAct && currentAct.index !== nextAct.index
+
+  const nextBoundaryForPlanner = entersNewAct
+    ? nextBoundaryHint
+    : nextItem?.description
+      ? `\n【后续章节边界】第${nextItem.number}章「${nextItem.title}」大纲：${nextItem.description}`
+      : nextBoundaryHint
 
   const formattedOutline = [
     `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`,
     outlineItem.description,
-    nextItem ? `\n【后续章节边界】第${nextItem.number}章"${nextItem.title}"大纲：${nextItem.description}` : '',
-    nextBoundaryHint,
+    nextBoundaryForPlanner,
     pendingTasksHint,
   ].filter(part => part.length > 0).join('\n')
 
@@ -250,6 +344,7 @@ export async function expandOutlineForChapter(
     chapterPlan,
     boundaryHints,
     pendingIssues,
+    outline: state.outline,
   }
 }
 

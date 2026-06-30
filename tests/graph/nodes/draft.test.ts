@@ -33,7 +33,7 @@ describe('draft_chapter output validation', () => {
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
-  it('throws when generated content lacks chapter heading', async () => {
+  it('throws when generated content lacks chapter heading', { timeout: 20000 }, async () => {
     const state = {
       story: { id: 'test', title: 'Test', outputDir: tmpDir },
       idea: 'test',

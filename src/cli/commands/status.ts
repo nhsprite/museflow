@@ -4,6 +4,7 @@ import { getState } from '../../core/runner.js'
 import { getForeshadowAlerts, formatForeshadowAlerts } from '../../types/foreshadow.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { existsSync } from 'node:fs'
+import { buildArcStatus } from '../../utils/story-arc.js'
 
 interface ChapterIssue {
   chapterNumber: number
@@ -71,6 +72,38 @@ export async function status(storyId?: string): Promise<void> {
     const progress = total > 0 ? Math.round((doneChapters / total) * 100) : 0
 
     console.log(`章节进度: ${doneChapters}/${total} (${progress}%)`)
+
+    if (state.storyArc) {
+      const arcStatus = buildArcStatus(state.storyArc, state.actProgress, current)
+      console.log('')
+      console.log('故事弧线')
+      console.log('-'.repeat(50))
+      if (arcStatus.currentAct) {
+        console.log(`当前幕: 第 ${arcStatus.currentAct.index} 幕「${arcStatus.currentAct.title}」（第 ${arcStatus.currentAct.startChapter}-${arcStatus.currentAct.endChapter} 章）`)
+        console.log(`本章位置: 第 ${current + 1}/${state.totalChapters} 章`)
+        console.log(`收尾阶段: ${arcStatus.closingPhase ? '是' : '否'}`)
+      } else {
+        console.log('当前幕: 未定位')
+      }
+      console.log('')
+      console.log('节拍进度')
+      console.log(`已消费: ${arcStatus.beatsConsumed}/${arcStatus.beatsTotal}`)
+      if (arcStatus.beatsPending.length > 0) {
+        console.log(`待消费: ${arcStatus.beatsPending.join('、')}`)
+      }
+      if (arcStatus.overdueKeyBeats.length > 0 || arcStatus.upcomingKeyBeats.length > 0) {
+        console.log('')
+        console.log('全局关键节拍')
+        for (const kb of arcStatus.overdueKeyBeats) {
+          console.log(`逾期: ${kb.beat}（截止第 ${kb.deadlineAct} 幕）`)
+        }
+        for (const kb of arcStatus.upcomingKeyBeats) {
+          console.log(`即将到期: ${kb.beat}（截止第 ${kb.deadlineAct} 幕）`)
+        }
+      }
+      console.log('')
+      console.log(`收尾风险: ${arcStatus.riskLevel === 'low' ? '低' : arcStatus.riskLevel === 'medium' ? '中' : '高'}`)
+    }
 
     if (state.pendingIssues.length > 0) {
       console.log(`待处理问题: ${state.pendingIssues.length}`)

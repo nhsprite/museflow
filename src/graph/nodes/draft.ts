@@ -16,8 +16,8 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
 
-  const { chapterPlan, boundaryHints, pendingIssues: outlinePendingIssues } = await expandOutlineForChapter(state, chapterIndex)
-  state = { ...state, chapterPlan }
+  const { chapterPlan, boundaryHints, pendingIssues: outlinePendingIssues, outline: updatedOutline } = await expandOutlineForChapter(state, chapterIndex)
+  state = { ...state, chapterPlan, outline: updatedOutline ?? state.outline }
 
   const mergedIssues = [
     ...(outlinePendingIssues ?? []),

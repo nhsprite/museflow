@@ -63,7 +63,9 @@ export async function runStory(input: {
     totalChapters: input.totalChapters,
     world: null,
     characters: [],
+    storyArc: null,
     outline: [],
+    actProgress: {},
     chapters: new Array(input.totalChapters).fill(null) as ReducedGraphState['chapters'],
     currentChapterIndex: 0,
     foreshadowStack: [],
@@ -227,6 +229,15 @@ export async function runOneChapter(
   }
 
   if (options.mode === 'rewrite' && options.targetChapterIndex !== undefined) {
+    // 彻底重写目标章节时，清空该章的即时大纲，使其重新生成
+    const clearedOutline = [...workingState.outline]
+    clearedOutline[targetIndex] = {
+      number: targetIndex + 1,
+      title: '',
+      description: '',
+    }
+    workingState.outline = clearedOutline
+
     for (let ch = targetIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)
     }

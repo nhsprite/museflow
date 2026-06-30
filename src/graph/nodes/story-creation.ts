@@ -4,7 +4,7 @@ import type { AgentState } from '../../agents/base.js'
 import {
   getWorldbuilderAgent,
   getCharacterAgent,
-  getHighLevelOutlineAgent,
+  getStoryArcAgent,
 } from '../agent-factory.js'
 import { generateId } from '../../utils/id.js'
 import { writeOutlineContent, writeStoryBible } from '../../storage/filesystem/writer.js'
@@ -93,7 +93,7 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
 
 export async function create_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
   const worldContent = state.world?.content
-  const agent = getHighLevelOutlineAgent()
+  const agent = getStoryArcAgent()
   const agentState: AgentState = {
     idea: state.idea,
     genre: state.genre,
@@ -109,80 +109,131 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      logger.warn(`[MuseFlow] 章节大纲解析失败，第 ${attempt}/${maxRetries} 次重试...`)
+      logger.warn(`[MuseFlow] 故事弧线解析失败，第 ${attempt}/${maxRetries} 次重试...`)
     }
 
     const output = await agent.run(agentState)
     lastOutput = output
-    const chapters = (output.data as { chapters: ReducedGraphState['outline'] } | undefined)?.chapters ?? []
+    const storyArc = output.data as import('../../types/outline.js').StoryArc | undefined
 
-    if (chapters.length > 0) {
+    if (storyArc && storyArc.acts.length > 0) {
       if (attempt > 0) {
-        logger.info(`[MuseFlow] 章节大纲重试成功，共生成 ${chapters.length} 章`)
+        logger.info(`[MuseFlow] 故事弧线重试成功，共 ${storyArc.acts.length} 幕`)
       }
-      await writeOutlineContent(state.story.outputDir, state.story.title, chapters)
+      const emptyOutline: ReducedGraphState['outline'] = Array.from(
+        { length: state.totalChapters },
+        (_, i) => ({ number: i + 1, title: '', description: '' })
+      )
+      const initialActProgress: ReducedGraphState['actProgress'] = Object.fromEntries(
+        storyArc.acts.map(act => [act.index, { consumed: [], pending: [...act.mandatoryBeats] }])
+      )
+      await writeOutlineContent(state.story.outputDir, state.story.title, emptyOutline, storyArc)
       await writeStoryBible(
         state.story.outputDir,
         state.story,
         worldContent || '',
         state.characters,
-        chapters,
+        emptyOutline,
       )
-      return { outline: chapters }
+      return {
+        storyArc,
+        outline: emptyOutline,
+        actProgress: initialActProgress,
+      }
     }
 
     if (!output.success && output.content) {
-      logger.warn(`[MuseFlow] 第 ${attempt + 1} 次章节大纲原始输出（前 500 字符）：`)
+      logger.warn(`[MuseFlow] 第 ${attempt + 1} 次故事弧线原始输出（前 500 字符）：`)
       logger.warn(output.content.slice(0, 500))
     }
   }
 
-  logger.error('[MuseFlow] 错误：章节大纲生成失败，已达到最大重试次数')
+  logger.error('[MuseFlow] 错误：故事弧线生成失败，已达到最大重试次数')
   if (lastOutput?.content) {
     logger.error('[MuseFlow] 最后一次原始输出（前 1000 字符）：')
     logger.error(lastOutput.content.slice(0, 1000))
   }
-  throw new Error('[MuseFlow] 错误：章节大纲生成失败，请检查 AI 输出或重试')
+  throw new Error('[MuseFlow] 错误：故事弧线生成失败，请检查 AI 输出或重试')
 }
 
 export async function validate_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const outline = state.outline
+  const storyArc = state.storyArc
   const issues: Array<import('../../types/agent.js').Issue> = []
 
-  for (const item of outline) {
-    if (!item) continue
-    const eventCount = item.description.split(/[。；]/).filter(s => s.trim().length > 5).length
-    if (eventCount > 5) {
+  if (!storyArc) {
+    issues.push({
+      id: generateId(),
+      type: 'outline_missing',
+      severity: 'error',
+      description: '故事弧线未生成',
+      location: 'create_outline',
+    })
+    return { pendingIssues: [...state.pendingIssues, ...issues] }
+  }
+
+  // 验证幕结构是否覆盖全部章节
+  const sortedActs = [...storyArc.acts].sort((a, b) => a.startChapter - b.startChapter)
+  let expectedStart = 1
+  for (const act of sortedActs) {
+    if (act.startChapter !== expectedStart) {
       issues.push({
         id: generateId(),
-        type: 'outline_density',
+        type: 'outline_gap',
+        severity: 'error',
+        description: `幕结构存在缺口：第 ${expectedStart} 章未落入任何一幕`,
+        location: `第 ${act.index} 幕`,
+      })
+    }
+    if (act.endChapter < act.startChapter) {
+      issues.push({
+        id: generateId(),
+        type: 'outline_invalid',
+        severity: 'error',
+        description: `第 ${act.index} 幕的结束章节小于起始章节`,
+        location: `第 ${act.index} 幕`,
+      })
+    }
+    expectedStart = act.endChapter + 1
+  }
+  if (expectedStart - 1 !== state.totalChapters) {
+    issues.push({
+      id: generateId(),
+      type: 'outline_coverage',
+      severity: 'error',
+      description: `幕结构未覆盖全部 ${state.totalChapters} 章，实际覆盖到第 ${expectedStart - 1} 章`,
+      location: 'storyArc',
+    })
+  }
+
+  // 验证每幕都有 mandatory beats
+  for (const act of storyArc.acts) {
+    if (act.mandatoryBeats.length === 0) {
+      issues.push({
+        id: generateId(),
+        type: 'outline_empty_beats',
         severity: 'warning',
-        description: `第${item.number}章大纲包含 ${eventCount} 个情节点，信息密度过高，建议拆分为2章或简化`,
-        location: `第${item.number}章：${item.title}`,
+        description: `第 ${act.index} 幕「${act.title}」没有 mandatory beats，可能导致该幕缺乏叙事目标`,
+        location: `第 ${act.index} 幕`,
       })
     }
   }
 
-  const foreshadowPattern = /伏笔|铺垫|暗示|预示|留下悬念|日后|将来|未来/g
-  const callbackPattern = /回收|兑现|揭晓|揭示|真相大白|终于明白/g
-  for (let i = 0; i < outline.length; i++) {
-    const item = outline[i]
-    if (!item) continue
-    const hasForeshadow = foreshadowPattern.test(item.description)
-    const hasCallback = callbackPattern.test(item.description)
-    if (hasForeshadow && hasCallback) {
+  // 验证 keyBeats 的 deadlineAct 在有效范围内
+  for (const keyBeat of storyArc.keyBeats) {
+    const maxAct = Math.max(...storyArc.acts.map(a => a.index))
+    if (keyBeat.deadlineAct < 1 || keyBeat.deadlineAct > maxAct) {
       issues.push({
         id: generateId(),
-        type: 'outline_foreshadow',
-        severity: 'error',
-        description: `第${item.number}章大纲同时包含"埋下伏笔"和"回收伏笔"的描述，这会导致伏笔在同一章被展示`,
-        location: `第${item.number}章：${item.title}`,
+        type: 'outline_invalid_deadline',
+        severity: 'warning',
+        description: `关键情节点「${keyBeat.beat}」的截止幕 ${keyBeat.deadlineAct} 超出有效范围 1–${maxAct}`,
+        location: 'keyBeats',
       })
     }
   }
 
   if (issues.length > 0) {
-    logger.warn(`\n[MuseFlow] 大纲校验发现 ${issues.length} 个问题：`)
+    logger.warn(`\n[MuseFlow] 故事弧线校验发现 ${issues.length} 个问题：`)
     for (const issue of issues) {
       const icon = issue.severity === 'error' ? '❌' : '⚠️'
       logger.warn(`  ${icon} [${issue.type}] ${issue.description}`)

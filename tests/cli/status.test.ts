@@ -53,6 +53,14 @@ function createState(currentChapterIndex: number, totalChapters: number): Reduce
     world: null,
     characters: [],
     outline: [],
+    storyArc: {
+      totalChapters,
+      acts: [
+        { index: 1, startChapter: 1, endChapter: totalChapters, title: '测试幕', theme: '测试主题', function: '测试功能', mandatoryBeats: ['主角出发'] },
+      ],
+      keyBeats: [],
+    },
+    actProgress: { 1: { consumed: [], pending: ['主角出发'] } },
     chapters,
     currentChapterIndex,
     foreshadowStack: [],
@@ -94,5 +102,40 @@ describe('status command chapter display', () => {
 
     expect(logSpy).toHaveBeenCalledWith('章节进度: 3/3 (100%)')
     expect(logSpy).toHaveBeenCalledWith('✓ 故事已完成')
+  })
+
+  it('shows arc progress in status output', async () => {
+    getStateMock.mockResolvedValue(createState(1, 3))
+    const { status } = await import('../../src/cli/commands/status.ts')
+
+    await status({ storyId: 'story-1' })
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('故事弧线'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('测试幕'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('节拍进度'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('收尾风险'))
+  })
+
+  it('shows high risk when overdue key beats exist', async () => {
+    const state = createState(2, 4)
+    state.storyArc = {
+      totalChapters: 4,
+      acts: [
+        { index: 1, startChapter: 1, endChapter: 2, title: '第一幕', theme: '出发', function: '建立', mandatoryBeats: ['主角出发'] },
+        { index: 2, startChapter: 3, endChapter: 4, title: '第二幕', theme: '揭秘', function: '冲突', mandatoryBeats: ['核心秘密揭晓'] },
+      ],
+      keyBeats: [{ beat: '核心秘密揭晓', deadlineAct: 1 }],
+    }
+    state.actProgress = {
+      1: { consumed: ['主角出发'], pending: [] },
+      2: { consumed: [], pending: ['核心秘密揭晓'] },
+    }
+    getStateMock.mockResolvedValue(state)
+    const { status } = await import('../../src/cli/commands/status.ts')
+
+    await status({ storyId: 'story-1' })
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('逾期: 核心秘密揭晓'))
+    expect(logSpy).toHaveBeenCalledWith('收尾风险: 高')
   })
 })

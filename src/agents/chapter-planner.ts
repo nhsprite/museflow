@@ -5,6 +5,7 @@ import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES, buildCharacterWh
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN, DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX } from '../types/genre.js'
+import { isClosingPhase } from '../utils/story-arc.js'
 
 export interface ChapterPlan {
   sections: Array<{
@@ -101,6 +102,16 @@ ${state.verifiedConstraints.map((constraint, i) => `${i + 1}. ${constraint}`).jo
 - 如果某条约束指出某些内容为"非本章核心事件"，应减少其篇幅，聚焦于本章大纲要求的核心事件`
       : ''
 
+    const closingPhaseSection = isClosingPhase(state.totalChapters, chapterIndex, planningConfig.closingPhaseRatio)
+      ? `<closing_phase>
+【全书收尾阶段】本书仅剩 ${state.totalChapters - chapterIndex} 章结束。
+- 禁止规划任何专门用于铺垫后续章节的新支线、新角色或新未解悬念；已无未来章节可供延迟回收。
+- 必须优先在 outlineCheck 中覆盖所有仍未消费的 mandatory beats 和 key beats，并为每条 pending beat 分配对应 section。
+- 非核心过渡段落应尽量压缩，不得发展成独立大场景。
+- 本章规划必须向最终高潮/结局推进。
+</closing_phase>`
+      : ''
+
     const userContent = `<task>请为第 ${displayChapterNumber} 章生成详细的写作规划。</task>
 
 <context>
@@ -112,6 +123,8 @@ ${outline}
 ${issuesSection}
 
 ${verifiedConstraintsSection}
+
+${closingPhaseSection}
 
 <world>
 【必须严格遵循】世界观设定：

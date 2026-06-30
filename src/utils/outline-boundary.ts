@@ -1,22 +1,56 @@
-import type { ChapterOutline } from '../types/outline.js'
+import type { ChapterOutline, StoryArc, ActArc } from '../types/outline.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import { filterRelevantPendingTasks } from './pending-tasks.js'
 import type { ChapterPlanningConfig } from '../types/genre.js'
 import type { ModelProvider } from '../model/provider.js'
 
+function getActForChapter(storyArc: StoryArc | null | undefined, chapterIndex: number): ActArc | undefined {
+  if (!storyArc) return undefined
+  const chapterNumber = chapterIndex + 1
+  return storyArc.acts.find(a => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
+}
+
 export function buildNextChapterBoundaryHint(
   outline: ChapterOutline[],
-  chapterIndex: number
+  chapterIndex: number,
+  storyArc?: StoryArc | null,
 ): string {
-  const next = outline[chapterIndex + 1]
-  if (!next?.title) return ''
+  const nextChapterIndex = chapterIndex + 1
+  const nextOutlineItem = outline[nextChapterIndex]
+  const currentAct = getActForChapter(storyArc, chapterIndex)
+  const nextAct = getActForChapter(storyArc, nextChapterIndex)
 
-  return `<next_chapter_boundary>
+  // 如果下一章进入新幕，使用下一幕的叙事功能作为边界提示
+  if (nextAct && currentAct && nextAct.index !== currentAct.index) {
+    return `<next_act_boundary>
+<important>【后续幕边界提示】</important>
+下一章将进入第 ${nextAct.index} 幕「${nextAct.title}」，该幕的叙事功能为：${nextAct.function}。
+本章结尾必须为其保留合理过渡空间，严禁提前执行下一幕的叙事功能或消费下一幕的 mandatory beats。
+本章只能在本幕范围内收尾，并为下一幕制造合理的衔接或悬念。
+</next_act_boundary>`
+  }
+
+  // 同一幕内，使用下一章标题作为边界提示（如果已生成）
+  if (nextOutlineItem?.title) {
+    return `<next_chapter_boundary>
 <important>【后续章节边界提示】</important>
-下一章为第${next.number}章"${next.title}"。本章结尾必须为其保留合理过渡空间，不要把后续章节的核心事件提前解决或收尾。如果本章与第${next.number}章存在事件连续性，本章只负责推进到合适的中转状态，不要代替后续章节完成其核心事件。
+下一章为第${nextOutlineItem.number}章「${nextOutlineItem.title}」。本章结尾必须为其保留合理过渡空间，不要把后续章节的核心事件提前解决或收尾。
 
 <mandatory>【强制要求】严禁在本章写出下一章标题所暗示的具体情节、角色行动或秘密揭示；本章只能铺垫、留白或制造悬念。</mandatory>
 </next_chapter_boundary>`
+  }
+
+  // 下一章尚未生成，使用当前幕的剩余空间提示
+  if (currentAct) {
+    const chaptersRemaining = currentAct.endChapter - (chapterIndex + 1)
+    return `<current_act_boundary>
+<important>【当前幕边界提示】</important>
+本章属于第 ${currentAct.index} 幕「${currentAct.title}」，该幕叙事功能为：${currentAct.function}。
+当前幕还剩 ${chaptersRemaining} 章结束，请确保本章推进符合该幕主题，并为该幕的 mandatory beats 保留合理进度。
+</current_act_boundary>`
+  }
+
+  return ''
 }
 
 export function shouldForceTemporaryReplan(
@@ -46,7 +80,9 @@ export async function reconcileOutlineWithState(
   if (relevantTasks.length === 0) return ''
 
   const nextItem = state.outline[chapterIndex + 1]
-  const nextTitle = nextItem ? `第${nextItem.number}章"${nextItem.title}"` : '后续章节'
+  const nextTitle = nextItem?.title
+    ? `第${nextItem.number}章「${nextItem.title}」`
+    : '后续章节'
 
   return `<pending_tasks>
 <important>【前章遗留差事 - 本章规划必须处理或说明】</important>

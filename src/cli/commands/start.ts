@@ -87,7 +87,6 @@ export async function start(options: StartOptions): Promise<void> {
     provider: resolvedProvider,
     title: selectedOption.title,
     worldDirection: selectedOption.worldDirection,
-    outlineStrategy: 'layered',
   })
 
   console.log(`[MuseFlow] 故事已创建，ID: ${story.id}`)
@@ -122,8 +121,9 @@ export async function start(options: StartOptions): Promise<void> {
       console.log(`[MuseFlow] 已创建 ${result.characters.length} 个人物\n`)
     }
 
-    if (result.outline.length > 0) {
-      console.log(`[MuseFlow] 大纲已生成，共 ${result.outline.length} 章\n`)
+    if (result.storyArc) {
+      const actCount = result.storyArc.acts.length
+      console.log(`[MuseFlow] 故事弧线已生成，共 ${actCount} 幕，${result.storyArc.totalChapters} 章\n`)
     }
 
     await exportMetaFromCheckpoint(result.story.outputDir)

@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from '../../utils/logger.js'
 import { getChapterFilePath } from '../../utils/paths.js'
+import type { StoryArc } from '../../types/outline.js'
 
 async function ensureStoryDir(outputDir: string): Promise<void> {
   if (!existsSync(outputDir)) {
@@ -46,15 +47,47 @@ export async function deleteChapterContent(
 export async function writeOutlineContent(
   outputDir: string,
   storyTitle: string,
-  outline: { number: number; title: string; description: string }[],
+  outline: { number: number; title: string; description: string; introducedCharacters?: string[] }[],
+  storyArc?: StoryArc | null,
 ): Promise<void> {
   await ensureStoryDir(outputDir)
-  const lines = [`# ${storyTitle || '故事大纲'}`, '', '---', '']
-  for (const ch of outline) {
-    lines.push(`## 第${ch.number}章\u3000${ch.title}`, '')
-    lines.push(ch.description, '')
+  const lines: string[] = [`# ${storyTitle || '故事大纲'}`, '']
+
+  if (storyArc) {
+    lines.push('## 故事弧线', '')
+    lines.push(`目标总章节数：${storyArc.totalChapters}`, '')
+    lines.push('| 幕 | 章节范围 | 标题 | 主题 | 叙事功能 |', '')
+    lines.push('|---|---|---|---|---|', '')
+    for (const act of storyArc.acts) {
+      lines.push(`| ${act.index} | ${act.startChapter}-${act.endChapter} | ${act.title} | ${act.theme} | ${act.function} |`)
+    }
+    lines.push('', '### Mandatory Beats', '')
+    for (const act of storyArc.acts) {
+      lines.push(`**第 ${act.index} 幕「${act.title}」**：${act.mandatoryBeats.join('、') || '（无）'}`)
+    }
+    if (storyArc.keyBeats.length > 0) {
+      lines.push('', '### Key Beats（全局）', '')
+      for (const kb of storyArc.keyBeats) {
+        lines.push(`- ${kb.beat}（截止第 ${kb.deadlineAct} 幕）`)
+      }
+    }
     lines.push('', '---', '')
   }
+
+  lines.push('## 章节大纲', '')
+  for (const ch of outline) {
+    lines.push(`### 第${ch.number}章 ${ch.title || '（待生成）'}`, '')
+    if (ch.description) {
+      lines.push(ch.description, '')
+    } else {
+      lines.push('（本章执行大纲将在动笔前即时生成）', '')
+    }
+    if (ch.introducedCharacters && ch.introducedCharacters.length > 0) {
+      lines.push(`首次登场角色：${ch.introducedCharacters.join('、')}`, '')
+    }
+    lines.push('', '---', '')
+  }
+
   const content = lines.join('\n').trim() + '\n'
   const filePath = join(outputDir, 'outline.md')
   const tmpPath = `${filePath}.tmp`
@@ -172,7 +205,7 @@ export async function writeStoryBible(
   lines.push(`共 **${outline.length}** 章`)
   lines.push('')
   for (const ch of outline) {
-    lines.push(`### 第${ch.number}章\u3000${ch.title}`)
+    lines.push(`### 第${ch.number}章 ${ch.title}`)
     lines.push(ch.description)
     lines.push('')
   }

@@ -30,16 +30,23 @@ function makeCharacterOutput(): AgentOutput {
   }
 }
 
-function makeOutlineOutput(totalChapters: number): AgentOutput {
+function makeStoryArcOutput(totalChapters: number): AgentOutput {
   return {
     success: true,
     data: {
-      chapters: Array.from({ length: totalChapters }, (_, i) => ({
-        number: i + 1,
-        title: `第${i + 1}章`,
-        description: `这是第${i + 1}章的描述。`,
-        introducedCharacters: i === 0 ? ['主角'] : [],
-      })),
+      totalChapters,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: totalChapters,
+          title: '第一幕',
+          theme: '测试主题',
+          function: '测试功能',
+          mandatoryBeats: ['主角登场'],
+        },
+      ],
+      keyBeats: [],
     },
   }
 }
@@ -74,8 +81,8 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
       }))
     }),
   }),
-  getHighLevelOutlineAgent: () => ({
-    run: vi.fn(async (state: AgentState) => makeOutlineOutput(state.totalChapters ?? 3)),
+  getStoryArcAgent: () => ({
+    run: vi.fn(async (state: AgentState) => makeStoryArcOutput(state.totalChapters ?? 3)),
   }),
   getChapterAgent: vi.fn(),
   getChapterPlannerAgent: vi.fn(),
@@ -124,8 +131,11 @@ describe('story creation integration', () => {
     expect(result.characters.length).toBeGreaterThanOrEqual(1)
     expect(result.characters[0].name).toBe('主角')
     expect(result.outline).toHaveLength(totalChapters)
-    expect(result.outline[0].title).toBe('第1章')
-    expect(result.outline[0].description).toBe('这是第1章的描述。')
+    expect(result.outline[0].title).toBe('')
+    expect(result.outline[0].description).toBe('')
+    expect(result.storyArc).toBeDefined()
+    expect(result.storyArc?.acts).toHaveLength(1)
+    expect(result.storyArc?.totalChapters).toBe(totalChapters)
 
     const checkpointsDir = join(tmpDir, 'checkpoints')
     expect(existsSync(checkpointsDir)).toBe(true)

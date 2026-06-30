@@ -12,9 +12,8 @@ export function printChapterOutline(outlineItem: ChapterOutline | undefined, cha
   }
 
   console.log('═'.repeat(60))
-  console.log(`第 ${toDisplayChapterNumber(chapterIndex)} 章：${outlineItem.title}`)
+  console.log(`第 ${toDisplayChapterNumber(chapterIndex)} 章`)
   console.log('═'.repeat(60))
-  console.log(`\n${outlineItem.description}\n`)
   return true
 }
 

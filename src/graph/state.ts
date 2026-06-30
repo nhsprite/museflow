@@ -7,7 +7,7 @@ import type { ChapterPlan } from '../agents/chapter-planner.js'
 import type { StoryState } from '../types/story-state.js'
 import type { ChapterReport } from '../types/chapter-report.js'
 import type { WorldContent } from '../types/world.js'
-import type { ChapterOutline } from '../types/outline.js'
+import type { ChapterOutline, StoryArc } from '../types/outline.js'
 import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { StateSnapshot } from '../types/timeline.js'
 
@@ -18,7 +18,9 @@ export const GraphState = Annotation.Root({
   totalChapters: Annotation<number>,
   world: Annotation<WorldContent | null>,
   characters: Annotation<Character[]>,
+  storyArc: Annotation<StoryArc | null>,
   outline: Annotation<ChapterOutline[]>,
+  actProgress: Annotation<Record<number, { consumed: string[]; pending: string[] }>>,
   chapters: Annotation<(ChapterMeta | null)[]>,
   currentChapterIndex: Annotation<number>,
   foreshadowStack: Annotation<ForeshadowItem[]>,

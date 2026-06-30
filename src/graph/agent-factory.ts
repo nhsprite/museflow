@@ -1,7 +1,8 @@
 import {
   WorldbuilderAgent,
   CharacterAgent,
-  HighLevelOutlineAgent,
+  StoryArcAgent,
+  ChapterOutlineAgent,
   ChapterAgent,
   ChapterPlannerAgent,
   ForeshadowingAgent,
@@ -29,8 +30,12 @@ export function getCharacterAgent(): CharacterAgent {
   return getAgentInstance('character', CharacterAgent)
 }
 
-export function getHighLevelOutlineAgent(): HighLevelOutlineAgent {
-  return getAgentInstance('high-level-outline', HighLevelOutlineAgent)
+export function getStoryArcAgent(): StoryArcAgent {
+  return getAgentInstance('story-arc', StoryArcAgent)
+}
+
+export function getChapterOutlineAgent(): ChapterOutlineAgent {
+  return getAgentInstance('chapter-outline', ChapterOutlineAgent)
 }
 
 export function getChapterAgent(): ChapterAgent {

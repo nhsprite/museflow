@@ -28,7 +28,6 @@ export interface Story {
   outputDir: string
   createdAt: number
   updatedAt: number
-  outlineStrategy?: 'layered'
 }
 
 export interface StoryCreateInput {
@@ -38,6 +37,5 @@ export interface StoryCreateInput {
   genre: string
   totalChapters: number
   provider?: ModelConfig['provider']
-  outlineStrategy?: 'layered'
 }
 

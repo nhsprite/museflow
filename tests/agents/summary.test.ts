@@ -171,6 +171,38 @@ describe('SummaryAgent prompt', () => {
     })
   })
 
+  it('extracts verifiedBeats from SummaryAgent output', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        verifiedBeats: ['主角失去庇护', '反派首次施压'],
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 2)
+    expect(result?.verifiedBeats).toEqual(['主角失去庇护', '反派首次施压'])
+  })
+
   it('preserves canonical fact id when provided', async () => {
     const { processSummaryOutput } = await import('../../src/agents/summary.ts')
     const output = {

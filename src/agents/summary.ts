@@ -33,6 +33,13 @@ export class SummaryAgent extends BaseAgent {
   <number>${state.chapterIndex !== undefined ? `第${state.chapterIndex + 1}章` : '未知'}</number>
 </chapter_info>
 
+${state.claimedBeats && state.claimedBeats.length > 0 ? `<claimed_beats>
+本章大纲声称要推进的 mandatory beats：
+${state.claimedBeats.map(beat => `- ${beat}`).join('\n')}
+
+请在本章正文中逐条核验这些 beat 是否真的发生。只有正文中明确发生了对应的状态转移或事件，才能将其列入 verifiedBeats；不得因为大纲声称就默认发生。
+</claimed_beats>` : ''}
+
 <chapter_content>
   ${state.chapterContent ?? '（无内容）'}
 </chapter_content>
@@ -81,6 +88,7 @@ ${STATE_AUTHORITY_RULES}
       }
     ],
     "mood": "本章整体氛围/情绪",
+    "verifiedBeats": ["本章正文中明确确立的 mandatory beat"],
     "supersededFacts": [
       {
         "subject": "被覆盖的事实主体",
@@ -359,7 +367,7 @@ export function processSummaryOutput(
   chapterIndex?: number,
   characters?: Character[],
   existingStoryState?: StoryState,
-): { summary: string; storyState?: StoryState } | null {
+): { summary: string; storyState?: StoryState; verifiedBeats?: string[] } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
 
@@ -556,6 +564,17 @@ export function processSummaryOutput(
     })).filter(item => item.oldFact.length > 0)
   }
 
+  const extractVerifiedBeats = (): string[] => {
+    const raw = data['verifiedBeats']
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter((item): item is string => typeof item === 'string')
+      .map(beat => beat.trim())
+      .filter(beat => beat.length > 0)
+  }
+
+  const verifiedBeats = extractVerifiedBeats()
+
   if (storyState) {
     const extractedSupersededFacts = extractSupersededFacts() ?? []
     const existingSupersededFacts = storyState.supersededFacts ?? []
@@ -563,8 +582,8 @@ export function processSummaryOutput(
     if (mergedSupersededFacts.length > 0) {
       storyState.supersededFacts = mergedSupersededFacts
     }
-    return { summary, storyState }
+    return { summary, storyState, verifiedBeats }
   }
 
-  return { summary }
+  return { summary, verifiedBeats }
 }

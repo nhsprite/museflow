@@ -37,16 +37,23 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
       })),
     ),
   }),
-  getHighLevelOutlineAgent: () => ({
+  getStoryArcAgent: () => ({
     run: vi.fn(async (state: { totalChapters: number }) => ({
       success: true,
       data: {
-        chapters: Array.from({ length: state.totalChapters }, (_, i) => ({
-          number: i + 1,
-          title: `第${i + 1}章`,
-          description: `第${i + 1}章描述`,
-          introducedCharacters: i === 0 ? ['主角'] : [],
-        })),
+        totalChapters: state.totalChapters,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: state.totalChapters,
+            title: '第一幕',
+            theme: '测试主题',
+            function: '测试功能',
+            mandatoryBeats: ['主角登场'],
+          },
+        ],
+        keyBeats: [],
       },
     })),
   }),
@@ -126,6 +133,8 @@ describe('CLI end-to-end integration', () => {
       expect(meta.world).not.toBeNull()
       expect(meta.characters.length).toBeGreaterThanOrEqual(1)
       expect(meta.outline).toHaveLength(3)
+      expect(meta.storyArc).toBeDefined()
+      expect(meta.storyArc.acts).toHaveLength(1)
     } finally {
       exitSpy.mockRestore()
     }

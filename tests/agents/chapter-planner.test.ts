@@ -212,6 +212,48 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).toContain('必须选择 postponed 或一句话带过')
   })
 
+  it('includes closing phase section near the end of the story', () => {
+    const agent = new TestableChapterPlannerAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 20,
+      world: '',
+      characters: '',
+      outline: '第18章：追查真相\n主角继续调查上一章遗留的问题',
+      previousChapters: '第1章：主角发现线索。',
+      chapterIndex: 17,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('【全书收尾阶段】')
+    expect(userMessage).toContain('禁止规划任何专门用于铺垫后续章节')
+    expect(userMessage).toContain('必须向最终高潮/结局推进')
+  })
+
+  it('does not include closing phase section early in the story', () => {
+    const agent = new TestableChapterPlannerAgent()
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 20,
+      world: '',
+      characters: '',
+      outline: '第2章：追查真相\n主角继续调查上一章遗留的问题',
+      previousChapters: '第1章：主角发现线索。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).not.toContain('【全书收尾阶段】')
+  })
+
   it('includes verified constraints section when constraints are provided', () => {
     const agent = new TestableChapterPlannerAgent()
 

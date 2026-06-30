@@ -15,9 +15,16 @@ const { planChapterWithOverrideMock } = vi.hoisted(() => ({
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 const mockChatStructured = vi.fn()
+const chapterOutlineRunMock = vi.fn()
 
 vi.mock('../../src/graph/nodes/planning.js', () => ({
   plan_chapter_with_override: planChapterWithOverrideMock,
+}))
+
+vi.mock('../../src/graph/agent-factory.js', () => ({
+  getChapterOutlineAgent: () => ({
+    run: vi.fn(async (state: { chapterIndex?: number }) => chapterOutlineRunMock(state.chapterIndex ?? 0)),
+  }),
 }))
 
 vi.mock('../../src/model/registry.ts', () => ({
@@ -31,6 +38,27 @@ vi.mock('../../src/utils/context-judge.js', () => ({
   batchValidateTimeAnchors: vi.fn().mockResolvedValue([{ valid: true }]),
 }))
 
+vi.mock('../../src/storage/filesystem/writer.js', () => ({
+  writeOutlineContent: vi.fn().mockResolvedValue(undefined),
+  readChapterContent: vi.fn().mockResolvedValue(null),
+}))
+
+const storyArc = {
+  totalChapters: 3,
+  acts: [
+    {
+      index: 1,
+      startChapter: 1,
+      endChapter: 3,
+      title: '第一幕',
+      theme: '测试主题',
+      function: '测试功能',
+      mandatoryBeats: ['主角离开家乡'],
+    },
+  ],
+  keyBeats: [],
+}
+
 const baseState: ReducedGraphState = {
   story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
   idea: 'idea',
@@ -38,11 +66,13 @@ const baseState: ReducedGraphState = {
   totalChapters: 3,
   world: null,
   characters: [],
+  storyArc,
   outline: [
     { number: 1, title: '启程', description: '主角离开家乡。' },
     { number: 2, title: '遇敌', description: '主角遭遇敌人并暂时被困。' },
     { number: 3, title: '脱困', description: '主角脱困并反击。' },
   ],
+  actProgress: { 1: { consumed: [], pending: ['主角离开家乡'] } },
   chapters: [null, null, null],
   currentChapterIndex: 1,
   foreshadowStack: [],
@@ -65,32 +95,61 @@ describe('expandOutlineForChapter', () => {
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
     mockChatStructured.mockResolvedValue({ results: [true, true] })
     mockChat.mockResolvedValue(JSON.stringify({ results: [true, true] }))
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '即时标题',
+        description: '即时生成的描述。',
+        introducedCharacters: [],
+        claimedBeats: [],
+      },
+    })
   })
 
-  it('calls plan_chapter with current and next chapter arcs', async () => {
+  it('calls plan_chapter with current and next chapter arcs when descriptions exist', async () => {
     await expandOutlineForChapter(baseState, 1)
 
     expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+    expect(chapterOutlineRunMock).not.toHaveBeenCalled()
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![1] as string
     expect(formattedOutline).toContain('第2章：遇敌')
     expect(formattedOutline).toContain('主角遭遇敌人并暂时被困')
-    expect(formattedOutline).toContain('第3章"脱困"')
   })
 
-  it('includes generic next-chapter boundary hint', async () => {
-    const conflictState: ReducedGraphState = {
+  it('generates JIT outline when description is empty', async () => {
+    const jitState: ReducedGraphState = {
       ...baseState,
       outline: [
-        { number: 1, title: '真假美猴王', description: '六耳猕猴伏法，真宝玉获救。' },
-        { number: 2, title: '三界求援', description: '如来佛祖现身辨别六耳猕猴。' },
-        { number: 3, title: '后续', description: '团队继续西行。' },
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
       ],
     }
 
-    await expandOutlineForChapter(conflictState, 1)
+    const result = await expandOutlineForChapter(jitState, 1)
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[1]?.title).toBe('即时标题')
+    expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
+  })
+
+  it('includes next-act boundary hint when next chapter enters new act', async () => {
+    const multiActState: ReducedGraphState = {
+      ...baseState,
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          { index: 1, startChapter: 1, endChapter: 1, title: '第一幕', theme: '启程', function: '出发', mandatoryBeats: [] },
+          { index: 2, startChapter: 2, endChapter: 3, title: '第二幕', theme: '冲突', function: '对抗', mandatoryBeats: [] },
+        ],
+        keyBeats: [],
+      },
+    }
+
+    await expandOutlineForChapter(multiActState, 0)
 
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![1] as string
-    expect(formattedOutline).toContain('不要把后续章节的核心事件提前解决')
+    expect(formattedOutline).toContain('后续幕边界提示')
   })
 
   it('returns boundary hints', async () => {

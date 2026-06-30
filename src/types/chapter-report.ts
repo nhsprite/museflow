@@ -55,6 +55,20 @@ export interface ChapterReport {
   wordCount: number
   summary: string | null
 
+  actProgress?: {
+    actIndex: number
+    chaptersRemaining: number
+    beatsTotal: number
+    beatsConsumed: number
+    beatsPending: string[]
+  }
+
+  actBoundaryProposals?: Array<{
+    actIndex: number
+    proposedEndChapter: number
+    reason: string
+  }>
+
   convergence: ConvergenceResult
 }
 
@@ -97,6 +111,12 @@ export function createEmptyIssueSummary(): ChapterIssueSummary {
       outline_density: 0,
       outline_foreshadow: 0,
       state_corruption: 0,
+      outline_missing: 0,
+      outline_gap: 0,
+      outline_invalid: 0,
+      outline_coverage: 0,
+      outline_empty_beats: 0,
+      outline_invalid_deadline: 0,
     },
   }
 }

@@ -34,10 +34,6 @@ export function createStory(input: StoryCreateInput): Story {
     storyMeta.worldDirection = input.worldDirection
   }
 
-  if (input.outlineStrategy) {
-    storyMeta.outlineStrategy = input.outlineStrategy
-  }
-
   const meta: StoryMeta = {
     story: storyMeta,
     world: null,

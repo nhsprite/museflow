@@ -5,6 +5,7 @@ import { finalize_chapter } from '../../src/graph/nodes/finalization.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { Issue } from '../../src/types/agent.js'
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
+import { processSummaryOutput } from '../../src/agents/index.js'
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getSummaryAgent: vi.fn().mockReturnValue({
@@ -69,6 +70,14 @@ function buildState(outputDir: string, overrides: Partial<ReducedGraphState> = {
       { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
       { number: 3, title: '脱困', description: '主角脱困。' },
     ],
+    storyArc: {
+      totalChapters: 3,
+      acts: [
+        { index: 1, startChapter: 1, endChapter: 3, title: '启程', theme: '出发', function: '建立动机', mandatoryBeats: ['主角离开家乡'] },
+      ],
+      keyBeats: [],
+    },
+    actProgress: { 1: { consumed: [], pending: ['主角离开家乡'] } },
     characters: [{ id: 'char-1', storyId: 'test-story', name: '主角', description: '主角', dialogueStyle: null, createdAt: 0 }],
     world: null,
     storyState: createEmptyStoryState(),
@@ -182,5 +191,49 @@ describe('chapter report generation', () => {
 
     expect(result.chapterReport!.foreshadowsPlanted).toBe(2)
     expect(result.chapterReport!.foreshadowsFulfilled).toBe(1)
+  })
+
+  it('updates actProgress with verified beats only', async () => {
+    const state = buildState(tmpDir, {
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+    })
+    vi.mocked(processSummaryOutput).mockReturnValueOnce({
+      summary: '主角离开家乡。',
+      storyState: createEmptyStoryState(),
+      verifiedBeats: ['主角离开家乡'],
+    })
+
+    const result = await finalize_chapter(state)
+
+    expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
+    expect(result.actProgress?.[1]?.pending).not.toContain('主角离开家乡')
+    expect(result.outline?.[0]?.verifiedBeats).toEqual(['主角离开家乡'])
+  })
+
+  it('adds warning issue when claimed beat is not verified', async () => {
+    const state = buildState(tmpDir, {
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+    })
+    vi.mocked(processSummaryOutput).mockReturnValueOnce({
+      summary: '主角还在家里收拾行李。',
+      storyState: createEmptyStoryState(),
+      verifiedBeats: [],
+    })
+
+    const result = await finalize_chapter(state)
+
+    expect(result.actProgress?.[1]?.consumed).not.toContain('主角离开家乡')
+    const warning = result.pendingIssues?.find(i => i.type === 'outline_coverage')
+    expect(warning).toBeDefined()
+    expect(warning?.description).toContain('主角离开家乡')
+    expect(result.chapterReport?.issues.some(i => i.type === 'outline_coverage')).toBe(true)
   })
 })

@@ -5,7 +5,7 @@ import type { Story } from '../../types/story.js'
 import type { Character } from '../../types/character.js'
 import type { ChapterMeta } from '../../types/chapter.js'
 import type { WorldContent } from '../../types/world.js'
-import type { ChapterOutline } from '../../types/outline.js'
+import type { ChapterOutline, StoryArc } from '../../types/outline.js'
 import { getOutputsDir } from '../../utils/paths.js'
 import { logger } from '../../utils/logger.js'
 import { writeFileAtomic, ensureDir } from '../../utils/fs.js'
@@ -22,6 +22,8 @@ export interface StoryMeta {
   world: WorldContent | null
   characters: Character[]
   outline: ChapterOutline[]
+  storyArc?: StoryArc
+  actProgress?: Record<number, { consumed: string[]; pending: string[] }>
   chapters: ChapterMeta[]
   timeline?: StateSnapshot[]
   foreshadowStack?: ForeshadowItem[]

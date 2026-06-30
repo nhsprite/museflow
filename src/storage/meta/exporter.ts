@@ -5,7 +5,7 @@ import type { Story } from '../../types/story.js'
 import type { Character } from '../../types/character.js'
 import type { ChapterMeta } from '../../types/chapter.js'
 import type { WorldContent } from '../../types/world.js'
-import type { ChapterOutline } from '../../types/outline.js'
+import type { ChapterOutline, StoryArc } from '../../types/outline.js'
 import type { ForeshadowItem } from '../../types/foreshadow.js'
 import type { StoryState } from '../../types/story-state.js'
 import type { StateSnapshot } from '../../types/timeline.js'
@@ -18,6 +18,8 @@ interface CheckpointState {
   world: WorldContent | null
   characters: Character[]
   outline: ChapterOutline[]
+  storyArc: StoryArc | null
+  actProgress: Record<number, { consumed: string[]; pending: string[] }>
   chapters: (ChapterMeta | null)[]
   foreshadowStack: ForeshadowItem[]
   timeline?: StateSnapshot[] | undefined
@@ -93,6 +95,7 @@ export async function exportMetaFromCheckpoint(outputDir: string): Promise<void>
     world: state.world,
     characters: state.characters,
     outline: state.outline,
+    actProgress: state.actProgress,
     chapters: state.chapters.map((ch, idx) => {
       if (ch) return ch
       const outlineItem = state.outline[idx]
@@ -113,6 +116,10 @@ export async function exportMetaFromCheckpoint(outputDir: string): Promise<void>
     foreshadowStack: state.foreshadowStack,
     foreshadowAlerts: [],
     storyState: state.storyState,
+  }
+
+  if (state.storyArc) {
+    meta.storyArc = state.storyArc
   }
 
   ensureDir(outputDir)
