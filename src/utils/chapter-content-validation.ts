@@ -1,4 +1,4 @@
-import { countChineseWords } from './text.js'
+import { countChineseWords, extractChineseKeywords } from './text.js'
 import type { ModelProvider } from '../model/provider.js'
 import { batchValidateFixedContent } from './context-judge.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
@@ -68,7 +68,18 @@ function parseChineseNumber(str: string): number | null {
   return result + currentUnit
 }
 
-function extractChapterNumber(heading: string): number | null {
+export function findChapterHeading(text: string): string | null {
+  const lines = text.split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (/^#{1,2}\s+第\s*[一二三四五六七八九十百千万\d]+\s*章/.test(trimmed)) {
+      return trimmed
+    }
+  }
+  return null
+}
+
+export function extractChapterNumber(heading: string): number | null {
   const match = heading.match(/第\s*([一二三四五六七八九十百千万\d]+)\s*章/)
   if (match && match[1]) {
     const arabic = parseInt(match[1], 10)
@@ -78,15 +89,65 @@ function extractChapterNumber(heading: string): number | null {
   return null
 }
 
-function findChapterHeading(text: string): string | null {
-  const lines = text.split('\n')
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (/^#{1,2}\s+第\s*[一二三四五六七八九十百千万\d]+\s*章/.test(trimmed)) {
-      return trimmed
-    }
+function countIntersection(a: Set<string>, b: Set<string>): number {
+  let count = 0
+  for (const value of a) {
+    if (b.has(value)) count++
   }
-  return null
+  return count
+}
+
+export interface ChapterHeadingCorrection {
+  corrected: string
+  originalFoundNumber: number
+  reason: string
+}
+
+/**
+ * 当模型把本章内容误标为下一章时，尝试修正章节标题。
+ *
+ * 仅当满足以下条件时才修正：
+ * 1. 检测到的章节号正好是期望章节号 + 1（模型被后续章节边界提示干扰）；
+ * 2. 正文与当前章大纲的关键词重叠度明显高于与下一章大纲的重叠度，
+ *    说明正文确实属于当前章，只是标题编号写错。
+ */
+export function tryCorrectOffByOneChapterHeading(
+  rawContent: string,
+  chapterIndex: number,
+  currentOutlineDescription: string,
+  nextOutlineDescription: string | undefined,
+  minOverlapRatio = 1.5
+): ChapterHeadingCorrection | null {
+  const expectedDisplayNumber = chapterIndex + 1
+  const heading = findChapterHeading(rawContent)
+  if (!heading) return null
+
+  const foundChapterNumber = extractChapterNumber(heading)
+  if (foundChapterNumber !== expectedDisplayNumber + 1) return null
+
+  if (!nextOutlineDescription || nextOutlineDescription.trim().length === 0) return null
+
+  const currentKeywords = new Set(extractChineseKeywords(rawContent))
+  const currentOutlineKeywords = new Set(extractChineseKeywords(currentOutlineDescription))
+  const nextOutlineKeywords = new Set(extractChineseKeywords(nextOutlineDescription))
+
+  const currentOverlap = countIntersection(currentKeywords, currentOutlineKeywords)
+  const nextOverlap = countIntersection(currentKeywords, nextOutlineKeywords)
+
+  if (currentOverlap === 0 || nextOverlap === 0) return null
+  if (currentOverlap / nextOverlap < minOverlapRatio) return null
+
+  const correctedHeading = heading.replace(
+    /第\s*([一二三四五六七八九十百千万\d]+)\s*章/,
+    `第${expectedDisplayNumber}章`
+  )
+  const correctedContent = rawContent.replace(heading, correctedHeading)
+
+  return {
+    corrected: correctedContent,
+    originalFoundNumber: foundChapterNumber,
+    reason: `正文与当前章大纲共有 ${currentOverlap} 个关键词，与下一章仅有 ${nextOverlap} 个，判定为章节号笔误`,
+  }
 }
 
 export async function validateFixedChapterContent(

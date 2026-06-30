@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as contextJudge from '../../src/utils/context-judge.js'
-import { validateFixedChapterContent } from '../../src/utils/chapter-content-validation.js'
+import { validateFixedChapterContent, tryCorrectOffByOneChapterHeading } from '../../src/utils/chapter-content-validation.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 
 vi.mock('../../src/utils/context-judge.js', () => ({
@@ -70,5 +70,40 @@ describe('validateFixedChapterContent', () => {
     const result = await validateFixedChapterContent(checklist, { chapterIndex: 3, minWordCount: 10 }, createProvider())
     expect(result.valid).toBe(false)
     expect(result.error).toContain('检查表')
+  })
+})
+
+describe('tryCorrectOffByOneChapterHeading', () => {
+  it('corrects heading when content matches current outline better than next', () => {
+    const content = '# 第五章 南城周旋\n\n主角藏身于南城会馆，盘算两日期限。'
+    const currentDesc = '主角以南城会馆为藏身点，两日内决定去留。'
+    const nextDesc = '主角冒险接回幼子，告知家仇真相。'
+    const result = tryCorrectOffByOneChapterHeading(content, 3, currentDesc, nextDesc)
+    expect(result).not.toBeNull()
+    expect(result!.originalFoundNumber).toBe(5)
+    expect(result!.corrected).toContain('# 第4章 南城周旋')
+  })
+
+  it('does not correct when content matches next outline better', () => {
+    const content = '# 第五章 母子重逢\n\n主角冒险接回幼子，在破庙中讲述家仇。'
+    const currentDesc = '主角以南城会馆为藏身点，两日内决定去留。'
+    const nextDesc = '主角冒险接回幼子，告知家仇真相。'
+    const result = tryCorrectOffByOneChapterHeading(content, 3, currentDesc, nextDesc)
+    expect(result).toBeNull()
+  })
+
+  it('does not correct when heading is not off by one', () => {
+    const content = '# 第六章 王府递帖\n\n主角藏身于南城会馆，盘算两日期限。'
+    const currentDesc = '主角以南城会馆为藏身点，两日内决定去留。'
+    const nextDesc = '主角冒险接回幼子，告知家仇真相。'
+    const result = tryCorrectOffByOneChapterHeading(content, 3, currentDesc, nextDesc)
+    expect(result).toBeNull()
+  })
+
+  it('does not correct when there is no next chapter outline', () => {
+    const content = '# 第五章 南城周旋\n\n主角藏身于南城会馆。'
+    const currentDesc = '主角以南城会馆为藏身点。'
+    const result = tryCorrectOffByOneChapterHeading(content, 3, currentDesc, undefined)
+    expect(result).toBeNull()
   })
 })

@@ -7,7 +7,7 @@ import { createChapterMeta } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { formatChapterOutlineForAgent } from './planning.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
-import { validateFixedChapterContent } from '../../utils/chapter-content-validation.js'
+import { validateFixedChapterContent, tryCorrectOffByOneChapterHeading } from '../../utils/chapter-content-validation.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
 
@@ -73,11 +73,32 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
   const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
   const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
 
-  const validation = await validateFixedChapterContent(content, {
+  let validation = await validateFixedChapterContent(content, {
     chapterIndex,
     minWordCount: min,
     maxWordCount: max,
   })
+
+  if (!validation.valid && validation.error?.includes('章节号不匹配')) {
+    const nextOutlineItem = state.outline[chapterIndex + 1]
+    const correction = tryCorrectOffByOneChapterHeading(
+      content,
+      chapterIndex,
+      outlineItem?.description ?? '',
+      nextOutlineItem?.description
+    )
+    if (correction) {
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章检测到章节号笔误（实际为第 ${correction.originalFoundNumber} 章），已自动修正标题：${correction.reason}`
+      )
+      content = correction.corrected
+      validation = await validateFixedChapterContent(content, {
+        chapterIndex,
+        minWordCount: min,
+        maxWordCount: max,
+      })
+    }
+  }
 
   if (!validation.valid) {
     throw new Error(`第 ${chapterIndex + 1} 章起草后校验失败：${validation.error}`)

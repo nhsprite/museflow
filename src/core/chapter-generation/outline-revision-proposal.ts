@@ -9,6 +9,7 @@ import { extractJsonBlock, repairMalformedJson } from '../../utils/json.js'
 export interface OutlineRevisionProposal {
   revisedDescription: string
   explanation: string
+  revisedTitle?: string
 }
 
 const SYSTEM_PROMPT = `You are an outline reconciliation assistant for a long-form fiction writing system.
@@ -22,7 +23,8 @@ Guidelines:
 2. Prefer modifying how events happen rather than deleting the chapter's purpose.
 3. If the outline implies an action that contradicts a character's established plan or constraint, revise the action to align with the canonical fact, or add a clear transitional motivation.
 4. Keep the revised description concise (one paragraph, similar length to the original).
-5. Return ONLY a JSON object with two fields: "revisedDescription" (string) and "explanation" (string).
+5. If the original chapter title no longer matches the revised description (for example, the title names an event or character that no longer appears in the revised description), provide a new "revisedTitle". Otherwise leave "revisedTitle" empty or omit it.
+6. Return ONLY a JSON object with three fields: "revisedDescription" (string), "explanation" (string), and optionally "revisedTitle" (string).
 
 The explanation should briefly state what changed and why it resolves the conflict, without story-specific jargon.`
 
@@ -34,6 +36,7 @@ function buildPrompt(
 ): string {
   const chapterOutline = outline[chapterIndex]
   const currentDescription = chapterOutline?.description ?? ''
+  const currentTitle = chapterOutline?.title ?? ''
   const chapterNumber = chapterIndex + 1
 
   const conflictLines = conflicts
@@ -46,7 +49,8 @@ function buildPrompt(
   const stateSnapshot = formatStateSnapshot(storyState)
 
   return `Chapter number: ${chapterNumber}
-Current outline description:\n${currentDescription}\n\nBlocking conflicts detected:\n${conflictLines}\n\nRelevant story state:\n${stateSnapshot}\n\nPlease propose a revised outline description that resolves the conflicts. Return JSON only.`
+Current outline title: ${currentTitle}
+Current outline description:\n${currentDescription}\n\nBlocking conflicts detected:\n${conflictLines}\n\nRelevant story state:\n${stateSnapshot}\n\nPlease propose a revised outline description (and a new title only if the current title no longer fits) that resolves the conflicts. Return JSON only.`
 }
 
 function formatStateSnapshot(storyState: StoryState): string {
@@ -78,40 +82,42 @@ function formatStateSnapshot(storyState: StoryState): string {
   return parts.length > 0 ? parts.join('\n') : '(none)'
 }
 
+function normalizeProposal(parsed: unknown): OutlineRevisionProposal | null {
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    'revisedDescription' in parsed &&
+    'explanation' in parsed &&
+    typeof parsed.revisedDescription === 'string' &&
+    typeof parsed.explanation === 'string'
+  ) {
+    const proposal: OutlineRevisionProposal = {
+      revisedDescription: parsed.revisedDescription.trim(),
+      explanation: parsed.explanation.trim(),
+    }
+    if ('revisedTitle' in parsed && typeof parsed.revisedTitle === 'string') {
+      const trimmed = parsed.revisedTitle.trim()
+      if (trimmed.length > 0) {
+        proposal.revisedTitle = trimmed
+      }
+    }
+    return proposal
+  }
+  return null
+}
+
 function parseProposal(response: string): OutlineRevisionProposal | null {
   const jsonText = extractJsonBlock(response)
   try {
     const parsed = JSON.parse(jsonText) as unknown
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'revisedDescription' in parsed &&
-      'explanation' in parsed &&
-      typeof parsed.revisedDescription === 'string' &&
-      typeof parsed.explanation === 'string'
-    ) {
-      return {
-        revisedDescription: parsed.revisedDescription.trim(),
-        explanation: parsed.explanation.trim(),
-      }
-    }
+    const proposal = normalizeProposal(parsed)
+    if (proposal) return proposal
   } catch {
     try {
       const repaired = repairMalformedJson(jsonText)
       const parsed = JSON.parse(repaired) as unknown
-      if (
-        parsed &&
-        typeof parsed === 'object' &&
-        'revisedDescription' in parsed &&
-        'explanation' in parsed &&
-        typeof parsed.revisedDescription === 'string' &&
-        typeof parsed.explanation === 'string'
-      ) {
-        return {
-          revisedDescription: parsed.revisedDescription.trim(),
-          explanation: parsed.explanation.trim(),
-        }
-      }
+      const proposal = normalizeProposal(parsed)
+      if (proposal) return proposal
     } catch {
       // fall through
     }

@@ -34,6 +34,9 @@ export async function resolveBlockingConflicts(
   // 如果系统已生成修订建议，优先提供“采纳建议”这一中性选项。
   if (error.proposal) {
     console.log('\n[MuseFlow] 系统检测到本章大纲与权威事实存在冲突，并生成了一条修订建议：')
+    if (error.proposal.revisedTitle) {
+      console.log(`\n建议标题：${error.proposal.revisedTitle}`)
+    }
     console.log(`\n建议大纲：\n${error.proposal.revisedDescription}\n`)
     console.log(`说明：${error.proposal.explanation}\n`)
 
@@ -52,7 +55,12 @@ export async function resolveBlockingConflicts(
     }
 
     if (proposalDecision === 'adopt') {
-      await applyOutlineRevision(storyId, error.chapterIndex, error.proposal.revisedDescription)
+      await applyOutlineRevision(
+        storyId,
+        error.chapterIndex,
+        error.proposal.revisedDescription,
+        error.proposal.revisedTitle
+      )
       console.log('[MuseFlow] 已采纳系统修订大纲，将重新尝试撰写本章。')
       return
     }

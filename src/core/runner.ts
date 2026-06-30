@@ -293,7 +293,8 @@ export async function applyStateOverrides(
 export async function applyOutlineRevision(
   storyId: string,
   chapterIndex: number,
-  revisedDescription: string
+  revisedDescription: string,
+  revisedTitle?: string
 ): Promise<void> {
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
@@ -314,6 +315,7 @@ export async function applyOutlineRevision(
   outline[chapterIndex] = {
     ...existing,
     description: revisedDescription,
+    ...(revisedTitle ? { title: revisedTitle } : {}),
   }
 
   const checkpointer = getCheckpointer()
@@ -329,7 +331,11 @@ export async function applyOutlineRevision(
     }))
   )
 
-  logger.info(`[MuseFlow] 已更新第 ${chapterIndex + 1} 章大纲并同步到 outline.md`)
+  if (revisedTitle) {
+    logger.info(`[MuseFlow] 已更新第 ${chapterIndex + 1} 章大纲标题为「${revisedTitle}」并同步到 outline.md`)
+  } else {
+    logger.info(`[MuseFlow] 已更新第 ${chapterIndex + 1} 章大纲并同步到 outline.md`)
+  }
 }
 
 export async function getState(storyId: string): Promise<ReducedGraphState | null> {

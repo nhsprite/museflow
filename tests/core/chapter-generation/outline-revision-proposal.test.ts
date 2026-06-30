@@ -87,6 +87,27 @@ describe('generateOutlineRevisionProposal', () => {
     expect(provider.chat).toHaveBeenCalledTimes(1)
   })
 
+  it('parses a revised title when the model includes one', async () => {
+    const outline: ChapterOutline[] = [{ number: 1, title: 'Test', description: '主角秘密抵达京城。' }]
+    const provider = createProvider(
+      vi.fn().mockResolvedValue(
+        JSON.stringify({
+          revisedDescription: '主角在家中收到京城来信，决定暂缓出行。',
+          explanation: '将“抵达京城”改为“收到来信”，避免与“主角仍在家中”的权威事实冲突。',
+          revisedTitle: '京城来信',
+        })
+      )
+    )
+    vi.mocked(registry.createProvider).mockReturnValue(provider)
+
+    const result = await generateOutlineRevisionProposal(outline, 0, [makeConflict()], emptyState())
+    expect(result).not.toBeNull()
+    expect(result!.revisedDescription).toBe('主角在家中收到京城来信，决定暂缓出行。')
+    expect(result!.explanation).toBe('将“抵达京城”改为“收到来信”，避免与“主角仍在家中”的权威事实冲突。')
+    expect(result!.revisedTitle).toBe('京城来信')
+    expect(provider.chat).toHaveBeenCalledTimes(1)
+  })
+
   it('returns null and swallows errors when the model response is invalid', async () => {
     const outline: ChapterOutline[] = [{ number: 1, title: 'Test', description: '主角秘密抵达京城。' }]
     const provider = createProvider(vi.fn().mockResolvedValue('not valid json'))
