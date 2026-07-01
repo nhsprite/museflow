@@ -1,22 +1,15 @@
 import type { ModelProvider, Message } from '../model/provider.js'
-import { createProvider } from '../model/registry.js'
 import { getGenreSkill } from '../genres/registry.js'
 import type { GenreSkill } from '../types/genre.js'
-import type { WorldDirection } from '../types/story.js'
-import type { Issue } from '../types/agent.js'
-import type { ForeshadowItem } from '../types/foreshadow.js'
-import type { ChapterPlan } from './chapter-planner.js'
-import type { Character } from '../types/character.js'
-import type { CanonicalFact } from '../types/story-state.js'
-import type { StoryArc } from '../types/outline.js'
+import type { AgentInput, AgentOutput } from './types.js'
 import { logger } from '../utils/logger.js'
 
-export abstract class BaseAgent {
+export abstract class BaseAgent<TInput extends AgentInput> {
   protected provider: ModelProvider
   protected temperature: number
 
-  constructor(provider?: ModelProvider, temperature: number = 0.7) {
-    this.provider = provider ?? createProvider()
+  constructor(provider: ModelProvider, temperature: number = 0.7) {
+    this.provider = provider
     this.temperature = temperature
   }
 
@@ -40,17 +33,9 @@ export abstract class BaseAgent {
     return getGenreSkill(genreName)
   }
 
-  protected fillTemplate(template: string, vars: Record<string, string | number>): string {
-    let result = template
-    for (const [key, value] of Object.entries(vars)) {
-      result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value))
-    }
-    return result
-  }
+  protected abstract buildPrompt(state: TInput): Message[]
 
-  protected abstract buildPrompt(state: AgentState): Message[]
-
-  async run(state: AgentState): Promise<AgentOutput> {
+  async run(state: TInput): Promise<AgentOutput> {
     const agentName = this.constructor.name.replace('Agent', '').toLowerCase()
     logger.debug(`[Agent] ${agentName} started`)
     const messages = this.buildPrompt(state)
@@ -67,65 +52,9 @@ export abstract class BaseAgent {
   protected abstract parse(content: string): AgentOutput
 }
 
-export interface ParagraphFix {
-  index: number
-  content: string
-  issues: Issue[]
-}
+export type { AgentOutput, ParagraphFix, SentenceFix, ChapterPlan } from './types.js'
 
-export interface SentenceFix {
-  paragraphIndex: number
-  sentenceIndex: number
-  original: string
-  issue: Issue
-}
-
-export interface AgentState {
-  idea: string
-  genre: string
-  totalChapters: number
-  title?: string
-  worldDirection?: WorldDirection
-  world?: string
-  characters?: string
-  outline?: string
-  previousChapters?: string
-  chapterContent?: string
-  chapterIndex?: number
-  foreshadowStack?: ForeshadowItem[]
-  chapterSummaries?: string[]
-  chapterTitle?: string
-  chapterSummary?: string
-  timelineSnapshot?: string | null
-  keyEventsTimeline?: string | null
-  issues?: Issue[]
-  paragraphFix?: {
-    paragraphs: ParagraphFix[]
-    context: string
-  }
-  sentenceFix?: {
-    sentences: SentenceFix[]
-    context: string
-  }
-  chapterPlan?: ChapterPlan | undefined
-  storyState?: string | undefined
-  chapterTimeAnchor?: string | undefined
-  supersededFacts?: string | undefined
-  nextChapterBoundary?: string | undefined
-  verifiedConstraints?: string[]
-  charactersList?: Character[]
-  outlineCharacters?: Character[]
-  establishedCharacters?: Character[]
-  stateConflicts?: string
-  canonicalFacts?: CanonicalFact[] | undefined
-  storyArc?: StoryArc
-  actProgress?: Record<number, { consumed: string[]; pending: string[] }>
-  claimedBeats?: string[]
-}
-
-export interface AgentOutput {
-  success: boolean
-  content?: string
-  data?: unknown
-  error?: string
-}
+/**
+ * @deprecated Use the per-agent input types exported from `./types.js` instead.
+ */
+export type AgentState = import('./types.js').AgentState
