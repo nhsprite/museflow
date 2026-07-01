@@ -1280,16 +1280,16 @@ export async function authorizeOutlineFacts(
     }
 
     if (facts.length > 0) {
-      logger.info(`[MuseFlow] 大纲预授权 ${facts.length} 个新事实：`)
+      logger.info(`大纲预授权 ${facts.length} 个新事实`)
       for (const f of facts) {
-        logger.info(`  - [${f.subject}] ${f.attribute}: ${f.value}`)
+        logger.debug(`  - [${f.subject}] ${f.attribute}: ${f.value}`)
       }
     }
 
     if (skipped.length > 0) {
-      logger.info(`[MuseFlow] 大纲预授权跳过 ${skipped.length} 个与权威事实冲突/重复的条目：`)
+      logger.info(`大纲预授权跳过 ${skipped.length} 个与权威事实冲突/重复的条目`)
       for (const s of skipped) {
-        logger.info(`  - ${s}`)
+        logger.debug(`  - ${s}`)
       }
     }
 

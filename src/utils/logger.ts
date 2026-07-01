@@ -47,7 +47,9 @@ function log(level: LogLevel, prefix: string, message: string, ...args: unknown[
   const ts = formatTimestamp()
   const col = colorize(level)
   const prefixStr = prefix ? `[${prefix}] ` : ''
-  const msg = args.length > 0 ? `${message} ${args.map(formatArg).join(' ')}` : message
+  // 避免消息本身已带 [MuseFlow] 前缀导致重复
+  const cleanMessage = message.replace(/^\[MuseFlow\]\s*/, '')
+  const msg = args.length > 0 ? `${cleanMessage} ${args.map(formatArg).join(' ')}` : cleanMessage
   console.error(`${ts} ${col}[${level.toUpperCase()}]${RESET} ${prefixStr}${msg}`)
 }
 

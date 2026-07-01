@@ -333,10 +333,10 @@ export async function expandOutlineForChapter(
   }
 
   if (boundaryHints.length > 0) {
-    logger.info('[MuseFlow] 边界约束：')
+    logger.info('边界约束：')
     for (const hint of boundaryHints) {
-      const summary = hint.replace(/\s+/g, ' ').slice(0, 80)
-      logger.info(`  ${summary}${hint.length > 80 ? '...' : ''}`)
+      const clean = hint.replace(/<\/?[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+      logger.info(`  ${clean}`)
     }
   }
 

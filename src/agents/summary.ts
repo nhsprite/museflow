@@ -519,12 +519,12 @@ export function processSummaryOutput(
     const newFacts = parsedSourceFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
 
     if (newFacts.length > 0) {
-      logger.info(`[MuseFlow] SummaryAgent 显式 sourceFacts 提升 ${newFacts.length} 条权威事实`)
       storyState.canonicalFacts = [...existingFacts, ...newFacts]
     }
   }
 
   // Auto-promote source-like and character critical facts to canonicalFacts as a safety net.
+  let autoPromotedCount = 0
   if (storyState) {
     const sourceFacts = extractSourceFacts(data, chapterIndex ?? 0)
     const characterFacts = extractCharacterFactsAsCanonical(data, chapterIndex ?? 0)
@@ -534,10 +534,19 @@ export function processSummaryOutput(
       const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}|${f.value}`))
       const newFacts = autoFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
       if (newFacts.length > 0) {
-        logger.info(`[MuseFlow] SummaryAgent 自动提升 ${newFacts.length} 条角色/来源类权威事实`)
+        autoPromotedCount = newFacts.length
         storyState.canonicalFacts = [...existingFacts, ...newFacts]
       }
     }
+  }
+
+  const totalPromoted = Math.max(
+    0,
+    (storyState?.canonicalFacts?.length ?? 0) - (existingStoryState?.canonicalFacts?.length ?? 0)
+  )
+  if (totalPromoted > 0) {
+    const explicitCount = totalPromoted - autoPromotedCount
+    logger.info(`SummaryAgent 新增 ${totalPromoted} 条权威事实（显式 ${explicitCount}，自动提升 ${autoPromotedCount}）`)
   }
 
   if (storyState && characters && characters.length > 0) {
