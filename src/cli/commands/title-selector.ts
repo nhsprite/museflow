@@ -14,6 +14,8 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
   properties: {
     options: {
       type: 'array',
+      minItems: 3,
+      maxItems: 5,
       items: {
         type: 'object',
         properties: {
@@ -24,6 +26,8 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
               coreConflict: { type: 'string', description: '核心冲突描述' },
               worldFeatures: {
                 type: 'array',
+                minItems: 2,
+                maxItems: 4,
                 items: { type: 'string' },
                 description: '2-4个独特的世界观元素',
               },
@@ -86,17 +90,27 @@ export async function generateTitleOptions(
     { role: 'user' as const, content: userContent },
   ]
 
-  const parsed = await provider.chatStructured!<{ options: TitleOption[] }>(
-    messages,
-    TITLE_OPTION_SCHEMA,
-    0.8
-  )
+  const MAX_RETRIES = 2
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const parsed = await provider.chatStructured!<{ options: TitleOption[] }>(
+      messages,
+      TITLE_OPTION_SCHEMA,
+      0.8
+    )
 
-  if (!Array.isArray(parsed.options) || parsed.options.length < 3) {
-    throw new Error('AI 返回的标题选项数量不足')
+    if (Array.isArray(parsed.options) && parsed.options.length >= 3) {
+      return parsed.options
+    }
+
+    if (attempt < MAX_RETRIES) {
+      messages.push({
+        role: 'user' as const,
+        content: `上一次的方案数量不足（仅 ${Array.isArray(parsed.options) ? parsed.options.length : 0} 个）。请严格按照要求返回 3-5 个不同的候选书名和世界方向，不要省略。`,
+      })
+    }
   }
 
-  return parsed.options
+  throw new Error('AI 返回的标题选项数量不足：多次尝试后仍少于 3 个。请检查模型是否支持结构化输出，或稍后重试。')
 }
 
 export async function selectTitleOption(options: TitleOption[], genre: string = 'default'): Promise<TitleOption> {

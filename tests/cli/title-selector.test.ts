@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const mockChat = vi.fn()
+const mockChatStructured = vi.fn()
+
 // Mock inquirer before importing title-selector
 vi.mock('inquirer', () => ({
   default: {
@@ -8,11 +11,21 @@ vi.mock('inquirer', () => ({
   },
 }))
 
-// Mock the model registry
+// Mock the model registry with a singleton provider so tests can inspect/replace chatStructured
 vi.mock('../../src/model/registry.js', () => ({
   createProvider: () => ({
-    chat: vi.fn(),
-    chatStructured: vi.fn().mockResolvedValue({
+    chat: mockChat,
+    chatStructured: mockChatStructured,
+  }),
+}))
+
+import { generateTitleOptions, selectTitleOption, type TitleOption } from '../../src/cli/commands/title-selector.ts'
+import { createProvider } from '../../src/model/registry.js'
+
+describe('title-selector', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockChatStructured.mockResolvedValue({
       options: [
         {
           title: '《逆天改命》',
@@ -39,13 +52,9 @@ vi.mock('../../src/model/registry.js', () => ({
           },
         },
       ],
-    }),
-  }),
-}))
+    })
+  })
 
-import { generateTitleOptions, selectTitleOption, type TitleOption } from '../../src/cli/commands/title-selector.ts'
-
-describe('title-selector', () => {
   describe('TitleOption types', () => {
     it('has correct shape for title option', () => {
       const option: TitleOption = {
@@ -93,6 +102,31 @@ describe('title-selector', () => {
       const firstOption = options.find(o => o.title.includes('逆天改命'))
       expect(firstOption).toBeDefined()
       expect(firstOption!.worldDirection.powerSystem).toContain('凡境')
+    })
+
+    it('retries when AI returns fewer than 3 options', async () => {
+      mockChatStructured
+        .mockResolvedValueOnce({ options: [{ title: '单选项', worldDirection: { coreConflict: '单一冲突', worldFeatures: ['元素一'] } }] })
+        .mockResolvedValueOnce({ options: [
+          { title: '《选项一》', worldDirection: { coreConflict: '冲突一', worldFeatures: ['元素一'] } },
+          { title: '《选项二》', worldDirection: { coreConflict: '冲突二', worldFeatures: ['元素二'] } },
+          { title: '《选项三》', worldDirection: { coreConflict: '冲突三', worldFeatures: ['元素三'] } },
+        ]})
+
+      const options = await generateTitleOptions(
+        '一个少年获得修真能力后崛起为最强者的故事',
+        'xianxia',
+        10
+      )
+
+      expect(options).toHaveLength(3)
+      expect(mockChatStructured).toHaveBeenCalledTimes(2)
+    })
+
+    it('throws after exhausting retries', async () => {
+      mockChatStructured.mockResolvedValue({ options: [{ title: '单选项', worldDirection: { coreConflict: '单一冲突', worldFeatures: ['元素一'] } }] })
+
+      await expect(generateTitleOptions('idea', 'default', 10)).rejects.toThrow('标题选项数量不足')
     })
   })
 
