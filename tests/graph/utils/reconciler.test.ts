@@ -866,6 +866,20 @@ describe('authorizeOutlineFacts', () => {
     const result = await authorizeOutlineFacts(emptyState(), '大纲描述', 0, provider)
     expect(result).toHaveLength(0)
   })
+
+  it('falls back to chat when chatStructured returns markdown-wrapped JSON', async () => {
+    const state = emptyState()
+    const provider = {
+      chatStructured: vi.fn(async () => { throw new Error('Anthropic API did not return structured output') }),
+      chat: vi.fn(async (): Promise<string> => '```json\n{"facts":[{"subject":"主角","attribute":"所在位置","value":"废弃仓库","contradictsExisting":false}]}\n```'),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(state, '主角秘密抵达废弃仓库。', 4, provider)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline' })
+    expect(provider.chat).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('applyCanonicalFactsToState', () => {
