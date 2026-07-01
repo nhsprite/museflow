@@ -30,15 +30,20 @@ function createMockState(): ReducedGraphState {
     chapterPlan: null,
     storyState: createEmptyStoryState(),
     chapterTimeAnchor: undefined,
-    autoFixAttempts: 0,
     verifiedConstraints: [],
     chapterReport: null,
-    rewriteAttempts: 0,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: undefined,
+    authorDecisions: {},
+    session: {
+      chapterIndex: 1,
+      rewriteAttempts: 0,
+      errorRewriteAttempts: 0,
+      autoFixAttempts: 0,
+      previousIssues: [],
+      previousRawErrorCount: 0,
+      routingDecision: undefined,
+      forceStructuralRewrite: false,
+      rewriteApproved: false,
+    },
   } as unknown as ReducedGraphState
 }
 

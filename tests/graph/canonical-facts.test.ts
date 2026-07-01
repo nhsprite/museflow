@@ -6,9 +6,10 @@ import {
   buildCanonicalFactTimeline,
   buildCharacterFactTimeline,
   buildKeyEventsTimeline,
-} from '../../src/graph/utils/reconciler.js'
+} from '../../src/graph/utils/reconciler/index.js'
 import type { StoryState } from '../../src/types/story-state.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+import type { ChapterSession } from '../../src/core/chapter-generation/routing/types.js'
 import type { Character } from '../../src/types/character.js'
 
 function emptyState(): StoryState {
@@ -237,6 +238,23 @@ describe('filterSupersededEventsFromTimeline', () => {
   })
 })
 
+function buildBaseSession(
+  overrides: Partial<ChapterSession> = {}
+): ChapterSession {
+  return {
+    chapterIndex: 0,
+    rewriteAttempts: 0,
+    errorRewriteAttempts: 0,
+    autoFixAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    routingDecision: undefined,
+    forceStructuralRewrite: false,
+    rewriteApproved: false,
+    ...overrides,
+  }
+}
+
 function makeGraphState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
   const characters: Character[] = [
     { id: '1', storyId: 's', name: '主角', description: '', createdAt: 1 },
@@ -264,15 +282,9 @@ function makeGraphState(overrides: Partial<ReducedGraphState> = {}): ReducedGrap
     chapterPlan: null,
     storyState: emptyState(),
     chapterTimeAnchor: undefined,
-    autoFixAttempts: 0,
     verifiedConstraints: [],
     chapterReport: null,
-    rewriteAttempts: 0,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: undefined,
+    session: buildBaseSession(),
     authorDecisions: {},
     ...overrides,
   } as ReducedGraphState

@@ -4,6 +4,7 @@ import * as path from 'node:path'
 import { fix_chapter } from '../../src/graph/nodes/fix.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { Issue } from '../../src/types/agent.js'
+import { createMockContext } from '../utils/mock-context.ts'
 
 const buildState = (outputDir: string, pendingIssues: Issue[]): ReducedGraphState => ({
   story: { id: 'test', title: 'Test', outputDir, genre: 'default', totalChapters: 10 },
@@ -44,7 +45,7 @@ describe('fix_chapter warning filtering', () => {
       { id: '1', type: 'quality', severity: 'warning', description: '情感层次略显单一' },
     ])
 
-    const result = await fix_chapter(state)
+    const result = await fix_chapter(createMockContext(), state)
     expect(result.chapters).toEqual(state.chapters)
   })
 })

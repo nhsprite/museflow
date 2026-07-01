@@ -4,8 +4,11 @@ import * as path from 'node:path'
 import { finalize_chapter } from '../../src/graph/nodes/finalization.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { Issue } from '../../src/types/agent.js'
+import type { ChapterSession } from '../../src/core/chapter-generation/routing/types.js'
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
 import { processSummaryOutput } from '../../src/agents/index.js'
+import type { ModelProvider } from '../../src/model/provider.js'
+import type { RuntimeContext } from '../../src/core/context.js'
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getSummaryAgent: vi.fn().mockReturnValue({
@@ -44,7 +47,43 @@ vi.mock('../../src/graph/checkpointer.js', () => ({
   }),
 }))
 
-function buildState(outputDir: string, overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
+function createMockProvider(): ModelProvider {
+  return { chat: vi.fn().mockResolvedValue(''), chatStructured: vi.fn().mockResolvedValue({}) }
+}
+
+function createMockContext(): RuntimeContext {
+  return {
+    provider: createMockProvider(),
+    checkpointer: {
+      getTuple: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockResolvedValue({} as never),
+      list: vi.fn().mockResolvedValue([]),
+      deleteThread: vi.fn().mockResolvedValue(undefined),
+    } as unknown as RuntimeContext['checkpointer'],
+    config: { model: { provider: 'openai', model: 'gpt-4o', temperature: 0.7, maxTokens: 8192 } },
+  }
+}
+
+function buildSession(overrides: Partial<ChapterSession> = {}): ChapterSession {
+  return {
+    chapterIndex: 0,
+    rewriteAttempts: 1,
+    errorRewriteAttempts: 0,
+    autoFixAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    routingDecision: 'draft_chapter',
+    forceStructuralRewrite: false,
+    rewriteApproved: false,
+    ...overrides,
+  }
+}
+
+function buildState(
+  outputDir: string,
+  overrides: Partial<ReducedGraphState> & { session?: Partial<ChapterSession> } = {}
+): ReducedGraphState {
+  const { session: sessionOverrides, ...rest } = overrides
   const base: ReducedGraphState = {
     story: { id: 'test-story', title: 'Test', outputDir, genre: 'default', totalChapters: 3 },
     idea: 'test idea',
@@ -82,15 +121,9 @@ function buildState(outputDir: string, overrides: Partial<ReducedGraphState> = {
     world: null,
     storyState: createEmptyStoryState(),
     pendingIssues: [],
-    autoFixAttempts: 0,
     verifiedConstraints: [],
-    rewriteAttempts: 1,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: 'draft_chapter',
-    ...overrides,
+    session: buildSession(sessionOverrides),
+    ...rest,
   } as unknown as ReducedGraphState
   return base
 }
@@ -126,7 +159,7 @@ describe('chapter report generation', () => {
   it('generates and saves a chapter report on finalize', async () => {
     const state = buildState(tmpDir)
 
-    const result = await finalize_chapter(state)
+    const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.chapterReport).toBeDefined()
     expect(result.chapterReport!.chapterIndex).toBe(0)
@@ -153,7 +186,7 @@ describe('chapter report generation', () => {
     ]
     const state = buildState(tmpDir, { pendingIssues: issues })
 
-    const result = await finalize_chapter(state)
+    const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.chapterReport).toBeDefined()
     expect(result.chapterReport!.issues).toHaveLength(2)
@@ -187,7 +220,7 @@ describe('chapter report generation', () => {
       ],
     })
 
-    const result = await finalize_chapter(state)
+    const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.chapterReport!.foreshadowsPlanted).toBe(2)
     expect(result.chapterReport!.foreshadowsFulfilled).toBe(1)
@@ -207,7 +240,7 @@ describe('chapter report generation', () => {
       verifiedBeats: ['主角离开家乡'],
     })
 
-    const result = await finalize_chapter(state)
+    const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
     expect(result.actProgress?.[1]?.pending).not.toContain('主角离开家乡')
@@ -228,7 +261,7 @@ describe('chapter report generation', () => {
       verifiedBeats: [],
     })
 
-    const result = await finalize_chapter(state)
+    const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.actProgress?.[1]?.consumed).not.toContain('主角离开家乡')
     const warning = result.pendingIssues?.find(i => i.type === 'outline_coverage')

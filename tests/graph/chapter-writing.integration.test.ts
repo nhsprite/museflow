@@ -1,20 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rmSync, mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { runOneChapter } from '../../src/core/runner.js'
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
 import type { Issue } from '../../src/types/agent.js'
+import type { ChapterSession } from '../../src/core/chapter-generation/routing/types.js'
+import type { ModelProvider } from '../../src/model/provider.js'
+import type { RuntimeContext } from '../../src/core/context.js'
+import { JsonCheckpointer } from '../../src/graph/checkpointer.js'
 
 let tmpDir: string
+let storyId: string
 
-vi.mock('../../src/model/registry.js', () => ({
-  createProvider: vi.fn(() => {
-    throw new Error('createProvider should not be called in chapter integration tests')
-  }),
-  AnthropicCompatibleProvider: class {},
-}))
+const mockChat = vi.fn(async (): Promise<string> => '')
+const mockChatStructured = vi.fn().mockResolvedValue({})
+
+function createMockProvider(): ModelProvider {
+  return { chat: mockChat, chatStructured: mockChatStructured }
+}
+
+function createMockContext(): RuntimeContext {
+  return {
+    provider: createMockProvider(),
+    checkpointer: new JsonCheckpointer(),
+    config: { model: { provider: 'openai', model: 'gpt-4o', temperature: 0.7, maxTokens: 8192 } },
+  }
+}
 
 vi.mock('../../src/core/outline-expander.js', () => ({
   expandOutlineForChapter: vi.fn(async (_state: ReducedGraphState, chapterIndex: number) => ({
@@ -31,7 +45,7 @@ vi.mock('../../src/core/outline-expander.js', () => ({
   })),
 }))
 
-vi.mock('../../src/graph/utils/reconciler.js', () => ({
+vi.mock('../../src/graph/utils/reconciler/index.js', () => ({
   prepareStoryStateForChapter: vi.fn(async (state: ReducedGraphState) => ({
     reconciledState: state.storyState ?? createEmptyStoryState(),
     stateConflicts: '',
@@ -126,16 +140,20 @@ function createInitialState(storyId: string, outputDir: string, totalChapters: n
     chapterPlan: null,
     storyState: createEmptyStoryState(),
     chapterTimeAnchor: undefined,
-    autoFixAttempts: 0,
     verifiedConstraints: [],
     chapterReport: null,
-    rewriteAttempts: 0,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: undefined,
     authorDecisions: {},
+    session: {
+      chapterIndex: 0,
+      rewriteAttempts: 0,
+      errorRewriteAttempts: 0,
+      autoFixAttempts: 0,
+      previousIssues: [],
+      previousRawErrorCount: 0,
+      forceStructuralRewrite: false,
+      routingDecision: undefined,
+      rewriteApproved: false,
+    } as ChapterSession,
   } as unknown as ReducedGraphState
 }
 
@@ -169,7 +187,9 @@ function writeInitialCheckpoint(outputDir: string, state: ReducedGraphState): vo
 
 describe('chapter writing integration', () => {
   beforeEach(() => {
-    tmpDir = join(process.cwd(), 'books', `chapter-writing-${Date.now()}`)
+    storyId = `story_test_chapter_writing_${randomUUID().slice(0, 8)}`
+    const shortId = storyId.split('_').pop()?.slice(0, 12).toLowerCase() ?? storyId
+    tmpDir = join(process.cwd(), 'books', `chapter-writing-${shortId}-${Date.now()}`)
     mkdirSync(tmpDir, { recursive: true })
     vi.clearAllMocks()
   })
@@ -180,12 +200,11 @@ describe('chapter writing integration', () => {
 
   it('drafts and finalizes a single chapter end-to-end', { timeout: 60000 }, async () => {
     const totalChapters = 3
-    const storyId = 'story_test_chapter_writing'
     const state = createInitialState(storyId, tmpDir, totalChapters)
     writeFileSync(join(tmpDir, 'meta.json'), JSON.stringify({ story: state.story }), 'utf-8')
     writeInitialCheckpoint(tmpDir, state)
 
-    const result = await runOneChapter(storyId, { mode: 'draft', targetChapterIndex: 0 })
+    const result = await runOneChapter(storyId, { mode: 'draft', targetChapterIndex: 0 }, createMockContext())
 
     expect(result.currentChapterIndex).toBe(1)
     expect(result.chapters[0]).not.toBeNull()
@@ -199,6 +218,9 @@ describe('chapter writing integration', () => {
 
     const checkpointsDir = join(tmpDir, 'checkpoints')
     expect(existsSync(join(checkpointsDir, 'latest.json'))).toBe(true)
-    expect(existsSync(join(checkpointsDir, 'chapter_1_done.json'))).toBe(true)
+    expect(existsSync(join(checkpointsDir, 'chapter_markers.json'))).toBe(true)
+    const markers = JSON.parse(readFileSync(join(checkpointsDir, 'chapter_markers.json'), 'utf-8'))
+    expect(markers['1']).toBeDefined()
+    expect(existsSync(join(checkpointsDir, `${markers['1']}.json`))).toBe(true)
   })
 })

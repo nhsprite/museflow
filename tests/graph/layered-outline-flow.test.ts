@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+import { createMockContext } from '../utils/mock-context.ts'
+
+const testTempDir = join(tmpdir(), `museflow-layered-outline-${randomUUID().slice(0, 8)}`)
 
 const expandOutlineMock = vi.fn()
 const runAgentMock = vi.fn()
@@ -63,7 +69,7 @@ const storyArc = {
 }
 
 const baseState: ReducedGraphState = {
-  story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
+  story: { id: 'story-1', title: 'Story', outputDir: testTempDir },
   idea: 'idea',
   genre: 'default',
   totalChapters: 2,
@@ -110,16 +116,16 @@ describe('layered outline flow', () => {
   it('calls expandOutlineForChapter before drafting', async () => {
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    await draft_chapter(baseState)
+    await draft_chapter(createMockContext(), baseState)
 
-    expect(expandOutlineMock).toHaveBeenCalledWith(baseState, 0)
+    expect(expandOutlineMock).toHaveBeenCalledWith(baseState, 0, expect.any(Object))
   })
 
   describe('create_outline', () => {
     it('uses StoryArcAgent to generate story arc', async () => {
       const { create_outline } = await import('../../src/graph/nodes/story-creation.js')
 
-      const result = await create_outline(baseState)
+      const result = await create_outline(createMockContext(), baseState)
 
       expect(storyArcRunMock).toHaveBeenCalledTimes(1)
       expect(result.storyArc).toBeDefined()

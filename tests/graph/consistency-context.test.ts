@@ -1,6 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+import type { ModelProvider } from '../../src/model/provider.js'
+import type { RuntimeContext } from '../../src/core/context.js'
 
+const testTempDir = join(tmpdir(), `museflow-consistency-context-${randomUUID().slice(0, 8)}`)
+
+function createMockProvider(): ModelProvider {
+  return { chat: vi.fn().mockResolvedValue(''), chatStructured: vi.fn().mockResolvedValue({}) }
+}
+
+function createMockContext(): RuntimeContext {
+  return {
+    provider: createMockProvider(),
+    checkpointer: {
+      getTuple: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockResolvedValue({} as never),
+      list: vi.fn().mockResolvedValue([]),
+      deleteThread: vi.fn().mockResolvedValue(undefined),
+    } as unknown as RuntimeContext['checkpointer'],
+    config: { model: { provider: 'openai', model: 'gpt-4o', temperature: 0.7, maxTokens: 8192 } },
+  }
+}
 let capturedStoryState = ''
 let capturedOutline = ''
 let capturedTimelineSnapshot = ''
@@ -36,8 +59,8 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeStoryBible: vi.fn(),
 }))
 
-vi.mock('../../src/graph/utils/reconciler.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/graph/utils/reconciler.js')>()
+vi.mock('../../src/graph/utils/reconciler/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/graph/utils/reconciler/index.js')>()
   return {
     ...actual,
     prepareStoryStateForChapter: vi.fn(async (state: ReducedGraphState) => ({
@@ -61,7 +84,7 @@ vi.mock('../../src/graph/utils/reconciler.js', async (importOriginal) => {
 describe('detect_consistency validation context', () => {
   function buildBaseState(): Parameters<typeof detect_consistency>[0] {
     return {
-      story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },
+      story: { id: 'story-1', title: '测试', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 3,
@@ -123,7 +146,7 @@ describe('detect_consistency validation context', () => {
       { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 1 },
     ]
 
-    await detect_consistency(state)
+    await detect_consistency(createMockContext(), state)
     expect(capturedStoryState).toContain('【权威事实】')
     expect(capturedStoryState).toContain('木之灵物')
     expect(capturedStoryState).toContain('昆仑山')
@@ -170,7 +193,7 @@ describe('detect_consistency validation context', () => {
       },
     ]
 
-    await detect_consistency(state)
+    await detect_consistency(createMockContext(), state)
     expect(capturedStoryState).toContain('【权威事实】')
     // The superseded old location should not appear in the timeline snapshot
     expect(capturedTimelineSnapshot).not.toContain('东方灵河旧址')
@@ -179,8 +202,8 @@ describe('detect_consistency validation context', () => {
   it('passes authoritative story state instead of only the reconciled state', async () => {
     const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
-    await detect_consistency({
-      story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },
+    await detect_consistency(createMockContext(), {
+      story: { id: 'story-1', title: '测试', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 3,
@@ -234,8 +257,8 @@ describe('detect_consistency validation context', () => {
   it('redacts future chapter descriptions from consistency outline context', async () => {
     const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
-    await detect_consistency({
-      story: { id: 'story-1', title: '测试', outputDir: '/tmp/story' },
+    await detect_consistency(createMockContext(), {
+      story: { id: 'story-1', title: '测试', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 5,

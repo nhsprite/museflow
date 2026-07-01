@@ -1,5 +1,5 @@
 import { requireStory } from '../utils/story-loader.js'
-import { getCheckpointer } from '../../graph/checkpointer.js'
+import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import { writeOutlineContent } from '../../storage/filesystem/writer.js'
 import {
   validateActBoundaryAdjustment,
@@ -28,8 +28,8 @@ export async function adjustAct(
   }
 
   const story = await requireStory(storyId)
-  const checkpointer = getCheckpointer()
-  const tuple = await checkpointer.getTuple({
+  const checkpointService = createCheckpointService(story.outputDir)
+  const tuple = await checkpointService.getTuple({
     configurable: { thread_id: storyId, outputDir: story.outputDir },
   })
   if (!tuple) {
@@ -74,7 +74,7 @@ export async function adjustAct(
   const newStoryArc = { ...storyArc, acts: newActs }
   const currentActAfter = getActForChapter(newStoryArc, state.currentChapterIndex)
 
-  await checkpointer.updateLatestState(story.outputDir, {
+  await checkpointService.updateLatestState({
     storyArc: newStoryArc,
   })
 

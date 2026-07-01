@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
-import type { AgentState } from '../../src/agents/base.ts'
+import type { ChapterPlannerAgentInput } from '../../src/agents/types.ts'
 import type { Issue } from '../../src/types/agent.ts'
 import type { ChapterPlannerAgent } from '../../src/agents/chapter-planner.ts'
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
+function createMockProvider(): ModelProvider {
+  return {
     chat: mockChat,
-  }),
-}))
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 class TestableChapterPlannerAgent extends (await import('../../src/agents/chapter-planner.ts')).ChapterPlannerAgent {
-  public exposePrompt(state: Required<AgentState>): Message[] {
+  public exposePrompt(state: Required<ChapterPlannerAgentInput>): Message[] {
     return this.buildPrompt(state)
   }
 
@@ -28,7 +29,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('does not include issues section when no issues are provided', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '一个少年踏上修仙路',
@@ -49,7 +50,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('includes issues section when issues are provided', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const issues: Issue[] = [
       {
@@ -94,7 +95,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('formats multiple issues with correct numbering', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const issues: Issue[] = [
       {
@@ -138,7 +139,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('forbids inventing new facts to reconcile prior-chapter contradictions', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -165,7 +166,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('includes storyState and time anchor guidance when provided', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -189,7 +190,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('includes core-event priority and pending-task deadline conflict rules', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -213,7 +214,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('includes closing phase section near the end of the story', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -235,7 +236,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('does not include closing phase section early in the story', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -255,7 +256,7 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('includes verified constraints section when constraints are provided', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -294,7 +295,7 @@ describe('ChapterPlannerAgent issues integration', () => {
       chapterTimeAnchor: '三日后（跨越三日）',
     }))
 
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
     const output = await agent.run({
       idea: '测试',
       genre: 'default',
@@ -314,7 +315,7 @@ describe('ChapterPlannerAgent issues integration', () => {
 
 describe('ChapterPlannerAgent JSON repair', () => {
   it('repairs literal newlines inside JSON string values', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
     const output = agent.parseOutput(`\`\`\`json
 {
   "sections": [
@@ -339,7 +340,7 @@ describe('ChapterPlannerAgent JSON repair', () => {
   })
 
   it('repairs literal tabs inside JSON string values', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
     const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要\t带制表符",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
 
     expect(output.success).toBe(true)
@@ -348,7 +349,7 @@ describe('ChapterPlannerAgent JSON repair', () => {
   })
 
   it('repairs malformed closing single quote converted from smart quote', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
     const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "陈裕堂线缓兵三日，但苏半城未承诺' }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
 
     expect(output.success).toBe(true)
@@ -357,7 +358,7 @@ describe('ChapterPlannerAgent JSON repair', () => {
   })
 
   it('keeps legitimate single quotes inside JSON string values untouched', () => {
-    const agent = new TestableChapterPlannerAgent()
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
     const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "It's a test",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
 
     expect(output.success).toBe(true)

@@ -1,14 +1,15 @@
 import type { ReducedGraphState } from '../state.js'
-import type { AgentState } from '../../agents/base.js'
+import type { AgentInput } from '../../agents/types.js'
 import type { Character } from '../../types/character.js'
 import type { ForeshadowItem } from '../../types/foreshadow.js'
 import type { CanonicalFact } from '../../types/story-state.js'
+import type { ModelProvider } from '../../model/provider.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import {
   buildCharacterFactTimeline,
   formatStoryState,
   prepareStoryStateForChapter,
-} from './reconciler.js'
+} from './reconciler/index.js'
 import { buildEffectiveCharactersList, charactersToString } from './characters.js'
 
 /**
@@ -39,13 +40,14 @@ export interface ChapterAgentContext {
 
 export async function buildChapterAgentContext(
   state: ReducedGraphState,
-  chapterIndex: number
+  chapterIndex: number,
+  provider: ModelProvider,
 ): Promise<ChapterAgentContext> {
   const worldContent = state.world?.content
   const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
-  const { reconciledState, stateConflicts } = await prepareStoryStateForChapter(state, chapterIndex)
+  const { reconciledState, stateConflicts } = await prepareStoryStateForChapter(state, chapterIndex, provider)
   const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } =
@@ -75,13 +77,13 @@ export async function buildChapterAgentContext(
 }
 
 /**
- * 将共享上下文与可选字段合并为 AgentState。
+ * 将共享上下文与可选字段合并为 AgentInput。
  * 用于减少重复 spread 代码并保证字段顺序一致性。
  */
 export function mergeAgentState(
   base: ChapterAgentContext,
-  extras: Partial<AgentState> = {}
-): AgentState {
+  extras: Partial<AgentInput> = {}
+): AgentInput {
   return {
     idea: base.idea,
     genre: base.genre,
@@ -95,7 +97,7 @@ export function mergeAgentState(
     chapterIndex: base.chapterIndex,
     foreshadowStack: base.foreshadowStack,
     storyState: base.storyState,
-    canonicalFacts: base.canonicalFacts,
+    ...(base.canonicalFacts ? { canonicalFacts: base.canonicalFacts } : {}),
     timelineSnapshot: base.timelineSnapshot,
     ...(base.stateConflicts ? { stateConflicts: base.stateConflicts } : {}),
     ...(base.chapterTimeAnchor ? { chapterTimeAnchor: base.chapterTimeAnchor } : {}),

@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { Story } from '../../src/types/story.ts'
 
 const getStoryMock = vi.fn<() => Story | null>()
 const deleteStoryMock = vi.fn<() => boolean>()
+const tempDir = join(tmpdir(), `museflow-delete-${randomUUID().slice(0, 8)}`)
 
 vi.mock('../../src/storage/meta/stores/story.ts', () => ({
   getStory: getStoryMock,
@@ -19,7 +23,7 @@ function createStory(id: string, title: string): Story {
     totalChapters: 3,
     status: 'writing',
     provider: 'openai',
-    outputDir: `/tmp/${id}`,
+    outputDir: `${tempDir}/${id}`,
     createdAt: 0,
     updatedAt: 0,
   }

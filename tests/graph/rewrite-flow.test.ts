@@ -1,11 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { ModelProvider } from '../../src/model/provider.js'
+import type { ReducedGraphState } from '../../src/graph/state.js'
+import type { RuntimeContext } from '../../src/core/context.js'
 
 const saveChapterCheckpoint = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('old chapter content')
 let mockChapterContentValue = 'rewritten chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600)
+
+const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [true] }))
+const mockChatStructured = vi.fn().mockResolvedValue({ results: [true] })
+
+function createMockProvider(): ModelProvider {
+  return {
+    chat: mockChat,
+    chatStructured: mockChatStructured,
+  }
+}
+
+function createMockContext(): RuntimeContext {
+  return {
+    provider: createMockProvider(),
+    checkpointer: {
+      getTuple: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockResolvedValue({} as never),
+      list: vi.fn().mockResolvedValue([]),
+      deleteThread: vi.fn().mockResolvedValue(undefined),
+    } as unknown as RuntimeContext['checkpointer'],
+    config: { model: { provider: 'openai', model: 'gpt-4o', temperature: 0.7, maxTokens: 8192 } },
+  }
+}
 
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
@@ -88,8 +116,6 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
   renameStoryOutputDir: vi.fn(),
 }))
 vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockReturnValue(null) }))
-const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [true] }))
-const mockChatStructured = vi.fn().mockResolvedValue({ results: [true] })
 
 vi.mock('../../src/utils/paths.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/utils/paths.js')>()
@@ -99,37 +125,41 @@ vi.mock('../../src/utils/paths.js', async (importOriginal) => {
   }
 })
 
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
-    chat: mockChat,
-    chatStructured: mockChatStructured,
-  }),
-}))
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('generated-id') }))
 vi.mock('../../src/graph/checkpointer.js', () => ({
   getCheckpointer: () => ({ saveChapterCheckpoint, pruneIntermediateCheckpoints, clearPendingWrites: vi.fn().mockResolvedValue(undefined), getTuple: vi.fn().mockResolvedValue(null) }),
 }))
 
-const baseState = {
-  story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
-  idea: 'idea',
-  genre: 'default',
-  totalChapters: 20,
-  world: null,
-  characters: [],
-  outline: [{ number: 1, title: 'Chapter 1', description: 'Desc 1' }],
-  chapters: [null],
-  currentChapterIndex: 0,
-  foreshadowStack: [],
-  chapterSummaries: [],
-  pendingIssues: [],
-  rewriteApproved: false,
-  rewriteRequested: false,
-  isWriting: true,
-  writeOneChapterOnly: true,
-  lastPrintedChapter: 0,
-  lastTimelineSnapshot: null,
-}
+let tempDir: string
+let baseState: ReducedGraphState
+
+beforeEach(() => {
+  tempDir = mkdtempSync(join(tmpdir(), 'museflow-rewrite-'))
+  baseState = {
+    story: { id: 'story-1', title: 'Story', outputDir: tempDir },
+    idea: 'idea',
+    genre: 'default',
+    totalChapters: 20,
+    world: null,
+    characters: [],
+    outline: [{ number: 1, title: 'Chapter 1', description: 'Desc 1' }],
+    chapters: [null],
+    currentChapterIndex: 0,
+    foreshadowStack: [],
+    chapterSummaries: [],
+    pendingIssues: [],
+    rewriteApproved: false,
+    rewriteRequested: false,
+    isWriting: true,
+    writeOneChapterOnly: true,
+    lastPrintedChapter: 0,
+    lastTimelineSnapshot: null,
+  }
+})
+
+afterEach(() => {
+  rmSync(tempDir, { recursive: true, force: true })
+})
 
 describe('rewrite flow regression', () => {
   beforeEach(() => {
@@ -140,7 +170,7 @@ describe('rewrite flow regression', () => {
   it('rewrites the current chapter using existing chapter content', async () => {
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    const draftResult = await draft_chapter({
+    const draftResult = await draft_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
       rewriteApproved: true,
@@ -148,8 +178,8 @@ describe('rewrite flow regression', () => {
 
     expect(draftResult.rewriteApproved).toBeUndefined()
     expect(draftResult.pendingIssues).toBeUndefined()
-    expect(readChapterContent).toHaveBeenCalledWith('/tmp/story', 1)
-    expect(writeChapterContent).toHaveBeenCalledWith('/tmp/story', 1, `# 第1章 Chapter 1\n\n${mockChapterContentValue}`)
+    expect(readChapterContent).toHaveBeenCalledWith(tempDir, 1)
+    expect(writeChapterContent).toHaveBeenCalledWith(tempDir, 1, `# 第1章 Chapter 1\n\n${mockChapterContentValue}`)
     expect(draftResult.chapters?.[0]?.status).toBe('drafting')
   })
 
@@ -157,7 +187,7 @@ describe('rewrite flow regression', () => {
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
-    const result = await finalize_chapter({
+    const result = await finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
       chapters: [{
@@ -193,7 +223,7 @@ describe('draft_chapter guard against empty content', () => {
 
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    await expect(draft_chapter({
+    await expect(draft_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
@@ -204,7 +234,7 @@ describe('draft_chapter guard against empty content', () => {
 
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    await expect(draft_chapter({
+    await expect(draft_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
@@ -215,7 +245,7 @@ describe('draft_chapter guard against empty content', () => {
 
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    await expect(draft_chapter({
+    await expect(draft_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
@@ -232,7 +262,7 @@ describe('finalize_chapter guard against empty file', () => {
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
-    await expect(finalize_chapter({
+    await expect(finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
@@ -243,7 +273,7 @@ describe('finalize_chapter guard against empty file', () => {
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
-    await expect(finalize_chapter({
+    await expect(finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
@@ -254,7 +284,7 @@ describe('finalize_chapter guard against empty file', () => {
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
-    await expect(finalize_chapter({
+    await expect(finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
@@ -271,7 +301,7 @@ describe('finalize_chapter ages pending tasks', () => {
   it('marks pending tasks due at or before current chapter as expired', async () => {
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
-    const result = await finalize_chapter({
+    const result = await finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 1,
       chapters: [{
@@ -329,7 +359,7 @@ describe('detect_foreshadowing preserves current-chapter foreshadows', () => {
       isExplicit: false,
     }
 
-    const result = await detect_foreshadowing({
+    const result = await detect_foreshadowing(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
       foreshadowStack: [currentChapterForeshadow],

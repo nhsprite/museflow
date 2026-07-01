@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ModelProvider } from '../../src/model/provider.js'
 
 const mockChat = vi.fn()
 const mockChatStructured = vi.fn()
@@ -11,16 +12,14 @@ vi.mock('inquirer', () => ({
   },
 }))
 
-// Mock the model registry with a singleton provider so tests can inspect/replace chatStructured
-vi.mock('../../src/model/registry.js', () => ({
-  createProvider: () => ({
+import { generateTitleOptions, selectTitleOption, type TitleOption } from '../../src/cli/commands/title-selector.ts'
+
+function createMockProvider(): ModelProvider {
+  return {
     chat: mockChat,
     chatStructured: mockChatStructured,
-  }),
-}))
-
-import { generateTitleOptions, selectTitleOption, type TitleOption } from '../../src/cli/commands/title-selector.ts'
-import { createProvider } from '../../src/model/registry.js'
+  }
+}
 
 describe('title-selector', () => {
   beforeEach(() => {
@@ -74,6 +73,7 @@ describe('title-selector', () => {
   describe('generateTitleOptions', () => {
     it('returns array of TitleOption with 3-5 items', async () => {
       const options = await generateTitleOptions(
+        createMockProvider(),
         '一个少年获得修真能力后崛起为最强者的故事',
         'xianxia',
         10
@@ -94,6 +94,7 @@ describe('title-selector', () => {
 
     it('parses AI response correctly', async () => {
       const options = await generateTitleOptions(
+        createMockProvider(),
         '一个少年获得修真能力后崛起为最强者的故事',
         'xianxia',
         10
@@ -114,6 +115,7 @@ describe('title-selector', () => {
         ]})
 
       const options = await generateTitleOptions(
+        createMockProvider(),
         '一个少年获得修真能力后崛起为最强者的故事',
         'xianxia',
         10
@@ -126,7 +128,7 @@ describe('title-selector', () => {
     it('throws after exhausting retries', async () => {
       mockChatStructured.mockResolvedValue({ options: [{ title: '单选项', worldDirection: { coreConflict: '单一冲突', worldFeatures: ['元素一'] } }] })
 
-      await expect(generateTitleOptions('idea', 'default', 10)).rejects.toThrow('标题选项数量不足')
+      await expect(generateTitleOptions(createMockProvider(), 'idea', 'default', 10)).rejects.toThrow('标题选项数量不足')
     })
   })
 

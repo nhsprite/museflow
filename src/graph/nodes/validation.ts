@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
-import type { AgentState } from '../../agents/base.js'
+import type { ForeshadowingAgentInput, ConsistencyAgentInput } from '../../agents/types.js'
 import {
   getForeshadowingAgent,
   getConsistencyAgent,
@@ -14,8 +14,12 @@ import { countChineseWords } from '../../utils/text.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 import { charactersToString } from '../utils/characters.js'
+import type { RuntimeContext } from '../../core/context.js'
 
-export async function validate_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+export async function validate_chapter(
+  _context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
 
@@ -76,8 +80,11 @@ export async function validate_chapter(state: ReducedGraphState): Promise<Partia
   return { pendingIssues: newIssues }
 }
 
-export async function detect_foreshadowing(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const agent = getForeshadowingAgent()
+export async function detect_foreshadowing(
+  context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  const agent = getForeshadowingAgent(context.provider)
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
@@ -100,13 +107,13 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
     return true
   })
 
-  const agentState: AgentState = {
+  const agentState: ForeshadowingAgentInput = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
     ...(worldContent ? { world: worldContent } : {}),
     characters: charactersToString(state.characters),
-    ...(content ? { chapterContent: content } : {}),
+    chapterContent: content ?? '',
     foreshadowStack: cleanedForeshadowStack,
   }
 
@@ -116,28 +123,31 @@ export async function detect_foreshadowing(state: ReducedGraphState): Promise<Pa
   return { foreshadowStack }
 }
 
-export async function detect_consistency(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const agent = getConsistencyAgent()
+export async function detect_consistency(
+  context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  const agent = getConsistencyAgent(context.provider)
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
-  const baseContext = await buildChapterAgentContext(state, chapterIndex)
+  const baseContext = await buildChapterAgentContext(state, chapterIndex, context.provider)
 
   const supersededFacts = state.storyState?.supersededFacts ?? []
   const supersededFactsStr = supersededFacts.length > 0
     ? supersededFacts.map(f => `- [${f.subject}] ${f.oldFact}（原因：${f.reason}）`).join('\n')
     : '（无）'
 
-  const agentState: AgentState = mergeAgentState(baseContext, {
+  const agentState: ConsistencyAgentInput = mergeAgentState(baseContext, {
     outline: buildConsistencyOutlineContext(state, chapterIndex),
-    ...(content ? { chapterContent: content } : {}),
+    chapterContent: content ?? '',
     chapterSummaries: state.chapterSummaries,
-    chapterPlan: state.chapterPlan ?? undefined,
+    ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
     supersededFacts: supersededFactsStr,
-  })
+  }) as ConsistencyAgentInput
 
   const output = await agent.run(agentState)
   const issues = await agent.processOutput(output, baseContext.canonicalFacts)
@@ -146,6 +156,7 @@ export async function detect_consistency(state: ReducedGraphState): Promise<Part
 }
 
 export async function validate_chapter_comprehensive(
+  context: RuntimeContext,
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
   // 将字数、伏笔、一致性（含质量/幻觉/大纲合规）校验串行聚合为单个图节点，
@@ -161,10 +172,10 @@ export async function validate_chapter_comprehensive(
     }
   }
 
-  const wordCountUpdates = await validate_chapter(workingState)
+  const wordCountUpdates = await validate_chapter(context, workingState)
   mergePendingIssues(wordCountUpdates)
 
-  const foreshadowUpdates = await detect_foreshadowing(workingState)
+  const foreshadowUpdates = await detect_foreshadowing(context, workingState)
   if (foreshadowUpdates.foreshadowStack) {
     workingState = {
       ...workingState,
@@ -172,7 +183,7 @@ export async function validate_chapter_comprehensive(
     }
   }
 
-  const consistencyUpdates = await detect_consistency(workingState)
+  const consistencyUpdates = await detect_consistency(context, workingState)
   mergePendingIssues(consistencyUpdates)
 
   const result: Partial<ReducedGraphState> = {}

@@ -1,7 +1,6 @@
 import inquirer from 'inquirer'
-import { createProvider } from '../../model/registry.js'
 import { getGenreSkill } from '../../genres/registry.js'
-import type { JsonSchema } from '../../model/provider.js'
+import type { JsonSchema, ModelProvider } from '../../model/provider.js'
 import type { WorldDirection } from '../../types/story.js'
 
 export interface TitleOption {
@@ -70,11 +69,11 @@ function getGenreConstraints(genre: string): string {
 }
 
 export async function generateTitleOptions(
+  provider: ModelProvider,
   idea: string,
   genre: string,
   totalChapters: number
 ): Promise<TitleOption[]> {
-  const provider = createProvider()
   const skill = getGenreSkill(genre)
   const displayName = skill?.displayName || genre
 

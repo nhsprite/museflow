@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 let customDir: string
@@ -19,7 +20,7 @@ vi.mock('../../src/utils/paths.js', () => ({
 
 describe('genre registry', () => {
   beforeEach(async () => {
-    customDir = join(process.cwd(), 'tests', 'tmp', `genres-${Date.now()}`)
+    customDir = mkdtempSync(join(tmpdir(), 'museflow-genres-'))
     mkdirSync(customDir, { recursive: true })
     vi.resetModules()
   })

@@ -1,4 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import {
   converge_and_decide,
   route_by_decision,
@@ -7,6 +10,12 @@ import {
 import { readChapterContent } from '../../../src/storage/filesystem/writer.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { Issue } from '../../../src/types/agent.js'
+import type { ChapterSession } from '../../../src/core/chapter-generation/routing/types.js'
+import type { ModelProvider } from '../../../src/model/provider.js'
+import type { RuntimeContext } from '../../../src/core/context.js'
+import { JsonCheckpointer } from '../../../src/graph/checkpointer.js'
+
+const testTempDir = join(tmpdir(), `museflow-chapter-orchestration-${randomUUID().slice(0, 8)}`)
 
 vi.mock('../../../src/storage/filesystem/writer.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/storage/filesystem/writer.js')>()
@@ -44,13 +53,41 @@ vi.mock('../../../src/utils/issue-deduplication.js', async (importOriginal) => {
   }
 })
 
-vi.mock('../../../src/model/registry.js', () => ({
-  createProvider: vi.fn().mockReturnValue({ chat: vi.fn() }),
-}))
+function createMockProvider(): ModelProvider {
+  return { chat: vi.fn(), chatStructured: vi.fn().mockResolvedValue({}) }
+}
 
-function buildBaseState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
+function createMockContext(): RuntimeContext {
   return {
-    story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
+    provider: createMockProvider(),
+    checkpointer: new JsonCheckpointer(),
+    config: { model: { provider: 'openai', model: 'gpt-4o', temperature: 0.7, maxTokens: 8192 } },
+  }
+}
+
+function buildBaseSession(
+  overrides: Partial<ChapterSession> = {}
+): ChapterSession {
+  return {
+    chapterIndex: 1,
+    rewriteAttempts: 0,
+    errorRewriteAttempts: 0,
+    autoFixAttempts: 0,
+    previousIssues: [],
+    previousRawErrorCount: 0,
+    routingDecision: undefined,
+    forceStructuralRewrite: false,
+    rewriteApproved: false,
+    ...overrides,
+  }
+}
+
+function buildBaseState(
+  overrides: Partial<ReducedGraphState> & { session?: Partial<ChapterSession> } = {}
+): ReducedGraphState {
+  const { session: sessionOverrides, ...rest } = overrides
+  return {
+    story: { id: 'story-1', title: 'Story', outputDir: testTempDir },
     idea: 'idea',
     genre: 'default',
     totalChapters: 3,
@@ -84,16 +121,10 @@ function buildBaseState(overrides: Partial<ReducedGraphState> = {}): ReducedGrap
       currentScene: '',
       storyTime: '',
     },
-    autoFixAttempts: 0,
     verifiedConstraints: [],
-    rewriteAttempts: 0,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: undefined,
+    session: buildBaseSession(sessionOverrides),
     authorDecisions: {},
-    ...overrides,
+    ...rest,
   }
 }
 
@@ -116,24 +147,24 @@ describe('converge_and_decide', () => {
   })
 
   it('finalizes when there are no errors and a chapter file already exists', async () => {
-    const state = buildBaseState({ rewriteApproved: false, pendingIssues: [] })
+    const state = buildBaseState({ session: { rewriteApproved: false }, pendingIssues: [] })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('finalize_chapter')
-    expect(result.rewriteApproved).toBe(false)
-    expect(result.autoFixAttempts).toBe(0)
-    expect(readChapterContent).toHaveBeenCalledWith('/tmp/story', 2)
+    expect(result.session?.routingDecision).toBe('finalize_chapter')
+    expect(result.session?.rewriteApproved).toBe(false)
+    expect(result.session?.autoFixAttempts).toBe(0)
+    expect(readChapterContent).toHaveBeenCalledWith(testTempDir, 2)
   })
 
   it('drafts the chapter when there is no existing chapter file', async () => {
     vi.mocked(readChapterContent).mockResolvedValue(null)
 
-    const state = buildBaseState({ rewriteApproved: false, pendingIssues: [] })
-    const result = await converge_and_decide(state)
+    const state = buildBaseState({ session: { rewriteApproved: false }, pendingIssues: [] })
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('draft_chapter')
-    expect(result.rewriteApproved).toBe(false)
+    expect(result.session?.routingDecision).toBe('draft_chapter')
+    expect(result.session?.rewriteApproved).toBe(false)
   })
 
   it('routes to fix_chapter for local consistency errors when rewrite is approved', async () => {
@@ -144,13 +175,13 @@ describe('converge_and_decide', () => {
     const pendingIssues: Issue[] = [
       { id: '1', type: 'consistency', severity: 'error', description: '局部时间顺序不一致' },
     ]
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues })
+    const state = buildBaseState({ session: { rewriteApproved: true }, pendingIssues })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('fix_chapter')
-    expect(result.rewriteApproved).toBe(true)
-    expect(result.errorRewriteAttempts).toBe(1)
+    expect(result.session?.routingDecision).toBe('fix_chapter')
+    expect(result.session?.rewriteApproved).toBe(true)
+    expect(result.session?.errorRewriteAttempts).toBe(1)
   })
 
   it('routes to draft_chapter and discards the plan for structural errors', async () => {
@@ -161,13 +192,13 @@ describe('converge_and_decide', () => {
     const pendingIssues: Issue[] = [
       { id: '1', type: 'consistency', severity: 'error', description: '整体情节与大纲严重偏离' },
     ]
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues })
+    const state = buildBaseState({ session: { rewriteApproved: true }, pendingIssues })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('draft_chapter')
+    expect(result.session?.routingDecision).toBe('draft_chapter')
     expect(result.chapterPlan).toBeNull()
-    expect(result.errorRewriteAttempts).toBe(1)
+    expect(result.session?.errorRewriteAttempts).toBe(1)
   })
 
   it('requests rewrite after max error rewrite attempts', async () => {
@@ -178,17 +209,19 @@ describe('converge_and_decide', () => {
       { id: '1', type: 'consistency', severity: 'error', description: '上游状态污染' },
     ]
     const state = buildBaseState({
-      rewriteApproved: true,
-      errorRewriteAttempts: 3,
+      session: {
+        rewriteApproved: true,
+        errorRewriteAttempts: 3,
+        previousIssues: [],
+        previousRawErrorCount: 0,
+      },
       pendingIssues,
-      previousIssues: [],
-      previousRawErrorCount: 0,
     })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('request_rewrite')
-    expect(result.rewriteApproved).toBe(false)
+    expect(result.session?.routingDecision).toBe('request_rewrite')
+    expect(result.session?.rewriteApproved).toBe(false)
   })
 
   it('stops rewrite loop early when issues are highly similar and involve state corruption', async () => {
@@ -199,31 +232,33 @@ describe('converge_and_decide', () => {
       { id: '1', type: 'state_corruption', severity: 'error', description: '大纲与权威事实冲突' },
     ]
     const state = buildBaseState({
-      rewriteApproved: true,
-      errorRewriteAttempts: 2,
-      previousIssues: pendingIssues,
-      previousRawErrorCount: 1,
+      session: {
+        rewriteApproved: true,
+        errorRewriteAttempts: 2,
+        previousIssues: pendingIssues,
+        previousRawErrorCount: 1,
+      },
       pendingIssues,
     })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('request_rewrite')
-    expect(result.rewriteApproved).toBe(false)
-    expect(result.forceStructuralRewrite).toBe(false)
+    expect(result.session?.routingDecision).toBe('request_rewrite')
+    expect(result.session?.rewriteApproved).toBe(false)
+    expect(result.session?.forceStructuralRewrite).toBe(false)
   })
 
   it('auto-fixes patchable warnings when no errors remain', async () => {
     const pendingIssues: Issue[] = [
       { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },
     ]
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 0 })
+    const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 0 }, pendingIssues })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('fix_chapter')
-    expect(result.autoFixAttempts).toBe(1)
-    expect(result.rewriteApproved).toBe(true)
+    expect(result.session?.routingDecision).toBe('fix_chapter')
+    expect(result.session?.autoFixAttempts).toBe(1)
+    expect(result.session?.rewriteApproved).toBe(true)
     expect(result.pendingIssues).toEqual(pendingIssues)
   })
 
@@ -232,23 +267,23 @@ describe('converge_and_decide', () => {
       { id: 'w1', type: 'consistency', severity: 'warning', description: '情感层次略显单一，应该增加内心描写', dimension: 'quality' },
     ]
     // rewriteAttempts > 0 表示已经历过至少一次起草/验证循环
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 0, rewriteAttempts: 1 })
+    const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 0, rewriteAttempts: 1 }, pendingIssues })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('finalize_chapter')
-    expect(result.autoFixAttempts).toBe(0)
+    expect(result.session?.routingDecision).toBe('finalize_chapter')
+    expect(result.session?.autoFixAttempts).toBe(0)
     expect(result.pendingIssues).toEqual(pendingIssues)
   })
 
   it('routes to draft_chapter on first iteration when rewrite is approved and chapter file is missing', async () => {
     vi.mocked(readChapterContent).mockResolvedValue(null)
 
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues: [], rewriteAttempts: 0 })
-    const result = await converge_and_decide(state)
+    const state = buildBaseState({ session: { rewriteApproved: true, rewriteAttempts: 0 }, pendingIssues: [] })
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('draft_chapter')
-    expect(result.rewriteApproved).toBe(true)
+    expect(result.session?.routingDecision).toBe('draft_chapter')
+    expect(result.session?.rewriteApproved).toBe(true)
   })
 
   it('does not auto-fix warnings when errors still exist', async () => {
@@ -258,11 +293,11 @@ describe('converge_and_decide', () => {
 
     const warning: Issue = { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' }
     const error: Issue = { id: 'e1', type: 'consistency', severity: 'error', description: '时间顺序不一致' }
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues: [error, warning] })
+    const state = buildBaseState({ session: { rewriteApproved: true }, pendingIssues: [error, warning] })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('fix_chapter')
+    expect(result.session?.routingDecision).toBe('fix_chapter')
     expect(result.pendingIssues?.some(i => i.id === 'w1')).toBe(true)
   })
 
@@ -270,24 +305,24 @@ describe('converge_and_decide', () => {
     const pendingIssues: Issue[] = [
       { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },
     ]
-    const state = buildBaseState({ rewriteApproved: true, pendingIssues, autoFixAttempts: 3, rewriteAttempts: 1 })
+    const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 3, rewriteAttempts: 1 }, pendingIssues })
 
-    const result = await converge_and_decide(state)
+    const result = await converge_and_decide(createMockContext(), state)
 
-    expect(result.routingDecision).toBe('finalize_chapter')
-    expect(result.autoFixAttempts).toBe(3)
+    expect(result.session?.routingDecision).toBe('finalize_chapter')
+    expect(result.session?.autoFixAttempts).toBe(3)
     expect(result.pendingIssues).toEqual(pendingIssues)
   })
 })
 
 describe('route_by_decision', () => {
   it('returns the routingDecision already set on state', () => {
-    const state = buildBaseState({ routingDecision: 'request_rewrite' })
+    const state = buildBaseState({ session: { routingDecision: 'request_rewrite' } })
     expect(route_by_decision(state)).toBe('request_rewrite')
   })
 
   it('falls back to finalize_chapter when routingDecision is missing', () => {
-    const state = buildBaseState({ routingDecision: undefined })
+    const state = buildBaseState({ session: { routingDecision: undefined } })
     expect(route_by_decision(state)).toBe('finalize_chapter')
   })
 })

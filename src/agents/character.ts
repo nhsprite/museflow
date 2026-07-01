@@ -1,15 +1,20 @@
-import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
+import type { ModelProvider } from '../model/provider.js'
+import { BaseAgent, type AgentOutput } from './base.js'
+import type { CharacterAgentInput } from './types.js'
 import type { Character } from '../types/character.js'
 import { generateId } from '../utils/id.js'
 import { parseJsonFromLLM } from '../utils/json.js'
+import {
+  buildCharacterSystemPrompt,
+  buildCharacterUserPrompt,
+} from './prompts/character-prompt.js'
 
-export class CharacterAgent extends BaseAgent {
-  constructor() {
-    super(undefined, 0.7)
+export class CharacterAgent extends BaseAgent<CharacterAgentInput> {
+  constructor(provider: ModelProvider) {
+    super(provider, 0.7)
   }
 
-  protected buildPrompt(state: AgentState, formatReminder?: string): import('../model/provider.js').Message[] {
-    const titleLine = state.title ? `书名：${state.title}` : ''
+  protected buildPrompt(state: CharacterAgentInput, formatReminder?: string): import('../model/provider.js').Message[] {
     const wd = state.worldDirection
     const worldDirSection = wd
       ? `世界观方向：
@@ -22,32 +27,15 @@ ${wd.powerSystem ? `- 力量/规则体系：${wd.powerSystem}` : ''}
     const mainCharacterCountMin = genreSkill?.mainCharacterCountMin ?? 3
     const mainCharacterCountMax = genreSkill?.mainCharacterCountMax ?? 8
 
-    const userContent = `<task>
-  根据以下故事设定，创建主要人物角色。
-</task>
-
-<context>
-  ${titleLine ? `<title>${state.title}</title>` : ''}
-  <story_idea>${state.idea}</story_idea>
-  ${worldDirSection ? `<world_direction>\n${worldDirSection}\n</world_direction>` : ''}
-  ${state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''}
-</context>
-
-<requirements>
-  <requirement>为故事创建 {MAIN_CHARACTER_COUNT_MIN}-{MAIN_CHARACTER_COUNT_MAX} 个主要人物</requirement>
-  <requirement>每个角色需要包含：姓名、角色定位（主角/反派/配角等）、性格特点、背景故事、在故事中的目标或动机、与其他角色的关系、对话风格</requirement>
-  <requirement>请以 JSON 数组格式输出</requirement>
-</requirements>
-${formatReminder ?? ''}`
-
-    const templatedContent = this.fillTemplate(userContent, {
-      MAIN_CHARACTER_COUNT_MIN: mainCharacterCountMin,
-      MAIN_CHARACTER_COUNT_MAX: mainCharacterCountMax,
-    })
-
     const messages: import('../model/provider.js').Message[] = [
-      this.systemMessage('<role>你是一位擅长人物塑造的作家，擅长创造立体、真实、有记忆点的人物角色。</role>\n<requirement>请严格按照要求的 JSON 数组格式输出，不要添加任何额外的解释文字。</requirement>'),
-      this.userMessage(templatedContent),
+      this.systemMessage(buildCharacterSystemPrompt()),
+      this.userMessage(buildCharacterUserPrompt(
+        state,
+        mainCharacterCountMin,
+        mainCharacterCountMax,
+        worldDirSection,
+        formatReminder,
+      )),
     ]
     return messages
   }

@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import * as contextJudge from '../../src/utils/context-judge.js'
 import {
   reconcileOutlineWithState,
@@ -7,6 +10,8 @@ import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../src/utils/chapter-plannin
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { PendingTask } from '../../src/types/story-state.js'
 import type { ModelProvider } from '../../src/model/provider.js'
+
+const tempDir = join(tmpdir(), `museflow-outline-boundary-${randomUUID().slice(0, 8)}`)
 
 vi.mock('../../src/utils/context-judge.js', () => ({
   batchJudgeTaskRelevance: vi.fn().mockResolvedValue([]),
@@ -24,7 +29,7 @@ function buildState(
   }))
 
   return {
-    story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
+    story: { id: 'story-1', title: 'Story', outputDir: tempDir },
     idea: 'idea',
     genre: 'default',
     totalChapters: 10,

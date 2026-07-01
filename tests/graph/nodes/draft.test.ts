@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { draft_chapter } from '../../../src/graph/nodes/draft.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
+import { createMockContext } from '../../utils/mock-context.ts'
 
 vi.mock('../../../src/core/outline-expander.js', () => ({
   expandOutlineForChapter: vi.fn(async () => ({
@@ -51,6 +52,6 @@ describe('draft_chapter output validation', () => {
       rewriteApproved: false,
     } as unknown as ReducedGraphState
 
-    await expect(draft_chapter(state)).rejects.toThrow(/起草后校验失败/)
+    await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/起草后校验失败/)
   })
 })

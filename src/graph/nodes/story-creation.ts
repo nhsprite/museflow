@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
-import type { AgentState } from '../../agents/base.js'
+import type { WorldbuilderAgentInput, CharacterAgentInput, StoryArcAgentInput } from '../../agents/types.js'
 import {
   getWorldbuilderAgent,
   getCharacterAgent,
@@ -11,10 +11,14 @@ import { writeOutlineContent, writeStoryBible } from '../../storage/filesystem/w
 import { updateStoryTitle, renameStoryOutputDir } from '../../storage/meta/stores/story.js'
 import { getStoryOutputDirWithTitle } from '../../utils/paths.js'
 import { charactersToString } from '../utils/characters.js'
+import type { RuntimeContext } from '../../core/context.js'
 
-export async function build_world(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const agent = getWorldbuilderAgent()
-  const agentState: AgentState = {
+export async function build_world(
+  context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  const agent = getWorldbuilderAgent(context.provider)
+  const agentState: WorldbuilderAgentInput = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
@@ -46,10 +50,13 @@ export async function build_world(state: ReducedGraphState): Promise<Partial<Red
   return { world, story: { ...state.story, title: existingTitle } }
 }
 
-export async function create_characters(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const agent = getCharacterAgent()
+export async function create_characters(
+  context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  const agent = getCharacterAgent(context.provider)
   const worldContent = state.world?.content
-  const agentState: AgentState = {
+  const agentState: CharacterAgentInput = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
@@ -91,10 +98,13 @@ export async function create_characters(state: ReducedGraphState): Promise<Parti
   throw new Error('[MuseFlow] 错误：角色生成失败，请检查 AI 输出或重试')
 }
 
-export async function create_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+export async function create_outline(
+  context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
   const worldContent = state.world?.content
-  const agent = getStoryArcAgent()
-  const agentState: AgentState = {
+  const agent = getStoryArcAgent(context.provider)
+  const agentState: StoryArcAgentInput = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
@@ -156,7 +166,10 @@ export async function create_outline(state: ReducedGraphState): Promise<Partial<
   throw new Error('[MuseFlow] 错误：故事弧线生成失败，请检查 AI 输出或重试')
 }
 
-export async function validate_outline(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+export async function validate_outline(
+  _context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
   const storyArc = state.storyArc
   const issues: Array<import('../../types/agent.js').Issue> = []
 

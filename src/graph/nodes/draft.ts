@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
-import type { AgentState } from '../../agents/base.js'
+import type { ChapterAgentInput } from '../../agents/types.js'
 import { getChapterAgent } from '../agent-factory.js'
 import { writeChapterContent, readChapterContent } from '../../storage/filesystem/writer.js'
 import { createChapterMeta } from '../../utils/agent-output.js'
@@ -10,13 +10,17 @@ import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-cont
 import { validateFixedChapterContent, tryCorrectOffByOneChapterHeading } from '../../utils/chapter-content-validation.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
+import type { RuntimeContext } from '../../core/context.js'
 
-export async function draft_chapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
-  const agent = getChapterAgent()
+export async function draft_chapter(
+  context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  const agent = getChapterAgent(context.provider)
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
 
-  const { chapterPlan, boundaryHints, pendingIssues: outlinePendingIssues, outline: updatedOutline } = await expandOutlineForChapter(state, chapterIndex)
+  const { chapterPlan, boundaryHints, pendingIssues: outlinePendingIssues, outline: updatedOutline } = await expandOutlineForChapter(state, chapterIndex, context.provider)
   state = { ...state, chapterPlan, outline: updatedOutline ?? state.outline }
 
   const mergedIssues = [
@@ -28,14 +32,14 @@ export async function draft_chapter(state: ReducedGraphState): Promise<Partial<R
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
-  const baseContext = await buildChapterAgentContext(state, chapterIndex)
+  const baseContext = await buildChapterAgentContext(state, chapterIndex, context.provider)
 
-  const agentState: AgentState = mergeAgentState(baseContext, {
+  const agentState: ChapterAgentInput = mergeAgentState(baseContext, {
     outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
     ...(mergedIssues.length > 0 ? { issues: mergedIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
-  })
+  }) as ChapterAgentInput
 
   const output = await agent.run(agentState)
 

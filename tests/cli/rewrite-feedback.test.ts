@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 const runOneChapterMock = vi.fn()
+const testTempDir = join(tmpdir(), `museflow-rewrite-feedback-${randomUUID().slice(0, 8)}`)
 
 const initialState = {
-  story: { id: 'story-1', outputDir: '/tmp/test-story' },
+  story: { id: 'story-1', outputDir: testTempDir },
   idea: 'test',
   genre: 'default',
   totalChapters: 10,
@@ -43,7 +47,7 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({
     id: 'story-1',
     title: 'Test Story',
-    outputDir: '/tmp/test-story',
+    outputDir: testTempDir,
   }),
   updateStoryStatus: vi.fn(),
   initStoryDb: vi.fn().mockResolvedValue(undefined),

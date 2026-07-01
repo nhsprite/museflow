@@ -1,21 +1,28 @@
-import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
+import type { ModelProvider } from '../model/provider.js'
+import { BaseAgent, type AgentOutput } from './base.js'
+import type { ChapterOutlineAgentInput } from './types.js'
 import type { ChapterOutline, ActArc, StoryArc } from '../types/outline.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { isClosingPhase } from '../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
+import {
+  buildChapterOutlineSystemPrompt,
+  buildChapterOutlineUserPrompt,
+  type ChapterOutlinePromptSections,
+} from './prompts/chapter-outline-prompt.js'
 
 export interface ChapterOutlineResult extends ChapterOutline {
   conflict?: boolean
   conflictReason?: string
 }
 
-export class ChapterOutlineAgent extends BaseAgent {
-  constructor() {
-    super(undefined, 0.4)
+export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
+  constructor(provider: ModelProvider) {
+    super(provider, 0.4)
   }
 
-  protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
+  protected buildPrompt(state: ChapterOutlineAgentInput): import('../model/provider.js').Message[] {
     const chapterIndex = state.chapterIndex ?? 0
     const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
     const storyArc = state.storyArc
@@ -57,55 +64,15 @@ export class ChapterOutlineAgent extends BaseAgent {
 </closing_phase>`
       : ''
 
-    const userContent = `<task>请为第 ${displayChapterNumber} 章生成具体的章节大纲。</task>
-
-<context>
-${actSection}
-
-${nextActSection}
-
-${closingPhaseSection}
-
-<story_arc>
-总章节数：${state.totalChapters}
-全局关键情节点池：${storyArc?.keyBeats.map(k => `${k.beat}（截止第${k.deadlineAct}幕）`).join('、') || '（无）'}
-</story_arc>
-
-${state.world ? `<world>\n${state.world}\n</world>` : ''}
-
-${state.characters ? `<characters>\n${state.characters}\n</characters>` : ''}
-
-${state.previousChapters ? `<previous_summary>\n${state.previousChapters}\n</previous_summary>` : ''}
-
-${state.storyState ? `<story_state>\n${state.storyState}\n</story_state>` : ''}
-
-${state.canonicalFacts && state.canonicalFacts.length > 0 ? `<canonical_facts>\n${JSON.stringify(state.canonicalFacts, null, 2)}\n</canonical_facts>` : ''}
-
-${state.verifiedConstraints && state.verifiedConstraints.length > 0 ? `<verified_constraints>\n${state.verifiedConstraints.join('\n')}\n</verified_constraints>` : ''}
-</context>
-
-<instruction>
-1. 生成本章标题和 1–2 句描述（30–60 字）。
-2. 标题和描述必须与当前幕的叙事功能和主题一致。
-3. 必须尊重 <story_state> 和 <canonical_facts> 中的权威事实，不得与之矛盾。
-4. 优先推进当前幕尚未消费的 mandatory beats；如果本章不适合推进任何 beat，请说明原因。
-5. 不得提前执行下一幕的叙事功能，不得提前完成后续幕的 mandatory beats。
-6. 如果当前幕进度偏慢（剩余章节少、pending beats 多），请在本章安排推进至少一个 pending beat。
-7. 如果推进某个 mandatory beat 会与权威事实冲突，请返回 conflict: true 并说明原因，不要强行写入。
-8. 输出 JSON 格式：
-   {
-     "title": "章节标题",
-     "description": "本章具体执行描述",
-     "introducedCharacters": ["新角色名"],
-     "claimedBeats": ["本幕 mandatory beat 1"],
-     "conflict": false,
-     "conflictReason": ""
-   }
-</instruction>`
+    const sections: ChapterOutlinePromptSections = {
+      actSection,
+      nextActSection,
+      closingPhaseSection,
+    }
 
     return [
-      this.systemMessage('你是一位严谨的小说章节策划。你的任务是在每章动笔前，根据当前幕结构、权威事实和叙事进度，即时生成该章的具体大纲。你绝不提前执行后续幕的内容，也绝不与已确立的权威事实冲突。'),
-      this.userMessage(userContent),
+      this.systemMessage(buildChapterOutlineSystemPrompt()),
+      this.userMessage(buildChapterOutlineUserPrompt(state, sections)),
     ]
   }
 

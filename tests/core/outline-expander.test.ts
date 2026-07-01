@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import * as contextJudge from '../../src/utils/context-judge.js'
 import {
   expandOutlineForChapter,
@@ -9,6 +12,8 @@ import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 
+const testTempDir = join(tmpdir(), `museflow-outline-expander-${randomUUID().slice(0, 8)}`)
+
 const { planChapterWithOverrideMock } = vi.hoisted(() => ({
   planChapterWithOverrideMock: vi.fn(),
 }))
@@ -17,6 +22,13 @@ const mockChat = vi.fn(async (): Promise<string> => '')
 const mockChatStructured = vi.fn()
 const chapterOutlineRunMock = vi.fn()
 
+function createMockProvider(): ModelProvider {
+  return {
+    chat: mockChat,
+    chatStructured: mockChatStructured,
+  }
+}
+
 vi.mock('../../src/graph/nodes/planning.js', () => ({
   plan_chapter_with_override: planChapterWithOverrideMock,
 }))
@@ -24,13 +36,6 @@ vi.mock('../../src/graph/nodes/planning.js', () => ({
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getChapterOutlineAgent: () => ({
     run: vi.fn(async (state: { chapterIndex?: number }) => chapterOutlineRunMock(state.chapterIndex ?? 0)),
-  }),
-}))
-
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
-    chat: mockChat,
-    chatStructured: mockChatStructured,
   }),
 }))
 
@@ -60,7 +65,7 @@ const storyArc = {
 }
 
 const baseState: ReducedGraphState = {
-  story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
+  story: { id: 'story-1', title: 'Story', outputDir: testTempDir },
   idea: 'idea',
   genre: 'default',
   totalChapters: 3,
@@ -107,11 +112,11 @@ describe('expandOutlineForChapter', () => {
   })
 
   it('calls plan_chapter with current and next chapter arcs when descriptions exist', async () => {
-    await expandOutlineForChapter(baseState, 1)
+    await expandOutlineForChapter(baseState, 1, createMockProvider())
 
     expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
     expect(chapterOutlineRunMock).not.toHaveBeenCalled()
-    const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![1] as string
+    const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
     expect(formattedOutline).toContain('第2章：遇敌')
     expect(formattedOutline).toContain('主角遭遇敌人并暂时被困')
   })
@@ -126,7 +131,7 @@ describe('expandOutlineForChapter', () => {
       ],
     }
 
-    const result = await expandOutlineForChapter(jitState, 1)
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
 
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
     expect(result.outline?.[1]?.title).toBe('即时标题')
@@ -146,14 +151,14 @@ describe('expandOutlineForChapter', () => {
       },
     }
 
-    await expandOutlineForChapter(multiActState, 0)
+    await expandOutlineForChapter(multiActState, 0, createMockProvider())
 
-    const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![1] as string
+    const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
     expect(formattedOutline).toContain('后续幕边界提示')
   })
 
   it('returns boundary hints', async () => {
-    const result = await expandOutlineForChapter(baseState, 1)
+    const result = await expandOutlineForChapter(baseState, 1, createMockProvider())
 
     expect(result.boundaryHints.length).toBeGreaterThan(0)
     expect(result.chapterPlan).toBeDefined()
@@ -161,7 +166,7 @@ describe('expandOutlineForChapter', () => {
 
   it('throws when plan_chapter returns no plan', async () => {
     planChapterWithOverrideMock.mockResolvedValueOnce({})
-    await expect(expandOutlineForChapter(baseState, 1)).rejects.toThrow('详细计划生成失败')
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toThrow('详细计划生成失败')
   })
 
   it('returns warning issue when budget validation fails after max attempts', async () => {
@@ -178,7 +183,7 @@ describe('expandOutlineForChapter', () => {
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: badPlan })
     mockChatStructured.mockResolvedValue({ results: [true, false] })
 
-    const result = await expandOutlineForChapter(baseState, 1)
+    const result = await expandOutlineForChapter(baseState, 1, createMockProvider())
 
     expect(result.pendingIssues).toBeDefined()
     expect(result.pendingIssues!.length).toBe(1)

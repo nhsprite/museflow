@@ -45,6 +45,12 @@ export interface ChapterPlanningConfig {
   foreshadowMaxStackSize: number
   /** 进入收尾阶段前剩余章节比例 */
   closingPhaseRatio: number
+  /** 错误级问题最大连续重写次数 */
+  maxErrorRewriteAttempts: number
+  /** 问题集合相似度阈值，超过则认为重写未收敛 */
+  issueSetSimilarityThreshold: number
+  /** 当只剩解释性错误时是否自动降级为 warning */
+  downgradeInterpretiveErrors: boolean
 }
 
 export interface GenreSkill {

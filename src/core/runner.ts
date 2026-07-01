@@ -6,20 +6,14 @@ import { getOutputsDir } from '../utils/paths.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
-import { getCheckpointer } from '../graph/checkpointer.js'
+
 import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 import { deleteChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
+import { createCheckpointService } from '../storage/checkpoint-service.js'
+import { migrateLegacyCheckpoints } from '../storage/migration.js'
 import type { Issue } from '../types/agent.js'
 import type { StateOverride } from '../types/story-state.js'
-
-let _graph: ReturnType<typeof buildNovelGraph> | null = null
-
-export function getGraph() {
-  if (!_graph) {
-    _graph = buildNovelGraph()
-  }
-  return _graph
-}
+import { createRuntimeContext, type RuntimeContext } from './context.js'
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -47,14 +41,17 @@ export function getOutputDirFromStoryId(storyId: string): string | undefined {
   return undefined
 }
 
-export async function runStory(input: {
-  storyId: string
-  idea: string
-  genre: string
-  totalChapters: number
-  story: unknown
-}): Promise<ReducedGraphState> {
-  const graph = getGraph()
+export async function runStory(
+  input: {
+    storyId: string
+    idea: string
+    genre: string
+    totalChapters: number
+    story: unknown
+  },
+  context: RuntimeContext = createRuntimeContext()
+): Promise<ReducedGraphState> {
+  const graph = buildNovelGraph(context)
   const storyObj = input.story as { id: string; outputDir: string }
   const initialState: ReducedGraphState = {
     story: input.story as ReducedGraphState['story'],
@@ -84,12 +81,17 @@ export async function runStory(input: {
     autoFixAttempts: 0,
     verifiedConstraints: [],
     chapterReport: null,
-    rewriteAttempts: 0,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: undefined,
+    session: {
+      chapterIndex: 0,
+      rewriteAttempts: 0,
+      errorRewriteAttempts: 0,
+      autoFixAttempts: 0,
+      previousIssues: [],
+      previousRawErrorCount: 0,
+      routingDecision: undefined,
+      forceStructuralRewrite: false,
+      rewriteApproved: false,
+    },
     authorDecisions: {},
   }
 
@@ -105,11 +107,12 @@ export async function runStory(input: {
 async function runChapterGraph(
   storyId: string,
   outputDir: string,
-  workingState: ReducedGraphState
+  workingState: ReducedGraphState,
+  context: RuntimeContext
 ): Promise<ReducedGraphState> {
-  const graph = getGraph()
-  const checkpointer = getCheckpointer()
-  await checkpointer.clearPendingWrites(outputDir)
+  const graph = buildNovelGraph(context)
+  const checkpointService = createCheckpointService(outputDir)
+  await checkpointService.clearPendingWrites()
 
   const config: RunnableConfig = {
     configurable: { thread_id: storyId, outputDir },
@@ -119,11 +122,15 @@ async function runChapterGraph(
   try {
     const result = await graph.invoke(workingState, config)
 
-    // 章节完成后再保存 chapter checkpoint。在 finalize_chapter 节点内部调用时，
+    // 章节完成后再保存 chapter marker。在 finalize_chapter 节点内部调用时，
     // LangGraph 尚未持久化该节点返回的状态更新，会导致 checkpoint 中的
     // currentChapterIndex 落后一章，进而让下一次 write 重复撰写同一章。
     if (!result.rewriteRequested && result.isWriting && result.currentChapterIndex > 0) {
-      await checkpointer.saveChapterCheckpoint(result.story.outputDir, result.currentChapterIndex)
+      const stateAfter = await graph.getState(config)
+      const checkpointId = stateAfter.config?.configurable?.checkpoint_id as string | undefined
+      if (checkpointId) {
+        await checkpointService.saveChapterMarker(result.currentChapterIndex, checkpointId)
+      }
     }
 
     // 将 checkpoint 同步为 meta.json 导出视图，保持 CLI 命令可读。
@@ -157,26 +164,28 @@ export interface RunOneChapterOptions {
 
 export async function runOneChapter(
   storyId: string,
-  options: RunOneChapterOptions
+  options: RunOneChapterOptions,
+  context: RuntimeContext = createRuntimeContext()
 ): Promise<ReducedGraphState> {
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
     throw new Error(`Story ${storyId} not found`)
   }
 
-  const graph = getGraph()
-  const checkpointer = getCheckpointer()
-  await checkpointer.clearPendingWrites(outputDir)
+  const graph = buildNovelGraph(context)
+  const checkpointService = createCheckpointService(outputDir)
+  await migrateLegacyCheckpoints(outputDir)
+  await checkpointService.clearPendingWrites()
 
   let checkpointId: string | undefined
   if (options.mode === 'rewrite' && options.targetChapterIndex !== undefined) {
-    const prevCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, options.targetChapterIndex)
-    if (prevCheckpoint) {
-      checkpointId = prevCheckpoint.checkpointId
+    const prevMarker = await checkpointService.getChapterMarker(options.targetChapterIndex)
+    if (prevMarker) {
+      checkpointId = prevMarker
     } else {
-      const sameCheckpoint = await checkpointer.getChapterCheckpoint(outputDir, options.targetChapterIndex + 1)
-      if (sameCheckpoint) {
-        checkpointId = sameCheckpoint.checkpointId
+      const nextMarker = await checkpointService.getChapterMarker(options.targetChapterIndex + 1)
+      if (nextMarker) {
+        checkpointId = nextMarker
       }
     }
   }
@@ -209,12 +218,17 @@ export async function runOneChapter(
     isWriting: true,
     writeOneChapterOnly: true,
     chapterReport: null,
-    rewriteAttempts: 0,
-    errorRewriteAttempts: 0,
-    previousIssues: [],
-    previousRawErrorCount: 0,
-    forceStructuralRewrite: false,
-    routingDecision: undefined,
+    session: {
+      chapterIndex: targetIndex,
+      rewriteAttempts: 0,
+      errorRewriteAttempts: 0,
+      autoFixAttempts: 0,
+      previousIssues: [],
+      previousRawErrorCount: 0,
+      routingDecision: undefined,
+      forceStructuralRewrite: false,
+      rewriteApproved: options.userResponse ?? false,
+    },
     authorDecisions: {},
   }
 
@@ -243,20 +257,21 @@ export async function runOneChapter(
     }
   }
 
-  return runChapterGraph(storyId, outputDir, workingState)
+  return runChapterGraph(storyId, outputDir, workingState, context)
 }
 
 export async function continueStory(
   storyId: string,
   userResponse?: boolean,
   currentChapterIndex?: number,
-  _options: { isRewrite?: boolean } = {}
+  _options: { isRewrite?: boolean } = {},
+  context: RuntimeContext = createRuntimeContext()
 ): Promise<ReducedGraphState> {
   return runOneChapter(storyId, {
     mode: 'continue',
     targetChapterIndex: currentChapterIndex,
     userResponse,
-  })
+  }, context)
 }
 
 export async function applyStateOverrides(
@@ -287,8 +302,8 @@ export async function applyStateOverrides(
   const updatedConstraints = [...existingConstraints, ...constraints]
   const updatedDecisions = { ...existingDecisions, ...authorDecisions }
 
-  const checkpointer = getCheckpointer()
-  await checkpointer.updateLatestState(outputDir, {
+  const checkpointService = createCheckpointService(outputDir)
+  await checkpointService.updateLatestState({
     storyState: updatedStoryState,
     verifiedConstraints: updatedConstraints,
     authorDecisions: updatedDecisions,
@@ -329,8 +344,8 @@ export async function applyOutlineRevision(
     ...(revisedTitle ? { title: revisedTitle } : {}),
   }
 
-  const checkpointer = getCheckpointer()
-  await checkpointer.updateLatestState(outputDir, { outline })
+  const checkpointService = createCheckpointService(outputDir)
+  await checkpointService.updateLatestState({ outline })
 
   await writeOutlineContent(
     outputDir,
@@ -349,8 +364,11 @@ export async function applyOutlineRevision(
   }
 }
 
-export async function getState(storyId: string): Promise<ReducedGraphState | null> {
-  const graph = getGraph()
+export async function getState(
+  storyId: string,
+  context: RuntimeContext = createRuntimeContext()
+): Promise<ReducedGraphState | null> {
+  const graph = buildNovelGraph(context)
   const outputDir = getOutputDirFromStoryId(storyId)
   if (!outputDir) {
     return null

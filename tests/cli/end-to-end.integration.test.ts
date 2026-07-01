@@ -3,13 +3,32 @@ import { rmSync, readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { start } from '../../src/cli/commands/start.ts'
 import type { ModelProvider } from '../../src/model/provider.js'
+import type { RuntimeContext } from '../../src/core/context.js'
+import { JsonCheckpointer } from '../../src/graph/checkpointer.js'
 
-let mockProvider: ModelProvider
+const mockChat = vi.fn(async (): Promise<string> => '{}')
+const mockChatStructured = vi.fn(async <T>(): Promise<T> => {
+  return {
+    options: [
+      { title: '候选书名一', worldDirection: { coreConflict: '冲突一', worldFeatures: ['特征A', '特征B'] } },
+      { title: '候选书名二', worldDirection: { coreConflict: '冲突二', worldFeatures: ['特征C', '特征D'] } },
+      { title: '候选书名三', worldDirection: { coreConflict: '冲突三', worldFeatures: ['特征E', '特征F'] } },
+      { title: '候选书名四', worldDirection: { coreConflict: '冲突四', worldFeatures: ['特征G', '特征H'] } },
+    ],
+  } as T
+})
 
-vi.mock('../../src/model/registry.js', () => ({
-  createProvider: vi.fn(() => mockProvider),
-  AnthropicCompatibleProvider: class {},
-}))
+function createMockProvider(): ModelProvider {
+  return { chat: mockChat, chatStructured: mockChatStructured }
+}
+
+function createMockContext(): RuntimeContext {
+  return {
+    provider: createMockProvider(),
+    checkpointer: new JsonCheckpointer(),
+    config: { model: { provider: 'openai', model: 'gpt-4o', temperature: 0.7, maxTokens: 8192 } },
+  }
+}
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getWorldbuilderAgent: () => ({
@@ -74,27 +93,10 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
   stopStepProgressQuiet: vi.fn(),
 }))
 
-function createMockProvider(): ModelProvider {
-  return {
-    chat: vi.fn(async () => '{}'),
-    chatStructured: vi.fn(async <T>(_messages: unknown, _schema: unknown, _temperature?: number): Promise<T> => {
-      return {
-        options: [
-          { title: '候选书名一', worldDirection: { coreConflict: '冲突一', worldFeatures: ['特征A', '特征B'] } },
-          { title: '候选书名二', worldDirection: { coreConflict: '冲突二', worldFeatures: ['特征C', '特征D'] } },
-          { title: '候选书名三', worldDirection: { coreConflict: '冲突三', worldFeatures: ['特征E', '特征F'] } },
-          { title: '候选书名四', worldDirection: { coreConflict: '冲突四', worldFeatures: ['特征G', '特征H'] } },
-        ],
-      } as T
-    }),
-  }
-}
-
 describe('CLI end-to-end integration', () => {
   let preExistingDirs: string[]
 
   beforeEach(() => {
-    mockProvider = createMockProvider()
     const booksDir = join(process.cwd(), 'books')
     preExistingDirs = existsSync(booksDir) ? readdirSync(booksDir) : []
   })
@@ -120,7 +122,7 @@ describe('CLI end-to-end integration', () => {
         chapters: 3,
         genre: 'default',
         yes: true,
-      })
+      }, createMockContext())
 
       const booksDir = join(process.cwd(), 'books')
       const dirs = readdirSync(booksDir).filter(d => !preExistingDirs.includes(d))

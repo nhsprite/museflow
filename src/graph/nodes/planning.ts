@@ -1,25 +1,27 @@
 import type { ReducedGraphState } from '../state.js'
-import type { AgentState } from '../../agents/base.js'
+import type { ChapterPlannerAgentInput } from '../../agents/types.js'
 import { getChapterPlannerAgent } from '../agent-factory.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
+import type { ModelProvider } from '../../model/provider.js'
 
 async function runPlanChapter(
+  provider: ModelProvider,
   state: ReducedGraphState,
   outlineOverride?: string
 ): Promise<Partial<ReducedGraphState>> {
-  const agent = getChapterPlannerAgent()
+  const agent = getChapterPlannerAgent(provider)
   const chapterIndex = state.currentChapterIndex
 
-  const baseContext = await buildChapterAgentContext(state, chapterIndex)
+  const baseContext = await buildChapterAgentContext(state, chapterIndex, provider)
 
-  const agentState: AgentState = mergeAgentState(baseContext, {
+  const agentState: ChapterPlannerAgentInput = mergeAgentState(baseContext, {
     outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
     chapterSummaries: state.chapterSummaries,
     ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
     ...(state.verifiedConstraints && state.verifiedConstraints.length > 0 ? { verifiedConstraints: state.verifiedConstraints } : {}),
-  })
+  }) as ChapterPlannerAgentInput
 
   const output = await agent.run(agentState)
 
@@ -35,10 +37,11 @@ async function runPlanChapter(
 }
 
 export async function plan_chapter_with_override(
+  provider: ModelProvider,
   state: ReducedGraphState,
   outlineOverride: string
 ): Promise<Partial<ReducedGraphState>> {
-  return runPlanChapter(state, outlineOverride)
+  return runPlanChapter(provider, state, outlineOverride)
 }
 
 export function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: number, extraHints: string[] = []): string {

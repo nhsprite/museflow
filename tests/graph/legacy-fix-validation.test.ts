@@ -3,9 +3,10 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { runLegacyFix } from '../../src/graph/nodes/fix.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+import { createMockContext } from '../utils/mock-context.ts'
 
-vi.mock('../../src/graph/utils/reconciler.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/graph/utils/reconciler.js')>()
+vi.mock('../../src/graph/utils/reconciler/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/graph/utils/reconciler/index.js')>()
   return {
     ...actual,
     prepareStoryStateForChapter: vi.fn().mockResolvedValue({
@@ -70,8 +71,9 @@ describe('runLegacyFix validation', () => {
     const state = buildState(outputDir)
     await fs.writeFile(path.join(outputDir, 'chapters', 'chapter_4.md'), existingContent, 'utf-8')
 
+    const context = createMockContext()
     await expect(
-      runLegacyFix(agent as never, state, existingContent, 3, state.outline[3], '前几章摘要', '时间线')
+      runLegacyFix(agent as never, context.provider, state, existingContent, 3, state.outline[3], '前几章摘要', '时间线', '')
     ).rejects.toThrow('修改计划')
 
     const fileContent = await fs.readFile(path.join(outputDir, 'chapters', 'chapter_4.md'), 'utf-8')

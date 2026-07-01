@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+
+const testTempDir = join(tmpdir(), `museflow-write-${randomUUID().slice(0, 8)}`)
 
 const runOneChapterMock = vi.fn().mockResolvedValue({
-  story: { id: 'story-1', outputDir: '/tmp/test-story' },
+  story: { id: 'story-1', outputDir: testTempDir },
   currentChapterIndex: 1,
   totalChapters: 3,
   pendingIssues: [],
@@ -15,7 +20,7 @@ const runOneChapterMock = vi.fn().mockResolvedValue({
 
 function createState(overrides: Record<string, unknown> = {}) {
   return {
-    story: { id: 'story-1', outputDir: '/tmp/test-story' },
+    story: { id: 'story-1', outputDir: testTempDir },
     idea: 'test',
     genre: 'default',
     totalChapters: 3,
@@ -55,7 +60,7 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({
     id: 'story-1',
     title: 'Test Story',
-    outputDir: '/tmp/test-story',
+    outputDir: testTempDir,
     status: 'writing',
   }),
   updateStoryStatus: vi.fn(),
@@ -96,7 +101,7 @@ describe('write command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     runOneChapterMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       currentChapterIndex: 1,
       totalChapters: 3,
       pendingIssues: [],

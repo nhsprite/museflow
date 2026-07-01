@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { buildNovelGraph } from '../../src/graph/novel.graph.ts'
+import { createMockContext } from '../utils/mock-context.ts'
 
 describe('novel graph', () => {
   it('compiles without missing node errors', () => {
-    expect(() => buildNovelGraph()).not.toThrow()
+    expect(() => buildNovelGraph(createMockContext())).not.toThrow()
   })
 
   it('contains all story-creation and chapter-writing nodes', () => {
-    const graph = buildNovelGraph() as unknown as {
+    const graph = buildNovelGraph(createMockContext()) as unknown as {
       builder: { nodes: Record<string, unknown> }
     }
     const nodeNames = Object.keys(graph.builder.nodes).filter(n => n !== '__start__')
@@ -29,7 +30,7 @@ describe('novel graph', () => {
   })
 
   it('wires the story creation path edges', () => {
-    const graph = buildNovelGraph() as unknown as {
+    const graph = buildNovelGraph(createMockContext()) as unknown as {
       builder: { edges: Set<[string, string]> }
     }
     const edges = Array.from(graph.builder.edges).map(([from, to]) => `${from} -> ${to}`)
@@ -41,7 +42,7 @@ describe('novel graph', () => {
   })
 
   it('wires the chapter writing loop edges', () => {
-    const graph = buildNovelGraph() as unknown as {
+    const graph = buildNovelGraph(createMockContext()) as unknown as {
       builder: { edges: Set<[string, string]> }
     }
     const edges = Array.from(graph.builder.edges).map(([from, to]) => `${from} -> ${to}`)
@@ -54,7 +55,7 @@ describe('novel graph', () => {
   })
 
   it('registers all conditional edges with complete branch mappings', () => {
-    const graph = buildNovelGraph() as unknown as {
+    const graph = buildNovelGraph(createMockContext()) as unknown as {
       builder: {
         branches: Record<string, { condition: { ends: Record<string, string> } }>
       }
@@ -83,7 +84,7 @@ describe('novel graph', () => {
   })
 
   it('compiles with a checkpointer', () => {
-    const graph = buildNovelGraph() as unknown as { checkpointer: unknown }
+    const graph = buildNovelGraph(createMockContext()) as unknown as { checkpointer: unknown }
     expect(graph.checkpointer).toBeDefined()
   })
 })

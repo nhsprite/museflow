@@ -7,6 +7,7 @@ import { exportMetaFromCheckpoint } from '../../storage/meta/exporter.js'
 import { generateTitleOptions, selectTitleOption, type TitleOption } from './title-selector.js'
 import { withSpinner } from '../utils/spinner.js'
 import type { ModelConfig } from '../../types/config.js'
+import { createRuntimeContext, type RuntimeContext } from '../../core/context.js'
 
 interface StartOptions {
   idea: string
@@ -19,8 +20,10 @@ interface StartOptions {
 
 const MAX_REGENERATE_ATTEMPTS = 3
 
-export async function start(options: StartOptions): Promise<void> {
+export async function start(options: StartOptions, context?: RuntimeContext): Promise<void> {
   const { idea, chapters, genre, provider, yes } = options
+
+  const runtimeContext = context ?? createRuntimeContext()
 
   console.log('[MuseFlow] 开始创建故事...')
   console.log(`  简介: ${idea}`)
@@ -50,7 +53,7 @@ export async function start(options: StartOptions): Promise<void> {
 
     try {
       const titleOptions = await withSpinner('正在生成书名和世界观方向选项...', () =>
-        generateTitleOptions(idea, genre, chapters)
+        generateTitleOptions(runtimeContext.provider, idea, genre, chapters)
       )
 
       if (yes) {
@@ -71,7 +74,7 @@ export async function start(options: StartOptions): Promise<void> {
 
   if (!selectedOption) {
     console.warn('[MuseFlow] 警告: 达到最大重试次数，使用默认选项')
-    const titleOptions = await generateTitleOptions(idea, genre, chapters)
+    const titleOptions = await generateTitleOptions(runtimeContext.provider, idea, genre, chapters)
     selectedOption = titleOptions[0]!
   }
 
@@ -106,7 +109,7 @@ export async function start(options: StartOptions): Promise<void> {
         genre,
         totalChapters: chapters,
         story,
-      })
+      }, runtimeContext)
     )
 
     if (result.world) {

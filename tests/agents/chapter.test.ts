@@ -1,29 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
-import type { AgentState } from '../../src/agents/base.ts'
+import type { ChapterAgentInput } from '../../src/agents/types.ts'
 import type { Issue } from '../../src/types/agent.ts'
 
-const mockChat = vi.fn(async (): Promise<string> => '')
-
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
-    chat: mockChat,
-  }),
-}))
+function createMockProvider(chatResponse?: string): ModelProvider {
+  return {
+    chat: vi.fn().mockResolvedValue(chatResponse ?? ''),
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 class TestableChapterAgent extends (await import('../../src/agents/chapter.ts')).ChapterAgent {
-  public exposePrompt(state: Required<AgentState>): Message[] {
+  public exposePrompt(state: Required<ChapterAgentInput>): Message[] {
     return this.buildPrompt(state)
   }
 }
 
 describe('ChapterAgent chapter numbering', () => {
-  beforeEach(() => {
-    mockChat.mockClear()
-  })
 
   it('builds the first chapter prompt with display numbering', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '一个少年踏上修仙路',
@@ -47,7 +43,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('includes issue suggestions in rewrite prompts', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const issues: Issue[] = [
       {
@@ -82,7 +78,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('includes canonical fact verification section when storyState is provided', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '一个少年踏上修仙路',
@@ -116,7 +112,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('omits canonical fact section when storyState is empty', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '一个少年踏上修仙路',
@@ -137,7 +133,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('includes chapterTimeAnchor when provided in chapterPlan', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -177,7 +173,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('sorts canonical facts by outline relevance', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -204,7 +200,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('marks previous summaries as narrative context only, not factual authority', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -227,7 +223,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('uses story_state as the single factual authority', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -251,7 +247,7 @@ describe('ChapterAgent chapter numbering', () => {
   })
 
   it('includes anti-hallucination constraints about item origins', () => {
-    const agent = new TestableChapterAgent()
+    const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',

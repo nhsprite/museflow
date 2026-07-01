@@ -1,0 +1,248 @@
+import type { StoryState, PendingTask, CanonicalFact } from '../../../types/story-state.js'
+import { createEmptyStoryState } from '../../../storage/meta/stores/story-state.js'
+import { mergeCanonicalRecords, canonicalizeItemName } from '../../../utils/items.js'
+import { generateId } from '../../../utils/id.js'
+import { findMatchingKey, findMatchingKeys } from './format.js'
+import { isCharacterSubject } from './timeline.js'
+
+/**
+ * 将作者通过 CLI 做出的裁决（source='author' 的 overrides）应用到 storyState。
+ *
+ * 这是通用机制：它根据 override 的 attribute 更新角色/物品位置或状态，
+ * 并同步更新 canonicalFacts，使后续 agent 把作者裁决视为权威事实。
+ */
+export function applyAuthorOverrides(state: StoryState): StoryState {
+  const overrides = state.overrides?.filter(o => o.source === 'author') ?? []
+  if (overrides.length === 0) return state
+
+  const result: StoryState = { ...state }
+  const canonicalFacts = [...(state.canonicalFacts ?? [])]
+
+  for (const override of overrides) {
+    const { subject, attribute, newValue, chapterIndex } = override
+
+    if (attribute === '所在位置') {
+      const characterKey = findMatchingKey(result.characterLocations, subject)
+      if (characterKey) {
+        result.characterLocations[characterKey] = newValue
+      }
+      for (const itemKey of findMatchingKeys(result.keyItemsLocation, subject)) {
+        result.keyItemsLocation[itemKey] = newValue
+      }
+    } else if (attribute === '状态') {
+      const characterKey = findMatchingKey(result.characterStatus, subject)
+      if (characterKey) {
+        result.characterStatus[characterKey] = newValue
+      }
+      for (const itemKey of findMatchingKeys(result.keyItemsState, subject)) {
+        result.keyItemsState[itemKey] = newValue
+      }
+    }
+
+    const existingIndex = canonicalFacts.findIndex(
+      f => f.subject === subject && f.attribute === attribute
+    )
+    const fact: CanonicalFact = {
+      id: existingIndex >= 0 ? canonicalFacts[existingIndex]!.id : generateId('fact'),
+      subject,
+      attribute,
+      value: newValue,
+      establishedIn: chapterIndex + 1,
+      source: 'author',
+      supersedes:
+        existingIndex >= 0
+          ? [
+              ...(canonicalFacts[existingIndex]!.supersedes ?? []),
+              {
+                chapter: canonicalFacts[existingIndex]!.establishedIn,
+                oldValue: canonicalFacts[existingIndex]!.value,
+              },
+            ]
+          : [{ chapter: Math.max(1, chapterIndex), oldValue: override.oldValue }],
+    }
+    if (existingIndex >= 0) {
+      canonicalFacts[existingIndex] = fact
+    } else {
+      canonicalFacts.push(fact)
+    }
+  }
+
+  result.canonicalFacts = canonicalFacts
+  return result
+}
+
+export function mergeStoryState(existing: StoryState | null, delta: StoryState): StoryState {
+  const base = existing ?? createEmptyStoryState()
+  const safeDelta = {
+    characterLocations: delta.characterLocations ?? {},
+    characterStatus: delta.characterStatus ?? {},
+    keyItemsLocation: delta.keyItemsLocation ?? {},
+    keyItemsState: delta.keyItemsState ?? {},
+    activePlots: delta.activePlots ?? [],
+    revealedSecrets: delta.revealedSecrets ?? [],
+    pendingTasks: delta.pendingTasks ?? [],
+    supersededFacts: delta.supersededFacts ?? [],
+    canonicalFacts: delta.canonicalFacts ?? [],
+    overrides: delta.overrides ?? [],
+    currentScene: delta.currentScene,
+    storyTime: delta.storyTime,
+  }
+
+  const mergedLocations = { ...base.characterLocations }
+  for (const [char, loc] of Object.entries(safeDelta.characterLocations)) {
+    if (loc && loc !== '同前') {
+      mergedLocations[char] = loc
+    }
+  }
+
+  const mergedStatus = { ...base.characterStatus }
+  for (const [char, status] of Object.entries(safeDelta.characterStatus)) {
+    if (status && status !== '同前') {
+      mergedStatus[char] = status
+    }
+  }
+
+  const mergedItems = mergeCanonicalRecords(base.keyItemsLocation, safeDelta.keyItemsLocation, { ignoreValue: '同前' })
+  const mergedItemStates = mergeCanonicalRecords(base.keyItemsState, safeDelta.keyItemsState, { ignoreValue: '同前' })
+
+  const mergedPlots = [...base.activePlots]
+  for (const plot of safeDelta.activePlots) {
+    if (plot && !mergedPlots.includes(plot)) {
+      mergedPlots.push(plot)
+    }
+  }
+
+  const mergedSecrets = [...base.revealedSecrets]
+  for (const secret of safeDelta.revealedSecrets) {
+    if (secret && !mergedSecrets.includes(secret)) {
+      mergedSecrets.push(secret)
+    }
+  }
+
+  const mergedSuperseded = [...(base.supersededFacts ?? [])]
+  for (const fact of safeDelta.supersededFacts) {
+    const isDuplicate = mergedSuperseded.some(
+      existing => existing.subject === fact.subject && existing.oldFact === fact.oldFact
+    )
+    if (!isDuplicate) {
+      mergedSuperseded.push(fact)
+    }
+  }
+
+  const mergedCanonicalFacts = [...(base.canonicalFacts ?? [])]
+  for (const fact of safeDelta.canonicalFacts) {
+    const existingIndex = mergedCanonicalFacts.findIndex(
+      existing =>
+        existing.subject === fact.subject &&
+        existing.attribute === fact.attribute &&
+        existing.value === fact.value
+    )
+    if (existingIndex < 0) {
+      mergedCanonicalFacts.push(fact)
+    } else if ((fact.establishedIn ?? -1) >= (mergedCanonicalFacts[existingIndex]!.establishedIn ?? -1)) {
+      mergedCanonicalFacts[existingIndex] = fact
+    }
+  }
+
+  const mergedPendingTasks = mergePendingTasks(base.pendingTasks, safeDelta.pendingTasks)
+
+  const result: StoryState = {
+    characterLocations: mergedLocations,
+    characterStatus: mergedStatus,
+    keyItemsLocation: mergedItems,
+    keyItemsState: mergedItemStates,
+    activePlots: mergedPlots,
+    revealedSecrets: mergedSecrets,
+    pendingTasks: mergedPendingTasks,
+    currentScene: safeDelta.currentScene || base.currentScene,
+    storyTime: safeDelta.storyTime || base.storyTime,
+  }
+
+  if (mergedSuperseded.length > 0) {
+    result.supersededFacts = mergedSuperseded
+  }
+
+  if (mergedCanonicalFacts.length > 0) {
+    result.canonicalFacts = mergedCanonicalFacts
+  }
+
+  const mergedOverrides = [...(base.overrides ?? [])]
+  for (const override of safeDelta.overrides) {
+    const isDuplicate = mergedOverrides.some(
+      existing => existing.id === override.id
+    )
+    if (!isDuplicate) {
+      mergedOverrides.push(override)
+    }
+  }
+  if (mergedOverrides.length > 0) {
+    result.overrides = mergedOverrides
+  }
+
+  return result
+}
+
+function mergePendingTasks(existing: PendingTask[], delta: PendingTask[]): PendingTask[] {
+  const safeDelta = delta ?? []
+  const safeExisting = existing ?? []
+  if (safeDelta.length === 0) return safeExisting
+  const result = [...safeExisting]
+  for (const task of safeDelta) {
+    const index = result.findIndex(t => t.id === task.id || (t.assignee === task.assignee && t.description === task.description))
+    if (index >= 0) {
+      result[index] = { ...result[index], ...task }
+    } else {
+      result.push(task)
+    }
+  }
+  return result
+}
+
+export function applyCanonicalFactsToState(state: StoryState, characters?: Array<{ name: string }>): StoryState {
+  const result: StoryState = { ...state }
+  const facts = state.canonicalFacts ?? []
+
+  for (const fact of facts) {
+    if (fact.attribute === '所在位置') {
+      if (isCharacterSubject(fact.subject, characters)) {
+        result.characterLocations[fact.subject] = fact.value
+      } else {
+        result.keyItemsLocation[fact.subject] = fact.value
+      }
+
+      const canonical = canonicalizeItemName(fact.subject)
+      for (const key of Object.keys(result.keyItemsLocation)) {
+        if (canonicalizeItemName(key) === canonical) {
+          result.keyItemsLocation[key] = fact.value
+        }
+      }
+      for (const key of Object.keys(result.characterLocations)) {
+        if (canonicalizeItemName(key) === canonical) {
+          result.characterLocations[key] = fact.value
+        }
+      }
+    }
+
+    if (fact.attribute === '状态') {
+      if (isCharacterSubject(fact.subject, characters)) {
+        result.characterStatus[fact.subject] = fact.value
+      } else {
+        result.keyItemsState[fact.subject] = fact.value
+      }
+
+      const canonical = canonicalizeItemName(fact.subject)
+      for (const key of Object.keys(result.keyItemsState)) {
+        if (canonicalizeItemName(key) === canonical) {
+          result.keyItemsState[key] = fact.value
+        }
+      }
+      for (const key of Object.keys(result.characterStatus)) {
+        if (canonicalizeItemName(key) === canonical) {
+          result.characterStatus[key] = fact.value
+        }
+      }
+    }
+  }
+
+  return result
+}

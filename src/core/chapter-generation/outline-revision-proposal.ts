@@ -1,5 +1,4 @@
-import { createProvider } from '../../model/registry.js'
-import type { Message } from '../../model/provider.js'
+import type { ModelProvider, Message } from '../../model/provider.js'
 import type { Conflict } from '../../types/story-state.js'
 import type { ChapterOutline } from '../../types/outline.js'
 import type { StoryState } from '../../types/story-state.js'
@@ -130,6 +129,7 @@ export async function generateOutlineRevisionProposal(
   chapterIndex: number,
   conflicts: Conflict[],
   storyState: StoryState,
+  provider: ModelProvider,
 ): Promise<OutlineRevisionProposal | null> {
   const blockingConflicts = conflicts.filter(c => c.severity === 'blocking')
   if (blockingConflicts.length === 0) return null
@@ -137,7 +137,6 @@ export async function generateOutlineRevisionProposal(
   const chapterOutline = outline[chapterIndex]
   if (!chapterOutline) return null
 
-  const provider = createProvider()
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: buildPrompt(outline, chapterIndex, blockingConflicts, storyState) },

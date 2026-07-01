@@ -1,28 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
-import type { AgentState } from '../../src/agents/base.ts'
+import type { SummaryAgentInput } from '../../src/agents/types.ts'
 
-const mockChat = vi.fn(async (): Promise<string> => '')
-
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
-    chat: mockChat,
-  }),
-}))
+function createMockProvider(chatResponse?: string): ModelProvider {
+  return {
+    chat: vi.fn().mockResolvedValue(chatResponse ?? ''),
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 class TestableSummaryAgent extends (await import('../../src/agents/summary.ts')).SummaryAgent {
-  public exposePrompt(state: Required<AgentState>): Message[] {
+  public exposePrompt(state: Required<SummaryAgentInput>): Message[] {
     return this.buildPrompt(state)
   }
 }
 
 describe('SummaryAgent prompt', () => {
-  beforeEach(() => {
-    mockChat.mockClear()
-  })
 
   it('includes chapter content in the prompt', () => {
-    const agent = new TestableSummaryAgent()
+    const agent = new TestableSummaryAgent(createMockProvider())
     const chapterContent = '顾承舟站在办公室窗前，看着窗外的城市夜景。电话响了，是苏晚棠打来的。'
 
     const messages = agent.exposePrompt({
@@ -42,7 +38,7 @@ describe('SummaryAgent prompt', () => {
   })
 
   it('includes chapter title and index in the prompt', () => {
-    const agent = new TestableSummaryAgent()
+    const agent = new TestableSummaryAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: 'test',
@@ -61,7 +57,7 @@ describe('SummaryAgent prompt', () => {
   })
 
   it('shows empty content placeholder when chapterContent is undefined', () => {
-    const agent = new TestableSummaryAgent()
+    const agent = new TestableSummaryAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: 'test',
@@ -81,7 +77,7 @@ describe('SummaryAgent prompt', () => {
   })
 
   it('includes official character whitelist in prompt', () => {
-    const agent = new TestableSummaryAgent()
+    const agent = new TestableSummaryAgent(createMockProvider())
     const messages = agent.exposePrompt({
       idea: 'test',
       genre: 'default',
@@ -99,7 +95,7 @@ describe('SummaryAgent prompt', () => {
   })
 
   it('includes canonicalFacts schema in prompt', () => {
-    const agent = new TestableSummaryAgent()
+    const agent = new TestableSummaryAgent(createMockProvider())
     const messages = agent.exposePrompt({
       idea: 'test',
       genre: 'default',

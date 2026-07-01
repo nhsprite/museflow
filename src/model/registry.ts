@@ -1,19 +1,20 @@
 import type { ModelProvider, Message, JsonSchema } from './provider.js'
 import { getSystemMessage, getNonSystemMessages, chatStructuredFallback } from './provider.js'
 import { loadConfig } from '../config/store.js'
+import type { AppConfig } from '../types/config.js'
 import { logger, logDebugToFile, isDebugEnabled } from '../utils/logger.js'
 import { extractJsonBlock, repairMalformedJson } from '../utils/json.js'
 
-export function createProvider(): ModelProvider {
-  const config = loadConfig()
+export function createProvider(config?: AppConfig): ModelProvider {
+  const resolved = config ?? loadConfig()
 
-  const base = config.model.provider === 'anthropic'
-    ? new AnthropicCompatibleProvider(config.model)
-    : new OpenAICompatibleProvider(config.model)
+  const base = resolved.model.provider === 'anthropic'
+    ? new AnthropicCompatibleProvider(resolved.model)
+    : new OpenAICompatibleProvider(resolved.model)
 
   const provider = withStructuredFallback(base)
 
-  if (isDebugEnabled() || config.debug) {
+  if (isDebugEnabled() || resolved.debug) {
     return new DebugModelProvider(provider)
   }
 

@@ -8,15 +8,13 @@ import {
   deduplicateSentences,
 } from '../../src/graph/utils/text-patching.js'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
-import type { AgentState } from '../../src/agents/base.ts'
 
-const mockChat = vi.fn(async (): Promise<string> => '')
-
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
-    chat: mockChat,
-  }),
-}))
+function createMockProvider(chatResponse?: string): ModelProvider {
+  return {
+    chat: vi.fn().mockResolvedValue(chatResponse ?? ''),
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 describe('splitIntoParagraphs', () => {
   it('splits text by double newlines', () => {
@@ -281,7 +279,7 @@ describe('FixAgent paragraph parsing', () => {
       }
     }
 
-    const agent = new TestableFixAgent()
+    const agent = new TestableFixAgent(createMockProvider())
     const content = `【段落 1】
 这是修改后的第一段。
 
@@ -305,7 +303,7 @@ describe('FixAgent paragraph parsing', () => {
       }
     }
 
-    const agent = new TestableFixAgent()
+    const agent = new TestableFixAgent(createMockProvider())
     const content = '这是普通的全文内容，没有段落标记。'
 
     const result = agent.testParse(content)

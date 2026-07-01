@@ -1,3 +1,4 @@
+import type { ModelProvider } from '../model/provider.js'
 import {
   WorldbuilderAgent,
   CharacterAgent,
@@ -11,53 +12,62 @@ import {
   SummaryAgent,
 } from '../agents/index.js'
 
+function makeAgentKey(provider: ModelProvider, name: string): string {
+  return `${name}:${provider.constructor.name}`
+}
+
 const instances = new Map<string, unknown>()
 
-function getAgentInstance<T>(key: string, ctor: new () => T): T {
-  let instance = instances.get(key) as T | undefined
+function getAgentInstance<T>(
+  provider: ModelProvider,
+  key: string,
+  ctor: new (provider: ModelProvider) => T,
+): T {
+  const fullKey = makeAgentKey(provider, key)
+  let instance = instances.get(fullKey) as T | undefined
   if (!instance) {
-    instance = new ctor()
-    instances.set(key, instance)
+    instance = new ctor(provider)
+    instances.set(fullKey, instance)
   }
   return instance
 }
 
-export function getWorldbuilderAgent(): WorldbuilderAgent {
-  return getAgentInstance('worldbuilder', WorldbuilderAgent)
+export function getWorldbuilderAgent(provider: ModelProvider): WorldbuilderAgent {
+  return getAgentInstance(provider, 'worldbuilder', WorldbuilderAgent)
 }
 
-export function getCharacterAgent(): CharacterAgent {
-  return getAgentInstance('character', CharacterAgent)
+export function getCharacterAgent(provider: ModelProvider): CharacterAgent {
+  return getAgentInstance(provider, 'character', CharacterAgent)
 }
 
-export function getStoryArcAgent(): StoryArcAgent {
-  return getAgentInstance('story-arc', StoryArcAgent)
+export function getStoryArcAgent(provider: ModelProvider): StoryArcAgent {
+  return getAgentInstance(provider, 'story-arc', StoryArcAgent)
 }
 
-export function getChapterOutlineAgent(): ChapterOutlineAgent {
-  return getAgentInstance('chapter-outline', ChapterOutlineAgent)
+export function getChapterOutlineAgent(provider: ModelProvider): ChapterOutlineAgent {
+  return getAgentInstance(provider, 'chapter-outline', ChapterOutlineAgent)
 }
 
-export function getChapterAgent(): ChapterAgent {
-  return getAgentInstance('chapter', ChapterAgent)
+export function getChapterAgent(provider: ModelProvider): ChapterAgent {
+  return getAgentInstance(provider, 'chapter', ChapterAgent)
 }
 
-export function getChapterPlannerAgent(): ChapterPlannerAgent {
-  return getAgentInstance('chapter-planner', ChapterPlannerAgent)
+export function getChapterPlannerAgent(provider: ModelProvider): ChapterPlannerAgent {
+  return getAgentInstance(provider, 'chapter-planner', ChapterPlannerAgent)
 }
 
-export function getForeshadowingAgent(): ForeshadowingAgent {
-  return getAgentInstance('foreshadowing', ForeshadowingAgent)
+export function getForeshadowingAgent(provider: ModelProvider): ForeshadowingAgent {
+  return getAgentInstance(provider, 'foreshadowing', ForeshadowingAgent)
 }
 
-export function getConsistencyAgent(): ConsistencyAgent {
-  return getAgentInstance('consistency', ConsistencyAgent)
+export function getConsistencyAgent(provider: ModelProvider): ConsistencyAgent {
+  return getAgentInstance(provider, 'consistency', ConsistencyAgent)
 }
 
-export function getFixAgent(): FixAgent {
-  return getAgentInstance('fix', FixAgent)
+export function getFixAgent(provider: ModelProvider): FixAgent {
+  return getAgentInstance(provider, 'fix', FixAgent)
 }
 
-export function getSummaryAgent(): SummaryAgent {
-  return getAgentInstance('summary', SummaryAgent)
+export function getSummaryAgent(provider: ModelProvider): SummaryAgent {
+  return getAgentInstance(provider, 'summary', SummaryAgent)
 }

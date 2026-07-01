@@ -1,40 +1,24 @@
-import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
+import type { ModelProvider } from '../model/provider.js'
+import { BaseAgent, type AgentOutput } from './base.js'
+import type { WorldbuilderAgentInput } from './types.js'
 import type { WorldContent } from '../types/world.js'
 import { generateId } from '../utils/id.js'
 import { parseJsonFromLLM } from '../utils/json.js'
+import {
+  buildWorldbuilderSystemPrompt,
+  buildWorldbuilderUserPrompt,
+} from './prompts/worldbuilder-prompt.js'
 
-export class WorldbuilderAgent extends BaseAgent {
-  constructor() {
-    super(undefined, 0.7)
+export class WorldbuilderAgent extends BaseAgent<WorldbuilderAgentInput> {
+  constructor(provider: ModelProvider) {
+    super(provider, 0.7)
   }
-  protected buildPrompt(state: AgentState): import('../model/provider.js').Message[] {
+  protected buildPrompt(state: WorldbuilderAgentInput): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
-    const worldbuildingPrompt = genre?.worldbuildingPrompt ??
-      `<task>
-  请为以下故事构建世界观设定。
-</task>
-
-<context>
-  <story_idea>{idea}</story_idea>
-  <total_chapters>{totalChapters}</total_chapters>
-</context>
-
-<output_format>
-  请以以下JSON格式返回（title 为必填字段，不可省略）：
-  {
-    "title": "书名",
-    "world": "世界观详细设定内容"
-  }
-</output_format>`
-
-    const userContent = this.fillTemplate(worldbuildingPrompt, {
-      idea: state.idea,
-      totalChapters: state.totalChapters,
-    })
 
     return [
-      this.systemMessage('<role>你是一位资深的世界架构师，擅长构建细腻、真实且富有深度的世界观。</role>'),
-      this.userMessage(userContent),
+      this.systemMessage(buildWorldbuilderSystemPrompt()),
+      this.userMessage(buildWorldbuilderUserPrompt(state, genre?.worldbuildingPrompt)),
     ]
   }
 

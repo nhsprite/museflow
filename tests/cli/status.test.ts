@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { ReducedGraphState } from '../../src/graph/state.ts'
 import type { Story } from '../../src/types/story.ts'
 
 const getStoryMock = vi.fn<() => Story | null>()
 const getStateMock = vi.fn<() => Promise<ReducedGraphState | null>>()
+const tempDir = join(tmpdir(), `museflow-status-${randomUUID().slice(0, 8)}`)
 
 vi.mock('../../src/storage/meta/stores/story.ts', () => ({
   getStory: getStoryMock,
@@ -23,7 +27,7 @@ function createStory(): Story {
     totalChapters: 3,
     status: 'writing',
     provider: 'openai',
-    outputDir: '/tmp/story-1',
+    outputDir: tempDir,
     createdAt: 0,
     updatedAt: 0,
   }

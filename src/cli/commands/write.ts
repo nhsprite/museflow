@@ -1,6 +1,5 @@
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { runOneChapter, getState, type RunOneChapterOptions } from '../../core/runner.js'
-import { getCheckpointer } from '../../graph/checkpointer.js'
 import type { StoryStatus, Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -99,16 +98,6 @@ async function handleWrite(story: Story, state: Awaited<ReturnType<typeof getSta
 
 async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
   if (!state) return
-
-  const checkpointer = getCheckpointer()
-
-  const pendingWrites = await checkpointer.loadPendingWritesForThread(state.story.outputDir)
-  const activeChapterWrites = pendingWrites.filter(w => w.channel === 'chapters')
-  if (activeChapterWrites.length > 0) {
-    console.warn('[MuseFlow] 检测到残留的 pending writes，将清除后继续')
-    console.warn('[MuseFlow] 这通常是由于上一次执行被中断导致的\n')
-    await checkpointer.clearPendingWrites(state.story.outputDir)
-  }
 
   const updateStatus = (status: StoryStatus) => {
     updateStoryStatus(storyId, status)

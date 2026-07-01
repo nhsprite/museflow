@@ -1,13 +1,17 @@
 import { describe, it, expect, vi } from 'vitest'
 import { FixAgent } from '../../src/agents/fix.js'
+import type { FixAgentInput } from '../../src/agents/types.ts'
+import type { ModelProvider } from '../../src/model/provider.ts'
+
+function createMockProvider(chat: (messages: unknown[]) => string | Promise<string>): ModelProvider {
+  return {
+    chat: async (messages: unknown[]) => chat(messages),
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 const createAgent = (chat: (messages: unknown[]) => string | Promise<string>) => {
-  const agent = new FixAgent()
-  Object.defineProperty(agent, 'provider', {
-    value: { chat: async (messages: unknown[]) => chat(messages) },
-    writable: true,
-  })
-  return agent
+  return new FixAgent(createMockProvider(chat))
 }
 
 describe('FixAgent parse', () => {
@@ -22,7 +26,10 @@ describe('FixAgent parse', () => {
       chapterIndex: 3,
       chapterContent: '# 第四章 王府递帖\n\n旧正文。',
       issues: [{ id: '1', type: 'consistency', severity: 'error', description: '矛盾' }],
-    })
+      previousChapters: '',
+      timelineSnapshot: '',
+      storyState: '',
+    } as FixAgentInput)
     expect(output.success).toBe(true)
     expect(output.content).toBe('# 第四章 王府递帖\n\n正文。')
   })
@@ -38,7 +45,10 @@ describe('FixAgent parse', () => {
       chapterIndex: 3,
       chapterContent: '# 第四章 王府递帖\n\n旧正文。',
       issues: [{ id: '1', type: 'consistency', severity: 'error', description: '矛盾' }],
-    })
+      previousChapters: '',
+      timelineSnapshot: '',
+      storyState: '',
+    } as FixAgentInput)
     expect(output.success).toBe(true)
     expect(output.content).toBe('# 第四章 王府递帖\n\n正文。')
   })
@@ -54,7 +64,10 @@ describe('FixAgent parse', () => {
       chapterIndex: 3,
       chapterContent: '# 第四章 王府递帖\n\n旧正文。',
       issues: [{ id: '1', type: 'consistency', severity: 'error', description: '矛盾' }],
-    })
+      previousChapters: '',
+      timelineSnapshot: '',
+      storyState: '',
+    } as FixAgentInput)
     expect(output.success).toBe(true)
     expect(output.data).toEqual({
       modifiedSentences: [{ paragraphIndex: 1, sentenceIndex: 0, content: '修改后的第一句。' }],

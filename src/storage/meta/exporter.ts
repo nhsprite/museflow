@@ -9,6 +9,7 @@ import type { ChapterOutline, StoryArc } from '../../types/outline.js'
 import type { ForeshadowItem } from '../../types/foreshadow.js'
 import type { StoryState } from '../../types/story-state.js'
 import type { StateSnapshot } from '../../types/timeline.js'
+import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { logger } from '../../utils/logger.js'
 import { writeFileAtomic, ensureDir } from '../../utils/fs.js'
@@ -41,9 +42,12 @@ function readExistingMeta(outputDir: string): StoryMeta | null {
   }
 }
 
-async function loadLatestCheckpointState(outputDir: string): Promise<CheckpointState | undefined> {
-  const checkpointer = getCheckpointer()
-  const checkpoint = await checkpointer.getTuple({ configurable: { thread_id: '', outputDir } })
+async function loadLatestCheckpointState(
+  outputDir: string,
+  checkpointer?: BaseCheckpointSaver<string>,
+): Promise<CheckpointState | undefined> {
+  const resolved = checkpointer ?? getCheckpointer()
+  const checkpoint = await resolved.getTuple({ configurable: { thread_id: '', outputDir } })
 
   if (checkpoint) {
     return checkpoint.checkpoint.channel_values as unknown as CheckpointState | undefined
@@ -80,8 +84,11 @@ async function loadLatestCheckpointState(outputDir: string): Promise<CheckpointS
  * for runtime state. `meta.json` is only a human-readable export view for CLI
  * commands and external inspection.
  */
-export async function exportMetaFromCheckpoint(outputDir: string): Promise<void> {
-  const state = await loadLatestCheckpointState(outputDir)
+export async function exportMetaFromCheckpoint(
+  outputDir: string,
+  checkpointer?: BaseCheckpointSaver<string>,
+): Promise<void> {
+  const state = await loadLatestCheckpointState(outputDir, checkpointer)
 
   if (!state) {
     logger.debug(`[MuseFlow] No checkpoint found at ${outputDir}, skipping meta export`)

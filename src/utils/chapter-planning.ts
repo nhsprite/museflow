@@ -1,5 +1,5 @@
 import type { ChapterPlanningConfig, GenreSkill } from '../types/genre.js'
-import type { ChapterPlan } from '../agents/chapter-planner.js'
+import type { ChapterPlan } from '../agents/types.js'
 import { getGenreSkill } from '../genres/registry.js'
 
 /**
@@ -35,6 +35,9 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   foreshadowMaxFulfillDistance: 8,
   foreshadowMaxStackSize: 20,
   closingPhaseRatio: 0.15,
+  maxErrorRewriteAttempts: 3,
+  issueSetSimilarityThreshold: 0.5,
+  downgradeInterpretiveErrors: true,
 }
 
 export function getChapterPlanningConfig(genreName: string): Required<ChapterPlanningConfig> {

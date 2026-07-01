@@ -3,13 +3,14 @@ import type { Story } from '../types/story.js'
 import type { Character } from '../types/character.js'
 import type { Issue } from '../types/agent.js'
 import type { ChapterMeta } from '../types/chapter.js'
-import type { ChapterPlan } from '../agents/chapter-planner.js'
+import type { ChapterPlan } from '../agents/types.js'
 import type { StoryState } from '../types/story-state.js'
 import type { ChapterReport } from '../types/chapter-report.js'
 import type { WorldContent } from '../types/world.js'
 import type { ChapterOutline, StoryArc } from '../types/outline.js'
 import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { StateSnapshot } from '../types/timeline.js'
+import type { ChapterSession } from '../core/chapter-generation/routing/types.js'
 
 export const GraphState = Annotation.Root({
   story: Annotation<Story>,
@@ -41,13 +42,8 @@ export const GraphState = Annotation.Root({
 
   chapterReport: Annotation<ChapterReport | null>,
 
-  // chapter-writing loop state (managed by LangGraph)
-  rewriteAttempts: Annotation<number>,
-  errorRewriteAttempts: Annotation<number>,
-  previousIssues: Annotation<Issue[]>,
-  previousRawErrorCount: Annotation<number>,
-  forceStructuralRewrite: Annotation<boolean>,
-  routingDecision: Annotation<string | undefined>,
+  // chapter-writing loop control state (separated from business state)
+  session: Annotation<ChapterSession>,
 
   // author resolutions for blocking outline-vs-canonical conflicts in the current chapter
   authorDecisions: Annotation<Record<string, 'outline' | 'canonical'>>,

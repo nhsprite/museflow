@@ -3,7 +3,7 @@ import { runOneChapter, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
-import { getCheckpointer } from '../../graph/checkpointer.js'
+import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
 import { requireStoryState } from '../utils/story-loader.js'
@@ -34,8 +34,8 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     return
   }
 
-  const checkpointer = getCheckpointer()
-  await checkpointer.clearPendingWrites(story.outputDir)
+  const checkpointService = createCheckpointService(story.outputDir)
+  await checkpointService.clearPendingWrites()
 
   let targetChapterIndex: number | undefined
 

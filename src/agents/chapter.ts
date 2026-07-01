@@ -1,33 +1,21 @@
+import type { ModelProvider } from '../model/provider.js'
 import { logger } from '../utils/logger.js'
-import { BaseAgent, type AgentState, type AgentOutput } from './base.js'
+import { BaseAgent, type AgentOutput } from './base.js'
+import type { ChapterAgentInput } from './types.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { calculateKeywordOverlap } from '../utils/text-similarity.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
-import {
-  AI_PHRASE_PROHIBITIONS,
-  TIMELINE_RULES,
-  FACT_CONSISTENCY_RULES,
-  CAPABILITY_CONSISTENCY_RULES,
-  CROSS_CHAPTER_CONTINUITY_RULES,
-  FORESHADOW_BOUNDARY_RULES,
-  CHAPTER_OUTPUT_RULES,
-  OFFICIAL_CHARACTER_RULES,
-  FORESHADOW_DISCIPLINE_RULES,
-  ABSTRACT_OUTCOME_RULES,
-  PENDING_TASK_AUTHORITY_RULES,
-  TIME_ANCHOR_AUTHORITY_RULES,
-  buildCanonicalFactsSection,
-  buildCharacterWhitelistSection,
-} from './prompt-fragments.js'
+import { buildCanonicalFactsSection, buildCharacterWhitelistSection, FACT_CONSISTENCY_RULES } from './prompts/fragments/index.js'
+import { buildChapterSystemPrompt, buildChapterUserPrompt } from './prompts/chapter-prompt.js'
 
-export class ChapterAgent extends BaseAgent {
-  constructor() {
-    super(undefined, 0.7)
+export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
+  constructor(provider: ModelProvider) {
+    super(provider, 0.7)
   }
-  protected buildPrompt(state: Required<AgentState>): import('../model/provider.js').Message[] {
+  protected buildPrompt(state: ChapterAgentInput): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const planningConfig = getChapterPlanningConfig(state.genre)
     const chapterSupplement = genre?.chapterPromptSupplement ?? ''
@@ -186,157 +174,54 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     const factVerificationSection = this.buildFactVerificationSection(state)
     const absoluteConstraintsSection = this.buildAbsoluteConstraints(state)
 
-    const userContent = `${absoluteConstraintsSection}
+    const userContent = buildChapterUserPrompt(
+      {
+        absoluteConstraintsSection,
+        characterWhitelistSection,
+        chapterSupplement,
+        previousSummary,
+        storyStateSection,
+        stateConflictsSection,
+        timeAnchorSection,
+        factVerificationSection,
+        planSection,
+        taskResolutionSection,
+        outlineComplianceSection,
+        issuesSection,
+        foreshadowSection,
+        closingReminder: closingReminder ? closingReminder + '\n\n' : '',
+        existingChapterSection,
+        outlineKeyPointsRows: outlineKeyPoints
+          .map(
+            (point, i) =>
+              `| 大纲情节点${i + 1} | 大纲 | ${point} | （请填写：本章如何呈现该情节点） | （请填写：第几段） |`,
+          )
+          .join('\n'),
+        planSectionsRows: planSections
+          .map(
+            (section, i) =>
+              `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`,
+          )
+          .join('\n'),
+        stateConflictsRow: state.stateConflicts
+          ? `| 大纲-权威事实冲突 | stateConflicts | 本章存在需要处理的冲突：${state.stateConflicts.replace(/\n/g, '；')} | （请填写：每个冲突选择以谁为准、通过什么角色动作或叙事过渡实现） | （请填写） |`
+          : '',
+      },
+      {
+        displayChapterNumber,
+        mainCharacterName,
+        chapterTitle: chapterInfo.title,
+        chapterDescription: chapterInfo.description,
+        worldSetting: state.world || '（尚未构建）',
+        characterSetting: state.characters || '（尚未创建）',
+        CHAPTER_WORD_COUNT_MIN: genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN,
+        CHAPTER_WORD_COUNT_MAX: genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX,
+        MAX_BACKGROUND_TASK_WORD_COUNT: planningConfig.maxBackgroundTaskWordCount,
+        CLOSING_FORESHADOW_RECOVERY_PERCENT: Math.round(planningConfig.closingForeshadowRecoveryRatio * 100),
+      },
+    )
 
-<task>
-<instruction>请撰写第 ${displayChapterNumber} 章的正文内容。</instruction>
-
-<main_character>
-<important>【重要】本章主角姓名是"${mainCharacterName}"，主角的姓名在整章中必须保持一致，不得擅自更改为主角起其他名字！</important>
-</main_character>
-
-<chapter_outline>
-<requirement>【必须严格遵循】本章大纲：</requirement>
-<title>标题：${chapterInfo.title}</title>
-<description>核心事件：${chapterInfo.description}</description>
-
-<important>【重要】大纲中的每个情节点都必须完整呈现！如果大纲中用连接词串联多个事件，必须在章节中呈现所有事件，不可遗漏任何情节点！</important>
-</chapter_outline>
-
-<world_setting>
-<requirement>【必须严格遵循】世界观设定：</requirement>
-${state.world || '（尚未构建）'}
-</world_setting>
-
-<character_setting>
-<requirement>【必须严格遵循】人物设定：</requirement>
-${state.characters || '（尚未创建）'}
-</character_setting>
-
-${characterWhitelistSection}
-
-<previous_summary>
-<note>【叙事氛围参考】以下内容为前几章的压缩摘要，仅用于保持叙事风格、情绪基调和角色关系的连续性，不作为事实依据。</note>
-<note>【重要】已确立的事实必须以【权威事实】中的记录为准。如果本摘要与【权威事实】存在任何差异，以【权威事实】为准。</note>
-${previousSummary}
-</previous_summary>
-
-${chapterSupplement}
-
-${storyStateSection}
-
-${stateConflictsSection}
-
-${timeAnchorSection}
-
-${factVerificationSection}
-
-${planSection}
-
-${taskResolutionSection}
-
-${outlineComplianceSection}
-
-${issuesSection}
-
-${foreshadowSection}
-
-${closingReminder ? closingReminder + '\n\n' : ''}${existingChapterSection}
-
-<output_format>
-<requirement>【输出格式要求 - 必须严格遵守】</requirement>
-你的输出必须分为两个部分，用以下标记分隔：
-
-=== PRE_WRITE_CHECK ===
-（预写对齐检查表，见下方说明）
-
-=== CHAPTER_CONTENT ===
-（正文内容，从这里开始写小说正文）
-
-<pre_write_check_section>
-<title>【第一部分：PRE_WRITE_CHECK - 写正文前必须先完成】</title>
-<content>在写正文之前，请先输出预写对齐检查表，逐条确认本章如何落实大纲要求。
-
-必须包含以下检查项（以 Markdown 表格形式输出）：
-
-| 检查项 | 来源 | 具体要求 | 本章执行计划 | 对应段落 |
-|--------|------|----------|-------------|----------|
-${outlineKeyPoints.map((point, i) => `| 大纲情节点${i + 1} | 大纲 | ${point} | （请填写：本章如何呈现该情节点） | （请填写：第几段） |`).join('\n')}
-${planSections.map((section, i) => `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`).join('\n')}
-${state.stateConflicts ? `| 大纲-权威事实冲突 | stateConflicts | 本章存在需要处理的冲突：${state.stateConflicts.replace(/\n/g, '；')} | （请填写：每个冲突选择以谁为准、通过什么角色动作或叙事过渡实现） | （请填写） |` : ''}
-| 关键台词 | 大纲 | （如有大纲要求的台词，请列出） | （请填写：由谁说、在什么场景说） | （请填写） |
-| 事实核查 | 权威事实 | 本章涉及的事实是否已核对？ | （请填写：核对结果） | （请填写） |
-| 时间线 | 大纲/规划 | （如有时间要求，请列出） | （请填写：时间如何推进） | （请填写） |
-| 人物出场 | 大纲/规划 | （列出必须出场的人物） | （请填写：各自承担什么功能） | （请填写） |
-
-在表格之后，必须输出以下自检清单：
-- [ ] 所有涉及物品来源、角色关系、世界规则的描述都与已确立事实一致
-- [ ] 没有 invent 新的事实
-- [ ] 如果大纲有新设定，已明确标注并与旧事实区分
-- [ ] 大纲中的每个情节点都已在本章找到对应呈现方式
-- [ ] 章节规划中的每个段落都有明确的展开计划
-- [ ] 关键台词已标注说话人和场景
-- [ ] 时间线跨度符合大纲要求
-- [ ] 没有遗漏任何大纲要求
-- [ ] 没有发现与大纲矛盾的执行计划
-
-<important>【重要】PRE_WRITE_CHECK 完成后，才能开始写正文。PRE_WRITE_CHECK 中的计划必须与正文完全一致，正文必须严格遵循 PRE_WRITE_CHECK 中确认的执行计划。</important>
-</content>
-</pre_write_check_section>
-
-<chapter_content_section>
-<title>【第二部分：CHAPTER_CONTENT - 正文写作要求】</title>
-<content>
-${CHAPTER_OUTPUT_RULES}
-<rule id="1"><mandatory>【必须】</mandatory>严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现</rule>
-<rule id="2"><mandatory>【必须】</mandatory>主角姓名必须保持为"${mainCharacterName}"，不得擅自为主角起其他名字</rule>
-<rule id="3"><mandatory>【必须】</mandatory>物品名称、专有名词、特殊设定名称等必须与大纲完全一致</rule>
-${TIMELINE_RULES}
-<rule id="5"><mandatory>【必须】</mandatory>关键台词必须原样出现：
-   - 大纲中明确要求的台词必须一字不差地出现
-   - 不能擅自改写为意思相近但措辞不同的句子</rule>
-<rule id="6"><mandatory>【必须】</mandatory>叙述视角保持一致，避免出现视角跳跃</rule>
-<rule id="7"><mandatory>【必须】</mandatory>因果关系明确：前一事件的结果必须自然导致后一事件，不能生硬跳转</rule>
-<rule id="8"><mandatory>【必须】</mandatory>信息一致性：本章内所有描述必须自洽，不能前后矛盾</rule>
-${AI_PHRASE_PROHIBITIONS}
-<rule id="10">注重人物对话和心理描写</rule>
-<rule id="11">适时埋下伏笔，为后续章节留下悬念</rule>
-<rule id="12"><mandatory>【必须】</mandatory>每章字数要求：
-     - 本章总字数应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间
-     - 每章字数应均匀分布，避免出现过短章节
-     - 严禁用几句话草率收尾，每章都必须有充实的情节展开</rule>
-${CROSS_CHAPTER_CONTINUITY_RULES}
-${FACT_CONSISTENCY_RULES}
-${FORESHADOW_BOUNDARY_RULES}
-${CAPABILITY_CONSISTENCY_RULES}
-${ABSTRACT_OUTCOME_RULES}
-${PENDING_TASK_AUTHORITY_RULES}
-${TIME_ANCHOR_AUTHORITY_RULES}
-<rule id="16">以自然流畅的段落叙述为主</rule>
-${OFFICIAL_CHARACTER_RULES}
-${FORESHADOW_DISCIPLINE_RULES}
-</content>
-</chapter_content_section>
-
-请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === CHAPTER_CONTENT === 部分。
-</output_format>
-</task>`
-
-    const templatedContent = this.fillTemplate(userContent, {
-      MAX_BACKGROUND_TASK_WORD_COUNT: planningConfig.maxBackgroundTaskWordCount,
-      CLOSING_FORESHADOW_RECOVERY_PERCENT: Math.round(planningConfig.closingForeshadowRecoveryRatio * 100),
-      CHAPTER_WORD_COUNT_MIN: genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN,
-      CHAPTER_WORD_COUNT_MAX: genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX,
-    })
-
-    return [
-      this.systemMessage(`<system>
-<role>专业小说作家</role>
-<capability>擅长细腻的描写、丰富的人物刻画和扣人心弦的情节推进</capability>
-<requirement>在动笔前，你必须先完成预写对齐检查，确认每个大纲要求都有明确的执行计划，然后严格按照该计划撰写正文</requirement>
-</system>`),
-      this.userMessage(templatedContent),
-    ]
+    return [this.systemMessage(buildChapterSystemPrompt()), this.userMessage(userContent)]
   }
 
   private extractOutlineKeyPoints(description: string): string[] {
@@ -353,7 +238,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
     return sentences
   }
 
-  private buildFactVerificationSection(state: Required<AgentState>): string {
+  private buildFactVerificationSection(state: ChapterAgentInput): string {
     const storyState = state.storyState
     if (!storyState) {
       return ''
@@ -375,7 +260,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
 
     const facts: string[] = []
     if (canonicalFacts) {
-      facts.push(`【权威事实】\n${this.sortCanonicalFactsByOutlineRelevance(canonicalFacts, state.outline)}`)
+      facts.push(`【权威事实】\n${this.sortCanonicalFactsByOutlineRelevance(canonicalFacts, state.outline ?? '')}`)
     }
     if (characterLocations) {
       facts.push(`【角色位置】\n${characterLocations}`)
@@ -409,7 +294,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
     return scored.map(s => s.line).join('\n')
   }
 
-  private buildAbsoluteConstraints(state: Required<AgentState>): string {
+  private buildAbsoluteConstraints(state: ChapterAgentInput): string {
     const constraints: string[] = [
       '本章不得提前完成或彻底收尾下一章大纲中的核心行动。',
       '本章不得重复呈现上一章已标记为"已完成/已揭示"的核心事件。',

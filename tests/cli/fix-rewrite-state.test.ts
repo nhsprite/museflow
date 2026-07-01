@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+
+const testTempDir = join(tmpdir(), `museflow-fix-rewrite-${randomUUID().slice(0, 8)}`)
+const testOutputsDir = join(tmpdir(), `museflow-fix-rewrite-outputs-${randomUUID().slice(0, 8)}`)
 
 const getStateMock = vi.fn()
 const runOneChapterMock = vi.fn().mockResolvedValue({
-  story: { id: 'story-1', outputDir: '/tmp/test-story' },
+  story: { id: 'story-1', outputDir: testTempDir },
   currentChapterIndex: 5,
   totalChapters: 10,
   pendingIssues: [],
@@ -10,8 +16,8 @@ const runOneChapterMock = vi.fn().mockResolvedValue({
 })
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
 
-vi.mock('../../src/graph/checkpointer.js', () => ({
-  getCheckpointer: () => ({
+vi.mock('../../src/storage/checkpoint-service.js', () => ({
+  createCheckpointService: () => ({
     clearPendingWrites: clearPendingWritesMock,
   }),
 }))
@@ -20,14 +26,14 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({
     id: 'story-1',
     title: 'Test Story',
-    outputDir: '/tmp/test-story',
+    outputDir: testTempDir,
   }),
   updateStoryStatus: vi.fn(),
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
 
 const mockGraphState = {
-  story: { id: 'story-1', outputDir: '/tmp/test-story' },
+  story: { id: 'story-1', outputDir: testTempDir },
   idea: 'test',
   genre: 'default',
   totalChapters: 10,
@@ -53,7 +59,7 @@ const mockGraphState = {
 
 vi.mock('../../src/core/runner.js', () => ({
   getState: getStateMock,
-  getOutputDirFromStoryId: vi.fn().mockReturnValue('/tmp/test-story'),
+  getOutputDirFromStoryId: vi.fn().mockReturnValue(testTempDir),
   getGraph: vi.fn().mockReturnValue({
     getState: vi.fn().mockResolvedValue({ values: mockGraphState }),
   }),
@@ -67,7 +73,7 @@ vi.mock('../../src/graph/novel.graph.js', () => ({
 }))
 
 vi.mock('../../src/utils/paths.js', () => ({
-  getOutputsDir: vi.fn().mockReturnValue('/tmp/books'),
+  getOutputsDir: vi.fn().mockReturnValue(testOutputsDir),
   getStoryOutputDirWithTitle: vi.fn(),
   getChapterFilePath: vi.fn().mockImplementation((outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`),
 }))
@@ -162,7 +168,7 @@ describe('rewrite command state consistency', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     runOneChapterMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       currentChapterIndex: 5,
       totalChapters: 10,
       pendingIssues: [],
@@ -184,7 +190,7 @@ describe('rewrite command state consistency', () => {
     ]
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
@@ -209,7 +215,7 @@ describe('rewrite command state consistency', () => {
     })
 
     runOneChapterMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       currentChapterIndex: 5,
       totalChapters: 10,
       pendingIssues,
@@ -229,7 +235,7 @@ describe('rewrite command state consistency', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
@@ -277,7 +283,7 @@ describe('rewrite command state consistency', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
@@ -325,7 +331,7 @@ describe('rewrite command state consistency', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
@@ -372,7 +378,7 @@ describe('rewrite command state consistency', () => {
     const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
@@ -417,7 +423,7 @@ describe('rewrite command state consistency', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
@@ -469,7 +475,7 @@ describe('rewrite command state consistency', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
@@ -524,7 +530,7 @@ describe('rewrite command state consistency', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     getStateMock.mockResolvedValue({
-      story: { id: 'story-1', outputDir: '/tmp/test-story' },
+      story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,

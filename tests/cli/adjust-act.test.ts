@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { Story } from '../../src/types/story.ts'
 import type { ReducedGraphState } from '../../src/graph/state.ts'
+
+const testTempDir = join(tmpdir(), `museflow-adjust-act-${randomUUID().slice(0, 8)}`)
 
 const requireStoryMock = vi.fn<() => Promise<Story>>()
 const updateLatestStateMock = vi.fn<() => Promise<void>>()
@@ -11,8 +16,8 @@ vi.mock('../../src/cli/utils/story-loader.js', () => ({
   requireStory: requireStoryMock,
 }))
 
-vi.mock('../../src/graph/checkpointer.js', () => ({
-  getCheckpointer: () => ({
+vi.mock('../../src/storage/checkpoint-service.js', () => ({
+  createCheckpointService: () => ({
     getTuple: getTupleMock,
     updateLatestState: updateLatestStateMock,
   }),
@@ -31,7 +36,7 @@ function makeStory(): Story {
     totalChapters: 20,
     status: 'writing',
     provider: 'openai',
-    outputDir: '/tmp/story-1',
+    outputDir: testTempDir,
     createdAt: 0,
     updatedAt: 0,
   }
@@ -96,7 +101,7 @@ describe('adjust-act command', () => {
     await adjustAct('story-1', { act: '1', endChapter: '6' })
 
     expect(updateLatestStateMock).toHaveBeenCalledTimes(1)
-    const updatedState = updateLatestStateMock.mock.calls[0]![1] as { storyArc: { acts: Array<{ startChapter: number; endChapter: number }> } }
+    const updatedState = updateLatestStateMock.mock.calls[0]![0] as { storyArc: { acts: Array<{ startChapter: number; endChapter: number }> } }
     expect(updatedState.storyArc.acts[0]?.endChapter).toBe(6)
     expect(updatedState.storyArc.acts[1]?.startChapter).toBe(7)
     expect(writeOutlineContentMock).toHaveBeenCalledTimes(1)

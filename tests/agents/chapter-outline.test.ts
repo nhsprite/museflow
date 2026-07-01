@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ChapterOutlineAgent } from '../../src/agents/chapter-outline.js'
+import type { ChapterOutlineAgentInput } from '../../src/agents/types.ts'
+import type { ModelProvider } from '../../src/model/provider.ts'
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: () => ({
+function createMockProvider(): ModelProvider {
+  return {
     chat: mockChat,
-  }),
-}))
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 describe('ChapterOutlineAgent', () => {
   const storyArc = {
@@ -38,7 +41,7 @@ describe('ChapterOutlineAgent', () => {
   }
 
   it('parses chapter outline with claimed beats', async () => {
-    const agent = new ChapterOutlineAgent()
+    const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(JSON.stringify({
       title: '风雨欲来',
       description: '主角在旧宅中整理遗物，发现父亲留下的一枚玉佩，隐约觉察家族覆灭另有隐情。',
@@ -53,7 +56,7 @@ describe('ChapterOutlineAgent', () => {
       chapterIndex: 0,
       storyArc,
       actProgress: { 1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] } },
-    })
+    } as ChapterOutlineAgentInput)
 
     expect(output.success).toBe(true)
     const result = output.data as { title: string; description: string; claimedBeats: string[] }
@@ -62,7 +65,7 @@ describe('ChapterOutlineAgent', () => {
   })
 
   it('returns error when output is invalid', async () => {
-    const agent = new ChapterOutlineAgent()
+    const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce('invalid json')
 
     const output = await agent.run({
@@ -72,13 +75,13 @@ describe('ChapterOutlineAgent', () => {
       chapterIndex: 0,
       storyArc,
       actProgress: { 1: { consumed: [], pending: ['主角失去庇护'] } },
-    })
+    } as ChapterOutlineAgentInput)
 
     expect(output.success).toBe(false)
   })
 
   it('filters empty introduced characters and beats', async () => {
-    const agent = new ChapterOutlineAgent()
+    const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(JSON.stringify({
       title: '过渡',
       description: '主角在城中稍作休整，打探消息。',
@@ -93,7 +96,7 @@ describe('ChapterOutlineAgent', () => {
       chapterIndex: 1,
       storyArc,
       actProgress: { 1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] } },
-    })
+    } as ChapterOutlineAgentInput)
 
     expect(output.success).toBe(true)
     const result = output.data as { introducedCharacters?: string[]; claimedBeats?: string[] }
@@ -102,7 +105,7 @@ describe('ChapterOutlineAgent', () => {
   })
 
   it('includes closing phase prompt near the end of the story', async () => {
-    const agent = new ChapterOutlineAgent()
+    const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(JSON.stringify({
       title: '过渡',
       description: '主角整理线索，为最终对决做准备。',
@@ -116,13 +119,13 @@ describe('ChapterOutlineAgent', () => {
       chapterIndex: 17,
       storyArc,
       actProgress: { 1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] } },
-    })
+    } as ChapterOutlineAgentInput)
 
     expect(output.success).toBe(true)
   })
 
   it('propagates conflict flag and reason', async () => {
-    const agent = new ChapterOutlineAgent()
+    const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(JSON.stringify({
       title: '冲突',
       description: '主角直接与反派决战。',
@@ -137,7 +140,7 @@ describe('ChapterOutlineAgent', () => {
       chapterIndex: 0,
       storyArc,
       actProgress: { 1: { consumed: [], pending: ['主角失去庇护'] } },
-    })
+    } as ChapterOutlineAgentInput)
 
     expect(output.success).toBe(true)
     const result = output.data as { conflict: boolean; conflictReason: string }

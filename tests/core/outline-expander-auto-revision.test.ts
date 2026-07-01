@@ -1,9 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { expandOutlineForChapter } from '../../src/core/outline-expander.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 import { BlockingConflictError } from '../../src/utils/errors.js'
 import type { Conflict } from '../../src/types/story-state.js'
+
+const testTempDir = join(tmpdir(), `museflow-outline-expander-ar-${randomUUID().slice(0, 8)}`)
 
 const { planChapterWithOverrideMock } = vi.hoisted(() => ({
   planChapterWithOverrideMock: vi.fn(),
@@ -17,6 +22,13 @@ const { prepareStoryStateForChapterMock, generateOutlineRevisionProposalMock } =
   generateOutlineRevisionProposalMock: vi.fn(),
 }))
 
+function createMockProvider(): ModelProvider {
+  return {
+    chat: mockChat,
+    chatStructured: mockChatStructured,
+  }
+}
+
 vi.mock('../../src/graph/nodes/planning.js', () => ({
   plan_chapter_with_override: planChapterWithOverrideMock,
 }))
@@ -24,13 +36,6 @@ vi.mock('../../src/graph/nodes/planning.js', () => ({
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getChapterOutlineAgent: () => ({
     run: vi.fn(async (state: { chapterIndex?: number }) => chapterOutlineRunMock(state.chapterIndex ?? 0)),
-  }),
-}))
-
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
-    chat: mockChat,
-    chatStructured: mockChatStructured,
   }),
 }))
 
@@ -43,7 +48,7 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   readChapterContent: vi.fn().mockResolvedValue(null),
 }))
 
-vi.mock('../../src/graph/utils/reconciler.js', () => ({
+vi.mock('../../src/graph/utils/reconciler/index.js', () => ({
   formatStoryState: vi.fn(() => 'mocked story state'),
   prepareStoryStateForChapter: prepareStoryStateForChapterMock,
 }))
@@ -69,7 +74,7 @@ const storyArc = {
 }
 
 const baseState: ReducedGraphState = {
-  story: { id: 'story-1', title: 'Story', outputDir: '/tmp/story' },
+  story: { id: 'story-1', title: 'Story', outputDir: testTempDir },
   idea: 'idea',
   genre: 'default',
   totalChapters: 3,
@@ -156,7 +161,7 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    const result = await expandOutlineForChapter(baseState, 1)
+    const result = await expandOutlineForChapter(baseState, 1, createMockProvider())
 
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
     expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
@@ -173,7 +178,7 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    await expect(expandOutlineForChapter(baseState, 1)).rejects.toBe(blockingError)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError)
     // 第一次失败后生成修订，第二次检测到冲突集合未变，提前停止
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
   })
@@ -209,7 +214,7 @@ describe('expandOutlineForChapter auto-revision', () => {
         explanation: '解释',
       })
 
-    await expect(expandOutlineForChapter(baseState, 1)).rejects.toBe(blockingError2)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError2)
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(3)
   })
 
@@ -223,7 +228,7 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    await expect(expandOutlineForChapter(baseState, 1)).rejects.toBe(blockingError)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError)
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(1)
     expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
   })
@@ -238,7 +243,7 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    await expect(expandOutlineForChapter(baseState, 1)).rejects.toBe(blockingError)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError)
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
     expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
   })

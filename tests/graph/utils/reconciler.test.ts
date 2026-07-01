@@ -1,4 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import * as contextJudge from '../../../src/utils/context-judge.js'
 import * as outlineRevision from '../../../src/core/chapter-generation/outline-revision-proposal.js'
 import {
@@ -16,13 +19,15 @@ import {
   prepareStoryStateForChapter,
   authorizeOutlineFacts,
   detectSecretRevealConflicts,
-} from '../../../src/graph/utils/reconciler.js'
+} from '../../../src/graph/utils/reconciler/index.js'
 import { BlockingConflictError } from '../../../src/utils/errors.js'
 import type { StoryState, Conflict, StateOverride } from '../../../src/types/story-state.js'
 import type { Character } from '../../../src/types/character.js'
 import type { ModelProvider } from '../../../src/model/provider.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
-import { createProvider as registryCreateProvider } from '../../../src/model/registry.js'
+import type { ChapterSession } from '../../../src/core/chapter-generation/routing/types.js'
+
+const testTempDir = join(tmpdir(), `museflow-reconciler-${randomUUID().slice(0, 8)}`)
 
 vi.mock('../../../src/utils/context-judge.js', async (importOriginal) => {
   const actual = await importOriginal<typeof contextJudge>()
@@ -42,10 +47,6 @@ vi.mock('../../../src/core/chapter-generation/outline-revision-proposal.js', asy
   }
 })
 
-vi.mock('../../../src/model/registry.js', () => ({
-  createProvider: vi.fn(() => ({ chat: vi.fn() })),
-}))
-
 function emptyState(): StoryState {
   return {
     characterLocations: {},
@@ -60,8 +61,8 @@ function emptyState(): StoryState {
   }
 }
 
-function createProvider(): ModelProvider {
-  return { chat: vi.fn() }
+function createMockProvider(): ModelProvider {
+  return { chat: vi.fn(), chatStructured: vi.fn().mockResolvedValue({}) }
 }
 
 function makeConflict(overrides: Partial<Conflict>): Conflict {
@@ -344,7 +345,7 @@ describe('reconcileStoryState', () => {
   }
 
   it('returns a report with reconciled state', async () => {
-    const report = await reconcileStoryState(baseState(), '第10章：主角前往天津。', [], 9, createProvider())
+    const report = await reconcileStoryState(baseState(), '第10章：主角前往天津。', [], 9, createMockProvider())
     expect(report.state).toBeDefined()
     expect(report.conflicts).toBeDefined()
     expect(report.autoResolved).toBeDefined()
@@ -358,7 +359,7 @@ describe('reconcileStoryState', () => {
       { skip: false, location: '官府仓库', state: null },
     ])
 
-    const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createProvider())
+    const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createMockProvider())
     expect(report.autoResolved.some(c => c.subject === '密信')).toBe(true)
     expect(report.state.keyItemsLocation['密信']).toBe('官府仓库')
     expect(report.state.canonicalFacts).toHaveLength(1)
@@ -369,7 +370,7 @@ describe('reconcileStoryState', () => {
     const state = baseState()
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
 
-    const report = await reconcileStoryState(state, '第10章：真相大白，主角是主谋。', [], 9, createProvider())
+    const report = await reconcileStoryState(state, '第10章：真相大白，主角是主谋。', [], 9, createMockProvider())
     expect(report.requiresAuthorDecision.length).toBeGreaterThan(0)
     expect(report.requiresAuthorDecision[0].type).toBe('contradiction')
   })
@@ -383,7 +384,7 @@ describe('reconcileStoryState', () => {
       { skip: false, location: '官府仓库', state: null },
     ])
 
-    const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createProvider())
+    const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createMockProvider())
     const fact = report.state.canonicalFacts?.find(f => f.subject === '密信')
     expect(fact).toBeDefined()
     expect(fact?.value).toBe('官府仓库')
@@ -474,7 +475,7 @@ describe('conflict detection & classification', () => {
       { skip: false, location: '官府仓库', state: null },
     ])
 
-    const conflicts = await detectItemLocationConflicts(state, '第10章：密信被转移至官府仓库。', createProvider())
+    const conflicts = await detectItemLocationConflicts(state, '第10章：密信被转移至官府仓库。', createMockProvider())
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0].subject).toBe('密信')
     expect(conflicts[0].newValue).toBe('官府仓库')
@@ -488,7 +489,7 @@ describe('conflict detection & classification', () => {
       { skip: false, location: null, state: '身受重伤' },
     ])
 
-    const conflicts = await detectCharacterStatusConflicts(state, '第10章：主角已身受重伤。', createProvider())
+    const conflicts = await detectCharacterStatusConflicts(state, '第10章：主角已身受重伤。', createMockProvider())
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0].subject).toBe('主角')
     expect(conflicts[0].attribute).toBe('状态')
@@ -499,7 +500,7 @@ describe('conflict detection & classification', () => {
       makeConflict({ id: '1', attribute: '所在位置' }),
       makeConflict({ id: '2', attribute: '状态' }),
     ]
-    const results = await classifyConflicts(conflicts, createProvider())
+    const results = await classifyConflicts(conflicts, createMockProvider())
     expect(results[0].severity).toBe('auto')
     expect(results[1].severity).toBe('warning')
   })
@@ -507,7 +508,7 @@ describe('conflict detection & classification', () => {
   it('elevates contradiction to blocking', async () => {
     const conflict = makeConflict({ type: 'retcon', description: '已死角色再次出现' })
     vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValueOnce([true])
-    const result = await classifyConflicts([conflict], createProvider())
+    const result = await classifyConflicts([conflict], createMockProvider())
     expect(result[0].type).toBe('contradiction')
     expect(result[0].severity).toBe('blocking')
   })
@@ -615,9 +616,24 @@ describe('prepareStoryStateForChapter', () => {
     vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValue([false])
   })
 
+  function buildBaseSession(overrides: Partial<ChapterSession> = {}): ChapterSession {
+    return {
+      chapterIndex: 0,
+      rewriteAttempts: 0,
+      errorRewriteAttempts: 0,
+      autoFixAttempts: 0,
+      previousIssues: [],
+      previousRawErrorCount: 0,
+      routingDecision: undefined,
+      forceStructuralRewrite: false,
+      rewriteApproved: false,
+      ...overrides,
+    }
+  }
+
   function makeState(): ReducedGraphState {
     return {
-      story: { id: 's1', title: 'Test', outputDir: '/tmp', createdAt: 1, updatedAt: 1, status: 'writing', genre: 'default', totalChapters: 3 } as ReducedGraphState['story'],
+      story: { id: 's1', title: 'Test', outputDir: testTempDir, createdAt: 1, updatedAt: 1, status: 'writing', genre: 'default', totalChapters: 3 } as ReducedGraphState['story'],
       idea: '',
       genre: 'default',
       totalChapters: 3,
@@ -643,15 +659,9 @@ describe('prepareStoryStateForChapter', () => {
         canonicalFacts: [{ id: 'f1', subject: '主角', attribute: '所在位置', value: '家中', establishedIn: 1 }],
       },
       chapterTimeAnchor: undefined,
-      autoFixAttempts: 0,
       verifiedConstraints: [],
       chapterReport: null,
-      rewriteAttempts: 0,
-      errorRewriteAttempts: 0,
-      previousIssues: [],
-      previousRawErrorCount: 0,
-      forceStructuralRewrite: false,
-      routingDecision: undefined,
+      session: buildBaseSession(),
       authorDecisions: {},
     }
   }
@@ -674,10 +684,9 @@ describe('prepareStoryStateForChapter', () => {
       })),
     } as unknown as ModelProvider
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
-    vi.mocked(registryCreateProvider).mockReturnValue(provider)
     vi.mocked(outlineRevision.generateOutlineRevisionProposal).mockResolvedValue(null)
 
-    await expect(prepareStoryStateForChapter(state, 0)).rejects.toBeInstanceOf(BlockingConflictError)
+    await expect(prepareStoryStateForChapter(state, 0, provider)).rejects.toBeInstanceOf(BlockingConflictError)
   })
 
   it('attaches an outline revision proposal to BlockingConflictError when one is generated', async () => {
@@ -698,13 +707,12 @@ describe('prepareStoryStateForChapter', () => {
       })),
     } as unknown as ModelProvider
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
-    vi.mocked(registryCreateProvider).mockReturnValue(provider)
     vi.mocked(outlineRevision.generateOutlineRevisionProposal).mockResolvedValue({
       revisedDescription: '主角在家中收到京城来信，决定暂缓出行。',
       explanation: '避免与主角仍在家的权威事实冲突。',
     })
 
-    await expect(prepareStoryStateForChapter(state, 0)).rejects.toMatchObject({
+    await expect(prepareStoryStateForChapter(state, 0, provider)).rejects.toMatchObject({
       proposal: {
         revisedDescription: '主角在家中收到京城来信，决定暂缓出行。',
         explanation: '避免与主角仍在家的权威事实冲突。',
@@ -731,9 +739,8 @@ describe('prepareStoryStateForChapter', () => {
       })),
     } as unknown as ModelProvider
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
-    vi.mocked(registryCreateProvider).mockReturnValue(provider)
 
-    const result = await prepareStoryStateForChapter(state, 0)
+    const result = await prepareStoryStateForChapter(state, 0, provider)
     expect(result).toBeDefined()
     expect(result.stateConflicts).toContain('大纲要求主角抵达京城')
   })
@@ -741,22 +748,21 @@ describe('prepareStoryStateForChapter', () => {
   it('authorizes new facts introduced by the outline', async () => {
     const state = makeState()
     const provider = {
-      chat: vi.fn(async (): Promise<string> => JSON.stringify({
-        conflicts: [],
-        constraints: [],
-      })),
+      chat: vi.fn()
+        .mockResolvedValueOnce(JSON.stringify({
+          conflicts: [],
+          constraints: [],
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          facts: [
+            { subject: '密信', attribute: '来源', value: '旧友暗中递送', contradictsExisting: false },
+            { subject: '暗桩', attribute: '关系', value: '主角旧部', contradictsExisting: false },
+          ],
+        })),
     } as unknown as ModelProvider
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
-    vi.mocked(registryCreateProvider).mockReturnValue({
-      chat: vi.fn(async (): Promise<string> => JSON.stringify({
-        facts: [
-          { subject: '密信', attribute: '来源', value: '旧友暗中递送', contradictsExisting: false },
-          { subject: '暗桩', attribute: '关系', value: '主角旧部', contradictsExisting: false },
-        ],
-      })),
-    } as unknown as ModelProvider)
 
-    const result = await prepareStoryStateForChapter(state, 0)
+    const result = await prepareStoryStateForChapter(state, 0, provider)
     expect(result.reconciledState.canonicalFacts?.some(
       f => f.subject === '密信' && f.attribute === '来源' && f.value === '旧友暗中递送' && f.source === 'outline'
     )).toBe(true)
@@ -768,21 +774,20 @@ describe('prepareStoryStateForChapter', () => {
   it('does not authorize facts that contradict existing canonical facts', async () => {
     const state = makeState()
     const provider = {
-      chat: vi.fn(async (): Promise<string> => JSON.stringify({
-        conflicts: [],
-        constraints: [],
-      })),
+      chat: vi.fn()
+        .mockResolvedValueOnce(JSON.stringify({
+          conflicts: [],
+          constraints: [],
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          facts: [
+            { subject: '主角', attribute: '所在位置', value: '京城', contradictsExisting: true },
+          ],
+        })),
     } as unknown as ModelProvider
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
-    vi.mocked(registryCreateProvider).mockReturnValue({
-      chat: vi.fn(async (): Promise<string> => JSON.stringify({
-        facts: [
-          { subject: '主角', attribute: '所在位置', value: '京城', contradictsExisting: true },
-        ],
-      })),
-    } as unknown as ModelProvider)
 
-    const result = await prepareStoryStateForChapter(state, 0)
+    const result = await prepareStoryStateForChapter(state, 0, provider)
     expect(result.reconciledState.canonicalFacts?.some(
       f => f.subject === '主角' && f.value === '京城'
     )).toBe(false)

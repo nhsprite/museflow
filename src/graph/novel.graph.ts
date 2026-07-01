@@ -1,6 +1,5 @@
 import { StateGraph } from '@langchain/langgraph'
-import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
-import { GraphState } from './state.js'
+import { GraphState, type ReducedGraphState } from './state.js'
 import {
   build_world,
   create_characters,
@@ -23,25 +22,30 @@ import {
   route_after_validation,
   route_after_finalize,
 } from './nodes/chapter-orchestration.js'
-import { getCheckpointer } from './checkpointer.js'
 import { END, START } from '@langchain/langgraph'
+import type { RuntimeContext } from '../core/context.js'
 
-export function buildNovelGraph() {
+export function buildNovelGraph(context: RuntimeContext) {
   const builder = new StateGraph(GraphState)
 
+  const withContext = <T>(
+    fn: (ctx: RuntimeContext, state: ReducedGraphState) => Promise<T> | T
+  ) =>
+    (state: ReducedGraphState) => fn(context, state)
+
   const b1 = builder.addNode({
-    build_world,
-    create_characters,
-    create_outline,
-    validate_outline,
-    prepare_chapter,
-    converge_and_decide,
-    draft_chapter,
-    fix_chapter,
-    validate_chapter_comprehensive,
-    request_rewrite,
-    finalize_chapter,
-    finalize_story,
+    build_world: withContext(build_world),
+    create_characters: withContext(create_characters),
+    create_outline: withContext(create_outline),
+    validate_outline: withContext(validate_outline),
+    prepare_chapter: withContext(prepare_chapter),
+    converge_and_decide: withContext(converge_and_decide),
+    draft_chapter: withContext(draft_chapter),
+    fix_chapter: withContext(fix_chapter),
+    validate_chapter_comprehensive: withContext(validate_chapter_comprehensive),
+    request_rewrite: withContext(request_rewrite),
+    finalize_chapter: withContext(finalize_chapter),
+    finalize_story: withContext(finalize_story),
   })
 
   // Story creation path
@@ -80,6 +84,5 @@ export function buildNovelGraph() {
 
   b1.addEdge('finalize_story', END)
 
-  const checkpointer = getCheckpointer()
-  return b1.compile({ checkpointer: checkpointer as unknown as BaseCheckpointSaver<number> })
+  return b1.compile({ checkpointer: context.checkpointer as unknown as import('@langchain/langgraph-checkpoint').BaseCheckpointSaver<number> })
 }

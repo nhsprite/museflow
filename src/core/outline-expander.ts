@@ -6,17 +6,15 @@ import {
   reconcileOutlineWithState,
 } from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
-import type { ChapterPlan } from '../agents/chapter-planner.js'
+import type { ChapterPlan, ChapterOutlineAgentInput } from '../agents/types.js'
 import { readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation, type CoreSectionJudge } from '../utils/chapter-planning.js'
 import type { Issue } from '../types/agent.js'
-import { createProvider } from '../model/registry.js'
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import { batchValidateTimeAnchors } from '../utils/context-judge.js'
 import { getChapterOutlineAgent } from '../graph/agent-factory.js'
-import type { AgentState } from '../agents/base.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
-import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/reconciler.js'
+import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/reconciler/index.js'
 import { charactersToString } from '../graph/utils/characters.js'
 import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.js'
 import { generateOutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
@@ -116,7 +114,8 @@ export async function validateChapterTimeAnchor(
 
 async function generateChapterOutlineIfNeeded(
   state: ReducedGraphState,
-  chapterIndex: number
+  chapterIndex: number,
+  provider: ModelProvider
 ): Promise<ReducedGraphState> {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
@@ -133,8 +132,8 @@ async function generateChapterOutlineIfNeeded(
   }
 
   const worldContent = state.world?.content
-  const agent = getChapterOutlineAgent()
-  const agentState: AgentState = {
+  const agent = getChapterOutlineAgent(provider)
+  const agentState: ChapterOutlineAgentInput = {
     idea: state.idea,
     genre: state.genre,
     totalChapters: state.totalChapters,
@@ -146,8 +145,8 @@ async function generateChapterOutlineIfNeeded(
     characters: charactersToString(state.characters),
     previousChapters: buildLayeredSummaries(state.chapterSummaries, chapterIndex),
     storyState: state.storyState ? formatStoryState(state.storyState) : '',
-    canonicalFacts: state.storyState?.canonicalFacts,
-    verifiedConstraints: state.verifiedConstraints,
+    ...(state.storyState?.canonicalFacts ? { canonicalFacts: state.storyState.canonicalFacts } : {}),
+    ...(state.verifiedConstraints ? { verifiedConstraints: state.verifiedConstraints } : {}),
   }
 
   const output = await agent.run(agentState)
@@ -215,14 +214,15 @@ function conflictsEqual(a: readonly Conflict[], b: readonly Conflict[]): boolean
  */
 async function autoResolveBlockingOutlineConflicts(
   state: ReducedGraphState,
-  chapterIndex: number
+  chapterIndex: number,
+  provider: ModelProvider
 ): Promise<ReducedGraphState> {
   let currentState = state
   let lastError: BlockingConflictError | undefined
 
   for (let attempt = 0; attempt < MAX_AUTO_REVISION_ATTEMPTS; attempt++) {
     try {
-      await prepareStoryStateForChapter(currentState, chapterIndex)
+      await prepareStoryStateForChapter(currentState, chapterIndex, provider)
       if (attempt > 0) {
         logger.info(`[MuseFlow] 大纲自动修订成功，第 ${chapterIndex + 1} 章冲突已解决`)
       }
@@ -252,7 +252,8 @@ async function autoResolveBlockingOutlineConflicts(
         currentState.outline,
         chapterIndex,
         [...err.conflicts],
-        currentState.storyState ?? createEmptyStoryState()
+        currentState.storyState ?? createEmptyStoryState(),
+        provider
       )
 
       if (!proposal) {
@@ -300,10 +301,11 @@ async function autoResolveBlockingOutlineConflicts(
 
 export async function expandOutlineForChapter(
   state: ReducedGraphState,
-  chapterIndex: number
+  chapterIndex: number,
+  provider: ModelProvider
 ): Promise<ExpandedOutline> {
-  state = await generateChapterOutlineIfNeeded(state, chapterIndex)
-  state = await autoResolveBlockingOutlineConflicts(state, chapterIndex)
+  state = await generateChapterOutlineIfNeeded(state, chapterIndex, provider)
+  state = await autoResolveBlockingOutlineConflicts(state, chapterIndex, provider)
 
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
@@ -314,7 +316,6 @@ export async function expandOutlineForChapter(
 
   const planningConfig = getChapterPlanningConfig(state.genre)
 
-  const provider = createProvider()
   const judgeCoreSections: CoreSectionJudge = (description, sections) =>
     judgeCoreSectionsWithModel(provider, description, sections)
 
@@ -355,7 +356,7 @@ export async function expandOutlineForChapter(
       currentChapterIndex: chapterIndex,
       verifiedConstraints: currentConstraints,
     }
-    const planResult = await plan_chapter_with_override(planState, formattedOutline)
+    const planResult = await plan_chapter_with_override(provider, planState, formattedOutline)
     chapterPlan = planResult.chapterPlan ?? null
   }
 
@@ -382,7 +383,7 @@ export async function expandOutlineForChapter(
       currentChapterIndex: chapterIndex,
       verifiedConstraints: currentConstraints,
     }
-    const planResult = await plan_chapter_with_override(planState, formattedOutline)
+    const planResult = await plan_chapter_with_override(provider, planState, formattedOutline)
     const replanned = planResult.chapterPlan ?? null
     if (!replanned) break
 

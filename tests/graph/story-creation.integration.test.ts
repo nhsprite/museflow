@@ -1,20 +1,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { rmSync, mkdirSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { rmSync, mkdirSync, mkdtempSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runStory } from '../../src/core/runner.js'
 import { exportMetaFromCheckpoint } from '../../src/storage/meta/exporter.js'
-import type { AgentState, AgentOutput } from '../../src/agents/base.js'
+import type { AgentOutput } from '../../src/agents/base.js'
+import type { StoryArcAgentInput } from '../../src/agents/types.js'
 import type { Character } from '../../src/types/character.js'
 import type { WorldContent } from '../../src/types/world.js'
+import type { ModelProvider } from '../../src/model/provider.js'
+import type { RuntimeContext } from '../../src/core/context.js'
+import { JsonCheckpointer } from '../../src/graph/checkpointer.js'
 
 let tmpDir: string
 
-vi.mock('../../src/model/registry.js', () => ({
-  createProvider: vi.fn(() => {
-    throw new Error('createProvider should not be called in integration tests')
-  }),
-  AnthropicCompatibleProvider: class {},
-}))
+const mockChat = vi.fn(async (): Promise<string> => '')
+const mockChatStructured = vi.fn().mockResolvedValue({})
+
+function createMockProvider(): ModelProvider {
+  return { chat: mockChat, chatStructured: mockChatStructured }
+}
+
+function createMockContext(): RuntimeContext {
+  return {
+    provider: createMockProvider(),
+    checkpointer: new JsonCheckpointer(),
+    config: { model: { provider: 'openai', model: 'gpt-4o', temperature: 0.7, maxTokens: 8192 } },
+  }
+}
 
 function makeWorldOutput(): AgentOutput {
   return { success: true, data: { title: '测试故事', world: '这是一个测试世界观。' } }
@@ -82,7 +95,7 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
     }),
   }),
   getStoryArcAgent: () => ({
-    run: vi.fn(async (state: AgentState) => makeStoryArcOutput(state.totalChapters ?? 3)),
+    run: vi.fn(async (state: StoryArcAgentInput) => makeStoryArcOutput(state.totalChapters ?? 3)),
   }),
   getChapterAgent: vi.fn(),
   getChapterPlannerAgent: vi.fn(),
@@ -94,7 +107,7 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
 
 describe('story creation integration', () => {
   beforeEach(() => {
-    tmpDir = join(process.cwd(), 'tests', 'tmp', `story-creation-${Date.now()}`)
+    tmpDir = mkdtempSync(join(tmpdir(), 'museflow-story-creation-'))
     mkdirSync(tmpDir, { recursive: true })
   })
 
@@ -124,7 +137,7 @@ describe('story creation integration', () => {
       genre: story.genre,
       totalChapters,
       story,
-    })
+    }, createMockContext())
 
     expect(result.world).not.toBeNull()
     expect(result.world?.content).toBe('这是一个测试世界观。')
@@ -175,7 +188,7 @@ describe('story creation integration', () => {
       genre: story.genre,
       totalChapters,
       story,
-    })
+    }, createMockContext())
 
     expect(result.story.title).toBe('测试故事')
   })

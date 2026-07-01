@@ -1,26 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rm, readdir, writeFile, mkdir } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 import { getCheckpointer } from '../../src/graph/checkpointer.ts'
+import { createCheckpointService } from '../../src/storage/checkpoint-service.ts'
+import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 
 const TEST_STORY_ID = 'story_chapter_checkpoint_test'
 
-function createMockCheckpoint(id: string, threadId: string) {
-  return {
-    id,
-    parent_checkpoint_id: null,
-    channels: {},
-  }
+function makeCheckpoint(id: string, ts: string) {
+  const cp = emptyCheckpoint()
+  cp.id = id
+  cp.ts = ts
+  return cp
 }
 
-function createMockMetadata(threadId: string) {
-  return {
-    source: 'update' as const,
-    step: 1,
-    parents: {},
-    thread_id: threadId,
-  }
+function makeMetadata(step = 0) {
+  return { source: 'loop' as const, step, parents: {} }
 }
 
 async function ensureDir(dir: string) {
@@ -31,8 +30,7 @@ describe('chapter-level checkpoints', () => {
   let testOutputDir: string
 
   beforeEach(async () => {
-    testOutputDir = join(process.cwd(), 'books', TEST_STORY_ID)
-    await rm(testOutputDir, { force: true, recursive: true }).catch(() => {})
+    testOutputDir = mkdtempSync(join(tmpdir(), 'museflow-chapter-checkpoint-'))
     await ensureDir(join(testOutputDir, 'checkpoints'))
   })
 
@@ -40,113 +38,62 @@ describe('chapter-level checkpoints', () => {
     await rm(testOutputDir, { force: true, recursive: true }).catch(() => {})
   })
 
-  describe('saveChapterCheckpoint', () => {
-    it('saves chapter checkpoint from latest checkpoint file', async () => {
+  describe('saveChapterMarker', () => {
+    it('records the latest checkpoint id for a chapter', async () => {
       const saver = getCheckpointer()
-      const checkpointDir = join(testOutputDir, 'checkpoints')
-      await writeFile(
-        join(checkpointDir, 'checkpoint_1.json'),
-        JSON.stringify({
-          checkpointId: 'checkpoint_1',
-          parentCheckpointId: null,
-          checkpoint: createMockCheckpoint('checkpoint_1', TEST_STORY_ID),
-          metadata: createMockMetadata(TEST_STORY_ID),
-        }),
-        'utf-8'
-      )
-      await writeFile(
-        join(checkpointDir, 'latest.json'),
-        JSON.stringify({ checkpointId: 'checkpoint_1', ts: new Date().toISOString() }),
-        'utf-8'
+      const cp = makeCheckpoint('checkpoint_1', '2024-01-01T00:00:00.000Z')
+      await saver.put(
+        { configurable: { thread_id: TEST_STORY_ID, outputDir: testOutputDir } },
+        cp,
+        makeMetadata(),
+        {}
       )
 
-      await saver.saveChapterCheckpoint(testOutputDir, 1)
+      const service = createCheckpointService(testOutputDir)
+      await service.saveChapterMarker(1, 'checkpoint_1')
 
-      const files = await readdir(checkpointDir)
-      expect(files).toContain('chapter_1_done.json')
+      const markersPath = join(testOutputDir, 'checkpoints', 'chapter_markers.json')
+      expect(existsSync(markersPath)).toBe(true)
+      const markers = JSON.parse(readFileSync(markersPath, 'utf-8'))
+      expect(markers['1']).toBe('checkpoint_1')
     })
 
-    it('does nothing when checkpoints dir does not exist', async () => {
-      const saver = getCheckpointer()
+    it('creates markers file when checkpoints dir does not exist', async () => {
+      const service = createCheckpointService(testOutputDir)
       await rm(join(testOutputDir, 'checkpoints'), { force: true, recursive: true }).catch(() => {})
 
-      await saver.saveChapterCheckpoint(testOutputDir, 1)
+      await service.saveChapterMarker(1, 'checkpoint_1')
 
-      const files = await readdir(join(testOutputDir, 'checkpoints')).catch(() => [])
-      expect(files).toEqual([])
+      const files = await readdir(join(testOutputDir, 'checkpoints'))
+      expect(files).toContain('chapter_markers.json')
     })
   })
 
-  describe('getChapterCheckpoint', () => {
-    it('returns checkpoint tuple for existing chapter', async () => {
-      const saver = getCheckpointer()
-      const checkpointDir = join(testOutputDir, 'checkpoints')
+  describe('getChapterMarker', () => {
+    it('returns checkpoint id for existing chapter', async () => {
+      const service = createCheckpointService(testOutputDir)
+      await service.saveChapterMarker(1, 'chapter_1_done')
 
-      const mockRecord = {
-        checkpointId: 'chapter_1_done',
-        parentCheckpointId: null,
-        checkpoint: createMockCheckpoint('chapter_1_done', TEST_STORY_ID),
-        metadata: createMockMetadata(TEST_STORY_ID),
-      }
-      await writeFile(
-        join(checkpointDir, 'chapter_1_done.json'),
-        JSON.stringify(mockRecord),
-        'utf-8'
-      )
+      const result = await service.getChapterMarker(1)
 
-      const result = await saver.getChapterCheckpoint(testOutputDir, 1)
-
-      expect(result).toBeDefined()
-      expect(result!.checkpointId).toBe('chapter_1_done')
-      expect(result!.checkpoint.id).toBe('chapter_1_done')
+      expect(result).toBe('chapter_1_done')
     })
 
     it('returns undefined for non-existing chapter', async () => {
-      const saver = getCheckpointer()
-
-      const result = await saver.getChapterCheckpoint(testOutputDir, 99)
-
+      const service = createCheckpointService(testOutputDir)
+      const result = await service.getChapterMarker(99)
       expect(result).toBeUndefined()
     })
   })
 
-  describe('listChapterCheckpoints', () => {
-    it('lists all chapter checkpoints sorted by chapter number', async () => {
-      const saver = getCheckpointer()
-      const checkpointDir = join(testOutputDir, 'checkpoints')
+  describe('listChapterMarkers', () => {
+    it('lists all chapter markers sorted by chapter number', async () => {
+      const service = createCheckpointService(testOutputDir)
+      await service.saveChapterMarker(1, 'chapter_1_done')
+      await service.saveChapterMarker(3, 'chapter_3_done')
+      await service.saveChapterMarker(5, 'chapter_5_done')
 
-      await writeFile(
-        join(checkpointDir, 'chapter_1_done.json'),
-        JSON.stringify({
-          checkpointId: 'chapter_1_done',
-          parentCheckpointId: null,
-          checkpoint: createMockCheckpoint('chapter_1_done', TEST_STORY_ID),
-          metadata: createMockMetadata(TEST_STORY_ID),
-        }),
-        'utf-8'
-      )
-      await writeFile(
-        join(checkpointDir, 'chapter_3_done.json'),
-        JSON.stringify({
-          checkpointId: 'chapter_3_done',
-          parentCheckpointId: null,
-          checkpoint: createMockCheckpoint('chapter_3_done', TEST_STORY_ID),
-          metadata: createMockMetadata(TEST_STORY_ID),
-        }),
-        'utf-8'
-      )
-      await writeFile(
-        join(checkpointDir, 'chapter_5_done.json'),
-        JSON.stringify({
-          checkpointId: 'chapter_5_done',
-          parentCheckpointId: null,
-          checkpoint: createMockCheckpoint('chapter_5_done', TEST_STORY_ID),
-          metadata: createMockMetadata(TEST_STORY_ID),
-        }),
-        'utf-8'
-      )
-
-      const result = await saver.listChapterCheckpoints(testOutputDir)
+      const result = await service.listChapterMarkers()
 
       expect(result).toHaveLength(3)
       expect(result[0].chapterNumber).toBe(1)
@@ -154,18 +101,16 @@ describe('chapter-level checkpoints', () => {
       expect(result[2].chapterNumber).toBe(5)
     })
 
-    it('returns empty array when no checkpoints exist', async () => {
-      const saver = getCheckpointer()
-
-      const result = await saver.listChapterCheckpoints(testOutputDir)
-
+    it('returns empty array when no markers exist', async () => {
+      const service = createCheckpointService(testOutputDir)
+      const result = await service.listChapterMarkers()
       expect(result).toEqual([])
     })
   })
 
   describe('pruneIntermediateCheckpoints', () => {
-    it('deletes intermediate checkpoints keeping chapter-level ones', async () => {
-      const saver = getCheckpointer()
+    it('deletes intermediate checkpoints keeping marker targets', async () => {
+      const service = createCheckpointService(testOutputDir)
       const checkpointDir = join(testOutputDir, 'checkpoints')
 
       await writeFile(join(checkpointDir, 'checkpoint_1.json'), JSON.stringify({}), 'utf-8')
@@ -173,24 +118,26 @@ describe('chapter-level checkpoints', () => {
       await writeFile(join(checkpointDir, 'chapter_1_done.json'), JSON.stringify({}), 'utf-8')
       await writeFile(join(checkpointDir, 'chapter_2_done.json'), JSON.stringify({}), 'utf-8')
 
-      await saver.pruneIntermediateCheckpoints(testOutputDir)
+      await service.saveChapterMarker(1, 'chapter_1_done')
+      await service.saveChapterMarker(2, 'chapter_2_done')
+      await service.pruneIntermediateCheckpoints()
 
       const remaining = await readdir(checkpointDir)
-      expect(remaining).toHaveLength(2)
       expect(remaining).toContain('chapter_1_done.json')
       expect(remaining).toContain('chapter_2_done.json')
+      expect(remaining).toContain('chapter_markers.json')
       expect(remaining).not.toContain('checkpoint_1.json')
       expect(remaining).not.toContain('checkpoint_2.json')
     })
 
     it('keeps pending_writes.json when pruning', async () => {
-      const saver = getCheckpointer()
+      const service = createCheckpointService(testOutputDir)
       const checkpointDir = join(testOutputDir, 'checkpoints')
 
       await writeFile(join(checkpointDir, 'checkpoint_1.json'), JSON.stringify({}), 'utf-8')
       await writeFile(join(checkpointDir, 'pending_writes.json'), JSON.stringify([]), 'utf-8')
 
-      await saver.pruneIntermediateCheckpoints(testOutputDir)
+      await service.pruneIntermediateCheckpoints()
 
       const remaining = await readdir(checkpointDir)
       expect(remaining).toContain('pending_writes.json')
@@ -198,3 +145,5 @@ describe('chapter-level checkpoints', () => {
     })
   })
 })
+
+

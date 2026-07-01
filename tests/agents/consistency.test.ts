@@ -1,29 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
-import type { AgentState } from '../../src/agents/base.ts'
+import type { ConsistencyAgentInput } from '../../src/agents/types.ts'
 import type { CanonicalFact } from '../../src/types/story-state.ts'
 
-const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [false] }))
-
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: (): ModelProvider => ({
-    chat: mockChat,
-  }),
-}))
+function createMockProvider(chatResponse?: string): ModelProvider {
+  return {
+    chat: vi.fn().mockResolvedValue(chatResponse ?? ''),
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 class TestableConsistencyAgent extends (await import('../../src/agents/consistency.ts')).ConsistencyAgent {
-  public exposePrompt(state: Required<AgentState>): Message[] {
+  public exposePrompt(state: Required<ConsistencyAgentInput>): Message[] {
     return this.buildPrompt(state)
   }
 }
 
 describe('ConsistencyAgent time anchor', () => {
-  beforeEach(() => {
-    mockChat.mockClear()
-  })
-
   it('uses chapterTimeAnchor as the time origin when provided', () => {
-    const agent = new TestableConsistencyAgent()
+    const agent = new TestableConsistencyAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -55,12 +50,8 @@ describe('ConsistencyAgent time anchor', () => {
 })
 
 describe('ConsistencyAgent outline-authorized facts', () => {
-  beforeEach(() => {
-    mockChat.mockClear()
-  })
-
   it('includes outline-authorized facts in prompt', () => {
-    const agent = new TestableConsistencyAgent()
+    const agent = new TestableConsistencyAgent(createMockProvider())
     const canonicalFacts: CanonicalFact[] = [
       { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 2, source: 'outline' },
       { id: 'f2', subject: '密信', attribute: '来源', value: '旧友暗中递送', establishedIn: 2, source: 'outline' },
@@ -90,12 +81,8 @@ describe('ConsistencyAgent outline-authorized facts', () => {
 })
 
 describe('ConsistencyAgent canonical facts authority', () => {
-  beforeEach(() => {
-    mockChat.mockClear()
-  })
-
   it('uses story_state as the single factual authority', () => {
-    const agent = new TestableConsistencyAgent()
+    const agent = new TestableConsistencyAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -120,7 +107,7 @@ describe('ConsistencyAgent canonical facts authority', () => {
   })
 
   it('emphasizes that canonical facts override old summaries', () => {
-    const agent = new TestableConsistencyAgent()
+    const agent = new TestableConsistencyAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
       idea: '测试',

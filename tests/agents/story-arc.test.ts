@@ -1,17 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 import { StoryArcAgent } from '../../src/agents/story-arc.js'
+import type { StoryArcAgentInput } from '../../src/agents/types.ts'
+import type { ModelProvider } from '../../src/model/provider.ts'
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 
-vi.mock('../../src/model/registry.ts', () => ({
-  createProvider: () => ({
+function createMockProvider(): ModelProvider {
+  return {
     chat: mockChat,
-  }),
-}))
+    chatStructured: vi.fn().mockResolvedValue({}),
+  }
+}
 
 describe('StoryArcAgent', () => {
   it('parses story arc with acts and key beats', async () => {
-    const agent = new StoryArcAgent()
+    const agent = new StoryArcAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(JSON.stringify({
       totalChapters: 6,
       acts: [
@@ -44,7 +47,7 @@ describe('StoryArcAgent', () => {
       idea: 'a hero journey',
       genre: 'default',
       totalChapters: 6,
-    })
+    } as StoryArcAgentInput)
 
     expect(output.success).toBe(true)
     const storyArc = (output.data as { totalChapters: number; acts: unknown[]; keyBeats: unknown[] })
@@ -54,14 +57,14 @@ describe('StoryArcAgent', () => {
   })
 
   it('returns empty acts when parse fails', async () => {
-    const agent = new StoryArcAgent()
+    const agent = new StoryArcAgent(createMockProvider())
     mockChat.mockResolvedValueOnce('invalid json')
 
     const output = await agent.run({
       idea: 'a hero journey',
       genre: 'default',
       totalChapters: 3,
-    })
+    } as StoryArcAgentInput)
 
     expect(output.success).toBe(false)
     const data = output.data as { acts?: unknown[] } | undefined
@@ -69,7 +72,7 @@ describe('StoryArcAgent', () => {
   })
 
   it('normalizes missing act fields', async () => {
-    const agent = new StoryArcAgent()
+    const agent = new StoryArcAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(JSON.stringify({
       totalChapters: 3,
       acts: [
@@ -82,7 +85,7 @@ describe('StoryArcAgent', () => {
       idea: 'a hero journey',
       genre: 'default',
       totalChapters: 3,
-    })
+    } as StoryArcAgentInput)
 
     expect(output.success).toBe(true)
     const storyArc = output.data as { acts: Array<{ index: number; mandatoryBeats: string[] }> }

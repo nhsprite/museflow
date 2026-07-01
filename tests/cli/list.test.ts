@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { Story } from '../../src/types/story.ts'
 
 const listStoriesMock = vi.fn<() => Story[]>()
 const getStateMock = vi.fn<() => Promise<null>>()
+const tempDir = join(tmpdir(), `museflow-list-${randomUUID().slice(0, 8)}`)
 
 vi.mock('../../src/storage/meta/stores/story.ts', () => ({
   listStories: listStoriesMock,
@@ -21,7 +25,7 @@ function createStory(id: string, title: string, status: string): Story {
     totalChapters: 3,
     status: status as Story['status'],
     provider: 'openai',
-    outputDir: `/tmp/${id}`,
+    outputDir: `${tempDir}/${id}`,
     createdAt: 0,
     updatedAt: 0,
   }
