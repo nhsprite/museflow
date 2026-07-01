@@ -16,8 +16,12 @@ import { batchValidateTimeAnchors } from '../utils/context-judge.js'
 import { getChapterOutlineAgent } from '../graph/agent-factory.js'
 import type { AgentState } from '../agents/base.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
-import { formatStoryState } from '../graph/utils/reconciler.js'
+import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/reconciler.js'
 import { charactersToString } from '../graph/utils/characters.js'
+import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.js'
+import { generateOutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
+import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
+import type { Conflict } from '../types/story-state.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -182,11 +186,124 @@ async function generateChapterOutlineIfNeeded(
   return { ...state, outline: newOutline }
 }
 
+const MAX_AUTO_REVISION_ATTEMPTS = 3
+
+function conflictsEqual(a: readonly Conflict[], b: readonly Conflict[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const ca = a[i]
+    const cb = b[i]
+    if (!ca || !cb) return false
+    if (
+      ca.subject !== cb.subject ||
+      ca.attribute !== cb.attribute ||
+      ca.oldValue !== cb.oldValue ||
+      ca.newValue !== cb.newValue
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+/**
+ * 自动修订与权威事实存在阻断性冲突的章节大纲。
+ *
+ * 在将大纲交给章节规划前，先运行一次状态协调；若发现 blocking 级冲突，
+ * 则调用修订建议生成器改写大纲，并重新校验，最多重试 MAX_AUTO_REVISION_ATTEMPTS 次。
+ * 仍无法解决时才把冲突抛给上层/作者裁决。
+ */
+async function autoResolveBlockingOutlineConflicts(
+  state: ReducedGraphState,
+  chapterIndex: number
+): Promise<ReducedGraphState> {
+  let currentState = state
+  let lastError: BlockingConflictError | undefined
+
+  for (let attempt = 0; attempt < MAX_AUTO_REVISION_ATTEMPTS; attempt++) {
+    try {
+      await prepareStoryStateForChapter(currentState, chapterIndex)
+      if (attempt > 0) {
+        logger.info(`[MuseFlow] 大纲自动修订成功，第 ${chapterIndex + 1} 章冲突已解决`)
+      }
+      return currentState
+    } catch (err) {
+      if (!isBlockingConflictError(err)) {
+        throw err
+      }
+
+      // 避免反复陷入同一组冲突（例如修订建议无效时）
+      if (lastError && conflictsEqual(lastError.conflicts, err.conflicts)) {
+        logger.warn('[MuseFlow] 自动修订未能改变冲突集合，停止重试')
+        lastError = err
+        break
+      }
+      lastError = err
+
+      if (attempt === MAX_AUTO_REVISION_ATTEMPTS - 1) {
+        break
+      }
+
+      logger.info(
+        `[MuseFlow] 检测到 ${err.conflicts.length} 个阻断性冲突，尝试自动修订大纲（${attempt + 1}/${MAX_AUTO_REVISION_ATTEMPTS}）...`
+      )
+
+      const proposal = await generateOutlineRevisionProposal(
+        currentState.outline,
+        chapterIndex,
+        [...err.conflicts],
+        currentState.storyState ?? createEmptyStoryState()
+      )
+
+      if (!proposal) {
+        logger.warn('[MuseFlow] 无法生成修订建议，停止自动修订')
+        break
+      }
+
+      const currentDescription = currentState.outline[chapterIndex]?.description ?? ''
+      if (proposal.revisedDescription === currentDescription) {
+        logger.warn('[MuseFlow] 修订建议与原大纲相同，停止自动修订')
+        break
+      }
+
+      const newOutline = [...currentState.outline]
+      const existingOutlineItem = newOutline[chapterIndex]
+      newOutline[chapterIndex] = {
+        ...existingOutlineItem,
+        number: existingOutlineItem?.number ?? chapterIndex + 1,
+        title: proposal.revisedTitle ?? existingOutlineItem?.title ?? `第${chapterIndex + 1}章`,
+        description: proposal.revisedDescription,
+      }
+      currentState = { ...currentState, outline: newOutline }
+
+      await writeOutlineContent(
+        currentState.story.outputDir,
+        currentState.story.title,
+        newOutline,
+        currentState.storyArc
+      )
+
+      logger.info(`[MuseFlow] 已自动修订第 ${chapterIndex + 1} 章大纲`)
+      if (proposal.revisedTitle) {
+        logger.info(`  新标题：${proposal.revisedTitle}`)
+      }
+      logger.info(`  新描述：${proposal.revisedDescription}`)
+    }
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+
+  return currentState
+}
+
 export async function expandOutlineForChapter(
   state: ReducedGraphState,
   chapterIndex: number
 ): Promise<ExpandedOutline> {
   state = await generateChapterOutlineIfNeeded(state, chapterIndex)
+  state = await autoResolveBlockingOutlineConflicts(state, chapterIndex)
 
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
