@@ -93,7 +93,9 @@ ${STATE_AUTHORITY_RULES}
       {
         "subject": "事实主体（角色或物品完整名称）",
         "attribute": "来源|制造者|赠予者|持有者|身份|材质",
-        "value": "完整无歧义的值，禁止用此物/该物等代词"
+        "value": "完整无歧义的值，禁止用此物/该物等代词",
+        "confidence": "high|medium|low",
+        "evidence": { "chapterIndex": 1, "quote": "原文中确立该事实的简短引用（30-100字）" }
       }
     ],
     "storyState": {
@@ -121,6 +123,12 @@ ${STATE_AUTHORITY_RULES}
           "attribute": "属性维度（所在位置/身份/状态/持有者等）",
           "value": "本章结束时确立的权威值",
           "establishedIn": 1,
+          "confidence": "high|medium|low",
+          "source": "chapter_text",
+          "evidence": {
+            "chapterIndex": 1,
+            "quote": "原文中确立该事实的简短引用（30-100字）"
+          },
           "supersedes": [
             { "chapter": 0, "oldValue": "被覆盖的旧值" }
           ]
@@ -181,6 +189,13 @@ ${STATE_AUTHORITY_RULES}
   <requirement>只记录本章有明确变化或重新确认的事实；没有变化的事实不必重复记录</requirement>
   <requirement>权威事实的 value 必须使用完整、无歧义的名称，禁止使用"此物"、"该物"、"前述物品"、"此件"、"那件"等依赖上下文的代词。value 中必须重复使用 subject 的完整名称，或写出能唯一识别该物品的完整描述；如果涉及多个同类物品，必须分别写明其完整名称和用途。</requirement>
   <requirement>如果某个事实涉及"某物品不用于某用途"，必须同时写明该物品的完整名称和该用途的完整名称，避免后续章节将两个不同用途的物品混淆。</requirement>
+  <requirement>每个权威事实必须填写 confidence 和 source：
+    - confidence="high"：事实由本章正文中的明确语句直接确立，且能提供精确原文引用。
+    - confidence="medium"：事实由本章多处内容共同推断，或引用不够精确。
+    - confidence="low"：事实主要来自推断、暗示或记忆，需谨慎使用。
+    - source 统一填 "chapter_text"，表示事实来自本章正文提取。
+  </requirement>
+  <requirement>每个 high 或 medium confidence 的权威事实应提供 evidence.quote：一段 30-100 字的原文引用，明确支撑该事实。如果无法找到精确引用，请将 confidence 降为 low 并不填 evidence。</requirement>
   <requirement>【关键】必须提取以下高约束性事实：
     - 关键物品/设定的来源、制造者、赠予者、材质、来历（attribute 建议为"来源"、"制造者"或"材质"）
     - 角色之间明确达成的承诺、约定、交易条件、限制、底线（attribute 建议为"承诺"、"约定"或"条件"）
@@ -190,9 +205,9 @@ ${STATE_AUTHORITY_RULES}
     - 角色在本章做出的重大决定或态度转变（attribute 建议为"决定"或"态度"）
     - 对后续章节有决定性影响的关键事件（attribute 建议为"关键事件"）
   </requirement>
-  <requirement>【关键】把上述高约束性事实同时写入 characterFacts（importance=critical）和 storyState.canonicalFacts，确保一致性检查能直接读取。</requirement>
+  <requirement>【关键】上述高约束性事实必须显式写入 storyState.canonicalFacts（高约束事实可同时在 sourceFacts 中列出，便于专项追踪）。禁止依赖任何正则模式或关键词匹配进行推断；所有事实必须基于你对正文的语义理解直接输出。</requirement>
   <requirement> canonicalFacts 是后续章节一致性检查的唯一事实依据，必须完整、准确、无歧义。</requirement>
-  <requirement>【关键】如果本章明确建立了关键物品/角色的来源、制造者、赠予者、持有者、身份、材质等约束性事实，除了在 storyState.canonicalFacts 中记录外，还必须在 sourceFacts 数组中单独列出，确保提取不依赖正则匹配。</requirement>
+  <requirement>【关键】如果本章明确建立了关键物品/角色的来源、制造者、赠予者、持有者、身份、材质等约束性事实，除了在 storyState.canonicalFacts 中记录外，还必须在 sourceFacts 数组中单独列出。</requirement>
 </canonical_facts_requirements>
 
   <story_state_requirements>

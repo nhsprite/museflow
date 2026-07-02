@@ -347,77 +347,6 @@ describe('SummaryAgent prompt', () => {
     expect(result?.storyState?.canonicalFacts?.[0].value).toBe('样本A在实验室B')
   })
 
-  it('auto-promotes source-like critical keyItems to canonicalFacts', async () => {
-    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
-    const output = {
-      success: true as const,
-      data: {
-        characters: [],
-        characterFacts: [],
-        keyEvents: [],
-        locations: [],
-        keyItems: [
-          { text: '长命锁：鹤卿颈上的金银错丝长命锁，是苏家打的满月礼', importance: 'critical' },
-        ],
-        activePlots: [],
-        mood: '',
-        storyState: {
-          characterLocations: {},
-          characterStatus: {},
-          keyItemsLocation: {},
-          keyItemsState: {},
-          activePlots: [],
-          revealedSecrets: [],
-          pendingTasks: [],
-          canonicalFacts: [],
-          currentScene: '',
-          storyTime: '',
-        },
-      },
-    }
-
-    const result = processSummaryOutput(output, 8)
-    expect(result?.storyState?.canonicalFacts?.length).toBeGreaterThanOrEqual(1)
-    const sourceFact = result?.storyState?.canonicalFacts?.find(f => f.attribute === '来源' || f.attribute === '制造者')
-    expect(sourceFact).toBeDefined()
-    expect(sourceFact?.subject).toContain('长命锁')
-    expect(sourceFact?.value).toContain('苏家')
-  })
-
-  it('does not duplicate canonical facts when source fact already extracted by model', async () => {
-    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
-    const output = {
-      success: true as const,
-      data: {
-        characters: [],
-        characterFacts: [],
-        keyEvents: [],
-        locations: [],
-        keyItems: [
-          { text: '长命锁：是苏家打的满月礼', importance: 'critical' },
-        ],
-        activePlots: [],
-        mood: '',
-        storyState: {
-          characterLocations: {},
-          characterStatus: {},
-          keyItemsLocation: {},
-          keyItemsState: {},
-          activePlots: [],
-          revealedSecrets: [],
-          pendingTasks: [],
-          canonicalFacts: [
-            { subject: '长命锁', attribute: '来源', value: '是苏家打的', establishedIn: 8 },
-          ],
-          currentScene: '',
-          storyTime: '',
-        },
-      },
-    }
-
-    const result = processSummaryOutput(output, 8)
-    expect(result?.storyState?.canonicalFacts?.length).toBe(1)
-  })
 })
 
 import { processSummaryOutput } from '../../src/agents/summary.js'
@@ -462,15 +391,7 @@ describe('processSummaryOutput sourceFacts', () => {
       success: true,
       data: {
         characters: [],
-        characterFacts: [
-          {
-            character: '顾承舟',
-            facts: [
-              { text: '顾承舟知道凶手是管家', importance: 'critical' },
-              { text: '顾承舟知道密信藏在书房', importance: 'critical' },
-            ],
-          },
-        ],
+        characterFacts: [],
         keyEvents: [],
         locations: [],
         keyItems: [],
@@ -486,6 +407,10 @@ describe('processSummaryOutput sourceFacts', () => {
           pendingTasks: [],
           currentScene: '书房',
           storyTime: '深夜',
+          canonicalFacts: [
+            { subject: '顾承舟', attribute: '已知信息', value: '顾承舟知道凶手是管家', establishedIn: 3 },
+            { subject: '顾承舟', attribute: '已知信息', value: '顾承舟知道密信藏在书房', establishedIn: 3 },
+          ],
         },
       },
     }
@@ -493,5 +418,102 @@ describe('processSummaryOutput sourceFacts', () => {
     const result = processSummaryOutput(output, 3)
     const facts = result!.storyState!.canonicalFacts ?? []
     expect(facts.filter(f => f.subject === '顾承舟' && f.attribute === '已知信息').length).toBe(2)
+  })
+
+  it('does not auto-promote characterFacts or keyItems to canonicalFacts', () => {
+    const output = {
+      success: true,
+      data: {
+        characters: [],
+        characterFacts: [
+          {
+            character: '顾承舟',
+            facts: [
+              { text: '顾承舟知道凶手是管家', importance: 'critical' },
+              { text: '顾承舟承诺为苏晚棠报仇', importance: 'critical' },
+            ],
+          },
+        ],
+        keyEvents: [],
+        locations: [],
+        keyItems: [
+          { text: '长命锁：鹤卿颈上的金银错丝长命锁，是苏家打的满月礼', importance: 'critical' },
+        ],
+        activePlots: [],
+        mood: '紧张',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          currentScene: '书房',
+          storyTime: '深夜',
+          canonicalFacts: [],
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 3)
+    expect(result!.storyState!.canonicalFacts).toHaveLength(0)
+  })
+
+  it('preserves evidence and confidence from explicit sourceFacts', () => {
+    const output = {
+      success: true,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '沉重',
+        sourceFacts: [
+          {
+            subject: '龙纹玉佩',
+            attribute: '制造者',
+            value: '前朝铸玉大师周子衡',
+            confidence: 'high',
+            evidence: { chapterIndex: 2, quote: '龙纹玉佩出自前朝铸玉大师周子衡之手' },
+          },
+        ],
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: { '龙纹玉佩': '主角怀中' },
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          currentScene: '客栈',
+          storyTime: '子时',
+          canonicalFacts: [],
+        },
+      },
+    }
+
+    const result = processSummaryOutput(
+      output,
+      2,
+      undefined,
+      undefined,
+      '龙纹玉佩出自前朝铸玉大师周子衡之手，是主角母亲临终前留下的遗物。',
+    )
+    const facts = result!.storyState!.canonicalFacts ?? []
+    expect(facts).toHaveLength(1)
+    expect(facts[0]).toMatchObject({
+      subject: '龙纹玉佩',
+      attribute: '制造者',
+      value: '前朝铸玉大师周子衡',
+      confidence: 'high',
+      source: 'chapter_text',
+      evidence: {
+        chapterIndex: 2,
+        quote: '龙纹玉佩出自前朝铸玉大师周子衡之手',
+      },
+    })
   })
 })

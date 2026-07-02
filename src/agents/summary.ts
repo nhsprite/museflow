@@ -14,8 +14,7 @@ import {
   buildCharacterWhitelistSection,
 } from './prompts/summary-prompt.js'
 import { parseJsonFromLLM } from '../utils/json.js'
-import { generateId } from '../utils/id.js'
-import type { CanonicalFact } from '../types/story-state.js'
+import type { CanonicalFact, CanonicalFactSource } from '../types/story-state.js'
 
 export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
   constructor(provider: ModelProvider) {
@@ -50,134 +49,34 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
   }
 }
 
-interface ImportanceObject {
-  text: string
-  importance: string
+function normalizeTextForMatch(text: string): string {
+  return text.replace(/[\s\n\p{P}]/gu, '')
 }
 
-const SOURCE_PATTERNS = [
-  // subject + 由 + value + 打造/铸造/制造/所铸/制成
-  { regex: /^(.+?)由(.+?)(?:打造|铸造|制造|所铸|制成)$/, attribute: '制造者' },
-  // subject + 是 + value + 赠予/所赐/给予/赠送/送予/打的/制作/所做/所制
-  { regex: /^(.+?)是(.+?)(?:赠予|所赐|给予|赠送|送予|打的|制作|所做|所制)$/, attribute: '来源' },
-  // subject + 来自/源于/出自 + value
-  { regex: /^(.+?)(?:来自|源于|出自|来源自)(.+)$/, attribute: '来源' },
-  // subject + 的 + (制造者|来源|持有者|身份) + 是 + value
-  { regex: /^(.+?)的(?:制造者|来源|持有者|身份)是(.+)$/, attribute: '来源' },
-  // subject + 为 + value + 所铸/所制/所打/打造/持有/所有
-  { regex: /^(.+?)为(.+?)(?:所铸|所制|所打|打造|持有|所有)$/, attribute: '来源' },
-]
-
-const SOURCE_KEYWORDS = /(?:由|是)(?:[^，。]+?)(?:打造|铸造|制造|所铸|制成|赠予|所赐|给予|赠送|送予|打的|制作|所做|所制)|(?:来自|源于|出自|来源自)[^，。]+|(?:制造者|来源|持有者|身份)是[^，。]+|为[^，。]+?(?:所铸|所制|所打|打造|持有|所有)/g
-
-function extractSourceFactsFromText(text: string, defaultSubject: string, chapterIndex: number): CanonicalFact[] {
-  const facts: CanonicalFact[] = []
-  const cleanedText = text.replace(/[\s\n]+/g, '').trim()
-
-  for (const pattern of SOURCE_PATTERNS) {
-    const match = cleanedText.match(pattern.regex)
-    if (match && match[1] && match[2]) {
-      const subject = match[1].trim()
-      const value = match[2].trim()
-      if (subject.length > 0 && value.length > 0) {
-        facts.push({
-          id: generateId('fact'),
-          subject,
-          attribute: pattern.attribute,
-          value,
-          establishedIn: chapterIndex,
-        })
-      }
-    }
-  }
-
-  // Fallback: if no structured pattern matched but source keywords exist,
-  // create a fact with the default subject and the source snippet as value.
-  if (facts.length === 0 && SOURCE_KEYWORDS.test(cleanedText)) {
-    const sourceMatch = cleanedText.match(SOURCE_KEYWORDS)
-    if (sourceMatch && sourceMatch[0]) {
-      facts.push({
-        id: generateId('fact'),
-        subject: defaultSubject,
-        attribute: '来源',
-        value: sourceMatch[0].trim(),
-        establishedIn: chapterIndex,
-      })
-    }
-  }
-
-  return facts
+function evidenceQuoteIsValid(quote: string, chapterContent: string | undefined): boolean {
+  if (!chapterContent || quote.trim().length === 0) return false
+  const normalizedQuote = normalizeTextForMatch(quote)
+  const normalizedContent = normalizeTextForMatch(chapterContent)
+  return normalizedQuote.length > 0 && normalizedContent.includes(normalizedQuote)
 }
 
-function extractSourceFacts(data: Record<string, unknown>, chapterIndex: number): CanonicalFact[] {
-  const facts: CanonicalFact[] = []
-
-  const keyItems = Array.isArray(data['keyItems']) ? data['keyItems'] as ImportanceObject[] : []
-  for (const item of keyItems) {
-    if (!item || typeof item !== 'object' || item.importance !== 'critical') continue
-    const text = item.text || ''
-    // Key item text format is typically "物品名: 描述"
-    const [subjectPart, ...descParts] = text.split(/[:：]/)
-    const subject = subjectPart ? subjectPart.trim() : text.trim()
-    const description = descParts.join('：').trim()
-    const targetText = description.length > 0 ? description : text
-    facts.push(...extractSourceFactsFromText(targetText, subject, chapterIndex))
-  }
-
-  const characterFacts = Array.isArray(data['characterFacts']) ? data['characterFacts'] as Array<{ character?: string; facts?: ImportanceObject[] }> : []
-  for (const entry of characterFacts) {
-    if (!entry || typeof entry !== 'object') continue
-    const character = entry.character || ''
-    const factsList = Array.isArray(entry.facts) ? entry.facts : []
-    for (const fact of factsList) {
-      if (!fact || typeof fact !== 'object' || fact.importance !== 'critical') continue
-      // Character facts about source usually mention an item; use the fact text itself as default subject.
-      facts.push(...extractSourceFactsFromText(fact.text, character, chapterIndex))
+function validateCanonicalFactEvidence(
+  facts: CanonicalFact[],
+  chapterContent: string | undefined,
+): CanonicalFact[] {
+  if (!chapterContent) return facts
+  return facts.map(fact => {
+    if (!fact.evidence || fact.evidence.quote.length === 0) return fact
+    if (evidenceQuoteIsValid(fact.evidence.quote, chapterContent)) return fact
+    logger.warn(
+      `[MuseFlow] canonicalFact evidence 引用未在正文中找到，降级 confidence: [${fact.subject}] ${fact.attribute}`
+    )
+    return {
+      ...fact,
+      confidence: 'low',
+      evidence: undefined,
     }
-  }
-
-  return facts
-}
-
-function inferAttributeFromCharacterFact(text: string): string {
-  if (/承诺|约定|交易|条件|底线|誓言/.test(text)) return '承诺'
-  if (/计划|策略|打算|方案|布局/.test(text)) return '计划'
-  if (/知道|了解|获悉|得知|明白|掌握/.test(text)) return '已知信息'
-  if (/决定|决心|选择|抉择/.test(text)) return '决定'
-  if (/态度|立场|看法|观点/.test(text)) return '态度'
-  return '已知信息'
-}
-
-/**
- * 把 characterFacts 中 importance=critical 的条目提升为 canonical facts。
- * 这些高约束性角色事实是一致性检查的主要依据。
- */
-function extractCharacterFactsAsCanonical(data: Record<string, unknown>, chapterIndex: number): CanonicalFact[] {
-  const facts: CanonicalFact[] = []
-  const characterFacts = Array.isArray(data['characterFacts'])
-    ? data['characterFacts'] as Array<{ character?: string; facts?: ImportanceObject[] }>
-    : []
-
-  for (const entry of characterFacts) {
-    if (!entry || typeof entry !== 'object') continue
-    const character = entry.character || ''
-    if (character.length === 0) continue
-    const factsList = Array.isArray(entry.facts) ? entry.facts : []
-    for (const fact of factsList) {
-      if (!fact || typeof fact !== 'object' || fact.importance !== 'critical') continue
-      const text = fact.text || ''
-      if (text.length === 0) continue
-      facts.push({
-        id: generateId('fact'),
-        subject: character,
-        attribute: inferAttributeFromCharacterFact(text),
-        value: text,
-        establishedIn: chapterIndex,
-      })
-    }
-  }
-
-  return facts
+  })
 }
 
 export function processSummaryOutput(
@@ -185,6 +84,7 @@ export function processSummaryOutput(
   chapterIndex?: number,
   characters?: Character[],
   existingStoryState?: StoryState,
+  chapterContent?: string,
 ): { summary: string; storyState?: StoryState; verifiedBeats?: string[] } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
@@ -223,6 +123,69 @@ export function processSummaryOutput(
     return value.replace(ambiguousPronouns, subject)
   }
 
+  const toConfidence = (val: unknown): 'high' | 'medium' | 'low' => {
+    if (val === 'high' || val === 'medium' || val === 'low') return val
+    return 'high'
+  }
+
+  const toCanonicalFactSource = (val: unknown): CanonicalFactSource => {
+    if (val === 'chapter_text' || val === 'outline_inference' || val === 'author_override' || val === 'reconciliation') {
+      return val
+    }
+    return 'chapter_text'
+  }
+
+  const parseCanonicalFact = (
+    item: Record<string, unknown>,
+    idx: number,
+    defaultSource: CanonicalFactSource = 'chapter_text',
+  ): CanonicalFact | null => {
+    const supersedesRaw = Array.isArray(item['supersedes'])
+      ? item['supersedes'].filter((s): s is Record<string, unknown> => s && typeof s === 'object')
+      : []
+    const subject = typeof item['subject'] === 'string' ? item['subject'] : ''
+    const value = typeof item['value'] === 'string' ? item['value'] : ''
+
+    if (subject.length === 0) return null
+    const attribute = typeof item['attribute'] === 'string' ? item['attribute'] : ''
+    if (attribute.length === 0) return null
+    if (value.length === 0) return null
+
+    const evidenceRaw = item['evidence']
+    const evidence = evidenceRaw && typeof evidenceRaw === 'object'
+      ? {
+          chapterIndex: typeof (evidenceRaw as Record<string, unknown>)['chapterIndex'] === 'number'
+            ? (evidenceRaw as Record<string, unknown>)['chapterIndex'] as number
+            : (chapterIndex ?? -1),
+          quote: typeof (evidenceRaw as Record<string, unknown>)['quote'] === 'string'
+            ? disambiguateValue((evidenceRaw as Record<string, unknown>)['quote'] as string, subject)
+            : '',
+        }
+      : undefined
+
+    return {
+      id: typeof item['id'] === 'string' && item['id'].length > 0
+        ? item['id']
+        : `cf_${chapterIndex ?? 0}_${idx}`,
+      subject,
+      attribute,
+      value: disambiguateValue(value, subject),
+      establishedIn: typeof item['establishedIn'] === 'number' ? item['establishedIn'] : (chapterIndex ?? -1),
+      confidence: toConfidence(item['confidence']),
+      source: toCanonicalFactSource(item['source']) ?? defaultSource,
+      ...(evidence && evidence.quote.length > 0 ? { evidence } : {}),
+      supersedes: supersedesRaw.length > 0
+        ? supersedesRaw.map(s => ({
+            chapter: typeof s['chapter'] === 'number' ? s['chapter'] : -1,
+            oldValue: disambiguateValue(
+              typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
+              subject
+            ),
+          })).filter(s => s.oldValue.length > 0)
+        : undefined,
+    }
+  }
+
   const extractStoryState = (): StoryState | undefined => {
     const raw = data['storyState']
     if (!raw || typeof raw !== 'object') return undefined
@@ -257,36 +220,12 @@ export function processSummaryOutput(
       })).filter(item => item.assignee.length > 0 && item.description.length > 0)
     }
 
-    const toCanonicalFacts = (val: unknown): import('../types/story-state.js').CanonicalFact[] => {
+    const toCanonicalFacts = (val: unknown): CanonicalFact[] => {
       if (!Array.isArray(val)) return []
       return val
         .filter((item): item is Record<string, unknown> => item && typeof item === 'object')
-        .map((item, idx) => {
-          const supersedesRaw = Array.isArray(item['supersedes'])
-            ? item['supersedes'].filter((s): s is Record<string, unknown> => s && typeof s === 'object')
-            : []
-          const subject = typeof item['subject'] === 'string' ? item['subject'] : ''
-          const value = typeof item['value'] === 'string' ? item['value'] : ''
-          return {
-            id: typeof item['id'] === 'string' && item['id'].length > 0
-              ? item['id']
-              : `cf_${chapterIndex ?? 0}_${idx}`,
-            subject,
-            attribute: typeof item['attribute'] === 'string' ? item['attribute'] : '',
-            value: disambiguateValue(value, subject),
-            establishedIn: typeof item['establishedIn'] === 'number' ? item['establishedIn'] : (chapterIndex ?? -1),
-            supersedes: supersedesRaw.length > 0
-              ? supersedesRaw.map(s => ({
-                  chapter: typeof s['chapter'] === 'number' ? s['chapter'] : -1,
-                  oldValue: disambiguateValue(
-                    typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
-                    subject
-                  ),
-                })).filter(s => s.oldValue.length > 0)
-              : undefined,
-          }
-        })
-        .filter(fact => fact.subject.length > 0 && fact.attribute.length > 0 && fact.value.length > 0)
+        .map((item, idx) => parseCanonicalFact(item, idx, 'chapter_text'))
+        .filter((fact): fact is CanonicalFact => fact !== null)
     }
 
     return {
@@ -315,56 +254,22 @@ export function processSummaryOutput(
 
   let storyState = extractStoryState()
 
+  // Merge explicit sourceFacts (LLM-provided canonical facts) into storyState.canonicalFacts.
   const rawSourceFacts = data['sourceFacts']
   if (storyState && Array.isArray(rawSourceFacts)) {
-    const parsedSourceFacts: import('../types/story-state.js').CanonicalFact[] = rawSourceFacts
+    const parsedSourceFacts: CanonicalFact[] = rawSourceFacts
       .filter((item): item is Record<string, unknown> => item && typeof item === 'object')
-      .map((item, idx) => {
-        const subject = typeof item['subject'] === 'string' ? item['subject'] : ''
-        const value = typeof item['value'] === 'string' ? item['value'] : ''
-        return {
-          id: `cf_${chapterIndex ?? 0}_source_${idx}`,
-          subject,
-          attribute: typeof item['attribute'] === 'string' ? item['attribute'] : '',
-          value: disambiguateValue(value, subject),
-          establishedIn: chapterIndex ?? 0,
-        }
-      })
-      .filter(f => f.subject.length > 0 && f.attribute.length > 0 && f.value.length > 0)
+      .map((item, idx) => parseCanonicalFact(item, idx, 'chapter_text'))
+      .filter((fact): fact is CanonicalFact => fact !== null)
 
-    const existingFacts = storyState.canonicalFacts ?? []
-    const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}|${f.value}`))
-    const newFacts = parsedSourceFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
-
-    if (newFacts.length > 0) {
-      storyState.canonicalFacts = [...existingFacts, ...newFacts]
-    }
-  }
-
-  // Auto-promote source-like and character critical facts to canonicalFacts as a safety net.
-  let autoPromotedCount = 0
-  if (storyState) {
-    const sourceFacts = extractSourceFacts(data, chapterIndex ?? 0)
-    const characterFacts = extractCharacterFactsAsCanonical(data, chapterIndex ?? 0)
-    const autoFacts = [...sourceFacts, ...characterFacts]
-    if (autoFacts.length > 0) {
+    if (parsedSourceFacts.length > 0) {
       const existingFacts = storyState.canonicalFacts ?? []
       const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}|${f.value}`))
-      const newFacts = autoFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
+      const newFacts = parsedSourceFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
       if (newFacts.length > 0) {
-        autoPromotedCount = newFacts.length
         storyState.canonicalFacts = [...existingFacts, ...newFacts]
       }
     }
-  }
-
-  const totalPromoted = Math.max(
-    0,
-    (storyState?.canonicalFacts?.length ?? 0) - (existingStoryState?.canonicalFacts?.length ?? 0)
-  )
-  if (totalPromoted > 0) {
-    const explicitCount = totalPromoted - autoPromotedCount
-    logger.info(`SummaryAgent 新增 ${totalPromoted} 条权威事实（显式 ${explicitCount}，自动提升 ${autoPromotedCount}）`)
   }
 
   if (storyState && characters && characters.length > 0) {
@@ -403,12 +308,22 @@ export function processSummaryOutput(
   const verifiedBeats = extractVerifiedBeats()
 
   if (storyState) {
+    if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {
+      storyState.canonicalFacts = validateCanonicalFactEvidence(storyState.canonicalFacts, chapterContent)
+    }
+
     const extractedSupersededFacts = extractSupersededFacts() ?? []
     const existingSupersededFacts = storyState.supersededFacts ?? []
     const mergedSupersededFacts = [...existingSupersededFacts, ...extractedSupersededFacts]
     if (mergedSupersededFacts.length > 0) {
       storyState.supersededFacts = mergedSupersededFacts
     }
+
+    const newCount = (storyState.canonicalFacts?.length ?? 0) - (existingStoryState?.canonicalFacts?.length ?? 0)
+    if (newCount > 0) {
+      logger.info(`SummaryAgent 新增 ${newCount} 条权威事实`)
+    }
+
     return { summary, storyState, verifiedBeats }
   }
 
