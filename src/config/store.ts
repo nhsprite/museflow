@@ -16,6 +16,7 @@ const ConfigSchema = z.object({
     maxTokens: z.number().positive().optional(),
   }),
   debug: z.boolean().optional(),
+  autoAdjustActBoundaries: z.boolean().optional(),
 })
 
 function loadConfigFromPath(path: string): AppConfig | null {

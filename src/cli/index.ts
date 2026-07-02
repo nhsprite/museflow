@@ -82,6 +82,7 @@ program.command('config')
   .option('--model <name>', '设置模型名称')
   .option('--api-key <key>', '设置API密钥')
   .option('--base-url <url>', '设置API基础URL')
+  .option('--auto-adjust-act-boundaries <boolean>', '自动调整幕边界 (true|false)')
   .action(config)
 
 program.command('genres')

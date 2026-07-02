@@ -22,8 +22,14 @@ import {
 import { countChineseWords } from '../../../utils/text.js'
 import type { ActArc, StoryArc } from '../../../types/outline.js'
 import type { Issue } from '../../../types/agent.js'
-import { buildClosingPhaseConstraint, proposeActBoundaryAdjustments } from '../../../utils/story-arc.js'
+import {
+  buildClosingPhaseConstraint,
+  proposeActBoundaryAdjustments,
+  applyActBoundaryAdjustment,
+} from '../../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
+import { loadConfig } from '../../../config/store.js'
+import { writeOutlineContent } from '../../../storage/filesystem/writer.js'
 
 export async function finalizeChapter(
   state: ReducedGraphState,
@@ -196,16 +202,41 @@ export async function finalizeChapter(
     updatedPendingIssues
   )
 
+  let updatedStoryArc: StoryArc | null | undefined = state.storyArc
+
   if (state.storyArc) {
     const boundaryProposals = proposeActBoundaryAdjustments(state.storyArc, updatedActProgress, chapterIndex)
     if (boundaryProposals.length > 0) {
       chapterReport.actBoundaryProposals = boundaryProposals
-      logger.warn('[MuseFlow] 检测到幕边界调整建议：')
-      for (const proposal of boundaryProposals) {
-        logger.warn(`  - 第 ${proposal.actIndex} 幕建议结束于第 ${proposal.proposedEndChapter} 章：${proposal.reason}`)
+      const config = loadConfig()
+
+      if (config.autoAdjustActBoundaries) {
+        for (const proposal of boundaryProposals) {
+          const result = applyActBoundaryAdjustment(state.storyArc, proposal, chapterIndex)
+          if (result.applied) {
+            updatedStoryArc = result.storyArc
+            logger.info(`[MuseFlow] ${result.reason}`)
+          } else {
+            logger.warn(`[MuseFlow] 自动调整第 ${proposal.actIndex} 幕边界失败：${result.reason}`)
+          }
+        }
+      } else {
+        logger.warn('[MuseFlow] 检测到幕边界调整建议：')
+        for (const proposal of boundaryProposals) {
+          logger.warn(`  - 第 ${proposal.actIndex} 幕建议结束于第 ${proposal.proposedEndChapter} 章：${proposal.reason}`)
+        }
+        logger.warn('  如要采纳，请运行：museflow adjust-act <story-id> --act <index> --end-chapter <number>')
       }
-      logger.warn('  如要采纳，请运行：museflow adjust-act <story-id> --act <index> --end-chapter <number>')
     }
+  }
+
+  if (updatedStoryArc && updatedStoryArc !== state.storyArc) {
+    await writeOutlineContent(
+      state.story.outputDir,
+      state.story.title,
+      state.outline,
+      updatedStoryArc
+    )
   }
 
   saveChapterReport(state.story.outputDir, chapterReport)
@@ -224,6 +255,7 @@ export async function finalizeChapter(
     timeline: updatedTimeline,
     pendingIssues: updatedPendingIssues,
     outline: state.outline,
+    storyArc: updatedStoryArc,
   }
 }
 

@@ -200,3 +200,66 @@ export function validateActBoundaryAdjustment(
 
   return { valid: true }
 }
+
+/** 单次自动调整的安全上限（章）。 */
+const AUTO_ADJUST_MAX_EXTENSION = 3
+
+export interface ApplyActBoundaryAdjustmentResult {
+  storyArc: StoryArc
+  applied: boolean
+  reason?: string
+}
+
+/**
+ * 自动应用幕边界延长建议，并施加安全约束：
+ * - 只延长，不缩短；
+ * - 单次最多延长 AUTO_ADJUST_MAX_EXTENSION 章；
+ * - 不侵入下一幕；
+ * - 使用 validateActBoundaryAdjustment 校验。
+ */
+export function applyActBoundaryAdjustment(
+  storyArc: StoryArc,
+  proposal: ActBoundaryProposal,
+  currentChapterIndex: number
+): ApplyActBoundaryAdjustmentResult {
+  const currentAct = storyArc.acts.find(a => a.index === proposal.actIndex)
+  if (!currentAct) {
+    return { storyArc, applied: false, reason: '幕不存在' }
+  }
+
+  if (proposal.proposedEndChapter <= currentAct.endChapter) {
+    return { storyArc, applied: false, reason: '自动调整只支持延长幕边界' }
+  }
+
+  const rawExtension = proposal.proposedEndChapter - currentAct.endChapter
+  const extension = Math.min(rawExtension, AUTO_ADJUST_MAX_EXTENSION)
+  const cappedProposedEnd = currentAct.endChapter + extension
+
+  const validation = validateActBoundaryAdjustment(
+    storyArc,
+    proposal.actIndex,
+    cappedProposedEnd,
+    currentChapterIndex
+  )
+  if (!validation.valid) {
+    return { storyArc, applied: false, ...(validation.reason ? { reason: validation.reason } : {}) }
+  }
+
+  const nextAct = storyArc.acts.find(a => a.index === proposal.actIndex + 1)
+
+  const newActs = storyArc.acts.map(act => {
+    if (act.index === proposal.actIndex) {
+      return { ...act, endChapter: cappedProposedEnd }
+    }
+    if (nextAct && act.index === proposal.actIndex + 1) {
+      return { ...act, startChapter: cappedProposedEnd + 1 }
+    }
+    return act
+  })
+
+  return {
+    storyArc: { ...storyArc, acts: newActs },
+    applied: true,
+    reason: `已自动将第 ${proposal.actIndex} 幕结束章节从 ${currentAct.endChapter} 调整到 ${cappedProposedEnd}`,
+  }
+}

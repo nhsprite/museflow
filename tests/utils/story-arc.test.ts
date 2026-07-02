@@ -5,6 +5,7 @@ import {
   isClosingPhase,
   proposeActBoundaryAdjustments,
   validateActBoundaryAdjustment,
+  applyActBoundaryAdjustment,
 } from '../../src/utils/story-arc.js'
 import type { StoryArc } from '../../src/types/outline.js'
 
@@ -135,5 +136,45 @@ describe('story-arc utilities', () => {
     const constraint = buildClosingPhaseConstraint(storyArc, {}, 5)
 
     expect(constraint).toBeUndefined()
+  })
+
+  describe('applyActBoundaryAdjustment', () => {
+    it('extends act end chapter and shifts next act start', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 1, proposedEndChapter: 7, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
+
+      expect(result.applied).toBe(true)
+      expect(result.storyArc.acts[0]?.endChapter).toBe(7)
+      expect(result.storyArc.acts[1]?.startChapter).toBe(8)
+    })
+
+    it('rejects shortening proposals', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 1, proposedEndChapter: 4, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
+
+      expect(result.applied).toBe(false)
+      expect(result.storyArc).toBe(storyArc)
+    })
+
+    it('caps extension to 3 chapters', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 1, proposedEndChapter: 10, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
+
+      expect(result.applied).toBe(true)
+      expect(result.storyArc.acts[0]?.endChapter).toBe(8)
+    })
+
+    it('does not cross into next act', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 1, proposedEndChapter: 10, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
+
+      expect(result.storyArc.acts[0]?.endChapter).toBeLessThanOrEqual(
+        (storyArc.acts[1]?.endChapter ?? 0) - 1
+      )
+    })
   })
 })

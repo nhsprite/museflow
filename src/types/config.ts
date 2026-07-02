@@ -10,6 +10,7 @@ export interface ModelConfig {
 export interface AppConfig {
   model: ModelConfig
   debug?: boolean
+  autoAdjustActBoundaries?: boolean
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -19,4 +20,5 @@ export const DEFAULT_CONFIG: AppConfig = {
     temperature: 0.7,
     maxTokens: 8192,
   },
+  autoAdjustActBoundaries: false,
 }

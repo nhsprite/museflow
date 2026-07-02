@@ -7,6 +7,7 @@ interface ConfigOptions {
   model?: string
   apiKey?: string
   baseUrl?: string
+  autoAdjustActBoundaries?: string
 }
 
 function getConfigSource(): { source: string; path: string } {
@@ -44,6 +45,9 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
       console.log(`  Base URL: ${cfg.model.baseUrl}`)
     }
     console.log('')
+    console.log('其他配置:')
+    console.log(`  自动调整幕边界: ${cfg.autoAdjustActBoundaries ?? false}`)
+    console.log('')
     console.log('='.repeat(50))
     console.log('')
     console.log('使用 "museflow config set --provider <name>" 修改配置')
@@ -79,7 +83,17 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
       console.log(`[MuseFlow] 已设置 Base URL: ${options.baseUrl}`)
     }
 
-    if (!options.provider && !options.model && !options.apiKey && !options.baseUrl) {
+    if (options.autoAdjustActBoundaries !== undefined) {
+      const value = options.autoAdjustActBoundaries.toLowerCase()
+      if (value !== 'true' && value !== 'false') {
+        console.error('[MuseFlow] 错误: --auto-adjust-act-boundaries 必须是 true 或 false')
+        process.exit(1)
+      }
+      cfg.autoAdjustActBoundaries = value === 'true'
+      console.log(`[MuseFlow] 已设置自动调整幕边界: ${cfg.autoAdjustActBoundaries}`)
+    }
+
+    if (!options.provider && !options.model && !options.apiKey && !options.baseUrl && options.autoAdjustActBoundaries === undefined) {
       console.error('[MuseFlow] 错误: 请指定要设置的选项')
       console.log('用法: museflow config set --provider <name> --model <name>')
       process.exit(1)
@@ -100,6 +114,8 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
       console.log(cfg.model.apiKey || '')
     } else if (options.baseUrl) {
       console.log(cfg.model.baseUrl || '')
+    } else if (options.autoAdjustActBoundaries !== undefined) {
+      console.log(String(cfg.autoAdjustActBoundaries ?? false))
     } else {
       console.error('[MuseFlow] 错误: 请指定要获取的选项')
       console.log('用法: museflow config get --provider')
