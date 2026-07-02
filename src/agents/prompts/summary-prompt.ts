@@ -41,6 +41,12 @@ const SUMMARY_USER_PROMPT_TEMPLATE = `<task>
 ${OFFICIAL_CHARACTER_RULES}
 ${STATE_AUTHORITY_RULES}
 
+<output_rules>
+  <requirement>你的响应必须且只能是一个合法的 JSON 对象，不要包含 Markdown 代码块标记、注释、解释性文字或任何 JSON 之外的内容。</requirement>
+  <requirement>JSON 必须完整可解析：所有键名用双引号包裹；字符串值中的双引号必须转义；数组和对象末尾不要有多余逗号。</requirement>
+  <requirement>如果某些字段没有内容，返回空字符串、空数组或空对象，不要省略字段，也不要返回 null（除非 schema 明确允许）。</requirement>
+</output_rules>
+
 <output_format>
   请提取并返回以下信息（JSON格式）：
   {
@@ -195,7 +201,8 @@ ${STATE_AUTHORITY_RULES}
     - confidence="low"：事实主要来自推断、暗示或记忆，需谨慎使用。
     - source 统一填 "chapter_text"，表示事实来自本章正文提取。
   </requirement>
-  <requirement>每个 high 或 medium confidence 的权威事实应提供 evidence.quote：一段 30-100 字的原文引用，明确支撑该事实。如果无法找到精确引用，请将 confidence 降为 low 并不填 evidence。</requirement>
+  <requirement>每个 high 或 medium confidence 的权威事实应提供 evidence.quote：必须从正文中摘录一段 30-100 字的连续原文，文字必须与正文完全一致（仅可省略首尾，不可改写、概括或替换词语）。如果无法从正文找到完全一致的连续原文，请将 confidence 降为 low 并不填 evidence。</requirement>
+  <requirement>evidence.quote 禁止是概括性描述（如“本章提到油纸包在枕头下”），必须是正文中实际出现的句子或连续短句。</requirement>
   <requirement>【关键】必须提取以下高约束性事实：
     - 关键物品/设定的来源、制造者、赠予者、材质、来历（attribute 建议为"来源"、"制造者"或"材质"）
     - 角色之间明确达成的承诺、约定、交易条件、限制、底线（attribute 建议为"承诺"、"约定"或"条件"）

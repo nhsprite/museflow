@@ -53,11 +53,54 @@ function normalizeTextForMatch(text: string): string {
   return text.replace(/[\s\n\p{P}]/gu, '')
 }
 
-function evidenceQuoteIsValid(quote: string, chapterContent: string | undefined): boolean {
+function longestCommonSubstringLength(a: string, b: string): number {
+  if (a.length === 0 || b.length === 0) return 0
+  // Ensure 'a' is the shorter string to keep O(min(n,m)) space.
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
+  let previous = new Array(shorter.length + 1).fill(0)
+  let current = new Array(shorter.length + 1).fill(0)
+  let maxLength = 0
+
+  for (let i = 1; i <= longer.length; i++) {
+    for (let j = 1; j <= shorter.length; j++) {
+      if (longer[i - 1] === shorter[j - 1]) {
+        current[j] = previous[j - 1] + 1
+        if (current[j] > maxLength) {
+          maxLength = current[j]
+        }
+      } else {
+        current[j] = 0
+      }
+    }
+    [previous, current] = [current, previous]
+    current.fill(0)
+  }
+
+  return maxLength
+}
+
+const FUZZY_MATCH_THRESHOLD = 0.7
+
+type EvidenceMatchResult = 'exact' | 'fuzzy' | false
+
+function evidenceQuoteIsValid(quote: string, chapterContent: string | undefined): EvidenceMatchResult {
   if (!chapterContent || quote.trim().length === 0) return false
   const normalizedQuote = normalizeTextForMatch(quote)
   const normalizedContent = normalizeTextForMatch(chapterContent)
-  return normalizedQuote.length > 0 && normalizedContent.includes(normalizedQuote)
+  if (normalizedQuote.length === 0) return false
+  if (normalizedContent.includes(normalizedQuote)) return 'exact'
+
+  const lcsLength = longestCommonSubstringLength(normalizedQuote, normalizedContent)
+  if (lcsLength >= normalizedQuote.length * FUZZY_MATCH_THRESHOLD) {
+    return 'fuzzy'
+  }
+  return false
+}
+
+function clampConfidence(confidence: 'high' | 'medium' | 'low', max: 'high' | 'medium' | 'low'): 'high' | 'medium' | 'low' {
+  const order: Array<'high' | 'medium' | 'low'> = ['high', 'medium', 'low']
+  const idx = Math.max(order.indexOf(confidence), order.indexOf(max))
+  return order[idx] ?? max
 }
 
 function validateCanonicalFactEvidence(
@@ -67,7 +110,17 @@ function validateCanonicalFactEvidence(
   if (!chapterContent) return facts
   return facts.map(fact => {
     if (!fact.evidence || fact.evidence.quote.length === 0) return fact
-    if (evidenceQuoteIsValid(fact.evidence.quote, chapterContent)) return fact
+    const match = evidenceQuoteIsValid(fact.evidence.quote, chapterContent)
+    if (match === 'exact') return fact
+    if (match === 'fuzzy') {
+      logger.info(
+        `[MuseFlow] canonicalFact evidence 引用与正文存在偏差，使用模糊匹配并接受: [${fact.subject}] ${fact.attribute}`
+      )
+      return {
+        ...fact,
+        confidence: clampConfidence(fact.confidence, 'medium'),
+      }
+    }
     logger.warn(
       `[MuseFlow] canonicalFact evidence 引用未在正文中找到，降级 confidence: [${fact.subject}] ${fact.attribute}`
     )
