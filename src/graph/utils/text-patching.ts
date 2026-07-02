@@ -1,5 +1,6 @@
 import { logger } from '../../utils/logger.js'
 import { extractChineseKeywords } from '../../utils/text.js'
+import { parseChineseNumber } from '../../utils/chapter-content-validation.js'
 
 export interface LocationInfo {
   paragraphIndex?: number
@@ -14,9 +15,11 @@ export function extractLocationInfo(issue: { description: string; location?: str
   const locations: LocationInfo[] = []
   const text = issue.description + ' ' + (issue.location || '')
 
+  const CHINESE_NUMERAL_CLASS = '[一二三四五六七八九十百千万零]+'
+
   const paragraphPatterns = [
     /第\s*(\d+)\s*段/g,
-    /第\s*([一二三四五六七八九十百]+)\s*段/g,
+    new RegExp(`第\\s*(${CHINESE_NUMERAL_CLASS})\\s*段`, 'g'),
     /段落?\s*(\d+)/g,
   ]
 
@@ -34,7 +37,7 @@ export function extractLocationInfo(issue: { description: string; location?: str
 
   const sentencePatterns = [
     /第\s*(\d+)\s*句/g,
-    /第\s*([一二三四五六七八九十百]+)\s*句/g,
+    new RegExp(`第\\s*(${CHINESE_NUMERAL_CLASS})\\s*句`, 'g'),
   ]
 
   for (const pattern of sentencePatterns) {
@@ -56,18 +59,8 @@ function parseLocationNumber(str: string): number | null {
   const num = parseInt(str, 10)
   if (!isNaN(num)) return num
 
-  const chineseMap: Record<string, number> = {
-    '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
-    '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
-  }
-
-  let result = 0
-  for (const char of str) {
-    const val = chineseMap[char]
-    if (val === undefined) return null
-    result = result * 10 + val
-  }
-  return result > 0 ? result : null
+  const parsed = parseChineseNumber(str)
+  return parsed !== null && parsed > 0 ? parsed : null
 }
 
 export function extractIssueKeywords(issue: { description: string; location?: string }): string[] {

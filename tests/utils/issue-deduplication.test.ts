@@ -31,6 +31,12 @@ describe('ruleBasedFingerprint', () => {
     const b: Issue = { id: '2', type: 'quality', severity: 'warning', description: '第3章字数不足' }
     expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
   })
+
+  it('extracts Chinese quoted entities', () => {
+    const a: Issue = { id: '1', type: 'consistency', severity: 'error', description: '「长命锁」不应出现在当铺' }
+    const b: Issue = { id: '2', type: 'consistency', severity: 'error', description: '“长命锁”不应出现在当铺' }
+    expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
+  })
 })
 
 describe('issueFingerprint with provider', () => {

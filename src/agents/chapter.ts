@@ -10,6 +10,7 @@ import { calculateKeywordOverlap } from '../utils/text-similarity.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 import { buildCanonicalFactsSection, buildCharacterWhitelistSection, FACT_CONSISTENCY_RULES } from './prompts/fragments/index.js'
 import { buildChapterSystemPrompt, buildChapterUserPrompt } from './prompts/chapter-prompt.js'
+import { CHAPTER_HEADING_PATTERN, CHAPTER_TITLE_ONLY_PATTERN } from '../utils/chapter-content-validation.js'
 
 export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   constructor(provider: ModelProvider) {
@@ -312,9 +313,9 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 
   private extractChapterOutline(outline: string, chapterIndex: number): { title: string; description: string } {
     const chapterPatterns = [
-      new RegExp(`第\\s*${chapterIndex}\\s*章?[:：]?\\s*(.+)`),
-      new RegExp(`第\\s*${chapterIndex}\\s*节?[:：]?\\s*(.+)`),
-      new RegExp(`chapter\\s*${chapterIndex}[:：]?\\s*(.+)`),
+      new RegExp(`第\\s*${chapterIndex}\\s*章?[:：]?\\s*(.+?)(?:\\n|$)`),
+      new RegExp(`第\\s*${chapterIndex}\\s*节?[:：]?\\s*(.+?)(?:\\n|$)`),
+      new RegExp(`chapter\\s*${chapterIndex}[:：]?\\s*(.+?)(?:\\n|$)`, 'i'),
     ]
 
     for (const pattern of chapterPatterns) {
@@ -358,8 +359,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
       extractedContent = this.truncateToChapterHeading(extractedContent)
     }
 
-    const chapterHeadingPattern = /^(#{1,2}\s+第\s*\d+\s*章[\s:：]|#{1,2}\s+第\s*\d+\s*部分[\s:：]|#{1,2}\s+\d+[.、]\s+|#{1,2}\s+章节?\s*\d+)/m
-    const headingMatch = extractedContent.match(chapterHeadingPattern)
+    const headingMatch = extractedContent.match(CHAPTER_HEADING_PATTERN)
     if (headingMatch && headingMatch.index !== undefined && headingMatch.index > 0) {
       const detectedPreWrite = extractedContent.slice(0, headingMatch.index).trim()
       extractedContent = extractedContent.slice(headingMatch.index).trim()
@@ -385,14 +385,14 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     const contentAfterPreWriteRemoval = rawContent.replace(/===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i, '').trim()
 
     if (this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)) {
-      const headingMatch = contentAfterPreWriteRemoval.match(/^(#{1,2}\s+第\s*\d+\s*章[\s:：])/m)
+      const headingMatch = contentAfterPreWriteRemoval.match(CHAPTER_TITLE_ONLY_PATTERN)
       if (headingMatch && headingMatch.index !== undefined && headingMatch.index > 0) {
         return contentAfterPreWriteRemoval.slice(headingMatch.index).trim()
       }
     }
 
     if (!contentAfterPreWriteRemoval || this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)) {
-      const rawHeadingMatch = rawContent.match(/^(#{1,2}\s+第\s*\d+\s*章[\s:：])/m)
+      const rawHeadingMatch = rawContent.match(CHAPTER_TITLE_ONLY_PATTERN)
       if (rawHeadingMatch && rawHeadingMatch.index !== undefined) {
         return rawContent.slice(rawHeadingMatch.index).trim()
       }
@@ -404,29 +404,23 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
   }
 
   private hasPreWriteCheckArtifacts(text: string): boolean {
+    // 仅保留结构性残留特征，避免用关键词列表做宽泛的“症状级”过滤。
+    // 语义上的“修改计划/问题分析”判断交给 batchValidateFixedContent。
     const artifactPatterns = [
       /预写对齐检查表/,
       /自检清单/,
-      /大纲中的每个情节点/,
-      /章节规划中的每个段落/,
-      /关键台词已标注/,
-      /时间线跨度符合/,
-      /没有发现与大纲矛盾/,
       /\|\s*检查项\s*\|\s*来源\s*\|/,
       /\[[x\s]\]\s*大纲中的每个情节点/,
       /【段落\s*\d+\s*·\s*第/,
       /【需要修改的段落】/,
       /原文内容缺失，无法准确修复/,
-      /问题分析：/,
-      /修复建议：/,
-      /对应段落/,
+      /===\s*PRE_WRITE_CHECK\s*===/,
     ]
     return artifactPatterns.some(pattern => pattern.test(text))
   }
 
   private truncateToChapterHeading(text: string): string {
-    const headingPattern = /^(#{1,2}\s+第\s*\d+\s*章[\s:：])/m
-    const match = text.match(headingPattern)
+    const match = text.match(CHAPTER_TITLE_ONLY_PATTERN)
     if (match && match.index !== undefined) {
       return text.slice(match.index).trim()
     }

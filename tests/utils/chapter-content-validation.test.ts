@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as contextJudge from '../../src/utils/context-judge.js'
-import { validateFixedChapterContent, tryCorrectOffByOneChapterHeading } from '../../src/utils/chapter-content-validation.js'
+import { validateFixedChapterContent, tryCorrectOffByOneChapterHeading, extractChapterNumber, findChapterHeading } from '../../src/utils/chapter-content-validation.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 
 vi.mock('../../src/utils/context-judge.js', () => ({
@@ -105,5 +105,37 @@ describe('tryCorrectOffByOneChapterHeading', () => {
     const currentDesc = '主角以南城会馆为藏身点。'
     const result = tryCorrectOffByOneChapterHeading(content, 3, currentDesc, undefined)
     expect(result).toBeNull()
+  })
+})
+
+describe('extractChapterNumber', () => {
+  it('parses Arabic numerals', () => {
+    expect(extractChapterNumber('# 第 4 章 王府递帖')).toBe(4)
+  })
+
+  it('parses simple Chinese numerals', () => {
+    expect(extractChapterNumber('# 第 四 章 王府递帖')).toBe(4)
+  })
+
+  it('parses Chinese numerals with zero', () => {
+    expect(extractChapterNumber('# 第 一百零五 章 王府递帖')).toBe(105)
+    expect(extractChapterNumber('# 第 二千零一 章 王府递帖')).toBe(2001)
+    expect(extractChapterNumber('# 第 一千零五十 章 王府递帖')).toBe(1050)
+  })
+
+  it('returns null for non-chapter headings', () => {
+    expect(extractChapterNumber('# 前言')).toBeNull()
+  })
+})
+
+describe('findChapterHeading', () => {
+  it('finds Chinese numeral chapter headings', () => {
+    const heading = findChapterHeading('## 第四章：王府递帖\n\n正文')
+    expect(heading).toBe('## 第四章：王府递帖')
+  })
+
+  it('finds Arabic numeral chapter headings', () => {
+    const heading = findChapterHeading('## 第4章 王府递帖\n\n正文')
+    expect(heading).toBe('## 第4章 王府递帖')
   })
 })

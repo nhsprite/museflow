@@ -83,7 +83,7 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       extractedContent = content.trim()
     }
 
-    const sentencePattern = /【段落\s*(\d+)\s*·\s*第\s*(\d+)\s*句】\n([\s\S]*?)(?=\n【段落\s*\d+\s*·|$)/g
+    const sentencePattern = /【段落\s*(\d+)\s*·\s*第\s*(\d+)\s*句】\s*([\s\S]*?)(?=\s*【段落\s*\d+\s*·\s*第\s*\d+\s*句】|$)/g
     const modifiedSentences: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> = []
 
     let sentenceMatch
@@ -98,7 +98,7 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       return { success: true, content: extractedContent, data: { modifiedSentences } }
     }
 
-    const paragraphPattern = /【段落\s*(\d+)】\n([\s\S]*?)(?=\n【段落\s*\d+】|$)/g
+    const paragraphPattern = /【段落\s*(\d+)】\s*([\s\S]*?)(?=\s*【段落\s*\d+】|$)/g
     const modifiedParagraphs: Array<{ index: number; content: string }> = []
 
     let match

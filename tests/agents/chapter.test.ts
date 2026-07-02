@@ -14,6 +14,10 @@ class TestableChapterAgent extends (await import('../../src/agents/chapter.ts'))
   public exposePrompt(state: Required<ChapterAgentInput>): Message[] {
     return this.buildPrompt(state)
   }
+
+  public exposeParse(content: string): { success: boolean; content: string; data?: Record<string, unknown> } {
+    return this.parse(content) as { success: boolean; content: string; data?: Record<string, unknown> }
+  }
 }
 
 describe('ChapterAgent chapter numbering', () => {
@@ -266,5 +270,49 @@ describe('ChapterAgent chapter numbering', () => {
     const userMessage = messages[1]?.content ?? ''
     expect(userMessage).toContain('涉及关键物品/设定的来源、制造者、来历、赠予者时，必须与【权威事实】中的记录一致')
     expect(userMessage).toContain('严禁 invent 具体来源')
+  })
+})
+
+describe('ChapterAgent.parse', () => {
+  it('extracts content after CHAPTER_CONTENT marker', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const raw = `=== PRE_WRITE_CHECK ===
+- 检查项1
+=== CHAPTER_CONTENT ===
+## 第四章 王府递帖
+
+正文内容。`
+    const result = agent.exposeParse(raw)
+    expect(result.success).toBe(true)
+    expect(result.content).toContain('## 第四章 王府递帖')
+    expect(result.content).not.toContain('PRE_WRITE_CHECK')
+  })
+
+  it('recognizes Chinese numeral chapter headings', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const raw = `=== PRE_WRITE_CHECK ===
+- 检查项
+=== CHAPTER_CONTENT ===
+## 第四章：王府递帖
+
+正文内容。`
+    const result = agent.exposeParse(raw)
+    expect(result.success).toBe(true)
+    expect(result.content).toContain('## 第四章：王府递帖')
+    expect(result.content).not.toContain('检查项')
+  })
+
+  it('truncates pre-write artifacts before chapter heading', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const raw = `预写对齐检查表
+| 检查项 | 来源 |
+| 大纲情节点1 | 大纲 |
+## 第4章 王府递帖
+
+正文内容。`
+    const result = agent.exposeParse(raw)
+    expect(result.success).toBe(true)
+    expect(result.content).toContain('## 第4章 王府递帖')
+    expect(result.content).not.toContain('预写对齐检查表')
   })
 })

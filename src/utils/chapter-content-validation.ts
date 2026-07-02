@@ -16,10 +16,34 @@ interface ValidationResult {
 }
 
 const CHINESE_NUMERALS: Record<string, number> = {
-  '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+  '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
   '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
   '百': 100, '千': 1000, '万': 10000,
 }
+
+/** 章节标题中允许的数字字符类（中文数字 + 阿拉伯数字）。 */
+const CHAPTER_NUMERAL_CLASS = '[一二三四五六七八九十百千万零\\d]+'
+
+/**
+ * 通用章节标题识别正则。
+ * 支持：# 第X章、# 第X部分、# X. 标题、# 章节X
+ * 章节号后的分隔符（空格/冒号）为可选，以兼容行尾被 trim 的情况。
+ */
+export const CHAPTER_HEADING_PATTERN = new RegExp(
+  `^(#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*章[\\s:：]?|` +
+  `#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*部分[\\s:：]?|` +
+  `#{1,2}\\s+${CHAPTER_NUMERAL_CLASS}[.、]\\s+|` +
+  `#{1,2}\\s+章节?\\s*${CHAPTER_NUMERAL_CLASS})`,
+  'm'
+)
+
+/**
+ * 严格“第X章”标题识别正则，用于截断预写检查表残留。
+ */
+export const CHAPTER_TITLE_ONLY_PATTERN = new RegExp(
+  `^(#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*章[\\s:：]?)`,
+  'm'
+)
 
 const REVISION_PLAN_KEYWORDS = [
   '问题分析',
@@ -43,7 +67,7 @@ function detectRevisionPlanShape(text: string): boolean {
   return hitCount >= 2
 }
 
-function parseChineseNumber(str: string): number | null {
+export function parseChineseNumber(str: string): number | null {
   let result = 0
   let currentUnit = 0
   let hasDigit = false
@@ -72,7 +96,7 @@ export function findChapterHeading(text: string): string | null {
   const lines = text.split('\n')
   for (const line of lines) {
     const trimmed = line.trim()
-    if (/^#{1,2}\s+第\s*[一二三四五六七八九十百千万\d]+\s*章/.test(trimmed)) {
+    if (CHAPTER_HEADING_PATTERN.test(trimmed)) {
       return trimmed
     }
   }
@@ -80,7 +104,7 @@ export function findChapterHeading(text: string): string | null {
 }
 
 export function extractChapterNumber(heading: string): number | null {
-  const match = heading.match(/第\s*([一二三四五六七八九十百千万\d]+)\s*章/)
+  const match = heading.match(new RegExp(`第\\s*(${CHAPTER_NUMERAL_CLASS})\\s*章`))
   if (match && match[1]) {
     const arabic = parseInt(match[1], 10)
     if (!isNaN(arabic)) return arabic
@@ -138,7 +162,7 @@ export function tryCorrectOffByOneChapterHeading(
   if (currentOverlap / nextOverlap < minOverlapRatio) return null
 
   const correctedHeading = heading.replace(
-    /第\s*([一二三四五六七八九十百千万\d]+)\s*章/,
+    new RegExp(`第\\s*(${CHAPTER_NUMERAL_CLASS})\\s*章`),
     `第${expectedDisplayNumber}章`
   )
   const correctedContent = rawContent.replace(heading, correctedHeading)

@@ -3,6 +3,7 @@ import {
   splitIntoParagraphs,
   extractIssueKeywords,
   findAffectedParagraphs,
+  extractLocationInfo,
   mergeParagraphFixes,
   applyParagraphDiffProtection,
   deduplicateSentences,
@@ -148,6 +149,26 @@ describe('findAffectedParagraphs', () => {
     ]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toEqual([1, 3])
+  })
+
+  it('parses compound Chinese numeral paragraph locations', () => {
+    const issues = [
+      { description: '第十二段语气生硬', location: '第十二段' },
+    ]
+
+    const manyParagraphs = Array.from({ length: 25 }, (_, i) => `第${i + 1}段内容。`)
+    const affected = findAffectedParagraphs(manyParagraphs, issues)
+    expect(affected).toContain(11)
+  })
+})
+
+describe('extractLocationInfo', () => {
+  it('parses compound Chinese numeral locations', () => {
+    const paragraphLoc = extractLocationInfo({ description: '第十二段语气生硬' })
+    expect(paragraphLoc).toContainEqual({ paragraphIndex: 11 })
+
+    const sentenceLoc = extractLocationInfo({ description: '第二十三句重复' })
+    expect(sentenceLoc).toContainEqual({ sentenceIndex: 22 })
   })
 })
 

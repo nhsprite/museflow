@@ -15,11 +15,20 @@ function extractCanonicalTerms(issue: Issue): string[] {
   const normalized = normalizeNumberToken(text)
   const terms = new Set<string>()
 
-  const quoted = normalized.match(/["'"'"']([^"'"'"']+)["'"'"']/g)
-  if (quoted) {
-    for (const q of quoted) {
-      const cleaned = q.slice(1, -1).trim()
-      if (cleaned.length >= 2) terms.add(cleaned)
+  const quotePatterns = [
+    /"([^"]+)"/g,
+    /'([^']+)'/g,
+    /“([^”]+)”/g,
+    /‘([^’]+)’/g,
+    /「([^」]+)」/g,
+    /『([^』]+)』/g,
+  ]
+
+  for (const pattern of quotePatterns) {
+    let match
+    while ((match = pattern.exec(normalized)) !== null) {
+      const cleaned = match[1]?.trim()
+      if (cleaned && cleaned.length >= 2) terms.add(cleaned)
     }
   }
 

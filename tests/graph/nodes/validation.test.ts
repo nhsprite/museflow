@@ -109,4 +109,27 @@ describe('filterIssuesAgainstCanonicalFacts', () => {
     const filtered = filterIssuesAgainstCanonicalFacts(issues, [])
     expect(filtered).toHaveLength(1)
   })
+
+  it('filters issues using extended negation markers', () => {
+    const issues: Issue[] = [
+      {
+        id: '1',
+        type: 'consistency',
+        severity: 'error',
+        description: '某物品并未在实验室A，这与权威事实冲突',
+      },
+    ]
+    const canonicalFacts: CanonicalFact[] = [
+      {
+        id: 'cf1',
+        subject: '某物品',
+        attribute: '所在位置',
+        value: '某物品在实验室A',
+        establishedIn: 2,
+      },
+    ]
+
+    const filtered = filterIssuesAgainstCanonicalFacts(issues, canonicalFacts)
+    expect(filtered).toHaveLength(0)
+  })
 })

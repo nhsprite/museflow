@@ -90,7 +90,7 @@ export async function normalizeIssues(
 export function filterIssuesAgainstCanonicalFacts(issues: Issue[], canonicalFacts: CanonicalFact[]): Issue[] {
   if (canonicalFacts.length === 0) return issues
 
-  const negationMarkers = /不应|不应该|不可能|并非|不是|不在|没有|错误|矛盾|冲突/g
+  const negationMarkers = /不应|不应该|不可能|并非|不是|不在|没有|错误|矛盾|冲突|未在|并未|并无|否认|否决|不成立|不存在|已不|不再|不会|不能|未能/g
 
   return issues.filter(issue => {
     if (issue.type !== 'consistency') return true

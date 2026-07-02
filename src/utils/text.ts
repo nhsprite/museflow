@@ -15,9 +15,10 @@ interface ExtractChineseKeywordsOptions {
 
 /**
  * Count Chinese characters plus English words.
+ * 中文字符覆盖 CJK 基本区（U+4E00–U+9FFF）与扩展 A 区（U+3400–U+4DBF）。
  */
 export function countChineseWords(text: string): number {
-  const chineseChars = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
+  const chineseChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) ?? []).length
   const englishWords = (text.match(/[a-zA-Z]+/g) ?? []).length
   return chineseChars + englishWords
 }
@@ -40,7 +41,7 @@ export function extractChineseKeywords(
     deduplicate = true,
   } = options
 
-  const sequences = text.match(/[\u4e00-\u9fff]{2,}/g) ?? []
+  const sequences = text.match(/[\u4e00-\u9fff\u3400-\u4dbf]{2,}/g) ?? []
   const result: string[] = []
 
   for (const sequence of sequences) {
@@ -69,7 +70,7 @@ export function extractChineseKeywords(
  */
 export function tokenizeWords(text: string, minLen: number = 2): string[] {
   return text
-    .split(/\s+|[，。！？、；：""''\n]/u)
+    .split(/\s+|[，。！？、；：""''「」『』“”‘’\n]/u)
     .map(s => s.trim())
     .filter(s => s.length >= minLen)
 }
