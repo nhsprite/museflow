@@ -1,5 +1,6 @@
 import type { Issue } from '../../../types/agent.js'
 import type { IssuePolicyDeps, IssuePolicyResult } from './types.js'
+import { deduplicateByRule } from '../../../utils/issue-deduplication.js'
 
 export async function calculateIssueSetSimilarity(
   prev: Issue[],
@@ -69,6 +70,9 @@ export async function applyIssuePolicy(
 
   if (deps.deduplicateIssues) {
     processed = await deps.deduplicateIssues(processed)
+  } else {
+    // 默认使用规则去重，防止同一问题在多次校验后被重复累积。
+    processed = deduplicateByRule(processed)
   }
 
   const maxPerType = deps.planningConfig.maxNonErrorIssuesPerType

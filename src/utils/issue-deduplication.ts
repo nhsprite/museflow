@@ -104,7 +104,7 @@ export async function deduplicateIssuesSemantically(
   }
 }
 
-function deduplicateByRule(issues: Issue[]): Issue[] {
+export function deduplicateByRule(issues: Issue[]): Issue[] {
   const seen = new Map<string, Issue>()
   const result: Issue[] = []
   for (const issue of issues) {

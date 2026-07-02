@@ -19,6 +19,15 @@ const INTERPRETIVE_KEYWORDS = [
   '可读性',
   '流畅',
   '生硬',
+  '应明确写出',
+  '应增加',
+  '应交代',
+  '应修改为',
+  '明确写出',
+  '增加描写',
+  '补充交代',
+  '需要作者在',
+  '需要明确',
 ]
 
 const TASK_KEYWORDS = [
@@ -88,8 +97,15 @@ export function classifyIssueByRule(issue: Issue): IssueClassification {
     issue.type === 'consistency' ||
     isTaskConsistency
 
+  // 解释性问题：通常是写作方式、描写深度、交代清晰度的建议。
+  // 对于 error 级别的 consistency 问题，如果命中解释性关键词且不属于状态污染，
+  // 也允许在最终阶段降级为 warning，避免把"建议作者补充交代"当成硬性事实错误。
   const isInterpretive =
-    (issue.dimension === 'quality' || looksInterpretive(issue)) && !isError
+    !isStateCorruption &&
+    (
+      (issue.dimension === 'quality' && !isError) ||
+      (looksInterpretive(issue) && (!isError || issue.type === 'consistency'))
+    )
 
   const isStructural =
     isStructuralType ||

@@ -114,6 +114,34 @@ describe('classifyIssueByRule', () => {
     const result = classifyIssueByRule(issue)
     expect(result.isTaskConsistency).toBe(true)
   })
+
+  it('classifies consistency errors with writing-guide keywords as interpretive', () => {
+    const issue = makeIssue('consistency', 'error', '应明确写出原定计划被改期的原因')
+    const result = classifyIssueByRule(issue)
+    expect(result.isInterpretive).toBe(true)
+    expect(result.isStructural).toBe(true)
+    expect(result.isStateCorruption).toBe(false)
+  })
+
+  it('classifies "should add description" consistency errors as interpretive', () => {
+    const issue = makeIssue('consistency', 'error', '应增加沈砚秋对信使身份的风险评估描写')
+    const result = classifyIssueByRule(issue)
+    expect(result.isInterpretive).toBe(true)
+  })
+
+  it('does not classify state corruption issues as interpretive even with writing-guide keywords', () => {
+    const issue = makeIssue('consistency', 'error', '物品位置冲突：应明确写出信物当前唯一位置')
+    const result = classifyIssueByRule(issue)
+    expect(result.isStateCorruption).toBe(true)
+    expect(result.isInterpretive).toBe(false)
+  })
+
+  it('classifies quality-dimension errors with interpretive keywords as interpretive', () => {
+    const issue = makeIssue('consistency', 'error', '段落重复')
+    issue.dimension = 'quality'
+    const result = classifyIssueByRule(issue)
+    expect(result.isInterpretive).toBe(true)
+  })
 })
 
 describe('issue classifiers default to rule-based classification', () => {

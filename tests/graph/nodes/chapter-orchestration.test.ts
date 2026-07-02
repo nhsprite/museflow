@@ -275,6 +275,31 @@ describe('converge_and_decide', () => {
     expect(result.blockingReport?.issues).toHaveLength(1)
   })
 
+  it('deduplicates repeated issues in blocking report', async () => {
+    const { issueFingerprint } = await import('../../../src/utils/issue-deduplication.js')
+    vi.mocked(issueFingerprint).mockResolvedValue('stalled-fingerprint')
+
+    const pendingIssues: Issue[] = [
+      { id: '1', type: 'consistency', severity: 'error', description: '应明确写出原定计划被改期的原因' },
+      { id: '2', type: 'consistency', severity: 'error', description: '应明确写出原定计划被改期的原因' },
+      { id: '3', type: 'consistency', severity: 'error', description: '应明确写出原定计划被改期的原因' },
+    ]
+    const state = buildBaseState({
+      session: {
+        rewriteApproved: true,
+        errorRewriteAttempts: 2,
+        issueFingerprintHistory: [['stalled-fingerprint'], ['stalled-fingerprint']],
+      },
+      pendingIssues,
+    })
+
+    const result = await converge_and_decide(createMockContext(), state)
+
+    expect(result.blockingReport).not.toBeNull()
+    expect(result.blockingReport?.issues).toHaveLength(1)
+    expect(result.blockingReport?.summary).toContain('1 个未解决错误')
+  })
+
   it('auto-fixes patchable warnings when no errors remain', async () => {
     const pendingIssues: Issue[] = [
       { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },

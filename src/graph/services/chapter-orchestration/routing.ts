@@ -15,7 +15,7 @@ import {
   isStateCorruptionIssue,
   isInterpretiveIssue,
 } from '../../../core/chapter-generation/issue-classifier.js'
-import { deduplicateIssuesSemantically, issueFingerprint } from '../../../utils/issue-deduplication.js'
+import { deduplicateIssuesSemantically, issueFingerprint, deduplicateByRule } from '../../../utils/issue-deduplication.js'
 import {
   decideNextStep,
   capNonErrorIssuesByType,
@@ -72,7 +72,10 @@ function buildBlockingReport(
   const chapterIndex = state.currentChapterIndex
   const storyId = state.story.id
 
-  const conflicts = blockingIssues
+  // 阻断报告生成前做一次最终去重，避免同一问题因上游累积被重复打印。
+  const deduplicatedIssues = deduplicateByRule(blockingIssues)
+
+  const conflicts = deduplicatedIssues
     .filter(i => i.type === 'state_corruption' || i.type === 'outline_violation' || i.type === 'outline_deviation')
     .map(issue => {
       const parts = issue.description.split(/[「」]/)
@@ -114,8 +117,8 @@ function buildBlockingReport(
     chapterIndex,
     createdAt: Date.now(),
     reason,
-    summary: `第 ${chapterIndex + 1} 章写作流程因 ${reason} 停止，剩余 ${blockingIssues.length} 个未解决错误。`,
-    issues: blockingIssues,
+    summary: `第 ${chapterIndex + 1} 章写作流程因 ${reason} 停止，剩余 ${deduplicatedIssues.length} 个未解决错误。`,
+    issues: deduplicatedIssues,
     conflicts,
     suggestedActions,
   }
@@ -181,7 +184,8 @@ export async function convergeAndDecide(
         if (config.useLLMForIssueClassification) {
           return deduplicateIssuesSemantically(context.provider, issues)
         }
-        return issues
+        // 默认使用规则去重，避免 issue 在多次校验步骤中被重复累积。
+        return deduplicateByRule(issues)
       },
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },

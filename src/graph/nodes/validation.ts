@@ -70,7 +70,8 @@ export async function validate_chapter(
   const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
   const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
 
-  const newIssues: Issue[] = [...state.pendingIssues]
+  // 只返回本轮新发现的字数问题，旧的 pendingIssues 由 orchestration 层统一维护。
+  const newIssues: Issue[] = []
 
   if (wordCount < min) {
     newIssues.push(
@@ -202,7 +203,8 @@ export async function detect_consistency(
     tagIssueSource(issue, 'consistency', inferRetryStrategy(issue))
   )
 
-  return taggedIssues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...taggedIssues] } : {}
+  // 只返回本轮新发现的一致性问题，避免在 validate_chapter_comprehensive 中重复追加旧问题。
+  return taggedIssues.length > 0 ? { pendingIssues: taggedIssues } : {}
 }
 
 export async function validate_chapter_comprehensive(
@@ -215,9 +217,17 @@ export async function validate_chapter_comprehensive(
 
   function mergePendingIssues(updates: Partial<ReducedGraphState>): void {
     if (updates.pendingIssues) {
+      const seen = new Set(workingState.pendingIssues.map(i => i.id))
+      const merged = [...workingState.pendingIssues]
+      for (const issue of updates.pendingIssues) {
+        if (!seen.has(issue.id)) {
+          seen.add(issue.id)
+          merged.push(issue)
+        }
+      }
       workingState = {
         ...workingState,
-        pendingIssues: [...workingState.pendingIssues, ...updates.pendingIssues],
+        pendingIssues: merged,
       }
     }
   }
