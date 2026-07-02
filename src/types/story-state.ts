@@ -5,13 +5,21 @@ export interface SupersededFact {
   chapterIndex: number
 }
 
+export type CanonicalFactSource = 'chapter_text' | 'outline_inference' | 'author_override' | 'reconciliation'
+
 export interface CanonicalFact {
   id: string
   subject: string
   attribute: string
   value: string
   establishedIn: number
-  source?: 'outline' | 'author' | 'inferred' | undefined
+  retiredIn?: number | undefined
+  confidence: 'high' | 'medium' | 'low'
+  source: CanonicalFactSource
+  evidence?: {
+    chapterIndex: number
+    quote: string
+  } | undefined
   supersedes?: Array<{
     chapter: number
     oldValue: string

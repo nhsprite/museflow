@@ -15,6 +15,30 @@ import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 import { charactersToString } from '../utils/characters.js'
 import type { RuntimeContext } from '../../core/context.js'
+import type { Issue, IssueSource, RetryStrategy } from '../../types/agent.js'
+
+export function tagIssueSource(
+  issue: Issue,
+  source: IssueSource,
+  retryStrategy: RetryStrategy
+): Issue {
+  return {
+    ...issue,
+    source,
+    retryStrategy,
+  }
+}
+
+export function inferRetryStrategy(issue: Issue): RetryStrategy {
+  if (issue.type === 'word_count') return 'draft'
+  if (issue.type === 'outline_violation' || issue.type === 'outline_deviation') return 'draft'
+  if (issue.dimension === 'quality') return 'fix'
+  if (issue.dimension === 'foreshadowing') return 'draft'
+  if (issue.dimension === 'outline') return 'draft'
+  if (issue.dimension === 'character_knowledge' || issue.dimension === 'dialogue') return 'draft'
+  if (issue.type === 'state_corruption') return 'manual'
+  return 'draft'
+}
 
 export async function validate_chapter(
   _context: RuntimeContext,
@@ -27,12 +51,16 @@ export async function validate_chapter(
     return {
       pendingIssues: [
         ...state.pendingIssues,
-        {
-          id: generateId(),
-          type: 'word_count' as const,
-          severity: 'error' as const,
-          description: `第 ${chapterIndex + 1} 章正文文件未找到`,
-        },
+        tagIssueSource(
+          {
+            id: generateId(),
+            type: 'word_count' as const,
+            severity: 'error' as const,
+            description: `第 ${chapterIndex + 1} 章正文文件未找到`,
+          },
+          'word_count',
+          'draft'
+        ),
       ],
     }
   }
@@ -42,22 +70,34 @@ export async function validate_chapter(
   const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
   const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
 
-  const newIssues = [...state.pendingIssues]
+  const newIssues: Issue[] = [...state.pendingIssues]
 
   if (wordCount < min) {
-    newIssues.push({
-      id: generateId(),
-      type: 'word_count' as const,
-      severity: 'error',
-      description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 低于最低要求 ${min} 字`,
-    })
+    newIssues.push(
+      tagIssueSource(
+        {
+          id: generateId(),
+          type: 'word_count' as const,
+          severity: 'error',
+          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 低于最低要求 ${min} 字`,
+        },
+        'word_count',
+        'draft'
+      )
+    )
   } else if (wordCount > max) {
-    newIssues.push({
-      id: generateId(),
-      type: 'word_count' as const,
-      severity: 'warning',
-      description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 超过建议上限 ${max} 字`,
-    })
+    newIssues.push(
+      tagIssueSource(
+        {
+          id: generateId(),
+          type: 'word_count' as const,
+          severity: 'warning',
+          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 超过建议上限 ${max} 字`,
+        },
+        'word_count',
+        'draft'
+      )
+    )
   }
 
   if (chapterIndex > 0) {
@@ -67,12 +107,18 @@ export async function validate_chapter(
       const shorter = Math.min(wordCount, prevWordCount)
       const longer = Math.max(wordCount, prevWordCount)
       if (longer > 0 && shorter / longer < 0.5) {
-        newIssues.push({
-          id: generateId(),
-          type: 'word_count' as const,
-          severity: 'warning',
-          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 与上一章 ${prevWordCount} 差异超过50%，请检查章节内容是否完整`,
-        })
+        newIssues.push(
+          tagIssueSource(
+            {
+              id: generateId(),
+              type: 'word_count' as const,
+              severity: 'warning',
+              description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 与上一章 ${prevWordCount} 差异超过50%，请检查章节内容是否完整`,
+            },
+            'word_count',
+            'draft'
+          )
+        )
       }
     }
   }
@@ -152,7 +198,11 @@ export async function detect_consistency(
   const output = await agent.run(agentState)
   const issues = await agent.processOutput(output, baseContext.canonicalFacts)
 
-  return issues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...issues] } : {}
+  const taggedIssues = issues.map(issue =>
+    tagIssueSource(issue, 'consistency', inferRetryStrategy(issue))
+  )
+
+  return taggedIssues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...taggedIssues] } : {}
 }
 
 export async function validate_chapter_comprehensive(
@@ -202,4 +252,3 @@ export async function validate_chapter_comprehensive(
 
   return result
 }
-

@@ -40,7 +40,7 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
     }
 
     const existingIndex = canonicalFacts.findIndex(
-      f => f.subject === subject && f.attribute === attribute
+      f => f.subject === subject && f.attribute === attribute && f.retiredIn === undefined
     )
     const fact: CanonicalFact = {
       id: existingIndex >= 0 ? canonicalFacts[existingIndex]!.id : generateId('fact'),
@@ -48,7 +48,8 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
       attribute,
       value: newValue,
       establishedIn: chapterIndex + 1,
-      source: 'author',
+      confidence: 'high',
+      source: 'author_override',
       supersedes:
         existingIndex >= 0
           ? [
@@ -61,10 +62,10 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
           : [{ chapter: Math.max(1, chapterIndex), oldValue: override.oldValue }],
     }
     if (existingIndex >= 0) {
-      canonicalFacts[existingIndex] = fact
-    } else {
-      canonicalFacts.push(fact)
+      const existing = canonicalFacts[existingIndex]!
+      canonicalFacts[existingIndex] = { ...existing, retiredIn: chapterIndex + 1 }
     }
+    canonicalFacts.push(fact)
   }
 
   result.canonicalFacts = canonicalFacts
@@ -131,17 +132,30 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
 
   const mergedCanonicalFacts = [...(base.canonicalFacts ?? [])]
   for (const fact of safeDelta.canonicalFacts) {
-    const existingIndex = mergedCanonicalFacts.findIndex(
+    const sameValueIndex = mergedCanonicalFacts.findIndex(
       existing =>
         existing.subject === fact.subject &&
         existing.attribute === fact.attribute &&
         existing.value === fact.value
     )
-    if (existingIndex < 0) {
-      mergedCanonicalFacts.push(fact)
-    } else if ((fact.establishedIn ?? -1) >= (mergedCanonicalFacts[existingIndex]!.establishedIn ?? -1)) {
-      mergedCanonicalFacts[existingIndex] = fact
+    if (sameValueIndex >= 0) {
+      if ((fact.establishedIn ?? -1) >= (mergedCanonicalFacts[sameValueIndex]!.establishedIn ?? -1)) {
+        mergedCanonicalFacts[sameValueIndex] = fact
+      }
+      continue
     }
+
+    const sameSubjectIndex = mergedCanonicalFacts.findIndex(
+      existing =>
+        existing.subject === fact.subject &&
+        existing.attribute === fact.attribute &&
+        existing.retiredIn === undefined
+    )
+    if (sameSubjectIndex >= 0) {
+      const existing = mergedCanonicalFacts[sameSubjectIndex]!
+      mergedCanonicalFacts[sameSubjectIndex] = { ...existing, retiredIn: fact.establishedIn }
+    }
+    mergedCanonicalFacts.push(fact)
   }
 
   const mergedPendingTasks = mergePendingTasks(base.pendingTasks, safeDelta.pendingTasks)

@@ -497,7 +497,8 @@ function generateCanonicalFact(
     attribute: conflict.attribute,
     value: conflict.newValue,
     establishedIn: chapterNumber,
-    source: 'inferred',
+    confidence: 'medium',
+    source: 'reconciliation',
     supersedes: existing
       ? [...(existing.supersedes ?? []), { chapter: existing.establishedIn, oldValue: existing.value }]
       : [{ chapter: Math.max(1, chapterNumber - 1), oldValue: conflict.oldValue }],
@@ -564,7 +565,7 @@ export function autoReconcile(
       continue
     }
 
-    if (conflict.type === 'retcon' && conflict.attribute === '所在位置') {
+    if (conflict.type === 'retcon' && (conflict.attribute === '所在位置' || conflict.attribute === '状态')) {
       if (!isReliableRetconValue(conflict)) {
         remaining.push({ ...conflict, severity: 'warning' })
         continue
@@ -572,32 +573,13 @@ export function autoReconcile(
       autoResolved.push(conflict)
       const fact = generateCanonicalFact(conflict, chapterIndex, canonicalFacts)
       const existingIndex = canonicalFacts.findIndex(
-        f => f.subject === fact.subject && f.attribute === fact.attribute
+        f => f.subject === fact.subject && f.attribute === fact.attribute && f.retiredIn === undefined
       )
       if (existingIndex >= 0) {
-        canonicalFacts[existingIndex] = fact
-      } else {
-        canonicalFacts.push(fact)
+        const existing = canonicalFacts[existingIndex]!
+        canonicalFacts[existingIndex] = { ...existing, retiredIn: chapterIndex + 1 }
       }
-      supersededFacts.push(generateSupersededFact(conflict, chapterIndex))
-      continue
-    }
-
-    if (conflict.type === 'retcon' && conflict.attribute === '状态') {
-      if (!isReliableRetconValue(conflict)) {
-        remaining.push({ ...conflict, severity: 'warning' })
-        continue
-      }
-      autoResolved.push(conflict)
-      const fact = generateCanonicalFact(conflict, chapterIndex, canonicalFacts)
-      const existingIndex = canonicalFacts.findIndex(
-        f => f.subject === fact.subject && f.attribute === fact.attribute
-      )
-      if (existingIndex >= 0) {
-        canonicalFacts[existingIndex] = fact
-      } else {
-        canonicalFacts.push(fact)
-      }
+      canonicalFacts.push(fact)
       supersededFacts.push(generateSupersededFact(conflict, chapterIndex))
       continue
     }

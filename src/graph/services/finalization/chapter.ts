@@ -10,6 +10,7 @@ import { generateId } from '../../../utils/id.js'
 import { createCheckpointService } from '../../../storage/checkpoint-service.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
 import { mergeStoryState } from '../../utils/reconciler/index.js'
+import { patchChapterSummaryWithFacts } from '../../../utils/summary-patch.js'
 import { buildEffectiveCharactersList } from '../../utils/characters.js'
 import { generateForeshadowConstraints } from '../../../utils/foreshadow-constraints.js'
 import {
@@ -82,7 +83,7 @@ export async function finalizeChapter(
             logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
             continue
           }
-          const processed = processSummaryOutput(summaryOutput, chapterIndex, effectiveCharacters, state.storyState)
+          const processed = processSummaryOutput(summaryOutput, chapterIndex, effectiveCharacters, state.storyState, chapterContent)
           if (!processed || !processed.summary) {
             logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
@@ -104,6 +105,18 @@ export async function finalizeChapter(
           break
         } catch (err) {
           logger.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`, err)
+        }
+      }
+
+      if (summarySuccess && summary && updatedStoryState) {
+        const newlyEstablishedFacts = (updatedStoryState.canonicalFacts ?? []).filter(
+          f => f.establishedIn === chapterIndex && f.supersedes && f.supersedes.length > 0
+        )
+        if (newlyEstablishedFacts.length > 0) {
+          summary = patchChapterSummaryWithFacts(summary, newlyEstablishedFacts, chapterIndex)
+          if (chapter) {
+            chapter.summary = summary
+          }
         }
       }
 

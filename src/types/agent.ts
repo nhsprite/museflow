@@ -16,6 +16,17 @@ export type IssueType =
   | 'outline_empty_beats'
   | 'outline_invalid_deadline'
 
+export type IssueSource =
+  | 'word_count'
+  | 'foreshadowing'
+  | 'consistency'
+  | 'outline_compliance'
+  | 'quality'
+  | 'outline_density'
+  | 'state_reconciliation'
+
+export type RetryStrategy = 'draft' | 'fix' | 'manual'
+
 export interface Issue {
   id: string
   type: IssueType
@@ -24,5 +35,7 @@ export interface Issue {
   location?: string
   suggestion?: string
   dimension?: string
+  source?: IssueSource
+  retryStrategy?: RetryStrategy
 }
 

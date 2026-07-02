@@ -2,6 +2,9 @@ import { logger } from '../../../utils/logger.js'
 import type { ReducedGraphState } from '../../state.js'
 import type { Issue } from '../../../types/agent.js'
 import type { StoryState } from '../../../types/story-state.js'
+import type { BlockingReport, BlockingReason } from '../../../types/blocking-report.js'
+import { generateId } from '../../../utils/id.js'
+import { createCheckpointService } from '../../../storage/checkpoint-service.js'
 import { shouldForceTemporaryReplan } from '../../../utils/outline-boundary.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
@@ -48,6 +51,7 @@ export function buildChapterSession(state: ReducedGraphState): ChapterSession {
       routingDecision: undefined,
       forceStructuralRewrite: false,
       rewriteApproved: false,
+      issueFingerprintHistory: [],
     }
   )
 }
@@ -58,6 +62,63 @@ export function mergeSessionUpdate(
 ): Partial<ReducedGraphState> {
   const nextSession = { ...session, ...sessionUpdate }
   return { session: nextSession }
+}
+
+function buildBlockingReport(
+  state: ReducedGraphState,
+  reason: BlockingReason,
+  blockingIssues: Issue[]
+): BlockingReport {
+  const chapterIndex = state.currentChapterIndex
+  const storyId = state.story.id
+
+  const conflicts = blockingIssues
+    .filter(i => i.type === 'state_corruption' || i.type === 'outline_violation' || i.type === 'outline_deviation')
+    .map(issue => {
+      const parts = issue.description.split(/[「」]/)
+      return {
+        subject: parts[1] ?? issue.description.slice(0, 20),
+        attribute: issue.dimension ?? '状态',
+        oldValue: parts[3] ?? '',
+        newValue: parts[5] ?? '',
+        source: (issue.source === 'state_reconciliation' ? 'canonical' : 'outline') as 'outline' | 'canonical' | 'author',
+      }
+    })
+    .filter(c => c.subject.length > 0)
+
+  const suggestedActions: BlockingReport['suggestedActions'] = []
+
+  if (reason === 'rewrite_loop_stalled') {
+    suggestedActions.push(
+      { type: 'manual_rewrite', description: '运行 museflow rewrite <story-id> 从本章开始人工重写' }
+    )
+  }
+
+  if (reason === 'state_corruption' || conflicts.length > 0) {
+    suggestedActions.push(
+      { type: 'choose_canonical', description: '若认为当前权威事实正确，运行 museflow reconcile <story-id> --choose canonical' },
+      { type: 'choose_outline', description: '若认为大纲要求正确，运行 museflow reconcile <story-id> --choose outline' },
+      { type: 'author_override', description: '或运行 museflow reconcile <story-id> --override 声明作者裁决' }
+    )
+  }
+
+  if (reason === 'max_rewrite_attempts') {
+    suggestedActions.push(
+      { type: 'manual_rewrite', description: '已连续重写多次未收敛，建议人工审视问题后运行 rewrite 或 fix' }
+    )
+  }
+
+  return {
+    id: generateId('block'),
+    storyId,
+    chapterIndex,
+    createdAt: Date.now(),
+    reason,
+    summary: `第 ${chapterIndex + 1} 章写作流程因 ${reason} 停止，剩余 ${blockingIssues.length} 个未解决错误。`,
+    issues: blockingIssues,
+    conflicts,
+    suggestedActions,
+  }
 }
 
 /**
@@ -77,7 +138,7 @@ export function cleanCurrentChapterInferredFacts(state: ReducedGraphState): Stor
   const supersededFacts = storyState.supersededFacts ?? []
 
   const cleanedCanonicalFacts = canonicalFacts.filter(
-    f => f.establishedIn !== currentDisplayChapter || f.source === 'author'
+    f => f.establishedIn !== currentDisplayChapter || f.source === 'author_override'
   )
   const cleanedSupersededFacts = supersededFacts.filter(
     f => f.chapterIndex !== currentChapterIndex
@@ -210,6 +271,19 @@ export async function convergeAndDecide(
     if (cleanedStoryState) {
       update.storyState = cleanedStoryState
     }
+  }
+
+  // Generate and persist a structured blocking report when the loop is blocked.
+  if (step.kind === 'request_rewrite') {
+    const reason = step.reason as BlockingReason
+    const report = buildBlockingReport(state, reason, step.blockingIssues)
+    update.blockingReport = report
+    const checkpointService = createCheckpointService(state.story.outputDir)
+    await checkpointService.saveBlockingReport(report).catch(err => {
+      logger.warn(
+        `[MuseFlow] 保存阻断报告失败: ${err instanceof Error ? err.message : String(err)}`
+      )
+    })
   }
 
   return update

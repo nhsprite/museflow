@@ -57,17 +57,22 @@ export function filterSupersededEventsFromTimeline(
   return events.filter(event => !isSupersededFact(event, canonicalFacts))
 }
 
+function isFactActiveAt(fact: CanonicalFact, upToChapterIndex: number): boolean {
+  if (fact.establishedIn < 0 || fact.establishedIn > upToChapterIndex) return false
+  if (fact.retiredIn !== undefined && fact.retiredIn <= upToChapterIndex) return false
+  return true
+}
+
 function groupCanonicalFactsByChapter(
   facts: CanonicalFact[],
   upToChapterIndex: number
 ): Map<number, CanonicalFact[]> {
   const groups = new Map<number, CanonicalFact[]>()
   for (const fact of facts) {
-    const chapterIndex = fact.establishedIn
-    if (chapterIndex < 0 || chapterIndex > upToChapterIndex) continue
-    const list = groups.get(chapterIndex) ?? []
+    if (!isFactActiveAt(fact, upToChapterIndex)) continue
+    const list = groups.get(fact.establishedIn) ?? []
     list.push(fact)
-    groups.set(chapterIndex, list)
+    groups.set(fact.establishedIn, list)
   }
   return groups
 }

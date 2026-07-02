@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { logger } from '../utils/logger.js'
 import { writeFileAtomic, ensureDir } from '../utils/fs.js'
 import type { ReducedGraphState } from '../graph/state.js'
+import type { BlockingReport } from '../types/blocking-report.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import type { Checkpoint, BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import type { RunnableConfig } from '@langchain/core/runnables'
@@ -30,6 +31,14 @@ export class StoryCheckpointService {
 
   private getMarkersPath(): string {
     return join(this.getCheckpointDir(), 'chapter_markers.json')
+  }
+
+  private getReportsDir(): string {
+    return join(this.outputDir, 'reports')
+  }
+
+  private getBlockingReportPath(reportId: string): string {
+    return join(this.getReportsDir(), `blocking_${reportId}.json`)
   }
 
   private async loadMarkers(): Promise<Record<number, string>> {
@@ -144,6 +153,35 @@ export class StoryCheckpointService {
 
   async getTuple(config: RunnableConfig): Promise<ReturnType<BaseCheckpointSaver<string>['getTuple']>> {
     return this.checkpointer.getTuple(config)
+  }
+
+  async saveBlockingReport(report: BlockingReport): Promise<void> {
+    ensureDir(this.getReportsDir())
+    const path = this.getBlockingReportPath(report.id)
+    writeFileAtomic(path, JSON.stringify(report, null, 2))
+    logger.info(`[MuseFlow] 阻断报告已保存: ${path}`)
+  }
+
+  async listBlockingReports(): Promise<BlockingReport[]> {
+    const dir = this.getReportsDir()
+    if (!existsSync(dir)) return []
+
+    const files = readdirSync(dir).filter(f => f.startsWith('blocking_') && f.endsWith('.json'))
+    const reports: BlockingReport[] = []
+    for (const file of files) {
+      try {
+        const raw = readFileSync(join(dir, file), 'utf-8')
+        reports.push(JSON.parse(raw) as BlockingReport)
+      } catch {
+        logger.warn(`[MuseFlow] 无法读取阻断报告: ${file}`)
+      }
+    }
+    return reports.sort((a, b) => b.createdAt - a.createdAt)
+  }
+
+  async getLatestBlockingReport(): Promise<BlockingReport | null> {
+    const reports = await this.listBlockingReports()
+    return reports[0] ?? null
   }
 }
 

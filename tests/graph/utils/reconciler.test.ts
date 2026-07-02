@@ -362,8 +362,9 @@ describe('reconcileStoryState', () => {
     const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createMockProvider())
     expect(report.autoResolved.some(c => c.subject === '密信')).toBe(true)
     expect(report.state.keyItemsLocation['密信']).toBe('官府仓库')
-    expect(report.state.canonicalFacts).toHaveLength(1)
-    expect(report.state.canonicalFacts?.[0].value).toBe('官府仓库')
+    const activeFact = report.state.canonicalFacts?.find(f => f.subject === '密信' && f.retiredIn === undefined)
+    expect(activeFact).toBeDefined()
+    expect(activeFact?.value).toBe('官府仓库')
   })
 
   it('surfaces contradiction for repeated secret reveal', async () => {
@@ -385,12 +386,16 @@ describe('reconcileStoryState', () => {
     ])
 
     const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createMockProvider())
-    const fact = report.state.canonicalFacts?.find(f => f.subject === '密信')
-    expect(fact).toBeDefined()
-    expect(fact?.value).toBe('官府仓库')
-    expect(fact?.establishedIn).toBe(10)
-    expect(fact?.supersedes?.length).toBeGreaterThan(0)
-    expect(fact?.supersedes?.[0].chapter).toBe(8)
+    const activeFact = report.state.canonicalFacts?.find(f => f.subject === '密信' && f.retiredIn === undefined)
+    expect(activeFact).toBeDefined()
+    expect(activeFact?.value).toBe('官府仓库')
+    expect(activeFact?.establishedIn).toBe(10)
+    expect(activeFact?.supersedes?.length).toBeGreaterThan(0)
+    expect(activeFact?.supersedes?.[0].chapter).toBe(8)
+
+    const retiredFact = report.state.canonicalFacts?.find(f => f.subject === '密信' && f.retiredIn === 10)
+    expect(retiredFact).toBeDefined()
+    expect(retiredFact?.value).toBe('书桌抽屉')
   })
 })
 
@@ -764,7 +769,7 @@ describe('prepareStoryStateForChapter', () => {
 
     const result = await prepareStoryStateForChapter(state, 0, provider)
     expect(result.reconciledState.canonicalFacts?.some(
-      f => f.subject === '密信' && f.attribute === '来源' && f.value === '旧友暗中递送' && f.source === 'outline'
+      f => f.subject === '密信' && f.attribute === '来源' && f.value === '旧友暗中递送' && f.source === 'outline_inference'
     )).toBe(true)
     expect(result.reconciledState.canonicalFacts?.some(
       f => f.subject === '暗桩' && f.attribute === '关系' && f.value === '主角旧部' && f.establishedIn === 1
@@ -821,8 +826,8 @@ describe('authorizeOutlineFacts', () => {
 
     const result = await authorizeOutlineFacts(state, '主角秘密抵达废弃仓库，与旧部暗桩接头。', 4, provider)
     expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline' })
-    expect(result[1]).toMatchObject({ subject: '暗桩', attribute: '关系', value: '主角旧部', establishedIn: 5, source: 'outline' })
+    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline_inference' })
+    expect(result[1]).toMatchObject({ subject: '暗桩', attribute: '关系', value: '主角旧部', establishedIn: 5, source: 'outline_inference' })
   })
 
   it('skips facts already present in canonical facts', async () => {
@@ -882,7 +887,7 @@ describe('authorizeOutlineFacts', () => {
     const result = await authorizeOutlineFacts(state, '主角秘密抵达废弃仓库。', 4, provider)
 
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline' })
+    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline_inference' })
     expect(provider.chat).toHaveBeenCalledTimes(1)
   })
 })

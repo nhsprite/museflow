@@ -1,4 +1,5 @@
 import type { Issue } from '../../../types/agent.js'
+import type { BlockingReason } from '../../../types/blocking-report.js'
 import type { ChapterPlanningConfig } from '../../../types/genre.js'
 
 export type RoutingDecision =
@@ -12,7 +13,7 @@ export type ChapterStep =
   | { kind: 'draft'; discardPlan: boolean; feedbackIssues: Issue[] }
   | { kind: 'fix'; patchableIssues: Issue[] }
   | { kind: 'finalize' }
-  | { kind: 'request_rewrite'; reason: string; blockingIssues: Issue[] }
+  | { kind: 'request_rewrite'; reason: BlockingReason; blockingIssues: Issue[] }
 
 export interface ChapterSession {
   chapterIndex: number
@@ -24,6 +25,7 @@ export interface ChapterSession {
   routingDecision: RoutingDecision | undefined
   forceStructuralRewrite: boolean
   rewriteApproved: boolean
+  issueFingerprintHistory: string[][]
 }
 
 export interface RoutingContext {

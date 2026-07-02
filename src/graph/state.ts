@@ -6,6 +6,7 @@ import type { ChapterMeta } from '../types/chapter.js'
 import type { ChapterPlan } from '../agents/types.js'
 import type { StoryState } from '../types/story-state.js'
 import type { ChapterReport } from '../types/chapter-report.js'
+import type { BlockingReport } from '../types/blocking-report.js'
 import type { WorldContent } from '../types/world.js'
 import type { ChapterOutline, StoryArc } from '../types/outline.js'
 import type { ForeshadowItem } from '../types/foreshadow.js'
@@ -41,6 +42,9 @@ export const GraphState = Annotation.Root({
   verifiedConstraints: Annotation<string[]>,
 
   chapterReport: Annotation<ChapterReport | null>,
+
+  // structured blocking report for manual resolution when rewrite loop stalls
+  blockingReport: Annotation<BlockingReport | null>,
 
   // chapter-writing loop control state (separated from business state)
   session: Annotation<ChapterSession>,

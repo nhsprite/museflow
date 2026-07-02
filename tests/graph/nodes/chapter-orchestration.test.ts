@@ -78,6 +78,7 @@ function buildBaseSession(
     routingDecision: undefined,
     forceStructuralRewrite: false,
     rewriteApproved: false,
+    issueFingerprintHistory: [],
     ...overrides,
   }
 }
@@ -124,6 +125,7 @@ function buildBaseState(
     verifiedConstraints: [],
     session: buildBaseSession(sessionOverrides),
     authorDecisions: {},
+    blockingReport: null,
     ...rest,
   }
 }
@@ -246,6 +248,31 @@ describe('converge_and_decide', () => {
     expect(result.session?.routingDecision).toBe('request_rewrite')
     expect(result.session?.rewriteApproved).toBe(false)
     expect(result.session?.forceStructuralRewrite).toBe(false)
+  })
+
+  it('detects rewrite loop stall and requests rewrite with a blocking report', async () => {
+    const { issueFingerprint } = await import('../../../src/utils/issue-deduplication.js')
+    vi.mocked(issueFingerprint).mockResolvedValue('stalled-fingerprint')
+
+    const pendingIssues: Issue[] = [
+      { id: '1', type: 'consistency', severity: 'error', description: 'persistent contradiction' },
+    ]
+    const state = buildBaseState({
+      session: {
+        rewriteApproved: true,
+        errorRewriteAttempts: 2,
+        issueFingerprintHistory: [['stalled-fingerprint'], ['stalled-fingerprint']],
+      },
+      pendingIssues,
+    })
+
+    const result = await converge_and_decide(createMockContext(), state)
+
+    expect(result.session?.routingDecision).toBe('request_rewrite')
+    expect(result.session?.rewriteApproved).toBe(false)
+    expect(result.blockingReport).not.toBeNull()
+    expect(result.blockingReport?.reason).toBe('rewrite_loop_stalled')
+    expect(result.blockingReport?.issues).toHaveLength(1)
   })
 
   it('auto-fixes patchable warnings when no errors remain', async () => {

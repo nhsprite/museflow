@@ -112,7 +112,8 @@ export function sanitizeStoryState(
         attribute: '所在位置',
         value: winner.value,
         establishedIn: chapterIndex,
-        source: 'inferred',
+        confidence: 'medium',
+        source: 'reconciliation',
         supersedes: supersededFacts.map(f => ({
           chapter: chapterIndex,
           oldValue: f.oldFact,

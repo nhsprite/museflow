@@ -30,7 +30,7 @@ export class ConsistencyAgent extends BaseAgent<ConsistencyAgentInput> {
     })
 
     const outlineAuthorizedFacts = (state.canonicalFacts ?? []).filter(
-      f => f.establishedIn === chapterIndex && f.source === 'outline'
+      f => f.establishedIn === chapterIndex && f.source === 'outline_inference'
     )
     const outlineAuthorizedFactsSection = outlineAuthorizedFacts.length > 0
       ? `<outline_authorized_facts>

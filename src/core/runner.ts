@@ -81,6 +81,7 @@ export async function runStory(
     autoFixAttempts: 0,
     verifiedConstraints: [],
     chapterReport: null,
+    blockingReport: null,
     session: {
       chapterIndex: 0,
       rewriteAttempts: 0,
@@ -91,6 +92,7 @@ export async function runStory(
       routingDecision: undefined,
       forceStructuralRewrite: false,
       rewriteApproved: false,
+      issueFingerprintHistory: [],
     },
     authorDecisions: {},
   }
@@ -218,6 +220,7 @@ export async function runOneChapter(
     isWriting: true,
     writeOneChapterOnly: true,
     chapterReport: null,
+    blockingReport: null,
     session: {
       chapterIndex: targetIndex,
       rewriteAttempts: 0,
@@ -228,6 +231,7 @@ export async function runOneChapter(
       routingDecision: undefined,
       forceStructuralRewrite: false,
       rewriteApproved: options.userResponse ?? false,
+      issueFingerprintHistory: [],
     },
     authorDecisions: {},
   }

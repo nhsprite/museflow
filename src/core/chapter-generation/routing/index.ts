@@ -9,6 +9,7 @@ import type {
 import { applyIssuePolicy } from './issue-policy.js'
 import { applyRewritePolicy } from './rewrite-policy.js'
 import { classifyIssues, decideRepairApproach } from './fix-policy.js'
+import { issueFingerprint } from '../../../utils/issue-deduplication.js'
 
 export * from './types.js'
 export { applyIssuePolicy, capNonErrorIssuesByType, calculateIssueSetSimilarity } from './issue-policy.js'
@@ -43,6 +44,42 @@ function allIssuesMatch(
   return Promise.all(issues.map(predicate)).then(results => results.every(Boolean))
 }
 
+function calculateFingerprintSetSimilarity(prev: string[], curr: string[]): number {
+  if (prev.length === 0 || curr.length === 0) return 0
+  const prevSet = new Set(prev)
+  const currSet = new Set(curr)
+  let intersection = 0
+  for (const fp of currSet) {
+    if (prevSet.has(fp)) intersection++
+  }
+  return intersection / Math.max(prevSet.size, currSet.size)
+}
+
+function isRewriteLoopStalled(
+  history: string[][],
+  currentFingerprints: string[],
+  threshold = 0.7,
+  minRounds = 3
+): boolean {
+  if (currentFingerprints.length === 0) return false
+  const fullHistory = [...history, currentFingerprints]
+  if (fullHistory.length < minRounds) return false
+
+  const recentRounds = fullHistory.slice(-minRounds)
+  for (let i = 1; i < recentRounds.length; i++) {
+    const similarity = calculateFingerprintSetSimilarity(recentRounds[i - 1]!, recentRounds[i]!)
+    if (similarity < threshold) return false
+  }
+  return true
+}
+
+function decideStrategyFromRetryStrategies(errors: Issue[]): 'draft' | 'fix' | 'manual' {
+  if (errors.length === 0) return 'draft'
+  if (errors.some(e => e.retryStrategy === 'manual')) return 'manual'
+  if (errors.every(e => e.retryStrategy === 'fix')) return 'fix'
+  return 'draft'
+}
+
 export async function decideNextStep(
   ctx: RoutingContext,
   deps: RoutingDeps
@@ -56,6 +93,37 @@ export async function decideNextStep(
 
   const remainingErrors = policyResult.issues.filter(i => i.severity === 'error')
 
+  const currentErrorFingerprints = await Promise.all(
+    remainingErrors.map(issue => issueFingerprint(undefined, issue))
+  )
+
+  const nextFingerprintHistory = [...session.issueFingerprintHistory, currentErrorFingerprints]
+
+  // 停滞检测：连续多轮问题指纹高度相似，说明 rewrite 循环无法收敛
+  if (
+    remainingErrors.length > 0 &&
+    session.rewriteApproved &&
+    isRewriteLoopStalled(session.issueFingerprintHistory, currentErrorFingerprints)
+  ) {
+    deps.rewritePolicy.log?.(
+      'error',
+      `[MuseFlow] 检测到重写循环停滞，连续多轮问题集合高度相似，停止循环并请求人工处理。`
+    )
+    return {
+      step: {
+        kind: 'request_rewrite',
+        reason: 'rewrite_loop_stalled' as const,
+        blockingIssues: remainingErrors,
+      },
+      sessionUpdate: {
+        rewriteApproved: false,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
+      processedIssues: policyResult.issues,
+      newConstraints: policyResult.newConstraints,
+    }
+  }
+
   // Case 1: 重写循环中出现上游状态污染且无法收敛
   if (
     session.rewriteApproved &&
@@ -65,10 +133,13 @@ export async function decideNextStep(
     return {
       step: {
         kind: 'request_rewrite',
-        reason: '剩余错误均为上游状态污染，需要人工处理',
+        reason: 'state_corruption' as const,
         blockingIssues: remainingErrors,
       },
-      sessionUpdate: { rewriteApproved: false },
+      sessionUpdate: {
+        rewriteApproved: false,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
       processedIssues: policyResult.issues,
       newConstraints: policyResult.newConstraints,
     }
@@ -81,7 +152,10 @@ export async function decideNextStep(
     if (patchableWarnings.length > 0 && session.autoFixAttempts < 3) {
       return {
         step: { kind: 'fix', patchableIssues: patchableWarnings },
-        sessionUpdate: { autoFixAttempts: session.autoFixAttempts + 1 },
+        sessionUpdate: {
+          autoFixAttempts: session.autoFixAttempts + 1,
+          issueFingerprintHistory: nextFingerprintHistory,
+        },
         processedIssues: policyResult.issues,
         newConstraints: policyResult.newConstraints,
       }
@@ -90,7 +164,10 @@ export async function decideNextStep(
     if (!session.rewriteApproved) {
       return {
         step: ctx.chapterFileExists ? { kind: 'finalize' } : { kind: 'draft', discardPlan: false, feedbackIssues: [] },
-        sessionUpdate: { rewriteApproved: false },
+        sessionUpdate: {
+          rewriteApproved: false,
+          issueFingerprintHistory: nextFingerprintHistory,
+        },
         processedIssues: policyResult.issues,
         newConstraints: policyResult.newConstraints,
       }
@@ -99,7 +176,10 @@ export async function decideNextStep(
     if (session.rewriteAttempts === 0) {
       return {
         step: { kind: 'draft', discardPlan: false, feedbackIssues: [] },
-        sessionUpdate: { rewriteApproved: true },
+        sessionUpdate: {
+          rewriteApproved: true,
+          issueFingerprintHistory: nextFingerprintHistory,
+        },
         processedIssues: policyResult.issues,
         newConstraints: policyResult.newConstraints,
       }
@@ -107,7 +187,10 @@ export async function decideNextStep(
 
     return {
       step: { kind: 'finalize' },
-      sessionUpdate: { rewriteApproved: false },
+      sessionUpdate: {
+        rewriteApproved: false,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
       processedIssues: policyResult.issues,
       newConstraints: policyResult.newConstraints,
     }
@@ -124,16 +207,49 @@ export async function decideNextStep(
     return {
       step: {
         kind: 'request_rewrite',
-        reason: `连续 ${config.maxErrorRewriteAttempts} 次重写后仍未解决所有错误`,
+        reason: 'max_rewrite_attempts' as const,
         blockingIssues: remainingErrors,
       },
-      sessionUpdate: { rewriteApproved: false },
+      sessionUpdate: {
+        rewriteApproved: false,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
       processedIssues: policyResult.issues,
       newConstraints: policyResult.newConstraints,
     }
   }
 
   // Case 4: 需要继续修复，决定 draft 还是 fix
+  const retryStrategy = decideStrategyFromRetryStrategies(remainingErrors)
+
+  if (retryStrategy === 'manual') {
+    return {
+      step: {
+        kind: 'request_rewrite',
+        reason: 'state_corruption' as const,
+        blockingIssues: remainingErrors,
+      },
+      sessionUpdate: {
+        rewriteApproved: false,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
+      processedIssues: policyResult.issues,
+      newConstraints: policyResult.newConstraints,
+    }
+  }
+
+  if (retryStrategy === 'fix') {
+    return {
+      step: { kind: 'fix', patchableIssues: remainingErrors },
+      sessionUpdate: {
+        errorRewriteAttempts: session.errorRewriteAttempts + 1,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
+      processedIssues: policyResult.issues,
+      newConstraints: policyResult.newConstraints,
+    }
+  }
+
   const summary = await classifyIssues(
     remainingErrors,
     deps.isStructuralIssue,
@@ -153,6 +269,7 @@ export async function decideNextStep(
       step: { kind: 'fix', patchableIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
+        issueFingerprintHistory: nextFingerprintHistory,
       },
       processedIssues: policyResult.issues,
       newConstraints: policyResult.newConstraints,
@@ -164,6 +281,7 @@ export async function decideNextStep(
     sessionUpdate: {
       errorRewriteAttempts: session.errorRewriteAttempts + 1,
       forceStructuralRewrite: policyResult.forceStructuralRewrite || approach.discardPlan,
+      issueFingerprintHistory: nextFingerprintHistory,
     },
     processedIssues: policyResult.issues,
     newConstraints: policyResult.newConstraints,
