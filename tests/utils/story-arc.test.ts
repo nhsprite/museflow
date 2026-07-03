@@ -207,13 +207,14 @@ describe('story-arc utilities', () => {
       expect(result.storyArc.acts[1]?.startChapter).toBe(8)
     })
 
-    it('rejects shortening proposals', () => {
+    it('applies shortening proposals and shifts next act start earlier', () => {
       const storyArc = makeStoryArc()
       const proposal = { actIndex: 1, proposedEndChapter: 4, reason: 'test' }
       const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
 
-      expect(result.applied).toBe(false)
-      expect(result.storyArc).toBe(storyArc)
+      expect(result.applied).toBe(true)
+      expect(result.storyArc.acts[0]?.endChapter).toBe(4)
+      expect(result.storyArc.acts[1]?.startChapter).toBe(5)
     })
 
     it('caps extension to 3 chapters', () => {

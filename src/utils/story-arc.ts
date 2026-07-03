@@ -213,10 +213,10 @@ export interface ApplyActBoundaryAdjustmentResult {
 }
 
 /**
- * 自动应用幕边界延长建议，并施加安全约束：
- * - 只延长，不缩短；
- * - 单次最多延长 AUTO_ADJUST_MAX_EXTENSION 章；
- * - 不侵入下一幕；
+ * 自动应用幕边界调整建议，并施加安全约束：
+ * - 支持延长与缩短；
+ * - 单次调整幅度不超过 AUTO_ADJUST_MAX_EXTENSION 章；
+ * - 不侵入下一幕，也不能把边界调到已写章节之前；
  * - 使用 validateActBoundaryAdjustment 校验。
  */
 export function applyActBoundaryAdjustment(
@@ -229,13 +229,16 @@ export function applyActBoundaryAdjustment(
     return { storyArc, applied: false, reason: '幕不存在' }
   }
 
-  if (proposal.proposedEndChapter <= currentAct.endChapter) {
-    return { storyArc, applied: false, reason: '自动调整只支持延长幕边界' }
+  if (proposal.proposedEndChapter === currentAct.endChapter) {
+    return { storyArc, applied: false, reason: '调整目标与当前边界相同' }
   }
 
-  const rawExtension = proposal.proposedEndChapter - currentAct.endChapter
-  const extension = Math.min(rawExtension, AUTO_ADJUST_MAX_EXTENSION)
-  const cappedProposedEnd = currentAct.endChapter + extension
+  const isExtension = proposal.proposedEndChapter > currentAct.endChapter
+  const rawDelta = Math.abs(proposal.proposedEndChapter - currentAct.endChapter)
+  const cappedDelta = Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
+  const cappedProposedEnd = isExtension
+    ? currentAct.endChapter + cappedDelta
+    : currentAct.endChapter - cappedDelta
 
   const validation = validateActBoundaryAdjustment(
     storyArc,
