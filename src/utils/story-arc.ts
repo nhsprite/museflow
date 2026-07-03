@@ -1,4 +1,6 @@
 import type { ActArc, KeyBeat, StoryArc } from '../types/outline.js'
+import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
+import { logger } from './logger.js'
 
 export function getActForChapter(storyArc: StoryArc | null | undefined, chapterIndex: number): ActArc | undefined {
   if (!storyArc) return undefined
@@ -262,4 +264,205 @@ export function applyActBoundaryAdjustment(
     applied: true,
     reason: `已自动将第 ${proposal.actIndex} 幕结束章节从 ${currentAct.endChapter} 调整到 ${cappedProposedEnd}`,
   }
+}
+
+export function normalizeTextForMatch(text: string): string {
+  return text.replace(/[\s\n\p{P}]/gu, '')
+}
+
+function extractParentheticalUnits(text: string): { coreText: string; optionalUnits: string[] } {
+  const optionalUnits: string[] = []
+  const coreText = text.replace(/[（(].*?[）)]/gu, match => {
+    optionalUnits.push(match.slice(1, -1))
+    return ''
+  })
+  return { coreText, optionalUnits }
+}
+
+function removePlaceholder(text: string): string {
+  // “主角”是常被具体人名替换的占位词，匹配时剔除以避免因主语替换导致漏配。
+  return text.replace(/主角/g, '')
+}
+
+function longestCommonSubsequenceLength(a: string, b: string): number {
+  if (a.length === 0 || b.length === 0) return 0
+  // Ensure 'a' is the shorter string to keep O(min(n,m)) space.
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
+  let previous = new Array(shorter.length + 1).fill(0)
+  let current = new Array(shorter.length + 1).fill(0)
+
+  for (let i = 1; i <= longer.length; i++) {
+    for (let j = 1; j <= shorter.length; j++) {
+      if (longer[i - 1] === shorter[j - 1]) {
+        current[j] = previous[j - 1] + 1
+      } else {
+        current[j] = Math.max(previous[j], current[j - 1])
+      }
+    }
+    [previous, current] = [current, previous]
+    current.fill(0)
+  }
+
+  return previous[shorter.length]
+}
+
+function partCoverage(rawText: string, beatPart: string): number {
+  const raw = removePlaceholder(normalizeTextForMatch(rawText))
+  const part = removePlaceholder(normalizeTextForMatch(beatPart))
+  if (part.length === 0) return 1
+  if (raw.length === 0) return 0
+  if (raw.includes(part)) return 1
+  const lcs = longestCommonSubsequenceLength(raw, part)
+  return lcs / part.length
+}
+
+function computeCoverageScore(rawText: string, beat: string): number {
+  if (beat.trim().length === 0) return 0
+
+  const { coreText, optionalUnits } = extractParentheticalUnits(beat)
+  const coreCoverage = partCoverage(rawText, coreText)
+  const optionalCoverage =
+    optionalUnits.length === 0
+      ? 1
+      : optionalUnits.reduce((sum, unit) => sum + partCoverage(rawText, unit), 0) / optionalUnits.length
+
+  return coreCoverage * 0.7 + optionalCoverage * 0.3
+}
+
+function isMandatoryBeatCovered(
+  rawText: string,
+  beat: string,
+  coreThreshold = 0.7,
+  optionalThreshold = 0
+): boolean {
+  const rawNormalized = normalizeTextForMatch(rawText)
+  const beatNormalized = normalizeTextForMatch(beat)
+  if (rawNormalized.length === 0 || beatNormalized.length === 0) return false
+
+  if (rawNormalized.includes(beatNormalized) || beatNormalized.includes(rawNormalized)) {
+    return true
+  }
+
+  const { coreText, optionalUnits } = extractParentheticalUnits(beat)
+  const coreCoverage = partCoverage(rawText, coreText)
+  const optionalCoverage =
+    optionalUnits.length === 0
+      ? 1
+      : optionalUnits.reduce((sum, unit) => sum + partCoverage(rawText, unit), 0) / optionalUnits.length
+
+  return coreCoverage >= coreThreshold && optionalCoverage >= optionalThreshold
+}
+
+export function matchMandatoryBeat(rawBeat: string, candidates: string[]): string | undefined {
+  const trimmed = rawBeat.trim()
+  if (trimmed.length === 0) return undefined
+
+  let bestCandidate: string | undefined
+  let bestScore = -1
+  for (const candidate of candidates) {
+    if (!isMandatoryBeatCovered(trimmed, candidate)) continue
+    const score = computeCoverageScore(trimmed, candidate)
+    if (score > bestScore) {
+      bestScore = score
+      bestCandidate = candidate
+    }
+  }
+  return bestCandidate
+}
+
+async function requestCoveredBeats(
+  provider: ModelProvider,
+  contextText: string,
+  beats: string[],
+  contextLabel: string,
+): Promise<string[]> {
+  const schema: JsonSchema = {
+    type: 'object',
+    properties: {
+      coveredBeats: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['coveredBeats'],
+  }
+
+  const messages: Message[] = [
+    {
+      role: 'system',
+      content: '你是一位小说结构分析师。请严格根据提供的章节内容，判断给定的 mandatory beats 中哪些已经确实发生或确立。只返回确实发生的 beat 原文，不得改写、不得推断未发生的内容。',
+    },
+    {
+      role: 'user',
+      content: `【${contextLabel}】\n${contextText.slice(0, 12000)}\n\n【待判断的 beats】\n${beats.map((beat, i) => `${i + 1}. ${beat}`).join('\n')}\n\n请输出 JSON：{"coveredBeats": ["已发生的 beat 原文", ...]}。只包含上述列表中确实发生的项。`,
+    },
+  ]
+
+  try {
+    const response = provider.chatStructured
+      ? await provider.chatStructured<{ coveredBeats: unknown[] }>(messages, schema, 0.1)
+      : (JSON.parse((await provider.chat(messages, 0.1)).replace(/^```(?:json)?\s*|\s*```$/g, '').trim()) as { coveredBeats: unknown[] })
+
+    const raw = Array.isArray(response.coveredBeats) ? response.coveredBeats : []
+    const matched: string[] = []
+    for (const item of raw) {
+      if (typeof item !== 'string') continue
+      const candidate = matchMandatoryBeat(item.trim(), beats)
+      if (candidate && !matched.includes(candidate)) {
+        matched.push(candidate)
+      }
+    }
+    return matched
+  } catch (err) {
+    logger.debug(`[MuseFlow] mandatory beat 覆盖判定失败: ${err instanceof Error ? err.message : String(err)}`)
+    return []
+  }
+}
+
+/**
+ * 使用模型根据单章正文判断哪些 mandatory beats 已被覆盖。
+ * 用于补救 SummaryAgent 不返回 claimedBeats 原句的情况。
+ */
+export async function judgeMandatoryBeatCoverage(
+  provider: ModelProvider,
+  chapterContent: string,
+  beats: string[]
+): Promise<string[]> {
+  if (beats.length === 0 || chapterContent.trim().length === 0) {
+    return []
+  }
+  return requestCoveredBeats(provider, chapterContent, beats, '章节正文')
+}
+
+/**
+ * 使用模型根据已写章节摘要，判断当前幕 pending 的 mandatory beats 中哪些已被覆盖。
+ * 用于修复历史章节 verifiedBeats 为 narrative 摘要导致漏记的问题。
+ */
+export async function judgeMandatoryBeatCoverageAcrossAct(
+  provider: ModelProvider,
+  act: ActArc,
+  pendingBeats: string[],
+  chapterSummaries: string[],
+  outlineDescriptions: string[]
+): Promise<string[]> {
+  if (pendingBeats.length === 0) return []
+
+  const actChapterCount = act.endChapter - act.startChapter + 1
+  const availableSummaries = chapterSummaries.slice(act.startChapter - 1, act.startChapter - 1 + actChapterCount)
+  const availableDescriptions = outlineDescriptions.slice(act.startChapter - 1, act.startChapter - 1 + actChapterCount)
+
+  const contextParts: string[] = []
+  for (let i = 0; i < actChapterCount; i++) {
+    const summary = availableSummaries[i]
+    const description = availableDescriptions[i]
+    if (!summary && !description) continue
+    const lines: string[] = []
+    if (description) lines.push(`大纲：${description}`)
+    if (summary) lines.push(`摘要：${summary}`)
+    contextParts.push(`第 ${act.startChapter + i} 章\n${lines.join('\n')}`)
+  }
+
+  if (contextParts.length === 0) return []
+
+  return requestCoveredBeats(provider, contextParts.join('\n\n'), pendingBeats, '当前幕已写章节的大纲与摘要')
 }

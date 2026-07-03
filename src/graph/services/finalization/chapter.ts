@@ -26,6 +26,9 @@ import {
   buildClosingPhaseConstraint,
   proposeActBoundaryAdjustments,
   applyActBoundaryAdjustment,
+  judgeMandatoryBeatCoverage,
+  judgeMandatoryBeatCoverageAcrossAct,
+  matchMandatoryBeat,
 } from '../../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import { loadConfig } from '../../../config/store.js'
@@ -105,6 +108,24 @@ export async function finalizeChapter(
             state.outline = newOutline
           }
 
+          // 如果 SummaryAgent 返回的 verifiedBeats 没有覆盖当前幕全部 mandatory beats，
+          // 再用正文内容做一次覆盖判定，避免 narrative 摘要导致 beats 被漏记。
+          const actForCoverage = getActForChapter(state.storyArc, chapterIndex)
+          if (actForCoverage && currentOutline && chapterContent) {
+            const summaryVerified = normalizeVerifiedBeats(processed.verifiedBeats ?? [], actForCoverage.mandatoryBeats)
+            const missingAfterSummary = actForCoverage.mandatoryBeats.filter(beat => !summaryVerified.includes(beat))
+            if (missingAfterSummary.length > 0) {
+              const contentVerified = await judgeMandatoryBeatCoverage(provider, chapterContent, actForCoverage.mandatoryBeats)
+              const merged = Array.from(new Set([...summaryVerified, ...contentVerified]))
+              if (merged.length > summaryVerified.length) {
+                const newOutline = [...state.outline]
+                newOutline[chapterIndex] = { ...currentOutline, verifiedBeats: merged }
+                state.outline = newOutline
+                logger.debug(`[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - summaryVerified.length} 个 beats`)
+              }
+            }
+          }
+
           if (processed.storyState) {
             updatedStoryState = mergeStoryState(state.storyState, processed.storyState)
             logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`)
@@ -171,7 +192,7 @@ export async function finalizeChapter(
     ? [...(state.verifiedConstraints ?? []), ...newForeshadowConstraints]
     : (state.verifiedConstraints ?? [])
 
-  const { actProgress: updatedActProgress, beatPressureConstraint, beatVerificationIssues } = updateActProgress(state, chapterIndex)
+  const { actProgress: updatedActProgress, beatPressureConstraint, beatVerificationIssues } = await updateActProgress(state, chapterIndex, provider)
   if (beatPressureConstraint) {
     updatedVerifiedConstraints = [...updatedVerifiedConstraints, beatPressureConstraint]
   }
@@ -274,35 +295,26 @@ function getPendingMandatoryBeats(state: ReducedGraphState, chapterIndex: number
   return act.mandatoryBeats.filter(beat => !progress.consumed.includes(beat))
 }
 
-function normalizeTextForMatch(text: string): string {
-  return text.replace(/[\s\n\p{P}]/gu, '')
-}
-
 function normalizeVerifiedBeats(rawVerifiedBeats: string[], mandatoryBeats: string[]): string[] {
   const matched = new Set<string>()
   for (const raw of rawVerifiedBeats) {
-    const normalizedRaw = normalizeTextForMatch(raw)
-    if (normalizedRaw.length === 0) continue
-    for (const beat of mandatoryBeats) {
-      const normalizedBeat = normalizeTextForMatch(beat)
-      if (normalizedBeat.length === 0) continue
-      if (normalizedRaw === normalizedBeat || normalizedRaw.includes(normalizedBeat) || normalizedBeat.includes(normalizedRaw)) {
-        matched.add(beat)
-        break
-      }
+    const candidate = matchMandatoryBeat(raw, mandatoryBeats)
+    if (candidate) {
+      matched.add(candidate)
     }
   }
   return Array.from(matched)
 }
 
-function updateActProgress(
+async function updateActProgress(
   state: ReducedGraphState,
-  chapterIndex: number
-): {
+  chapterIndex: number,
+  provider?: import('../../../model/provider.js').ModelProvider
+): Promise<{
   actProgress: ReducedGraphState['actProgress']
   beatPressureConstraint?: string
   beatVerificationIssues?: Issue[]
-} {
+}> {
   const storyArc = state.storyArc
   const act = getActForChapter(storyArc, chapterIndex)
   if (!storyArc || !act) {
@@ -329,7 +341,46 @@ function updateActProgress(
       }
     }
   }
-  const pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
+  let pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
+
+  const chaptersRemaining = act.endChapter - (chapterIndex + 1)
+  const totalActChapters = act.endChapter - act.startChapter + 1
+  const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
+
+  // 进入收尾阶段后，如果仍有 pending beats，先用章节摘要做一次 retroactive 覆盖判定，
+  // 再用完整正文逐章扫描，补救历史章节 verifiedBeats 为 narrative 摘要导致的漏记。
+  if (isInClosingPhase && pending.length > 0 && provider) {
+    const retroactive = await judgeMandatoryBeatCoverageAcrossAct(
+      provider,
+      act,
+      pending,
+      state.chapterSummaries,
+      state.outline.map(o => o.description ?? '')
+    )
+    for (const beat of retroactive) {
+      if (!consumed.includes(beat)) {
+        consumed.push(beat)
+      }
+    }
+    pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
+
+    if (pending.length > 0) {
+      const contentVerified = await scanActChaptersForBeats(
+        state.story.outputDir,
+        act,
+        pending,
+        provider,
+        state.outline,
+        chapterIndex
+      )
+      for (const beat of contentVerified) {
+        if (!consumed.includes(beat)) {
+          consumed.push(beat)
+        }
+      }
+      pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
+    }
+  }
 
   const updatedActProgress: ReducedGraphState['actProgress'] = {
     ...state.actProgress,
@@ -349,10 +400,6 @@ function updateActProgress(
       })
     }
   }
-
-  const chaptersRemaining = act.endChapter - (chapterIndex + 1)
-  const totalActChapters = act.endChapter - act.startChapter + 1
-  const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
 
   if (isInClosingPhase && pending.length > 0) {
     logger.warn(
@@ -377,6 +424,43 @@ function updateActProgress(
   }
 
   return { actProgress: updatedActProgress, beatVerificationIssues }
+}
+
+async function scanActChaptersForBeats(
+  outputDir: string,
+  act: ActArc,
+  pendingBeats: string[],
+  provider: import('../../../model/provider.js').ModelProvider,
+  outline: ReducedGraphState['outline'],
+  currentChapterIndex: number
+): Promise<string[]> {
+  const newlyVerified: string[] = []
+  let remaining = [...pendingBeats]
+
+  for (let chapterNumber = act.startChapter; chapterNumber <= Math.min(act.endChapter, currentChapterIndex + 1); chapterNumber++) {
+    if (remaining.length === 0) break
+    const content = await readChapterContent(outputDir, chapterNumber)
+    if (!content || content.trim().length === 0) continue
+
+    const found = await judgeMandatoryBeatCoverage(provider, content, remaining)
+    if (found.length === 0) continue
+
+    const outlineIndex = chapterNumber - 1
+    const outlineItem = outline[outlineIndex]
+    if (outlineItem) {
+      const mergedVerified = Array.from(new Set([...(outlineItem.verifiedBeats ?? []), ...found]))
+      outline[outlineIndex] = { ...outlineItem, verifiedBeats: mergedVerified }
+    }
+
+    for (const beat of found) {
+      if (!newlyVerified.includes(beat)) {
+        newlyVerified.push(beat)
+      }
+      remaining = remaining.filter(b => b !== beat)
+    }
+  }
+
+  return newlyVerified
 }
 
 function buildChapterReport(

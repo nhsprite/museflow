@@ -6,6 +6,8 @@ import {
   proposeActBoundaryAdjustments,
   validateActBoundaryAdjustment,
   applyActBoundaryAdjustment,
+  judgeMandatoryBeatCoverage,
+  matchMandatoryBeat,
 } from '../../src/utils/story-arc.js'
 import type { StoryArc } from '../../src/types/outline.js'
 
@@ -136,6 +138,62 @@ describe('story-arc utilities', () => {
     const constraint = buildClosingPhaseConstraint(storyArc, {}, 5)
 
     expect(constraint).toBeUndefined()
+  })
+
+  describe('judgeMandatoryBeatCoverage', () => {
+    it('returns matched beat strings from model response', async () => {
+      const provider = {
+        chat: async () => '',
+        chatStructured: async () => ({
+          coveredBeats: ['主角失去庇护', '反派首次施压', '不相关的描述'],
+        }),
+      }
+      const beats = ['主角失去庇护', '反派首次施压']
+      const covered = await judgeMandatoryBeatCoverage(provider, '主角被逐出家门，反派派人警告。', beats)
+      expect(covered).toEqual(['主角失去庇护', '反派首次施压'])
+    })
+
+    it('falls back to chat when chatStructured is unavailable', async () => {
+      const provider = {
+        chat: async () => '{"coveredBeats": ["主角失去庇护"]}',
+      }
+      const beats = ['主角失去庇护', '反派首次施压']
+      const covered = await judgeMandatoryBeatCoverage(provider, '主角被逐出家门。', beats)
+      expect(covered).toEqual(['主角失去庇护'])
+    })
+
+    it('normalizes narrative summaries back to original beat strings', async () => {
+      const provider = {
+        chatStructured: async () => ({
+          coveredBeats: [
+            '沈砚秋改名换姓，以新身份回到京城并初步立足',
+            '无关描述',
+          ],
+        }),
+      }
+      const beats = ['主角以新身份重返京城并初步立足']
+      const covered = await judgeMandatoryBeatCoverage(provider, '...', beats)
+      expect(covered).toEqual(['主角以新身份重返京城并初步立足'])
+    })
+  })
+
+  describe('matchMandatoryBeat', () => {
+    it('matches narrative summary with protagonist name substitution', () => {
+      const candidates = ['主角以新身份重返京城并初步立足']
+      const raw = '沈砚秋改名换姓，以新身份回到京城并初步立足'
+      expect(matchMandatoryBeat(raw, candidates)).toBe('主角以新身份重返京城并初步立足')
+    })
+
+    it('matches summary when optional parenthetical is absent', () => {
+      const candidates = ['联姻棋局传闻浮现（被指婚对象与仇家关联）']
+      const raw = '瑞亲王府与蒙古亲王疑有联姻之议，联姻棋局传闻浮现'
+      expect(matchMandatoryBeat(raw, candidates)).toBe('联姻棋局传闻浮现（被指婚对象与仇家关联）')
+    })
+
+    it('returns undefined for unrelated descriptions', () => {
+      const candidates = ['主角以新身份重返京城并初步立足']
+      expect(matchMandatoryBeat('这是一个无关的摘要描述', candidates)).toBeUndefined()
+    })
   })
 
   describe('applyActBoundaryAdjustment', () => {
