@@ -28,7 +28,13 @@ async function tryBatchJudge<T>(
       if (Array.isArray(results) && results.length === items.length) {
         return transform ? results.map(transform) : results
       }
-      logger.warn(`[MuseFlow] chatStructured 返回的 results 长度不匹配：期望 ${items.length}，实际 ${Array.isArray(results) ? results.length : '非数组'}`)
+      const actualDesc = Array.isArray(results)
+        ? `数组（长度 ${results.length}）`
+        : results === undefined
+          ? '未定义'
+          : `${typeof results}（${JSON.stringify(results).slice(0, 200)}）`
+      const preview = JSON.stringify(rawResponse).slice(0, 400)
+      logger.warn(`[MuseFlow] chatStructured 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${preview}`)
       return undefined
     }
 
@@ -40,7 +46,12 @@ async function tryBatchJudge<T>(
     if (Array.isArray(results) && results.length === items.length) {
       return transform ? results.map(transform) : results
     }
-    logger.warn(`[MuseFlow] chat 返回的 results 长度不匹配：期望 ${items.length}，实际 ${Array.isArray(results) ? results.length : '非数组'}`)
+    const actualDesc = Array.isArray(results)
+      ? `数组（长度 ${results.length}）`
+      : results === undefined
+        ? '未定义'
+        : `${typeof results}（${JSON.stringify(results).slice(0, 200)}）`
+    logger.warn(`[MuseFlow] chat 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${rawResponse?.toString().slice(0, 400)}`)
     return undefined
   } catch (err) {
     const preview = typeof rawResponse === 'string'

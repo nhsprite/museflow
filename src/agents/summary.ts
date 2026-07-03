@@ -138,6 +138,7 @@ export function processSummaryOutput(
   characters?: Character[],
   existingStoryState?: StoryState,
   chapterContent?: string,
+  claimedBeats?: string[],
 ): { summary: string; storyState?: StoryState; verifiedBeats?: string[] } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
@@ -349,16 +350,63 @@ export function processSummaryOutput(
     })).filter(item => item.oldFact.length > 0)
   }
 
+  function findMatchingClaimedBeat(rawBeat: string, candidates: string[]): string | undefined {
+    const normalizedRaw = normalizeTextForMatch(rawBeat)
+    if (normalizedRaw.length === 0) return undefined
+
+    let bestCandidate: string | undefined
+    let bestScore = 0
+    for (const candidate of candidates) {
+      const normalizedCandidate = normalizeTextForMatch(candidate)
+      if (normalizedCandidate.length === 0) continue
+      if (normalizedRaw === normalizedCandidate) {
+        return candidate
+      }
+      // 如果 rawBeat 包含完整的 mandatory beat 或反之，视为匹配
+      if (normalizedRaw.includes(normalizedCandidate) || normalizedCandidate.includes(normalizedRaw)) {
+        return candidate
+      }
+      const lcs = longestCommonSubstringLength(normalizedRaw, normalizedCandidate)
+      const score = (2 * lcs) / (normalizedRaw.length + normalizedCandidate.length)
+      if (score > bestScore) {
+        bestScore = score
+        bestCandidate = candidate
+      }
+    }
+
+    const threshold = 0.75
+    return bestScore >= threshold ? bestCandidate : undefined
+  }
+
   const extractVerifiedBeats = (): string[] => {
     const raw = data['verifiedBeats']
     if (!Array.isArray(raw)) return []
-    return raw
+    const rawBeats = raw
       .filter((item): item is string => typeof item === 'string')
       .map(beat => beat.trim())
       .filter(beat => beat.length > 0)
+
+    if (!claimedBeats || claimedBeats.length === 0) {
+      return rawBeats
+    }
+
+    const normalized: string[] = []
+    for (const rawBeat of rawBeats) {
+      const matched = findMatchingClaimedBeat(rawBeat, claimedBeats)
+      if (matched) {
+        if (!normalized.includes(matched)) {
+          normalized.push(matched)
+        }
+      } else {
+        logger.warn(`[MuseFlow] SummaryAgent 返回的 verifiedBeat 与 claimedBeats 不匹配，已丢弃：${rawBeat.slice(0, 80)}`)
+      }
+    }
+    return normalized
   }
 
   const verifiedBeats = extractVerifiedBeats()
+
+
 
   if (storyState) {
     if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {

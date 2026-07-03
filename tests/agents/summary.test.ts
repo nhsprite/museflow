@@ -199,6 +199,50 @@ describe('SummaryAgent prompt', () => {
     expect(result?.verifiedBeats).toEqual(['主角失去庇护', '反派首次施压'])
   })
 
+  it('normalizes verifiedBeats to matching claimedBeats and drops unrelated descriptions', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        verifiedBeats: [
+          '主角以新身份重返京城并初步立足',
+          '本章描写了主角回忆灭门惨案的细节，完成了家族灭门旧事的简要回溯与主角身世确认',
+          '这是一个无关的摘要描述',
+        ],
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const claimedBeats = [
+      '家族灭门旧事的简要回溯与主角身世确认',
+      '主角以新身份重返京城并初步立足',
+      '联姻棋局传闻浮现（被指婚对象与仇家关联）',
+    ]
+    const result = processSummaryOutput(output, 2, undefined, undefined, undefined, claimedBeats)
+    expect(result?.verifiedBeats).toEqual([
+      '主角以新身份重返京城并初步立足',
+      '家族灭门旧事的简要回溯与主角身世确认',
+    ])
+  })
+
   it('preserves canonical fact id when provided', async () => {
     const { processSummaryOutput } = await import('../../src/agents/summary.ts')
     const output = {

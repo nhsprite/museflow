@@ -62,6 +62,9 @@ export async function finalizeChapter(
       const summaryAgent = getSummaryAgent(provider)
       const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
       const currentOutline = state.outline[chapterIndex]
+      const beatsToVerify = currentOutline?.claimedBeats && currentOutline.claimedBeats.length > 0
+        ? currentOutline.claimedBeats
+        : getPendingMandatoryBeats(state, chapterIndex)
       const summaryState: SummaryAgentInput = {
         idea: state.idea,
         genre: state.genre,
@@ -72,9 +75,7 @@ export async function finalizeChapter(
         establishedCharacters,
         ...(currentOutline?.title ? { chapterTitle: currentOutline.title } : {}),
         chapterIndex,
-        ...(currentOutline?.claimedBeats && currentOutline.claimedBeats.length > 0
-          ? { claimedBeats: currentOutline.claimedBeats }
-          : {}),
+        ...(beatsToVerify.length > 0 ? { claimedBeats: beatsToVerify } : {}),
       }
 
       const MAX_SUMMARY_RETRIES = 2
@@ -89,7 +90,7 @@ export async function finalizeChapter(
             logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
             continue
           }
-          const processed = processSummaryOutput(summaryOutput, chapterIndex, effectiveCharacters, state.storyState, chapterContent)
+          const processed = processSummaryOutput(summaryOutput, chapterIndex, effectiveCharacters, state.storyState, chapterContent, beatsToVerify)
           if (!processed || !processed.summary) {
             logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
@@ -265,6 +266,35 @@ function getActForChapter(storyArc: StoryArc | null | undefined, chapterIndex: n
   return storyArc.acts.find(a => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
 }
 
+function getPendingMandatoryBeats(state: ReducedGraphState, chapterIndex: number): string[] {
+  const storyArc = state.storyArc
+  const act = getActForChapter(storyArc, chapterIndex)
+  if (!storyArc || !act) return []
+  const progress = state.actProgress?.[act.index] ?? { consumed: [], pending: [...act.mandatoryBeats] }
+  return act.mandatoryBeats.filter(beat => !progress.consumed.includes(beat))
+}
+
+function normalizeTextForMatch(text: string): string {
+  return text.replace(/[\s\n\p{P}]/gu, '')
+}
+
+function normalizeVerifiedBeats(rawVerifiedBeats: string[], mandatoryBeats: string[]): string[] {
+  const matched = new Set<string>()
+  for (const raw of rawVerifiedBeats) {
+    const normalizedRaw = normalizeTextForMatch(raw)
+    if (normalizedRaw.length === 0) continue
+    for (const beat of mandatoryBeats) {
+      const normalizedBeat = normalizeTextForMatch(beat)
+      if (normalizedBeat.length === 0) continue
+      if (normalizedRaw === normalizedBeat || normalizedRaw.includes(normalizedBeat) || normalizedBeat.includes(normalizedRaw)) {
+        matched.add(beat)
+        break
+      }
+    }
+  }
+  return Array.from(matched)
+}
+
 function updateActProgress(
   state: ReducedGraphState,
   chapterIndex: number
@@ -281,18 +311,24 @@ function updateActProgress(
 
   const currentOutline = state.outline[chapterIndex]
   const claimedBeats = currentOutline?.claimedBeats ?? []
-  const verifiedBeats = currentOutline?.verifiedBeats ?? []
+  const rawVerifiedBeats = currentOutline?.verifiedBeats ?? []
 
-  const prevProgress = state.actProgress[act.index] ?? {
-    consumed: [],
-    pending: [...act.mandatoryBeats],
+  // 兼容历史数据：将 narrative 形式的 verifiedBeats 归一化为 mandatory beat 原句
+  const verifiedBeats = normalizeVerifiedBeats(rawVerifiedBeats, act.mandatoryBeats)
+
+  // 每次 finalize 都根据当前幕已写章节的 verifiedBeats 重新计算消费进度，
+  // 避免历史错误数据（如 narrative 摘要）导致 consumed 永久丢失。
+  const consumed: string[] = []
+  for (let idx = act.startChapter - 1; idx <= chapterIndex; idx++) {
+    const outlineItem = state.outline[idx]
+    if (!outlineItem) continue
+    const normalized = normalizeVerifiedBeats(outlineItem.verifiedBeats ?? [], act.mandatoryBeats)
+    for (const beat of normalized) {
+      if (!consumed.includes(beat)) {
+        consumed.push(beat)
+      }
+    }
   }
-
-  // 只采信经 SummaryAgent 验证的 beats；若尚未验证则视为未消费
-  const newlyConsumed = verifiedBeats.filter(
-    beat => !prevProgress.consumed.includes(beat)
-  )
-  const consumed = [...prevProgress.consumed, ...newlyConsumed]
   const pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
 
   const updatedActProgress: ReducedGraphState['actProgress'] = {

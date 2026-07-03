@@ -18,7 +18,8 @@ export function buildClaimedBeatsSection(claimedBeats: string[]): string {
 本章大纲声称要推进的 mandatory beats：
 ${claimedBeats.map(beat => `- ${beat}`).join('\n')}
 
-请在本章正文中逐条核验这些 beat 是否真的发生。只有正文中明确发生了对应的状态转移或事件，才能将其列入 verifiedBeats；不得因为大纲声称就默认发生。
+请在本章正文中逐条核验这些 beat 是否真的发生。
+【关键】verifiedBeats 中只能放入上述 claimedBeats 列表里、且在本章正文中确实发生的那几项的**原文原句**。不要改写、不要扩展成情节摘要、不要编造新的表述。如果某条 claimedBeat 未在正文中发生，请勿将其列入 verifiedBeats。
 </claimed_beats>`
 }
 
