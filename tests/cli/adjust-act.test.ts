@@ -4,12 +4,14 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Story } from '../../src/types/story.ts'
 import type { ReducedGraphState } from '../../src/graph/state.ts'
+import type { Issue } from '../../src/types/agent.ts'
 
 const testTempDir = join(tmpdir(), `museflow-adjust-act-${randomUUID().slice(0, 8)}`)
 
 const requireStoryMock = vi.fn<() => Promise<Story>>()
 const updateLatestStateMock = vi.fn<() => Promise<void>>()
 const writeOutlineContentMock = vi.fn<() => Promise<void>>()
+const exportMetaFromCheckpointMock = vi.fn<() => Promise<void>>()
 const getTupleMock = vi.fn()
 
 vi.mock('../../src/cli/utils/story-loader.js', () => ({
@@ -27,6 +29,10 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeOutlineContent: writeOutlineContentMock,
 }))
 
+vi.mock('../../src/storage/meta/exporter.js', () => ({
+  exportMetaFromCheckpoint: exportMetaFromCheckpointMock,
+}))
+
 function makeStory(): Story {
   return {
     id: 'story-1',
@@ -42,7 +48,7 @@ function makeStory(): Story {
   }
 }
 
-function makeState(): ReducedGraphState {
+function makeState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
   return {
     story: makeStory(),
     idea: 'test',
@@ -69,6 +75,7 @@ function makeState(): ReducedGraphState {
     pendingIssues: [],
     rewriteApproved: false,
     rewriteRequested: false,
+    ...overrides,
   } as unknown as ReducedGraphState
 }
 
@@ -127,6 +134,57 @@ describe('adjust-act command', () => {
       [8, 12],
       [13, 22],
     ])
+    logSpy.mockRestore()
+  })
+
+  it('clears resolved outline coverage errors for the adjusted act only', async () => {
+    const issues: Issue[] = [
+      {
+        id: 'act-1-coverage',
+        type: 'outline_coverage',
+        severity: 'error',
+        description: '第 1 幕自动延长已达到上限，仍有 mandatory beats 未消费。',
+        source: 'outline_compliance',
+        retryStrategy: 'manual',
+      },
+      {
+        id: 'act-2-coverage',
+        type: 'outline_coverage',
+        severity: 'error',
+        description: '第 2 幕自动延长已达到上限，仍有 mandatory beats 未消费。',
+        source: 'outline_compliance',
+        retryStrategy: 'manual',
+      },
+      {
+        id: 'consistency-info',
+        type: 'consistency',
+        severity: 'info',
+        description: '可选的连续性提示。',
+      },
+    ]
+    getTupleMock.mockResolvedValue({
+      checkpoint: { channel_values: makeState({ pendingIssues: issues }) },
+    })
+    const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await adjustAct('story-1', { act: '1', endChapter: '6' })
+
+    const updatedState = updateLatestStateMock.mock.calls[0]![0] as { pendingIssues: Issue[] }
+    expect(updatedState.pendingIssues.map(issue => issue.id)).toEqual([
+      'act-2-coverage',
+      'consistency-info',
+    ])
+    logSpy.mockRestore()
+  })
+
+  it('exports meta after updating the checkpoint state', async () => {
+    const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await adjustAct('story-1', { act: '1', endChapter: '6' })
+
+    expect(exportMetaFromCheckpointMock).toHaveBeenCalledWith(testTempDir)
     logSpy.mockRestore()
   })
 })

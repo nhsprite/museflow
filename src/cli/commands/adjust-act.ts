@@ -1,12 +1,22 @@
 import { requireStory } from '../utils/story-loader.js'
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import { writeOutlineContent } from '../../storage/filesystem/writer.js'
+import { exportMetaFromCheckpoint } from '../../storage/meta/exporter.js'
 import {
   validateActBoundaryAdjustment,
   getActForChapter,
   applyActBoundaryShift,
 } from '../../utils/story-arc.js'
 import type { ReducedGraphState } from '../../graph/state.js'
+import type { Issue } from '../../types/agent.js'
+
+function isResolvedActCoverageIssue(issue: Issue, actIndex: number): boolean {
+  if (issue.type !== 'outline_coverage') return false
+  if (issue.severity !== 'error') return false
+  if (issue.source !== 'outline_compliance') return false
+  return issue.description.includes(`第 ${actIndex} 幕`) ||
+    Boolean(issue.suggestion?.includes(`第 ${actIndex} 幕`))
+}
 
 function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
@@ -98,6 +108,7 @@ export async function adjustAct(
     storyArc: newStoryArc,
     outline: newOutline,
     chapters: newChapters,
+    pendingIssues: state.pendingIssues.filter(issue => !isResolvedActCoverageIssue(issue, actIndex)),
   })
 
   await writeOutlineContent(
@@ -106,6 +117,7 @@ export async function adjustAct(
     newOutline,
     newStoryArc
   )
+  await exportMetaFromCheckpoint(story.outputDir)
 
   console.log(`[MuseFlow] 已调整第 ${actIndex} 幕边界：结束于第 ${proposedEndChapter} 章`)
   if (newTotalChapters !== state.totalChapters) {
