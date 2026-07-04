@@ -359,7 +359,8 @@ export function applyActBoundaryAdjustment(
       }
     }
 
-    const { autoBoundaryAdjustment: _autoBoundaryAdjustment, ...actWithoutAdjustment } = act
+    const actWithoutAdjustment = { ...act }
+    delete actWithoutAdjustment.autoBoundaryAdjustment
     return actWithoutAdjustment
   })
 
