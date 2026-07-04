@@ -158,8 +158,8 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`)
-    const json = await res.json() as { content: { type: string; text: string }[] }
-    const textContent = json.content?.find(c => c.type === 'text')
+    const json = await res.json() as { content: Array<{ type?: string; text?: string }> }
+    const textContent = json.content?.find(c => typeof c.text === 'string' && (!c.type || c.type === 'text'))
     return textContent?.text ?? ''
   }
 
@@ -199,7 +199,7 @@ export class AnthropicCompatibleProvider implements ModelProvider {
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`)
     const json = await res.json() as {
-      content: Array<{ type: string; name?: string; input?: T; text?: string }>
+      content: Array<{ type?: string; name?: string; input?: T; text?: string }>
     }
     const toolUse = json.content?.find(c => c.type === 'tool_use' && c.name === toolName)
     if (toolUse?.input) {
@@ -208,7 +208,7 @@ export class AnthropicCompatibleProvider implements ModelProvider {
 
     // Fallback: some Anthropic-compatible endpoints (e.g., Minimax) return the
     // structured JSON inside a plain text content block instead of a tool_use block.
-    const textContent = json.content?.find(c => c.type === 'text')?.text
+    const textContent = json.content?.find(c => typeof c.text === 'string' && (!c.type || c.type === 'text'))?.text
     if (textContent) {
       const jsonText = extractJsonBlock(textContent)
       try {

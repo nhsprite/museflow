@@ -100,8 +100,16 @@ describe('tryCorrectOffByOneChapterHeading', () => {
     expect(result).toBeNull()
   })
 
-  it('does not correct when there is no next chapter outline', () => {
+  it('corrects when next chapter outline is missing but current outline strongly matches', () => {
     const content = '# 第五章 南城周旋\n\n主角藏身于南城会馆。'
+    const currentDesc = '主角以南城会馆为藏身点。'
+    const result = tryCorrectOffByOneChapterHeading(content, 3, currentDesc, undefined)
+    expect(result).not.toBeNull()
+    expect(result!.corrected).toContain('# 第4章 南城周旋')
+  })
+
+  it('does not correct when next chapter outline is missing and current outline evidence is weak', () => {
+    const content = '# 第五章 陌生事件\n\n城门外忽然起了风。'
     const currentDesc = '主角以南城会馆为藏身点。'
     const result = tryCorrectOffByOneChapterHeading(content, 3, currentDesc, undefined)
     expect(result).toBeNull()

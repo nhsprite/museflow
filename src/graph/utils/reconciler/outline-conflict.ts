@@ -266,7 +266,13 @@ export async function detectOutlineStateConflicts(
   try {
     let raw: unknown
     if (provider.chatStructured) {
-      raw = await provider.chatStructured<OutlineStateConflictResult>(messages, DETECTION_SCHEMA, 0.3)
+      try {
+        raw = await provider.chatStructured<OutlineStateConflictResult>(messages, DETECTION_SCHEMA, 0.3)
+      } catch (structuredErr) {
+        logger.debug('结构化大纲-状态冲突检测失败，回退到普通 chat 解析:', structuredErr instanceof Error ? structuredErr.message : String(structuredErr))
+        const text = await provider.chat(messages, 0.3)
+        raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
+      }
     } else {
       const text = await provider.chat(messages, 0.3)
       raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())

@@ -18,7 +18,6 @@ export async function draft_chapter(
 ): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterAgent(context.provider)
   const chapterIndex = state.currentChapterIndex
-  const outlineItem = state.outline[chapterIndex]
 
   const {
     chapterPlan,
@@ -39,6 +38,7 @@ export async function draft_chapter(
     outline: updatedOutline ?? state.outline,
     chapters: updatedChapters ?? state.chapters,
   }
+  const outlineItem = state.outline[chapterIndex]
 
   const mergedIssues = [
     ...(outlinePendingIssues ?? []),

@@ -84,6 +84,19 @@ describe('AnthropicCompatibleProvider.chatStructured', () => {
     expect(result).toEqual({ results: [true] })
   })
 
+  it('parses JSON from Anthropic-compatible text content without a type field', async () => {
+    mockFetchResponse([
+      { text: '```json\n{"results": [true, false]}\n```' },
+    ])
+
+    const result = await provider.chatStructured<{ results: boolean[] }>(
+      [{ role: 'user', content: 'test' }],
+      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } },
+    )
+
+    expect(result).toEqual({ results: [true, false] })
+  })
+
   it('repairs malformed JSON in text content', async () => {
     mockFetchResponse([
       { type: 'text', text: "{results: [true, false],}" },
@@ -361,6 +374,20 @@ describe('createProvider provider selection', () => {
         }),
       }),
     )
+  })
+
+  it('reads Anthropic-compatible chat text content without a type field', async () => {
+    setConfig({ model: { provider: 'anthropic' } })
+    vi.mocked(globalThis.fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: [{ text: 'anthropic hello without type' }] }),
+    } as Response)
+
+    const provider = createProvider()
+    const result = await provider.chat([{ role: 'user', content: 'hi' }])
+
+    expect(result).toBe('anthropic hello without type')
   })
 
   it('uses AnthropicCompatibleProvider structured output via tool_use', async () => {

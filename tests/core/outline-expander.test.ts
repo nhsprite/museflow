@@ -138,6 +138,76 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
   })
 
+  it('regenerates JIT outline when claimed beats are not supported by the description', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 4,
+      story: { ...baseState.story, totalChapters: 4 },
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 4,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '上一幕',
+            theme: '收束',
+            function: '处理上一幕尾声',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 4,
+            title: '新幕',
+            theme: '裂变',
+            function: '联姻棋局被外部势力破坏，主角身份危机浮现',
+            mandatoryBeats: ['联姻棋局被外部势力利用或破坏'],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        { number: 1, title: '旧幕收束', description: '旧幕收束。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '', description: '' },
+        { number: 4, title: '', description: '' },
+      ],
+      actProgress: {
+        2: { consumed: [], pending: ['联姻棋局被外部势力利用或破坏'] },
+      },
+      chapters: [null, null, null, null],
+    }
+
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '松鹤斋午后',
+          description: '沈砚秋午后赴松鹤斋，赵管事告知三日听信结果，归馆后等沈福回京面禀。',
+          introducedCharacters: [],
+          claimedBeats: ['联姻棋局被外部势力利用或破坏'],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '棋局裂口',
+          description: '外部势力借联姻棋局散布假消息，试图破坏指婚安排，沈砚秋第一次意识到棋局已被外力利用。',
+          introducedCharacters: [],
+          claimedBeats: ['联姻棋局被外部势力利用或破坏'],
+        },
+      })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(result.outline?.[1]?.title).toBe('棋局裂口')
+    expect(result.outline?.[1]?.description).toContain('外部势力借联姻棋局')
+    expect(result.outline?.[1]?.claimedBeats).toEqual(['联姻棋局被外部势力利用或破坏'])
+  })
+
   it('extends an overloaded current act before generating a JIT outline', async () => {
     const overloadedState: ReducedGraphState = {
       ...baseState,

@@ -132,15 +132,16 @@ export interface ChapterHeadingCorrection {
  *
  * 仅当满足以下条件时才修正：
  * 1. 检测到的章节号正好是期望章节号 + 1（模型被后续章节边界提示干扰）；
- * 2. 正文与当前章大纲的关键词重叠度明显高于与下一章大纲的重叠度，
- *    说明正文确实属于当前章，只是标题编号写错。
+ * 2. 若下一章大纲存在，正文与当前章大纲的关键词重叠度必须明显高于下一章；
+ * 3. 若下一章大纲尚未生成，正文与当前章大纲必须有足够强的绝对关键词重叠。
  */
 export function tryCorrectOffByOneChapterHeading(
   rawContent: string,
   chapterIndex: number,
   currentOutlineDescription: string,
   nextOutlineDescription: string | undefined,
-  minOverlapRatio = 1.5
+  minOverlapRatio = 1.5,
+  minCurrentOverlapWithoutNext = 5
 ): ChapterHeadingCorrection | null {
   const expectedDisplayNumber = chapterIndex + 1
   const heading = findChapterHeading(rawContent)
@@ -149,13 +150,27 @@ export function tryCorrectOffByOneChapterHeading(
   const foundChapterNumber = extractChapterNumber(heading)
   if (foundChapterNumber !== expectedDisplayNumber + 1) return null
 
-  if (!nextOutlineDescription || nextOutlineDescription.trim().length === 0) return null
-
   const currentKeywords = new Set(extractChineseKeywords(rawContent))
   const currentOutlineKeywords = new Set(extractChineseKeywords(currentOutlineDescription))
-  const nextOutlineKeywords = new Set(extractChineseKeywords(nextOutlineDescription))
-
   const currentOverlap = countIntersection(currentKeywords, currentOutlineKeywords)
+
+  if (!nextOutlineDescription || nextOutlineDescription.trim().length === 0) {
+    if (currentOverlap < minCurrentOverlapWithoutNext) return null
+
+    const correctedHeading = heading.replace(
+      new RegExp(`第\\s*(${CHAPTER_NUMERAL_CLASS})\\s*章`),
+      `第${expectedDisplayNumber}章`
+    )
+    const correctedContent = rawContent.replace(heading, correctedHeading)
+
+    return {
+      corrected: correctedContent,
+      originalFoundNumber: foundChapterNumber,
+      reason: `下一章大纲为空，正文与当前章大纲共有 ${currentOverlap} 个关键词，判定为章节号笔误`,
+    }
+  }
+
+  const nextOutlineKeywords = new Set(extractChineseKeywords(nextOutlineDescription))
   const nextOverlap = countIntersection(currentKeywords, nextOutlineKeywords)
 
   if (currentOverlap === 0 || nextOverlap === 0) return null

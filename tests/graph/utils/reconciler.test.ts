@@ -463,6 +463,20 @@ describe('detectOutlineStateConflicts', () => {
     expect(result.conflicts).toHaveLength(0)
     expect(result.constraints).toHaveLength(0)
   })
+
+  it('falls back to chat when chatStructured cannot produce structured output', async () => {
+    const provider = {
+      chatStructured: vi.fn(async () => { throw new Error('Anthropic API did not return structured output') }),
+      chat: vi.fn(async (): Promise<string> => '```json\n{"conflicts":[{"subject":"身份","attribute":"行动","oldValue":"等待听信","newValue":"已入府办差","severity":"warning","description":"大纲将听信结果提前，需要写作时交代时间衔接"}],"constraints":["必须交代听信结果为何已落定"]}\n```'),
+    } as unknown as ModelProvider
+
+    const result = await detectOutlineStateConflicts(emptyState(), '主角已入府办差。', 25, provider)
+
+    expect(result.conflicts).toHaveLength(1)
+    expect(result.conflicts[0].description).toContain('时间衔接')
+    expect(result.constraints).toEqual(['必须交代听信结果为何已落定'])
+    expect(provider.chat).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('conflict detection & classification', () => {
