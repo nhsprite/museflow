@@ -348,6 +348,107 @@ describe('chapter report generation', () => {
     expect(result.chapterReport?.issues.some(i => i.type === 'outline_coverage')).toBe(true)
   })
 
+  it('clears stale outline coverage warning when its beat becomes verified', async () => {
+    const state = buildState(tmpDir, {
+      pendingIssues: [
+        {
+          id: 'unverified-beat-0-主角离开家乡',
+          type: 'outline_coverage',
+          severity: 'warning',
+          description: '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
+        },
+      ],
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+    })
+    vi.mocked(processSummaryOutput).mockReturnValueOnce({
+      summary: '主角离开家乡。',
+      storyState: createEmptyStoryState(),
+      verifiedBeats: ['主角离开家乡'],
+    })
+
+    const result = await finalize_chapter(createMockContext(), state)
+
+    expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
+    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
+    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
+  })
+
+  it('clears stale outline coverage warning from a past act', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_2.md'),
+      '# 第二章 遇敌\n\n主角继续赶路，远处的马蹄声逼近。',
+      'utf-8'
+    )
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 1,
+      chapters: [
+        {
+          id: 'ch-1',
+          storyId: 'test-story',
+          number: 1,
+          title: '启程',
+          outline: '主角离开家乡。',
+          summary: '主角离开家乡。',
+          foreshadows: null,
+          status: 'completed',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        {
+          id: 'ch-2',
+          storyId: 'test-story',
+          number: 2,
+          title: '遇敌',
+          outline: '主角遭遇敌人。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          { index: 1, startChapter: 1, endChapter: 1, title: '启程', theme: '出发', function: '建立动机', mandatoryBeats: ['主角离开家乡'] },
+          { index: 2, startChapter: 2, endChapter: 3, title: '遇敌', theme: '对抗', function: '升级冲突', mandatoryBeats: ['反派首次施压'] },
+        ],
+        keyBeats: [],
+      },
+      actProgress: {
+        1: { consumed: [], pending: ['主角离开家乡'] },
+        2: { consumed: [], pending: ['反派首次施压'] },
+      },
+      pendingIssues: [
+        {
+          id: 'unverified-beat-0-主角离开家乡',
+          type: 'outline_coverage',
+          severity: 'warning',
+          description: '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
+        },
+      ],
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '遇敌', description: '反派首次施压。', claimedBeats: ['反派首次施压'] },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+    })
+    vi.mocked(processSummaryOutput).mockReturnValueOnce({
+      summary: '反派首次施压。',
+      storyState: createEmptyStoryState(),
+      verifiedBeats: ['反派首次施压'],
+    })
+
+    const result = await finalize_chapter(createMockContext(), state)
+
+    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
+    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
+  })
+
   it('syncs total chapters and empty slots when auto act extension shifts following acts', async () => {
     loadConfigMock.mockReturnValue({
       model: { provider: 'openai' as const, model: 'gpt-4o' },

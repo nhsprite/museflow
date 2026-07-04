@@ -18,6 +18,11 @@ export interface ActProgressUpdate {
   beatVerificationIssues?: Issue[]
 }
 
+interface MandatoryBeatLocation {
+  act: ActArc
+  beat: string
+}
+
 export function getActForChapter(
   storyArc: StoryArc | null | undefined,
   chapterIndex: number
@@ -50,6 +55,47 @@ export function normalizeVerifiedBeats(
     }
   }
   return Array.from(matched)
+}
+
+function findIssueMandatoryBeat(
+  issue: Issue,
+  storyArc: StoryArc | null | undefined
+): MandatoryBeatLocation | undefined {
+  if (!storyArc) return undefined
+
+  for (const act of storyArc.acts) {
+    const matched = matchMandatoryBeat(
+      `${issue.id} ${issue.description} ${issue.suggestion ?? ''}`,
+      act.mandatoryBeats
+    )
+    if (matched) {
+      return { act, beat: matched }
+    }
+  }
+  return undefined
+}
+
+export function pruneResolvedOutlineCoverageIssues(
+  issues: Issue[],
+  storyArc: StoryArc | null | undefined,
+  actProgress: ReducedGraphState['actProgress'],
+  currentChapterIndex: number
+): Issue[] {
+  return issues.filter(issue => {
+    if (issue.type !== 'outline_coverage' || issue.severity !== 'warning') {
+      return true
+    }
+
+    const match = findIssueMandatoryBeat(issue, storyArc)
+    if (!match) return true
+
+    const progress = actProgress?.[match.act.index]
+    if (progress?.consumed.includes(match.beat)) {
+      return false
+    }
+
+    return currentChapterIndex + 1 <= match.act.endChapter
+  })
 }
 
 export async function updateActProgress(

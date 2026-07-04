@@ -2,7 +2,7 @@ import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { runOneChapter, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
-import { printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
+import { printActProgress, printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
@@ -28,6 +28,7 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
     console.log(`  目标章节: ${targetChapter}/${state.totalChapters}`)
     console.log(`  原当前章节: ${state.currentChapterIndex + 1}`)
+    printActProgress(state, targetIndex)
     const outlineItem = state.outline[targetIndex]
     printChapterOutline(outlineItem, targetIndex)
     await handleRewrite(storyId, true, targetIndex)
@@ -48,6 +49,7 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     const chapterNum = targetChapterIndex + 1
     console.log('[MuseFlow] 重写章节: ', story.title)
     console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
+    printActProgress(state, targetChapterIndex)
     const outlineItem = state.outline[targetChapterIndex]
     printChapterOutline(outlineItem, targetChapterIndex)
     console.log('[MuseFlow] 发现以下问题:')
@@ -63,6 +65,7 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     const chapterNum = state.currentChapterIndex + 1
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
     console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
+    printActProgress(state, state.currentChapterIndex)
     const outlineItem = state.outline[state.currentChapterIndex]
     printChapterOutline(outlineItem, state.currentChapterIndex)
     console.log('[MuseFlow] 当前章节没有已知问题，确认重写？')

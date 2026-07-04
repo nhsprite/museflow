@@ -40,6 +40,7 @@ import {
   getActForChapter,
   getPendingMandatoryBeats,
   normalizeVerifiedBeats,
+  pruneResolvedOutlineCoverageIssues,
   updateActProgress,
 } from './act-progress.js'
 
@@ -285,6 +286,12 @@ export async function finalizeChapter(
   let updatedPendingIssues = beatVerificationIssues && beatVerificationIssues.length > 0
     ? [...state.pendingIssues, ...beatVerificationIssues]
     : state.pendingIssues
+  updatedPendingIssues = pruneResolvedOutlineCoverageIssues(
+    updatedPendingIssues,
+    state.storyArc,
+    updatedActProgress,
+    chapterIndex
+  )
 
   const nextIndex = state.currentChapterIndex + 1
 

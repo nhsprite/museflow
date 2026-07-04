@@ -5,6 +5,7 @@ import { withSpinner } from '../utils/spinner.js'
 import { requireStoryState } from '../utils/story-loader.js'
 import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
 import type { ReducedGraphState } from '../../graph/state.js'
+import { printActProgress } from '../utils/chapter-display.js'
 
 interface ContinueOptions {
   storyId: string
@@ -29,7 +30,9 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
 
   console.log(`[MuseFlow] 继续故事: ${story.title}`)
   console.log(`  当前章节: ${state.currentChapterIndex + 1}/${state.totalChapters}`)
-  console.log(`  状态: ${state.rewriteRequested ? '等待重写确认' : '撰写中'}\n`)
+  console.log(`  状态: ${state.rewriteRequested ? '等待重写确认' : '撰写中'}`)
+  printActProgress(state, state.currentChapterIndex)
+  console.log('')
 
   if (state.pendingIssues.length > 0) {
     console.log('[MuseFlow] 发现以下问题:')

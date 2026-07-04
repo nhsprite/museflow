@@ -3,7 +3,7 @@ import { runOneChapter, getState, type RunOneChapterOptions } from '../../core/r
 import type { StoryStatus, Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import { withSpinner } from '../utils/spinner.js'
-import { printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
+import { printActProgress, printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
 import { getChapterFilePath } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -47,11 +47,15 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
   if (!isResume) {
     console.log(`[MuseFlow] 开始撰写: ${story.title}`)
     console.log(`  总章节: ${state.totalChapters}`)
-    console.log(`  从第 1 章开始\n`)
+    console.log('  从第 1 章开始')
+    printActProgress(state, startChapterIndex)
+    console.log('')
   } else {
     console.log(`[MuseFlow] 继续撰写: ${story.title}`)
     console.log(`  总章节: ${state.totalChapters}`)
-    console.log(`  当前章节: ${startChapterIndex + 1}/${state.totalChapters}\n`)
+    console.log(`  当前章节: ${startChapterIndex + 1}/${state.totalChapters}`)
+    printActProgress(state, startChapterIndex)
+    console.log('')
   }
 
   await handleWrite(story, state, startChapterIndex)

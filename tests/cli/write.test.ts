@@ -86,6 +86,7 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
 vi.mock('../../src/cli/utils/chapter-display.js', () => ({
   printChapterOutline: vi.fn().mockReturnValue(true),
   printChapterReport: vi.fn(),
+  printActProgress: vi.fn(),
 }))
 
 vi.mock('../../src/utils/paths.js', () => ({
@@ -116,11 +117,13 @@ describe('write command', () => {
 
   it('calls runOneChapter in draft mode', async () => {
     const { write } = await import('../../src/cli/commands/write.ts')
+    const { printActProgress } = await import('../../src/cli/utils/chapter-display.js')
 
     await write('story-1', { storyId: 'story-1' })
 
     expect(runOneChapterMock).toHaveBeenCalledTimes(1)
     expect(runOneChapterMock).toHaveBeenCalledWith('story-1', { mode: 'draft', targetChapterIndex: 0 })
+    expect(printActProgress).toHaveBeenCalledWith(expect.objectContaining({ currentChapterIndex: 0 }), 0)
   })
 
 })
