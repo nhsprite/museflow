@@ -57,6 +57,8 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
     <important>如果本章时间锚点明确标注了倒计时或剩余时间信息，正文中的时间表述必须与此一致。如有冲突，报 error。</important>
   </chapter_time_anchor>
 
+  {chapterContractSection}
+
   <superseded_facts>
     以下事实已被后续大纲覆盖或更新，不应视为矛盾：
     {supersededFacts}
@@ -276,6 +278,7 @@ export interface ConsistencyPromptSections {
   characterWhitelistSection: string
   outlineAuthorizedFactsSection: string
   foreshadowsSection: string
+  chapterContractSection: string
 }
 
 export interface ConsistencyPromptVariables {

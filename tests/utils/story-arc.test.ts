@@ -223,6 +223,18 @@ describe('story-arc utilities', () => {
       ])
     })
 
+    it('records global automatic extension budget usage', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 1, proposedEndChapter: 7, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
+
+      expect(result.applied).toBe(true)
+      expect(result.storyArc.autoBoundaryAdjustment).toEqual({
+        originalTotalChapters: 20,
+        totalExtendedChapters: 2,
+      })
+    })
+
     it('applies shortening proposals and shifts next act start earlier', () => {
       const storyArc = makeStoryArc()
       const proposal = { actIndex: 1, proposedEndChapter: 4, reason: 'test' }
@@ -279,6 +291,28 @@ describe('story-arc utilities', () => {
       expect(second.requiresManualResolution).toBe(true)
       expect(second.storyArc.acts[0]?.endChapter).toBe(8)
       expect(second.reason).toContain('累计自动延长上限')
+    })
+
+    it('blocks automatic extension when global extension budget is exhausted', () => {
+      const storyArc = makeStoryArc()
+      const first = applyActBoundaryAdjustment(
+        storyArc,
+        { actIndex: 1, proposedEndChapter: 8, reason: 'first extension' },
+        3
+      )
+
+      expect(first.applied).toBe(true)
+      expect(first.storyArc.autoBoundaryAdjustment?.totalExtendedChapters).toBe(3)
+
+      const second = applyActBoundaryAdjustment(
+        first.storyArc,
+        { actIndex: 2, proposedEndChapter: 15, reason: 'second extension' },
+        11
+      )
+
+      expect(second.applied).toBe(false)
+      expect(second.requiresManualResolution).toBe(true)
+      expect(second.reason).toContain('全书累计自动延长上限')
     })
   })
 })

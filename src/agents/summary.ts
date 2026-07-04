@@ -14,7 +14,8 @@ import {
   buildCharacterWhitelistSection,
 } from './prompts/summary-prompt.js'
 import { parseJsonFromLLM } from '../utils/json.js'
-import type { CanonicalFact, CanonicalFactSource } from '../types/story-state.js'
+import type { CanonicalFact, CanonicalFactSource, ChapterHandoff } from '../types/story-state.js'
+import type { VerifiedBeatEvidence } from '../types/outline.js'
 import { matchMandatoryBeat, normalizeTextForMatch } from '../utils/story-arc.js'
 
 export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
@@ -136,7 +137,7 @@ export function processSummaryOutput(
   existingStoryState?: StoryState,
   chapterContent?: string,
   claimedBeats?: string[],
-): { summary: string; storyState?: StoryState; verifiedBeats?: string[] } | null {
+): { summary: string; storyState?: StoryState; verifiedBeats?: string[]; verifiedBeatEvidence?: VerifiedBeatEvidence[] } | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
 
@@ -279,7 +280,45 @@ export function processSummaryOutput(
         .filter((fact): fact is CanonicalFact => fact !== null)
     }
 
-    return {
+    const toChapterHandoff = (val: unknown): ChapterHandoff | undefined => {
+      if (!val || typeof val !== 'object') return undefined
+      const raw = val as Record<string, unknown>
+      const endScene = typeof raw['endScene'] === 'string' ? raw['endScene'].trim() : ''
+      const endTime = typeof raw['endTime'] === 'string' ? raw['endTime'].trim() : ''
+      const lastAction = typeof raw['lastAction'] === 'string' ? raw['lastAction'].trim() : ''
+      const requiredNextOpening = typeof raw['requiredNextOpening'] === 'string'
+        ? raw['requiredNextOpening'].trim()
+        : ''
+      const charactersPresent = toStringArray(raw['charactersPresent'])
+      const openQuestions = toStringArray(raw['openQuestions'])
+
+      if (
+        endScene.length === 0 &&
+        endTime.length === 0 &&
+        lastAction.length === 0 &&
+        requiredNextOpening.length === 0 &&
+        charactersPresent.length === 0 &&
+        openQuestions.length === 0
+      ) {
+        return undefined
+      }
+
+      const handoff: ChapterHandoff = {
+        chapterNumber: typeof raw['chapterNumber'] === 'number' ? raw['chapterNumber'] : (chapterIndex ?? -1) + 1,
+        endScene,
+        endTime,
+        charactersPresent,
+        lastAction,
+        openQuestions,
+      }
+      if (requiredNextOpening.length > 0) {
+        handoff.requiredNextOpening = requiredNextOpening
+      }
+      return handoff
+    }
+
+    const chapterHandoff = toChapterHandoff(s['chapterHandoff'])
+    const extracted: StoryState = {
       characterLocations: toRecord(s['characterLocations']),
       characterStatus: toRecord(s['characterStatus']),
       keyItemsLocation: toRecord(s['keyItemsLocation']),
@@ -291,6 +330,10 @@ export function processSummaryOutput(
       currentScene: typeof s['currentScene'] === 'string' ? s['currentScene'] : '',
       storyTime: typeof s['storyTime'] === 'string' ? s['storyTime'] : '',
     }
+    if (chapterHandoff) {
+      extracted.chapterHandoff = chapterHandoff
+    }
+    return extracted
   }
 
   const summary = JSON.stringify({
@@ -377,6 +420,51 @@ export function processSummaryOutput(
 
   const verifiedBeats = extractVerifiedBeats()
 
+  const extractVerifiedBeatEvidence = (): VerifiedBeatEvidence[] => {
+    const raw = data['verifiedBeatEvidence']
+    if (!Array.isArray(raw)) return []
+    const allowedBeats = claimedBeats && claimedBeats.length > 0 ? claimedBeats : verifiedBeats
+    const matched: VerifiedBeatEvidence[] = []
+    const seen = new Set<string>()
+
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue
+      const record = item as Record<string, unknown>
+      const rawBeat = typeof record['beat'] === 'string' ? record['beat'].trim() : ''
+      const beat = allowedBeats.length > 0 ? matchMandatoryBeat(rawBeat, allowedBeats) : rawBeat
+      if (!beat || !verifiedBeats.includes(beat)) continue
+
+      const evidence = record['evidence']
+      if (!evidence || typeof evidence !== 'object') continue
+      const quote = typeof (evidence as Record<string, unknown>)['quote'] === 'string'
+        ? ((evidence as Record<string, unknown>)['quote'] as string).trim()
+        : ''
+      if (quote.length === 0) continue
+
+      const evidenceMatch = evidenceQuoteIsValid(quote, chapterContent)
+      if (!evidenceMatch) {
+        logger.warn(`[MuseFlow] verifiedBeatEvidence 引用未在正文中找到，已丢弃：${beat}`)
+        continue
+      }
+
+      const chapter = typeof (evidence as Record<string, unknown>)['chapterIndex'] === 'number'
+        ? (evidence as Record<string, unknown>)['chapterIndex'] as number
+        : (chapterIndex ?? -1)
+      const confidence = clampConfidence(
+        toConfidence(record['confidence']),
+        evidenceMatch === 'fuzzy' ? 'medium' : 'high'
+      )
+      const key = `${beat}|${chapter}|${quote}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      matched.push({ beat, chapterIndex: chapter, quote, confidence })
+    }
+
+    return matched
+  }
+
+  const verifiedBeatEvidence = extractVerifiedBeatEvidence()
+
 
 
   if (storyState) {
@@ -396,8 +484,17 @@ export function processSummaryOutput(
       logger.info(`SummaryAgent 新增 ${newCount} 条权威事实`)
     }
 
-    return { summary, storyState, verifiedBeats }
+    return {
+      summary,
+      storyState,
+      verifiedBeats,
+      ...(verifiedBeatEvidence.length > 0 ? { verifiedBeatEvidence } : {}),
+    }
   }
 
-  return { summary, verifiedBeats }
+  return {
+    summary,
+    verifiedBeats,
+    ...(verifiedBeatEvidence.length > 0 ? { verifiedBeatEvidence } : {}),
+  }
 }

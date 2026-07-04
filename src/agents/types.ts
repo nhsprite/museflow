@@ -83,6 +83,7 @@ export interface AgentInput {
   establishedCharacters?: Character[]
   stateConflicts?: string
   canonicalFacts?: CanonicalFact[]
+  chapterContract?: string
   storyArc?: StoryArc
   actProgress?: Record<number, { consumed: string[]; pending: string[] }>
   claimedBeats?: string[]
@@ -140,6 +141,7 @@ export type ChapterAgentInput = AgentInput &
     establishedCharacters?: Character[]
     storyState?: string
     canonicalFacts?: CanonicalFact[]
+    chapterContract?: string
     chapterPlan?: ChapterPlan
     chapterTimeAnchor?: string
     stateConflicts?: string
@@ -155,6 +157,7 @@ export type ChapterPlannerAgentInput = AgentInput &
     establishedCharacters?: Character[]
     storyState?: string
     stateConflicts?: string
+    chapterContract?: string
     issues?: Issue[]
     verifiedConstraints?: string[]
   }
@@ -175,6 +178,7 @@ export type ConsistencyAgentInput = AgentInput &
     outlineCharacters?: Character[]
     establishedCharacters?: Character[]
     canonicalFacts?: CanonicalFact[]
+    chapterContract?: string
     foreshadowStack?: ForeshadowItem[]
     chapterPlan?: ChapterPlan
     chapterSummaries?: string[]

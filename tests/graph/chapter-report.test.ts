@@ -263,6 +263,41 @@ describe('chapter report generation', () => {
     expect(result.outline?.[0]?.verifiedBeats).toEqual(['主角离开家乡'])
   })
 
+  it('stores evidence for verified mandatory beats', async () => {
+    const state = buildState(tmpDir, {
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+    })
+    vi.mocked(processSummaryOutput).mockReturnValueOnce({
+      summary: '主角离开家乡。',
+      storyState: createEmptyStoryState(),
+      verifiedBeats: ['主角离开家乡'],
+      verifiedBeatEvidence: [
+        {
+          beat: '主角离开家乡',
+          chapterIndex: 0,
+          quote: '主角推开柴门，沿着官道离开家乡',
+          confidence: 'high',
+        },
+      ],
+    })
+
+    const result = await finalize_chapter(createMockContext(), state)
+
+    expect(result.outline?.[0]?.verifiedBeatEvidence).toEqual([
+      {
+        beat: '主角离开家乡',
+        chapterIndex: 0,
+        quote: '主角推开柴门，沿着官道离开家乡',
+        confidence: 'high',
+      },
+    ])
+    expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
+  })
+
   it('adds warning issue when claimed beat is not verified', async () => {
     const state = buildState(tmpDir, {
       outline: [

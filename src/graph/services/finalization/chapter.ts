@@ -124,9 +124,13 @@ export async function finalizeChapter(
           chapter.summary = summary
           summarySuccess = true
 
-          if (processed.verifiedBeats && currentOutline) {
+          if ((processed.verifiedBeats || processed.verifiedBeatEvidence) && currentOutline) {
             const newOutline = [...state.outline]
-            newOutline[chapterIndex] = { ...currentOutline, verifiedBeats: processed.verifiedBeats }
+            newOutline[chapterIndex] = {
+              ...currentOutline,
+              ...(processed.verifiedBeats ? { verifiedBeats: processed.verifiedBeats } : {}),
+              ...(processed.verifiedBeatEvidence ? { verifiedBeatEvidence: processed.verifiedBeatEvidence } : {}),
+            }
             state.outline = newOutline
           }
 
@@ -141,7 +145,8 @@ export async function finalizeChapter(
               const merged = Array.from(new Set([...summaryVerified, ...contentVerified]))
               if (merged.length > summaryVerified.length) {
                 const newOutline = [...state.outline]
-                newOutline[chapterIndex] = { ...currentOutline, verifiedBeats: merged }
+                const latestOutline = newOutline[chapterIndex] ?? currentOutline
+                newOutline[chapterIndex] = { ...latestOutline, verifiedBeats: merged }
                 state.outline = newOutline
                 logger.debug(`[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - summaryVerified.length} 个 beats`)
               }

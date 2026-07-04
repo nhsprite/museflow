@@ -156,5 +156,25 @@ export function formatStoryState(storyState: StoryState): string {
     lines.push(`【上一章结束时间】${storyState.storyTime}`)
   }
 
+  if (storyState.chapterHandoff) {
+    const handoff = storyState.chapterHandoff
+    const charactersPresent = handoff.charactersPresent ?? []
+    const openQuestions = handoff.openQuestions ?? []
+    lines.push('【章节交接】')
+    lines.push(`  章节：第${handoff.chapterNumber}章`)
+    if (handoff.endScene) lines.push(`  结束场景：${handoff.endScene}`)
+    if (handoff.endTime) lines.push(`  结束时间：${handoff.endTime}`)
+    if (charactersPresent.length > 0) {
+      lines.push(`  在场角色：${charactersPresent.join('、')}`)
+    }
+    if (handoff.lastAction) lines.push(`  最后动作：${handoff.lastAction}`)
+    if (openQuestions.length > 0) {
+      lines.push(`  待承接问题：${openQuestions.join('、')}`)
+    }
+    if (handoff.requiredNextOpening) {
+      lines.push(`  下一章开头要求：${handoff.requiredNextOpening}`)
+    }
+  }
+
   return lines.length > 0 ? lines.join('\n') : '（暂无状态记录）'
 }

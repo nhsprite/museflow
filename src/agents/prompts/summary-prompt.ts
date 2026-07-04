@@ -89,6 +89,13 @@ ${STATE_AUTHORITY_RULES}
     ],
     "mood": "本章整体氛围/情绪",
     "verifiedBeats": ["本章正文中明确确立的 mandatory beat"],
+    "verifiedBeatEvidence": [
+      {
+        "beat": "必须与 verifiedBeats 中的一项完全一致",
+        "confidence": "high|medium|low",
+        "evidence": { "chapterIndex": 1, "quote": "正文中证明该 beat 已发生的连续原文短句" }
+      }
+    ],
     "supersededFacts": [
       {
         "subject": "被覆盖的事实主体",
@@ -141,6 +148,15 @@ ${STATE_AUTHORITY_RULES}
           ]
         }
       ],
+      "chapterHandoff": {
+        "chapterNumber": 1,
+        "endScene": "本章结尾所在场景",
+        "endTime": "本章结尾故事内时间",
+        "charactersPresent": ["本章结尾仍在场或直接参与下一章承接的角色"],
+        "lastAction": "本章结尾最后一个明确动作或状态",
+        "openQuestions": ["下一章开头需要承接的未解决行动、承诺、危险或信息缺口"],
+        "requiredNextOpening": "下一章开头必须承接的最小状态要求；如果无直接承接要求，返回空字符串"
+      },
       "currentScene": "本章主要场景",
       "storyTime": "故事内时间"
     }
@@ -174,6 +190,13 @@ ${STATE_AUTHORITY_RULES}
   <requirement>- 角色做出的重大决定或制定的计划</requirement>
   <requirement>- 关键物品的位置或状态变化</requirement>
 </critical_facts_priority>
+
+<beat_evidence_requirements>
+  <requirement>如果输出 verifiedBeats，必须尽量同步输出 verifiedBeatEvidence。</requirement>
+  <requirement>verifiedBeatEvidence[].beat 必须与 verifiedBeats 中的一项完全一致，且如果提供了 claimed_beats，则必须来自 claimed_beats 原文。</requirement>
+  <requirement>verifiedBeatEvidence[].evidence.quote 必须是正文中连续出现的原文短句，不得概括、改写或补写。</requirement>
+  <requirement>如果找不到能证明该 beat 已发生的正文原文，不要输出该 beat 的 evidence，并谨慎将该 beat 放入 verifiedBeats。</requirement>
+</beat_evidence_requirements>
 
 <pending_tasks_requirements>
   <requirement>提取本章中角色领受的、需要在后续章节执行的差事或任务</requirement>
@@ -230,6 +253,8 @@ ${STATE_AUTHORITY_RULES}
   <requirement>pendingTasks: 本章中角色新领受的、或前章遗留并在本章状态发生变化的待办差事</requirement>
   <requirement>currentScene: 本章主要发生的场景/地点</requirement>
   <requirement>storyTime: 故事内的时间标记</requirement>
+  <requirement>chapterHandoff: 本章结尾留给下一章的结构化交接状态；必须只记录正文结尾已经明确出现的信息，不得推断未来剧情。</requirement>
+  <requirement>chapterHandoff.requiredNextOpening 只能描述下一章开头需要承接的状态，不得泄露后续大纲或未来情节。</requirement>
 </story_state_requirements>
 
 <warnings>

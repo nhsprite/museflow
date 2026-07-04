@@ -19,8 +19,19 @@ export interface KeyBeat {
 
 export interface StoryArc {
   totalChapters: number     // 目标总章节数（软约束）
+  autoBoundaryAdjustment?: {
+    originalTotalChapters: number
+    totalExtendedChapters: number
+  }
   acts: ActArc[]
   keyBeats: KeyBeat[]       // 全局关键情节点池
+}
+
+export interface VerifiedBeatEvidence {
+  beat: string
+  chapterIndex: number
+  quote: string
+  confidence: 'high' | 'medium' | 'low'
 }
 
 export interface ChapterOutline {
@@ -30,4 +41,5 @@ export interface ChapterOutline {
   introducedCharacters?: string[]
   claimedBeats?: string[]   // ChapterOutlineAgent 声称本章要推进的 mandatory beats
   verifiedBeats?: string[]  // SummaryAgent 从正文中验证确实发生的 mandatory beats
+  verifiedBeatEvidence?: VerifiedBeatEvidence[] // verifiedBeats 的正文证据
 }

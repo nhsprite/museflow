@@ -64,6 +64,8 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 {storyStateSection}
 
+{chapterContractSection}
+
 {stateConflictsSection}
 
 {timeAnchorSection}
@@ -167,6 +169,7 @@ export interface ChapterPromptSections {
   chapterSupplement: string
   previousSummary: string
   storyStateSection: string
+  chapterContractSection: string
   stateConflictsSection: string
   timeAnchorSection: string
   factVerificationSection: string

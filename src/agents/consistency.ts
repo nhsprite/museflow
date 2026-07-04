@@ -55,11 +55,19 @@ ${outlineAuthorizedFacts.map(f => `  - [${f.subject}] ${f.attribute}: ${f.value}
   </overdue>` : ''}
 </foreshadows>`
 
+    const chapterContractSection = state.chapterContract
+      ? `<chapter_contract>
+<mandatory>【章节契约 - 本章一致性检查硬约束】</mandatory>
+${state.chapterContract}
+</chapter_contract>`
+      : ''
+
     const userContent = buildConsistencyUserPrompt(
       {
         characterWhitelistSection,
         outlineAuthorizedFactsSection,
         foreshadowsSection,
+        chapterContractSection,
       },
       {
         chapterIndex,

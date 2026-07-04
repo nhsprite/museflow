@@ -87,6 +87,7 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     overrides: delta.overrides ?? [],
     currentScene: delta.currentScene,
     storyTime: delta.storyTime,
+    chapterHandoff: delta.chapterHandoff,
   }
 
   const mergedLocations = { ...base.characterLocations }
@@ -170,6 +171,11 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     pendingTasks: mergedPendingTasks,
     currentScene: safeDelta.currentScene || base.currentScene,
     storyTime: safeDelta.storyTime || base.storyTime,
+  }
+
+  const mergedChapterHandoff = safeDelta.chapterHandoff ?? base.chapterHandoff
+  if (mergedChapterHandoff) {
+    result.chapterHandoff = mergedChapterHandoff
   }
 
   if (mergedSuperseded.length > 0) {

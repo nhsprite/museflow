@@ -42,6 +42,8 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
 
 {storyStateSection}
 
+{chapterContractSection}
+
 {stateConflictsSection}
 </context>
 
@@ -188,6 +190,7 @@ export interface ChapterPlannerPromptSections {
   verifiedConstraintsSection: string
   closingPhaseSection: string
   storyStateSection: string
+  chapterContractSection: string
   stateConflictsSection: string
   characterWhitelistSection: string
 }
@@ -285,6 +288,15 @@ ${stateConflicts}
 </state_conflicts>`
 }
 
+function buildChapterContractSection(chapterContract: string | undefined): string {
+  if (!chapterContract) return ''
+
+  return `<chapter_contract>
+<mandatory>【章节契约 - 写作前硬约束】</mandatory>
+${chapterContract}
+</chapter_contract>`
+}
+
 export function buildChapterPlannerUserPrompt(
   state: import('../types.js').ChapterPlannerAgentInput,
   planningConfig: import('../../types/genre.js').ChapterPlanningConfig,
@@ -299,6 +311,7 @@ export function buildChapterPlannerUserPrompt(
     verifiedConstraintsSection: buildVerifiedConstraintsSection(state.verifiedConstraints),
     closingPhaseSection: buildClosingPhaseSection(state.totalChapters, chapterIndex, planningConfig.closingPhaseRatio),
     storyStateSection: buildStoryStateSection(state.storyState),
+    chapterContractSection: buildChapterContractSection(state.chapterContract),
     stateConflictsSection: buildStateConflictsSection(state.stateConflicts),
     characterWhitelistSection: buildCharacterWhitelistSection({
       charactersList: state.charactersList,

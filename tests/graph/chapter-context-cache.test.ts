@@ -118,4 +118,71 @@ describe('buildChapterAgentContext cache', () => {
 
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
   })
+
+  it('builds a chapter contract from handoff facts and act progress', async () => {
+    const context = createMockContext()
+    const state = buildState({
+      totalChapters: 4,
+      storyArc: {
+        totalChapters: 4,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 2,
+            title: '第一幕',
+            theme: '建立',
+            function: '建立目标',
+            mandatoryBeats: ['主角获得任务', '主角交出关键物品'],
+          },
+          {
+            index: 2,
+            startChapter: 3,
+            endChapter: 4,
+            title: '第二幕',
+            theme: '对抗',
+            function: '升级冲突',
+            mandatoryBeats: ['仇敌公开反击'],
+          },
+        ],
+        keyBeats: [],
+      },
+      actProgress: {
+        1: { consumed: ['主角获得任务'], pending: ['主角交出关键物品'] },
+      },
+      storyState: {
+        ...buildState().storyState,
+        canonicalFacts: [
+          {
+            id: 'cf1',
+            subject: '铜钥匙',
+            attribute: '持有者',
+            value: '同伴',
+            establishedIn: 0,
+            confidence: 'high',
+            source: 'chapter_text',
+          },
+        ],
+        chapterHandoff: {
+          chapterNumber: 1,
+          endScene: '仓库外',
+          endTime: '夜里',
+          charactersPresent: ['主角', '同伴'],
+          lastAction: '二人留在仓库外等候',
+          openQuestions: ['后门是否能守住'],
+          requiredNextOpening: '下一章应承接二人在仓库外等候的状态',
+        },
+      },
+    })
+
+    const agentContext = await buildChapterAgentContext(state, 1, context)
+
+    expect(agentContext.chapterContract).toContain('【章节契约】')
+    expect(agentContext.chapterContract).toContain('下一章应承接二人在仓库外等候的状态')
+    expect(agentContext.chapterContract).toContain('本章可推进的 mandatory beats')
+    expect(agentContext.chapterContract).toContain('主角交出关键物品')
+    expect(agentContext.chapterContract).toContain('不得提前消费的后续 mandatory beats')
+    expect(agentContext.chapterContract).toContain('仇敌公开反击')
+    expect(agentContext.chapterContract).toContain('[铜钥匙] 持有者: 同伴')
+  })
 })

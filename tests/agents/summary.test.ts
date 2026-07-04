@@ -199,6 +199,72 @@ describe('SummaryAgent prompt', () => {
     expect(result?.verifiedBeats).toEqual(['主角失去庇护', '反派首次施压'])
   })
 
+  it('extracts chapter handoff and verified beat evidence from SummaryAgent output', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const chapterContent = '主角把铜钥匙交给同伴，叮嘱他天亮前守住后门。随后二人留在仓库外等候。'
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        verifiedBeats: ['主角交出关键物品'],
+        verifiedBeatEvidence: [
+          {
+            beat: '主角交出关键物品',
+            confidence: 'high',
+            evidence: {
+              chapterIndex: 1,
+              quote: '主角把铜钥匙交给同伴',
+            },
+          },
+        ],
+        storyState: {
+          characterLocations: { 主角: '仓库外' },
+          characterStatus: {},
+          keyItemsLocation: { 铜钥匙: '同伴手中' },
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [],
+          currentScene: '仓库外',
+          storyTime: '夜里',
+          chapterHandoff: {
+            chapterNumber: 2,
+            endScene: '仓库外',
+            endTime: '夜里',
+            charactersPresent: ['主角', '同伴'],
+            lastAction: '二人留在仓库外等候',
+            openQuestions: ['后门是否能守住'],
+            requiredNextOpening: '下一章应承接二人在仓库外等候的状态',
+          },
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 1, undefined, undefined, chapterContent, ['主角交出关键物品'])
+
+    expect(result?.storyState?.chapterHandoff).toMatchObject({
+      chapterNumber: 2,
+      endScene: '仓库外',
+      lastAction: '二人留在仓库外等候',
+      requiredNextOpening: '下一章应承接二人在仓库外等候的状态',
+    })
+    expect(result?.verifiedBeatEvidence).toEqual([
+      {
+        beat: '主角交出关键物品',
+        chapterIndex: 1,
+        quote: '主角把铜钥匙交给同伴',
+        confidence: 'high',
+      },
+    ])
+  })
+
   it('normalizes verifiedBeats to matching claimedBeats and drops unrelated descriptions', async () => {
     const { processSummaryOutput } = await import('../../src/agents/summary.ts')
     const output = {

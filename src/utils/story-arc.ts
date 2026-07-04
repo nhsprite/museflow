@@ -206,6 +206,8 @@ export function validateActBoundaryAdjustment(
 const AUTO_ADJUST_MAX_EXTENSION = 3
 /** 单幕累计自动延长上限（章）。超过后必须人工处理或重写消费 pending beats。 */
 const AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION = 3
+/** 全书累计自动延长上限比例。防止多个幕分别延长导致整本书失控膨胀。 */
+const AUTO_ADJUST_MAX_GLOBAL_EXTENSION_RATIO = 0.15
 
 export interface ApplyActBoundaryAdjustmentResult {
   storyArc: StoryArc
@@ -295,6 +297,17 @@ export function applyActBoundaryAdjustment(
     0
   )
   const remainingCumulativeExtension = AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION - alreadyExtendedBy
+  const originalTotalChapters = storyArc.autoBoundaryAdjustment?.originalTotalChapters ?? storyArc.totalChapters
+  const globalExtensionCap = Math.max(
+    AUTO_ADJUST_MAX_EXTENSION,
+    Math.ceil(originalTotalChapters * AUTO_ADJUST_MAX_GLOBAL_EXTENSION_RATIO)
+  )
+  const alreadyGloballyExtendedBy = Math.max(
+    storyArc.autoBoundaryAdjustment?.totalExtendedChapters ?? 0,
+    storyArc.autoBoundaryAdjustment ? storyArc.totalChapters - originalTotalChapters : 0,
+    0
+  )
+  const remainingGlobalExtension = globalExtensionCap - alreadyGloballyExtendedBy
 
   if (isExtension && remainingCumulativeExtension <= 0) {
     return {
@@ -305,8 +318,17 @@ export function applyActBoundaryAdjustment(
     }
   }
 
+  if (isExtension && remainingGlobalExtension <= 0) {
+    return {
+      storyArc,
+      applied: false,
+      requiresManualResolution: true,
+      reason: `全书累计自动延长上限（${globalExtensionCap} 章）已用尽，需要重写当前章节消费 pending beats，或进行全书结构再平衡。`,
+    }
+  }
+
   const cappedDelta = isExtension
-    ? Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION, remainingCumulativeExtension)
+    ? Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION, remainingCumulativeExtension, remainingGlobalExtension)
     : Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
   const cappedProposedEnd = isExtension
     ? currentAct.endChapter + cappedDelta
@@ -341,8 +363,24 @@ export function applyActBoundaryAdjustment(
     return actWithoutAdjustment
   })
 
+  const nextStoryArc: StoryArc = { ...shiftedStoryArc, acts: newActs }
+  if (isExtension) {
+    nextStoryArc.autoBoundaryAdjustment = {
+      originalTotalChapters,
+      totalExtendedChapters: alreadyGloballyExtendedBy + cappedDelta,
+    }
+  } else if (storyArc.autoBoundaryAdjustment) {
+    const totalExtendedChapters = Math.max(0, shiftedStoryArc.totalChapters - originalTotalChapters)
+    if (totalExtendedChapters > 0) {
+      nextStoryArc.autoBoundaryAdjustment = {
+        originalTotalChapters,
+        totalExtendedChapters,
+      }
+    }
+  }
+
   return {
-    storyArc: { ...shiftedStoryArc, acts: newActs },
+    storyArc: nextStoryArc,
     applied: true,
     reason: `已自动将第 ${proposal.actIndex} 幕结束章节从 ${currentAct.endChapter} 调整到 ${cappedProposedEnd}`,
   }

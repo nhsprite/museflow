@@ -48,6 +48,13 @@ ${state.stateConflicts}
 </state_conflicts>`
       : ''
 
+    const chapterContractSection = state.chapterContract
+      ? `<chapter_contract>
+<mandatory>【章节契约 - 本章规划与正文必须满足】</mandatory>
+${state.chapterContract}
+</chapter_contract>`
+      : ''
+
     const outlineComplianceSection = `<outline_compliance>
 <mandatory>【大纲遵循 - 强制要求】</mandatory>
 - 本章只能呈现大纲中明确列出的情节点，不得擅自添加大纲未提及的新情节、新场景或新角色
@@ -182,6 +189,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         chapterSupplement,
         previousSummary,
         storyStateSection,
+        chapterContractSection,
         stateConflictsSection,
         timeAnchorSection,
         factVerificationSection,

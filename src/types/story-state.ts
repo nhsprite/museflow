@@ -36,6 +36,16 @@ export interface PendingTask {
   status: 'pending' | 'done' | 'postponed' | 'superseded' | 'expired'
 }
 
+export interface ChapterHandoff {
+  chapterNumber: number
+  endScene: string
+  endTime: string
+  charactersPresent: string[]
+  lastAction: string
+  openQuestions: string[]
+  requiredNextOpening?: string
+}
+
 export interface StoryState {
   characterLocations: Record<string, string>
   characterStatus: Record<string, string>
@@ -46,6 +56,7 @@ export interface StoryState {
   pendingTasks: PendingTask[]
   currentScene: string
   storyTime: string
+  chapterHandoff?: ChapterHandoff
   supersededFacts?: SupersededFact[]
   canonicalFacts?: CanonicalFact[]
   overrides?: StateOverride[]
