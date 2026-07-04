@@ -7,7 +7,7 @@ MuseFlow is a locally-run CLI tool. Enter a one-sentence story pitch, and AI aut
 ## Key Features
 
 - **LangGraph State Graph Orchestration**: Multi-agent collaboration with breakpoint recovery and manual rewrite confirmation
-- **8 Specialized Agent Types**: Worldbuilding, Characters, Outline, Chapter, Quality, Foreshadowing Detection, Hallucination Detection, Logic Consistency
+- **10 Specialized Agent Types**: Worldbuilding, Characters, Story Arc, Chapter Outline, Chapter Planning, Drafting, Foreshadowing, Consistency, Fixing, Summary
 - **Genre Skill System**: Built-in genre packs for Xianxia, Sci-Fi, Horror, and more, with support for user-defined Skills
 - **Local-First**: All data stored locally; configurable models (OpenAI-compatible / Anthropic)
 - **Breakpoint Recovery**: Resume writing at any time after interruption without starting over
@@ -117,7 +117,7 @@ museflow info <story-id>
 ```
 start → World → Characters → Outline
                        ↓
-write → Draft → Quality Check → Foreshadowing → Hallucination → Consistency → Outline Compliance
+write → Chapter Outline → Chapter Plan → Draft → Foreshadowing/Consistency Validation → Fix or Rewrite
                        ↓
                  ┌─────┴─────┐
                  ↓           ↓
@@ -158,18 +158,20 @@ The following genres are built-in and can be specified via `--genre`:
 
 ## Agent System
 
-MuseFlow uses 8 specialized agent types working together:
+MuseFlow uses 10 specialized agent types working together:
 
 | Agent | Responsibility |
 |-------|----------------|
 | **WorldBuilder** | Build world settings, history, and social structures |
 | **Character** | Generate character profiles, personalities, and relationships |
-| **Outline** | Generate chapter outlines ensuring story structure integrity |
-| **Chapter** | Draft chapter body text with consistent style |
-| **Quality** | Check for word repetition, description quality, and pacing |
-| **Foreshadowing** | Detect foreshadowing payoffs; no new foreshadowing in final 15% |
-| **Hallucination** | Detect content contradictions with established settings |
-| **Consistency** | Check cross-chapter logic consistency |
+| **StoryArc** | Generate act structure, mandatory beats, and global key beats |
+| **ChapterOutline** | Generate detailed per-chapter outlines immediately before drafting |
+| **ChapterPlanner** | Plan chapter sections, time anchors, and previous-task handling |
+| **Chapter** | Draft chapter body text with consistent style and state |
+| **Foreshadowing** | Detect foreshadowing creation and payoff from chapter text |
+| **Consistency** | Check cross-chapter logic, setting, and outline compliance issues |
+| **Fix** | Repair patchable issues at sentence, paragraph, or chapter level |
+| **Summary** | Generate chapter summaries and extract canonical facts, tasks, and state updates |
 
 ## Data Storage
 
@@ -190,7 +192,7 @@ Story data is saved locally in the `./books/` directory:
 src/
 ├── cli/           # CLI entry point (all command implementations)
 ├── graph/         # LangGraph graph orchestration (state, nodes, edges, checkpoints)
-├── agents/        # 8 agent type implementations
+├── agents/        # 10 agent type implementations
 ├── core/          # Core business logic (Runner)
 ├── genres/        # Genre Skill system
 ├── storage/       # JSON metadata + filesystem storage

@@ -12,22 +12,23 @@ import {
   SummaryAgent,
 } from '../agents/index.js'
 
-function makeAgentKey(provider: ModelProvider, name: string): string {
-  return `${name}:${provider.constructor.name}`
-}
-
-const instances = new Map<string, unknown>()
+const instances = new WeakMap<ModelProvider, Map<string, unknown>>()
 
 function getAgentInstance<T>(
   provider: ModelProvider,
   key: string,
   ctor: new (provider: ModelProvider) => T,
 ): T {
-  const fullKey = makeAgentKey(provider, key)
-  let instance = instances.get(fullKey) as T | undefined
+  let providerInstances = instances.get(provider)
+  if (!providerInstances) {
+    providerInstances = new Map<string, unknown>()
+    instances.set(provider, providerInstances)
+  }
+
+  let instance = providerInstances.get(key) as T | undefined
   if (!instance) {
     instance = new ctor(provider)
-    instances.set(fullKey, instance)
+    providerInstances.set(key, instance)
   }
   return instance
 }

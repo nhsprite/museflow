@@ -99,9 +99,9 @@ function buildBlockingReport(
 
   if (reason === 'state_corruption' || conflicts.length > 0) {
     suggestedActions.push(
-      { type: 'choose_canonical', description: '若认为当前权威事实正确，运行 museflow reconcile <story-id> --choose canonical' },
-      { type: 'choose_outline', description: '若认为大纲要求正确，运行 museflow reconcile <story-id> --choose outline' },
-      { type: 'author_override', description: '或运行 museflow reconcile <story-id> --override 声明作者裁决' }
+      { type: 'choose_canonical', description: '若认为当前权威事实正确，请根据阻断报告调整本章大纲，或运行 museflow rewrite <story-id> 后在交互式冲突提示中选择权威事实' },
+      { type: 'choose_outline', description: '若认为大纲要求正确，请运行 museflow rewrite <story-id> 后在交互式冲突提示中选择以大纲为准' },
+      { type: 'author_override', description: '若需要作者裁决，请先记录裁决内容并重新运行 museflow rewrite <story-id>；当前版本未提供独立 reconcile 命令' }
     )
   }
 

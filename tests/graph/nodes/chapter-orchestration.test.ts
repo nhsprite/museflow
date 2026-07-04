@@ -250,6 +250,36 @@ describe('converge_and_decide', () => {
     expect(result.session?.forceStructuralRewrite).toBe(false)
   })
 
+  it('does not suggest unavailable reconcile commands in state-corruption blocking reports', async () => {
+    const { isStateCorruptionIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+
+    const pendingIssues: Issue[] = [
+      {
+        id: '1',
+        type: 'state_corruption',
+        severity: 'error',
+        description: '大纲与权威事实冲突，需要作者裁决',
+      },
+    ]
+    const state = buildBaseState({
+      session: {
+        rewriteApproved: true,
+        errorRewriteAttempts: 2,
+        previousIssues: pendingIssues,
+        previousRawErrorCount: 1,
+      },
+      pendingIssues,
+    })
+
+    const result = await converge_and_decide(createMockContext(), state)
+
+    const descriptions = result.blockingReport?.suggestedActions.map(action => action.description).join('\n') ?? ''
+    expect(result.blockingReport?.reason).toBe('state_corruption')
+    expect(descriptions).not.toContain('museflow reconcile')
+    expect(descriptions).toContain('museflow rewrite')
+  })
+
   it('detects rewrite loop stall and requests rewrite with a blocking report', async () => {
     const { issueFingerprint } = await import('../../../src/utils/issue-deduplication.js')
     vi.mocked(issueFingerprint).mockResolvedValue('stalled-fingerprint')
