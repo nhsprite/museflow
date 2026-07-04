@@ -5,7 +5,15 @@
   "type": "module",
   "author": "nihao.sensation@gmail.com",
   "license": "MIT",
-  "keywords": ["cli", "ai", "novel", "writing", "langgraph", "fiction", "generator"],
+  "keywords": [
+    "cli",
+    "ai",
+    "novel",
+    "writing",
+    "langgraph",
+    "fiction",
+    "generator"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -47,6 +55,8 @@
     "@typescript-eslint/eslint-plugin": "^8.19.1",
     "@typescript-eslint/parser": "^8.19.1",
     "eslint": "^9.17.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.9.4",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
