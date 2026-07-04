@@ -280,13 +280,29 @@ export async function batchJudgeTaskRelevance(
   )
 }
 
-interface EntityChangeResult {
+export type EntityChangeKind = 'explicit_change' | 'scene_context' | 'ambiguous' | 'not_present'
+
+export interface EntityChangeResult {
   /** 若句子处于回忆、假设、梦境、条件或否定语境，则跳过此条。 */
   skip: boolean
   /** 提取到的新位置（地点），无则为 null。 */
   location: string | null
   /** 提取到的新状态，无则为 null。 */
   state: string | null
+  /** 描述文本与 subject 变更之间的关系。只有 explicit_change 可以驱动 storyState 更新。 */
+  changeKind: EntityChangeKind
+}
+
+function parseEntityChangeKind(value: unknown): EntityChangeKind {
+  switch (value) {
+    case 'explicit_change':
+    case 'scene_context':
+    case 'ambiguous':
+    case 'not_present':
+      return value
+    default:
+      return 'not_present'
+  }
 }
 
 export async function batchExtractEntityChanges(
@@ -304,23 +320,33 @@ export async function batchExtractEntityChanges(
             skip: { type: 'boolean' },
             location: { type: ['string', 'null'] },
             state: { type: ['string', 'null'] },
+            changeKind: {
+              type: 'string',
+              enum: ['explicit_change', 'scene_context', 'ambiguous', 'not_present'],
+            },
           },
-          required: ['skip', 'location', 'state'],
+          required: ['skip', 'location', 'state', 'changeKind'],
         },
       },
     },
     required: ['results'],
   }
 
-  const defaultResult: EntityChangeResult = { skip: false, location: null, state: null }
+  const defaultResult: EntityChangeResult = { skip: true, location: null, state: null, changeKind: 'not_present' }
 
   return batchJudge(
     provider,
     `你是小说状态抽取助手。对每条输入，判断文本中是否描述了 subject 的位置或状态变化：
-- 若文本处于回忆、假设、梦境、条件句、未来计划或否定语境，则 skip=true，不提取。
-- 若 attribute 为"所在位置"，提取 subject 所在的地点作为 location。
-- 若 attribute 为"状态"，提取 subject 的状态作为 state。
-- 只输出 JSON {"results": [{"skip": bool, "location": "..."|null, "state": "..."|null}, ...]}，顺序与输入一致。`,
+- changeKind="explicit_change"：文本明确写出 subject 的新位置/当前所在/持有者，或明确写出移动、交出、收回、携带、放置 subject 的动作，足以建立新的权威状态。
+- changeKind="scene_context"：文本只写了场景地点、人物所在地点、或章节发生地点，subject 的位置只是从场景上下文推断出来的。
+- changeKind="ambiguous"：subject 被提到，但地点/状态关系不明确，或可能是同类物品、别名、泛称、背景说明。
+- changeKind="not_present"：文本没有描述该 subject。
+- 若文本处于回忆、假设、梦境、条件句、未来计划或否定语境，则 changeKind="ambiguous" 或 "not_present"，skip=true，不提取。
+- 只有 changeKind="explicit_change" 时才填写 location 或 state，并设置 skip=false；其他情况必须 skip=true 且 location/state 为 null。
+- 若 attribute 为"所在位置"，提取 subject 的明确位置或明确持有者作为 location。
+- 若 attribute 为"状态"，提取 subject 的明确状态作为 state。
+- 不得把章节场景地点、人物地点、或持有者所在场景自动当成 subject 的位置。
+- 只输出 JSON {"results": [{"skip": bool, "location": "..."|null, "state": "..."|null, "changeKind": "explicit_change"|"scene_context"|"ambiguous"|"not_present"}, ...]}，顺序与输入一致。`,
     items.map(i => `attribute=${i.attribute}, subject=${i.subject}, text=${i.text}`),
     schema,
     defaultResult,
@@ -331,6 +357,7 @@ export async function batchExtractEntityChanges(
         skip: r.skip === true,
         location: typeof r.location === 'string' ? r.location : null,
         state: typeof r.state === 'string' ? r.state : null,
+        changeKind: parseEntityChangeKind(r.changeKind),
       }
     }
   )

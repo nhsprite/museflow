@@ -357,7 +357,7 @@ describe('reconcileStoryState', () => {
   it('auto-resolves item location retcon', async () => {
     const state = baseState()
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([
-      { skip: false, location: '官府仓库', state: null },
+      { skip: false, location: '官府仓库', state: null, changeKind: 'explicit_change' },
     ])
 
     const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createMockProvider())
@@ -382,7 +382,7 @@ describe('reconcileStoryState', () => {
       { id: 'f1', subject: '密信', attribute: '所在位置', value: '书桌抽屉', establishedIn: 8 },
     ]
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([
-      { skip: false, location: '官府仓库', state: null },
+      { skip: false, location: '官府仓库', state: null, changeKind: 'explicit_change' },
     ])
 
     const report = await reconcileStoryState(state, '第10章：密信被转移至官府仓库。', [], 9, createMockProvider())
@@ -491,7 +491,7 @@ describe('conflict detection & classification', () => {
     const state = emptyState()
     state.keyItemsLocation = { '密信': '书桌抽屉' }
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValueOnce([
-      { skip: false, location: '官府仓库', state: null },
+      { skip: false, location: '官府仓库', state: null, changeKind: 'explicit_change' },
     ])
 
     const conflicts = await detectItemLocationConflicts(state, '第10章：密信被转移至官府仓库。', createMockProvider())
@@ -501,11 +501,32 @@ describe('conflict detection & classification', () => {
     expect(conflicts[0].type).toBe('retcon')
   })
 
+  it('ignores item location extracted only from scene context', async () => {
+    const state = emptyState()
+    state.keyItemsLocation = {
+      '密信': '书桌抽屉',
+      '白玉牌': '赵管事腰间',
+    }
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValueOnce([
+      { skip: false, location: '官府仓库', state: null, changeKind: 'explicit_change' },
+      { skip: false, location: '官府仓库', state: null, changeKind: 'scene_context' },
+    ])
+
+    const conflicts = await detectItemLocationConflicts(
+      state,
+      '第10章：主角抵达官府仓库，密信被转移至官府仓库。',
+      createMockProvider()
+    )
+
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].subject).toBe('密信')
+  })
+
   it('detects character status retcon', async () => {
     const state = emptyState()
     state.characterStatus = { '主角': '自由' }
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValueOnce([
-      { skip: false, location: null, state: '身受重伤' },
+      { skip: false, location: null, state: '身受重伤', changeKind: 'explicit_change' },
     ])
 
     const conflicts = await detectCharacterStatusConflicts(state, '第10章：主角已身受重伤。', createMockProvider())

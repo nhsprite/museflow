@@ -82,6 +82,7 @@ async function detectEntityConflicts<T extends Record<string, string>>(
     const change = changes[i]
     const item = items[i]!
     if (!change || change.skip) continue
+    if (change.changeKind !== 'explicit_change') continue
 
     const newValue = attribute === '所在位置' ? change.location : change.state
     if (!newValue || newValue === item.currentValue) continue
