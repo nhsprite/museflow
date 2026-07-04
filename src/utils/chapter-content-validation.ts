@@ -1,4 +1,4 @@
-import { countChineseWords, extractChineseKeywords } from './text.js'
+import { countChineseWords } from './text.js'
 import type { ModelProvider } from '../model/provider.js'
 import { batchValidateFixedContent } from './context-judge.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
@@ -44,28 +44,6 @@ export const CHAPTER_TITLE_ONLY_PATTERN = new RegExp(
   `^(#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*章[\\s:：]?)`,
   'm'
 )
-
-const REVISION_PLAN_KEYWORDS = [
-  '问题分析',
-  '修复建议',
-  '修改建议',
-  '改进建议',
-  '修改计划',
-  '修订计划',
-  '问题清单',
-  '修复清单',
-  '修改点',
-  '需修改',
-  '待修复',
-]
-
-function detectRevisionPlanShape(text: string): boolean {
-  let hitCount = 0
-  for (const keyword of REVISION_PLAN_KEYWORDS) {
-    if (text.includes(keyword)) hitCount++
-  }
-  return hitCount >= 2
-}
 
 export function parseChineseNumber(str: string): number | null {
   let result = 0
@@ -113,14 +91,6 @@ export function extractChapterNumber(heading: string): number | null {
   return null
 }
 
-function countIntersection(a: Set<string>, b: Set<string>): number {
-  let count = 0
-  for (const value of a) {
-    if (b.has(value)) count++
-  }
-  return count
-}
-
 export interface ChapterHeadingCorrection {
   corrected: string
   originalFoundNumber: number
@@ -128,12 +98,8 @@ export interface ChapterHeadingCorrection {
 }
 
 /**
- * 当模型把本章内容误标为下一章时，尝试修正章节标题。
- *
- * 仅当满足以下条件时才修正：
- * 1. 检测到的章节号正好是期望章节号 + 1（模型被后续章节边界提示干扰）；
- * 2. 若下一章大纲存在，正文与当前章大纲的关键词重叠度必须明显高于下一章；
- * 3. 若下一章大纲尚未生成，正文与当前章大纲必须有足够强的绝对关键词重叠。
+ * 当模型把本章内容误标为下一章时，曾经尝试自动修正章节标题。
+ * 该入口保留给调用方，但在没有结构化判据前不再自动修正。
  */
 export function tryCorrectOffByOneChapterHeading(
   rawContent: string,
@@ -143,50 +109,13 @@ export function tryCorrectOffByOneChapterHeading(
   minOverlapRatio = 1.5,
   minCurrentOverlapWithoutNext = 5
 ): ChapterHeadingCorrection | null {
-  const expectedDisplayNumber = chapterIndex + 1
-  const heading = findChapterHeading(rawContent)
-  if (!heading) return null
-
-  const foundChapterNumber = extractChapterNumber(heading)
-  if (foundChapterNumber !== expectedDisplayNumber + 1) return null
-
-  const currentKeywords = new Set(extractChineseKeywords(rawContent))
-  const currentOutlineKeywords = new Set(extractChineseKeywords(currentOutlineDescription))
-  const currentOverlap = countIntersection(currentKeywords, currentOutlineKeywords)
-
-  if (!nextOutlineDescription || nextOutlineDescription.trim().length === 0) {
-    if (currentOverlap < minCurrentOverlapWithoutNext) return null
-
-    const correctedHeading = heading.replace(
-      new RegExp(`第\\s*(${CHAPTER_NUMERAL_CLASS})\\s*章`),
-      `第${expectedDisplayNumber}章`
-    )
-    const correctedContent = rawContent.replace(heading, correctedHeading)
-
-    return {
-      corrected: correctedContent,
-      originalFoundNumber: foundChapterNumber,
-      reason: `下一章大纲为空，正文与当前章大纲共有 ${currentOverlap} 个关键词，判定为章节号笔误`,
-    }
-  }
-
-  const nextOutlineKeywords = new Set(extractChineseKeywords(nextOutlineDescription))
-  const nextOverlap = countIntersection(currentKeywords, nextOutlineKeywords)
-
-  if (currentOverlap === 0 || nextOverlap === 0) return null
-  if (currentOverlap / nextOverlap < minOverlapRatio) return null
-
-  const correctedHeading = heading.replace(
-    new RegExp(`第\\s*(${CHAPTER_NUMERAL_CLASS})\\s*章`),
-    `第${expectedDisplayNumber}章`
-  )
-  const correctedContent = rawContent.replace(heading, correctedHeading)
-
-  return {
-    corrected: correctedContent,
-    originalFoundNumber: foundChapterNumber,
-    reason: `正文与当前章大纲共有 ${currentOverlap} 个关键词，与下一章仅有 ${nextOverlap} 个，判定为章节号笔误`,
-  }
+  void rawContent
+  void chapterIndex
+  void currentOutlineDescription
+  void nextOutlineDescription
+  void minOverlapRatio
+  void minCurrentOverlapWithoutNext
+  return null
 }
 
 export async function validateFixedChapterContent(
@@ -212,10 +141,6 @@ export async function validateFixedChapterContent(
       valid: false,
       error: `修复后的内容章节号不匹配：期望第${expectedDisplayNumber}章，实际第${foundChapterNumber}章`,
     }
-  }
-
-  if (detectRevisionPlanShape(rawContent)) {
-    return { valid: false, error: '修复后的内容疑似修改计划或问题分析，不是正文' }
   }
 
   const wordCount = countChineseWords(rawContent)

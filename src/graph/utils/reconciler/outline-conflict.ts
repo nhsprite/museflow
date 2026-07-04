@@ -127,7 +127,7 @@ export async function authorizeOutlineFacts(
       const subject = fact.subject.trim()
       const attribute = fact.attribute.trim()
       const value = fact.value.trim()
-      if (subject.length < 2 || attribute.length < 2 || value.length < 3) continue
+      if (subject.length === 0 || attribute.length === 0 || value.length === 0) continue
 
       if (fact.contradictsExisting || canonicalFactConflicts(existingFacts, subject, attribute)) {
         skipped.push(`${subject}/${attribute}`)

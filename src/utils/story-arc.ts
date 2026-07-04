@@ -387,110 +387,6 @@ export function applyActBoundaryAdjustment(
   }
 }
 
-export function normalizeTextForMatch(text: string): string {
-  return text.replace(/[\s\n\p{P}]/gu, '')
-}
-
-function extractParentheticalUnits(text: string): { coreText: string; optionalUnits: string[] } {
-  const optionalUnits: string[] = []
-  const coreText = text.replace(/[（(].*?[）)]/gu, match => {
-    optionalUnits.push(match.slice(1, -1))
-    return ''
-  })
-  return { coreText, optionalUnits }
-}
-
-function removePlaceholder(text: string): string {
-  // “主角”是常被具体人名替换的占位词，匹配时剔除以避免因主语替换导致漏配。
-  return text.replace(/主角/g, '')
-}
-
-function longestCommonSubsequenceLength(a: string, b: string): number {
-  if (a.length === 0 || b.length === 0) return 0
-  // Ensure 'a' is the shorter string to keep O(min(n,m)) space.
-  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
-  let previous = new Array(shorter.length + 1).fill(0)
-  let current = new Array(shorter.length + 1).fill(0)
-
-  for (let i = 1; i <= longer.length; i++) {
-    for (let j = 1; j <= shorter.length; j++) {
-      if (longer[i - 1] === shorter[j - 1]) {
-        current[j] = previous[j - 1] + 1
-      } else {
-        current[j] = Math.max(previous[j], current[j - 1])
-      }
-    }
-    [previous, current] = [current, previous]
-    current.fill(0)
-  }
-
-  return previous[shorter.length]
-}
-
-function partCoverage(rawText: string, beatPart: string): number {
-  const raw = removePlaceholder(normalizeTextForMatch(rawText))
-  const part = removePlaceholder(normalizeTextForMatch(beatPart))
-  if (part.length === 0) return 1
-  if (raw.length === 0) return 0
-  if (raw.includes(part)) return 1
-  const lcs = longestCommonSubsequenceLength(raw, part)
-  return lcs / part.length
-}
-
-function computeCoverageScore(rawText: string, beat: string): number {
-  if (beat.trim().length === 0) return 0
-
-  const { coreText, optionalUnits } = extractParentheticalUnits(beat)
-  const coreCoverage = partCoverage(rawText, coreText)
-  const optionalCoverage =
-    optionalUnits.length === 0
-      ? 1
-      : optionalUnits.reduce((sum, unit) => sum + partCoverage(rawText, unit), 0) / optionalUnits.length
-
-  return coreCoverage * 0.7 + optionalCoverage * 0.3
-}
-
-function isMandatoryBeatCovered(
-  rawText: string,
-  beat: string,
-  coreThreshold = 0.7,
-  optionalThreshold = 0
-): boolean {
-  const rawNormalized = normalizeTextForMatch(rawText)
-  const beatNormalized = normalizeTextForMatch(beat)
-  if (rawNormalized.length === 0 || beatNormalized.length === 0) return false
-
-  if (rawNormalized.includes(beatNormalized) || beatNormalized.includes(rawNormalized)) {
-    return true
-  }
-
-  const { coreText, optionalUnits } = extractParentheticalUnits(beat)
-  const coreCoverage = partCoverage(rawText, coreText)
-  const optionalCoverage =
-    optionalUnits.length === 0
-      ? 1
-      : optionalUnits.reduce((sum, unit) => sum + partCoverage(rawText, unit), 0) / optionalUnits.length
-
-  return coreCoverage >= coreThreshold && optionalCoverage >= optionalThreshold
-}
-
-export function matchMandatoryBeat(rawBeat: string, candidates: string[]): string | undefined {
-  const trimmed = rawBeat.trim()
-  if (trimmed.length === 0) return undefined
-
-  let bestCandidate: string | undefined
-  let bestScore = -1
-  for (const candidate of candidates) {
-    if (!isMandatoryBeatCovered(trimmed, candidate)) continue
-    const score = computeCoverageScore(trimmed, candidate)
-    if (score > bestScore) {
-      bestScore = score
-      bestCandidate = candidate
-    }
-  }
-  return bestCandidate
-}
-
 async function requestCoveredBeats(
   provider: ModelProvider,
   contextText: string,
@@ -526,10 +422,11 @@ async function requestCoveredBeats(
 
     const raw = Array.isArray(response.coveredBeats) ? response.coveredBeats : []
     const matched: string[] = []
+    const allowed = new Set(beats)
     for (const item of raw) {
       if (typeof item !== 'string') continue
-      const candidate = matchMandatoryBeat(item.trim(), beats)
-      if (candidate && !matched.includes(candidate)) {
+      const candidate = item.trim()
+      if (allowed.has(candidate) && !matched.includes(candidate)) {
         matched.push(candidate)
       }
     }

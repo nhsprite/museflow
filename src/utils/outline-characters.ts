@@ -26,7 +26,7 @@ export function extractOutlineCharacters(
 
     for (const name of outline.introducedCharacters) {
       const trimmed = name.trim()
-      if (trimmed.length < 2 || trimmed.length > 6) continue
+      if (trimmed.length === 0) continue
       if (!seen.has(trimmed)) {
         seen.set(trimmed, {
           name: trimmed,

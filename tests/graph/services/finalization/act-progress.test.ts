@@ -106,10 +106,10 @@ describe('finalization act progress helpers', () => {
     expect(getActForChapter(state.storyArc, 3)).toBeUndefined()
   })
 
-  it('normalizes verified beat summaries to mandatory beat strings', () => {
+  it('keeps only exact mandatory beat strings', () => {
     expect(
       normalizeVerifiedBeats(
-        ['阿明告别故乡，离开家乡', '无关描述'],
+        ['主角离开家乡', '阿明告别故乡，离开家乡', '无关描述'],
         ['主角离开家乡']
       )
     ).toEqual(['主角离开家乡'])

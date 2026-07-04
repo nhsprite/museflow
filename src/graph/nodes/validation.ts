@@ -8,7 +8,6 @@ import {
 import { generateId } from '../../utils/id.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../genres/registry.js'
-import { isSemanticallyRelated } from '../../utils/text-similarity.js'
 import { buildConsistencyOutlineContext } from './planning.js'
 import { countChineseWords } from '../../utils/text.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
@@ -246,13 +245,6 @@ export async function detect_foreshadowing(
   const cleanedForeshadowStack = state.foreshadowStack.filter(f => {
     const createdAt = f.createdAtChapter ?? 0
     if (createdAt > currentChapter) return false
-    if (createdAt === currentChapter && content) {
-      const isSelfReferential = isSemanticallyRelated(f.text, content, 0.5)
-      if (isSelfReferential) {
-        logger.info(`[MuseFlow] 伏笔清理: 移除自埋自收伏笔 "${f.text.substring(0, 30)}..."`)
-        return false
-      }
-    }
     return true
   })
 

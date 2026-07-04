@@ -7,8 +7,22 @@ const planningConfig: ChapterPlanningConfig = {
   maxNonErrorIssuesPerType: 3,
 } as ChapterPlanningConfig
 
-function makeIssue(id: string, type: Issue['type'], severity: Issue['severity'], description: string): Issue {
-  return { id, type, severity, description }
+function makeIssue(
+  id: string,
+  type: Issue['type'],
+  severity: Issue['severity'],
+  description: string,
+  location?: string,
+  paragraphIndex?: number
+): Issue {
+  return {
+    id,
+    type,
+    severity,
+    description,
+    ...(location ? { location } : {}),
+    ...(paragraphIndex !== undefined ? { locationRef: { paragraphIndex } } : {}),
+  }
 }
 
 describe('applyIssuePolicy', () => {
@@ -31,10 +45,10 @@ describe('applyIssuePolicy', () => {
   it('caps non-error issues per type', async () => {
     const issues: Issue[] = [
       makeIssue('e1', 'consistency', 'error', '硬性矛盾'),
-      makeIssue('w1', 'consistency', 'warning', '描写冗长'),
-      makeIssue('w2', 'consistency', 'warning', '表达生硬'),
-      makeIssue('w3', 'consistency', 'warning', '节奏拖沓'),
-      makeIssue('w4', 'consistency', 'warning', '措辞不当'),
+      makeIssue('w1', 'consistency', 'warning', '描写冗长', '第1段', 0),
+      makeIssue('w2', 'consistency', 'warning', '表达生硬', '第2段', 1),
+      makeIssue('w3', 'consistency', 'warning', '节奏拖沓', '第3段', 2),
+      makeIssue('w4', 'consistency', 'warning', '措辞不当', '第4段', 3),
     ]
 
     const result = await applyIssuePolicy(issues, {

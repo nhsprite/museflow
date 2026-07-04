@@ -6,7 +6,6 @@ import type { ChapterMeta } from '../types/chapter.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
-import { calculateKeywordOverlap } from '../utils/text-similarity.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 import { buildCanonicalFactsSection, buildCharacterWhitelistSection, FACT_CONSISTENCY_RULES } from './prompts/fragments/index.js'
 import { buildChapterSystemPrompt, buildChapterUserPrompt } from './prompts/chapter-prompt.js'
@@ -24,7 +23,10 @@ export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
     const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
 
     const outline = state.outline || ''
-    const chapterInfo = this.extractChapterOutline(outline, displayChapterNumber)
+    const chapterInfo = {
+      title: state.chapterTitle?.trim() || `第${displayChapterNumber}章`,
+      description: state.chapterSummary?.trim() || outline,
+    }
 
     const previousSummary = state.previousChapters || '（这是第一章）'
 
@@ -118,9 +120,7 @@ ${state.chapterContent}
 </chapter_time_anchor>`
       : ''
 
-    const mainCharacterName = state.characters
-      ? (state.characters.match(/^【([^】]+)】/m)?.[1] || '（未设定主角）')
-      : '（未设定主角）'
+    const mainCharacterName = state.charactersList?.[0]?.name ?? '（未设定主角）'
 
     const characterWhitelistSection = buildCharacterWhitelistSection({
       charactersList: state.charactersList,
@@ -237,14 +237,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     if (!description || description.trim().length === 0) {
       return ['（大纲未提供具体情节点）']
     }
-    const sentences = description
-      .split(/[。；!！?？]|\n/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0)
-    if (sentences.length === 0) {
-      return [description.trim()]
-    }
-    return sentences
+    return [description.trim()]
   }
 
   private buildFactVerificationSection(state: ChapterAgentInput): string {
@@ -290,17 +283,10 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     return buildCanonicalFactsSection(facts)
   }
 
-  private sortCanonicalFactsByOutlineRelevance(canonicalFactsText: string, outline: string): string {
+  private sortCanonicalFactsByOutlineRelevance(canonicalFactsText: string, _outline: string): string {
     const lines = canonicalFactsText.split('\n').filter(line => line.trim().length > 0)
     if (lines.length === 0) return ''
-
-    const scored = lines.map(line => ({
-      line,
-      score: calculateKeywordOverlap(line, outline),
-    }))
-
-    scored.sort((a, b) => b.score - a.score)
-    return scored.map(s => s.line).join('\n')
+    return lines.join('\n')
   }
 
   private buildAbsoluteConstraints(state: ChapterAgentInput): string {
@@ -317,35 +303,6 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     }
 
     return `<absolute_constraints>\n<mandatory>【绝对约束 - 优先级最高】</mandatory>\n${constraints.map(c => `- ${c}`).join('\n')}\n</absolute_constraints>`
-  }
-
-  private extractChapterOutline(outline: string, chapterIndex: number): { title: string; description: string } {
-    const chapterPatterns = [
-      new RegExp(`第\\s*${chapterIndex}\\s*章?[:：]?\\s*(.+?)(?:\\n|$)`),
-      new RegExp(`第\\s*${chapterIndex}\\s*节?[:：]?\\s*(.+?)(?:\\n|$)`),
-      new RegExp(`chapter\\s*${chapterIndex}[:：]?\\s*(.+?)(?:\\n|$)`, 'i'),
-    ]
-
-    for (const pattern of chapterPatterns) {
-      const match = outline.match(pattern)
-      if (match && match[1]) {
-        return { title: match[1].trim(), description: '' }
-      }
-    }
-
-    const chapterBlocks = outline.split(/(?=第\s*\d+\s*[章节])/i)
-    for (const block of chapterBlocks) {
-      const numMatch = block.match(/第\s*(\d+)\s*[章节]/)
-      if (numMatch && numMatch[1] && parseInt(numMatch[1]) === chapterIndex) {
-        const blockLines = block.split('\n').filter(l => l.trim())
-        const firstLine = blockLines[0]
-        const title = firstLine ? firstLine.replace(/^第\s*\d+\s*[章节][:：]?\s*/, '').trim() : `第${chapterIndex}章`
-        const description = blockLines.slice(1).join('\n').trim()
-        return { title, description }
-      }
-    }
-
-    return { title: `第${chapterIndex}章`, description: outline.substring(0, 200) }
   }
 
   protected parse(content: string): AgentOutput {
@@ -412,16 +369,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
   }
 
   private hasPreWriteCheckArtifacts(text: string): boolean {
-    // 仅保留结构性残留特征，避免用关键词列表做宽泛的“症状级”过滤。
-    // 语义上的“修改计划/问题分析”判断交给 batchValidateFixedContent。
     const artifactPatterns = [
-      /预写对齐检查表/,
-      /自检清单/,
-      /\|\s*检查项\s*\|\s*来源\s*\|/,
-      /\[[x\s]\]\s*大纲中的每个情节点/,
-      /【段落\s*\d+\s*·\s*第/,
-      /【需要修改的段落】/,
-      /原文内容缺失，无法准确修复/,
       /===\s*PRE_WRITE_CHECK\s*===/,
     ]
     return artifactPatterns.some(pattern => pattern.test(text))
@@ -451,22 +399,4 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     }
   }
 
-  extractTitle(content: string): string | null {
-    const lines = content.split('\n').filter(l => l.trim())
-    if (lines.length === 0) return null
-    const firstLine = lines[0]
-    if (firstLine && firstLine.length > 3 && firstLine.length < 50) {
-      return firstLine.trim()
-    }
-    return null
-  }
-
-  extractSummary(content: string): string {
-    const paragraphs = content.split(/\n\n+/).filter(p => p.trim().length > 50)
-    if (paragraphs.length <= 3) {
-      return content.substring(0, 200)
-    }
-    const middle = paragraphs.slice(1, -1)
-    return middle.join(' ').substring(0, 300) + '...'
-  }
 }

@@ -144,17 +144,6 @@ async function runChapterGraph(
   }
 }
 
-function isForeshadowLikelyPolluted(item: ReducedGraphState['foreshadowStack'][number]): boolean {
-  const text = item.text
-  if (text.length <= 30) return false
-  if (item.source === 'outline') return true
-  const sentenceDelimiters = /[.!?。！？…]+/
-  const sentences = text.split(sentenceDelimiters).filter(s => s.trim().length > 0)
-  if (sentences.length >= 2 && text.length > 60) return true
-  if (text.length > 120) return true
-  return false
-}
-
 export interface RunOneChapterOptions {
   mode: 'draft' | 'rewrite' | 'continue'
   targetChapterIndex?: number | undefined
@@ -263,7 +252,7 @@ export async function runOneChapter(
   if (options.mode === 'rewrite') {
     workingState.chapterSummaries = checkpointState.chapterSummaries.slice(0, targetIndex)
     workingState.foreshadowStack = checkpointState.foreshadowStack.filter(
-      f => f.createdAtChapter < targetIndex + 1 && !isForeshadowLikelyPolluted(f)
+      f => f.createdAtChapter < targetIndex + 1
     )
     if (checkpointState.storyState) {
       workingState.storyState = cleanStoryStateForRewrite(checkpointState.storyState, targetIndex)

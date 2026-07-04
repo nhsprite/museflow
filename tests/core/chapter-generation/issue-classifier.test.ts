@@ -79,7 +79,7 @@ describe('classifyIssueByRule', () => {
   })
 
   it('classifies quality-dimension warnings as interpretive when keywords match', () => {
-    const issue = makeIssue('consistency', 'warning', '描写冗长拖沓')
+    const issue = makeIssue('consistency', 'warning', 'quality issue')
     issue.dimension = 'quality'
     const result = classifyIssueByRule(issue)
     expect(result.isInterpretive).toBe(true)
@@ -88,56 +88,61 @@ describe('classifyIssueByRule', () => {
   })
 
   it('classifies quality-dimension errors as local', () => {
-    const issue = makeIssue('consistency', 'error', '段落重复')
+    const issue = makeIssue('consistency', 'error', 'quality issue')
     issue.dimension = 'quality'
     const result = classifyIssueByRule(issue)
     expect(result.isLocal).toBe(true)
     expect(result.isStructural).toBe(false)
   })
 
-  it('classifies item location conflicts as state corruption', () => {
-    const issue = makeIssue('consistency', 'error', '物品位置冲突：血封信笺同时出现在两个位置')
+  it('classifies item location conflicts from structured dimension as state corruption', () => {
+    const issue = makeIssue('consistency', 'error', 'structured issue')
+    issue.dimension = 'item_location'
     const result = classifyIssueByRule(issue)
     expect(result.isStateCorruption).toBe(true)
     expect(result.isItemLocationConflict).toBe(true)
   })
 
-  it('classifies invented character issues as state corruption', () => {
-    const issue = makeIssue('consistency', 'error', '本章出现虚构角色张三')
+  it('classifies invented character issues from structured dimension as state corruption', () => {
+    const issue = makeIssue('consistency', 'error', 'structured issue')
+    issue.dimension = 'invented_character'
     const result = classifyIssueByRule(issue)
     expect(result.isStateCorruption).toBe(true)
     expect(result.isInventedCharacter).toBe(true)
   })
 
-  it('classifies task-related issues as task consistency', () => {
-    const issue = makeIssue('consistency', 'error', '前章差事截止本章未完成')
+  it('classifies task-related issues from structured dimension as task consistency', () => {
+    const issue = makeIssue('consistency', 'error', 'structured issue')
+    issue.dimension = 'task_consistency'
     const result = classifyIssueByRule(issue)
     expect(result.isTaskConsistency).toBe(true)
   })
 
-  it('classifies consistency errors with writing-guide keywords as interpretive', () => {
-    const issue = makeIssue('consistency', 'error', '应明确写出原定计划被改期的原因')
+  it('does not classify consistency errors as interpretive from prose alone', () => {
+    const issue = makeIssue('consistency', 'error', 'should add more explanation')
     const result = classifyIssueByRule(issue)
-    expect(result.isInterpretive).toBe(true)
+    expect(result.isInterpretive).toBe(false)
     expect(result.isStructural).toBe(true)
     expect(result.isStateCorruption).toBe(false)
   })
 
-  it('classifies "should add description" consistency errors as interpretive', () => {
-    const issue = makeIssue('consistency', 'error', '应增加沈砚秋对信使身份的风险评估描写')
+  it('classifies consistency errors as interpretive when dimension is quality', () => {
+    const issue = makeIssue('consistency', 'error', 'structured issue')
+    issue.dimension = 'quality'
     const result = classifyIssueByRule(issue)
     expect(result.isInterpretive).toBe(true)
   })
 
-  it('does not classify state corruption issues as interpretive even with writing-guide keywords', () => {
-    const issue = makeIssue('consistency', 'error', '物品位置冲突：应明确写出信物当前唯一位置')
+  it('does not classify state corruption issues as interpretive even with quality dimension', () => {
+    const issue = makeIssue('consistency', 'error', 'structured issue')
+    issue.dimension = 'state_corruption'
     const result = classifyIssueByRule(issue)
     expect(result.isStateCorruption).toBe(true)
     expect(result.isInterpretive).toBe(false)
   })
 
-  it('classifies quality-dimension errors with interpretive keywords as interpretive', () => {
-    const issue = makeIssue('consistency', 'error', '段落重复')
+  it('classifies quality-dimension errors as interpretive', () => {
+    const issue = makeIssue('consistency', 'error', 'structured issue')
     issue.dimension = 'quality'
     const result = classifyIssueByRule(issue)
     expect(result.isInterpretive).toBe(true)
@@ -175,7 +180,7 @@ describe('issue classifiers default to rule-based classification', () => {
   })
 
   it('does not call LLM for interpretive classification by default', async () => {
-    const issue = makeIssue('consistency', 'warning', '描写冗长拖沓')
+    const issue = makeIssue('consistency', 'warning', 'structured issue')
     issue.dimension = 'quality'
     const provider = createProvider()
     const result = await isInterpretiveIssue(provider, issue)
@@ -184,7 +189,8 @@ describe('issue classifiers default to rule-based classification', () => {
   })
 
   it('does not call LLM for task consistency classification by default', async () => {
-    const issue = makeIssue('consistency', 'error', '前章差事截止本章未完成')
+    const issue = makeIssue('consistency', 'error', 'structured issue')
+    issue.dimension = 'task_consistency'
     const provider = createProvider()
     const result = await isTaskConsistencyIssue(provider, issue)
     expect(result).toBe(true)

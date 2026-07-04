@@ -11,10 +11,10 @@ describe('extractEstablishedCharacters', () => {
     characters: ['苏孟祥：苏家大掌柜'],
   })
 
-  it('extracts names from chapter summaries', () => {
+  it('extracts names from structured chapter summary fields only', () => {
     const result = extractEstablishedCharacters([summary1, summary2])
     const names = result.map(c => c.name).sort()
-    expect(names).toEqual(['苏半城', '苏孟祥', '陆廷樾', '陆福'])
+    expect(names).toEqual(['陆廷樾'])
   })
 
   it('extracts names from storyState and pending tasks', () => {
@@ -31,7 +31,7 @@ describe('extractEstablishedCharacters', () => {
     }
     const result = extractEstablishedCharacters([], storyState)
     const names = result.map(c => c.name).sort()
-    expect(names).toEqual(['何氏', '陆廷桦', '陆廷樑', '陈裕堂'])
+    expect(names).toEqual(['何氏（奶娘）', '陆廷桦', '陆廷樑', '陈裕堂'])
   })
 
   it('deduplicates names already in summaries', () => {
@@ -48,6 +48,6 @@ describe('extractEstablishedCharacters', () => {
     }
     const result = extractEstablishedCharacters([summary1], storyState)
     const names = result.map(c => c.name).sort()
-    expect(names).toEqual(['苏半城', '陆廷樾', '陆福'])
+    expect(names).toEqual(['苏半城', '陆廷樾'])
   })
 })

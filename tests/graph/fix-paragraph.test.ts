@@ -1,12 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   splitIntoParagraphs,
-  extractIssueKeywords,
   findAffectedParagraphs,
   extractLocationInfo,
   mergeParagraphFixes,
   applyParagraphDiffProtection,
-  deduplicateSentences,
 } from '../../src/graph/utils/text-patching.js'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
 
@@ -46,61 +44,6 @@ describe('splitIntoParagraphs', () => {
   })
 })
 
-describe('extractIssueKeywords', () => {
-  it('extracts quoted text', () => {
-    const issue = {
-      description: '句子"一阵敲门声"出现了两次',
-      location: '第五章开头',
-    }
-    const keywords = extractIssueKeywords(issue)
-    expect(keywords).toContain('一阵敲门声')
-  })
-
-  it('extracts Chinese phrases', () => {
-    const issue = {
-      description: '时间线混乱，高烧三日与一夜矛盾',
-    }
-    const keywords = extractIssueKeywords(issue)
-    expect(keywords).toContain('时间线')
-    expect(keywords).toContain('混乱')
-    expect(keywords).toContain('高烧')
-    expect(keywords).toContain('三日')
-    expect(keywords).toContain('一夜')
-    expect(keywords).toContain('矛盾')
-    expect(keywords).toContain('时间线混乱')
-    expect(keywords).toContain('高烧三日')
-  })
-
-  it('deduplicates keywords', () => {
-    const issue = {
-      description: '张三说"你好"，李四也说"你好"',
-    }
-    const keywords = extractIssueKeywords(issue)
-    const nihaoCount = keywords.filter(k => k === '你好').length
-    expect(nihaoCount).toBe(1)
-  })
-
-  it('filters out single characters', () => {
-    const issue = {
-      description: 'a b c',
-    }
-    const keywords = extractIssueKeywords(issue)
-    expect(keywords.every(k => k.length >= 2)).toBe(true)
-  })
-
-  it('combines description and location', () => {
-    const issue = {
-      description: '人物名称错误',
-      location: '第三章·第二节',
-    }
-    const keywords = extractIssueKeywords(issue)
-    expect(keywords).toContain('人物名称')
-    expect(keywords).toContain('错误')
-    expect(keywords).toContain('第三章')
-    expect(keywords).toContain('第二节')
-  })
-})
-
 describe('findAffectedParagraphs', () => {
   const paragraphs = [
     '沈惊鸿走在青石板路上。',
@@ -109,30 +52,37 @@ describe('findAffectedParagraphs', () => {
     '女子自称红菱，来自远方的绣坊。',
   ]
 
-  it('finds paragraphs by explicit location', () => {
+  it('finds paragraphs by structured locationRef', () => {
     const issues = [
-      { description: '"红衣女子"应该改为"红菱"', location: '第三段' },
+      { description: '"红衣女子"应该改为"红菱"', locationRef: { paragraphIndex: 2 } },
     ]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toContain(2)
     expect(affected).not.toContain(3)
   })
 
-  it('falls back to keyword matching when no location given', () => {
+  it('ignores natural-language location text', () => {
+    const issues = [
+      { description: '"红衣女子"应该改为"红菱"', location: '第三段' },
+    ]
+    const affected = findAffectedParagraphs(paragraphs, issues)
+    expect(affected).toEqual([])
+  })
+
+  it('does not guess paragraphs from issue prose when no explicit location is given', () => {
     const issues = [
       { description: '"红衣女子"应该改为"红菱"' },
     ]
     const affected = findAffectedParagraphs(paragraphs, issues)
-    expect(affected).toContain(2)
-    expect(affected).toContain(3)
+    expect(affected).toEqual([])
   })
 
-  it('finds multiple affected paragraphs for one issue', () => {
+  it('does not use prose-only full-text locations as paragraph targets', () => {
     const issues = [
       { description: '沈惊鸿的名字写错了', location: '全文' },
     ]
     const affected = findAffectedParagraphs(paragraphs, issues)
-    expect(affected).toContain(0)
+    expect(affected).toEqual([])
   })
 
   it('returns empty array when no matches', () => {
@@ -143,32 +93,38 @@ describe('findAffectedParagraphs', () => {
     expect(affected).toHaveLength(0)
   })
 
-  it('sorts indices in ascending order', () => {
+  it('sorts explicit indices in ascending order', () => {
     const issues = [
-      { description: '红菱和敲门声有问题', location: '全文' },
+      { description: '一个段落有问题', locationRef: { paragraphIndex: 3 } },
+      { description: '另一个段落有问题', locationRef: { paragraphIndex: 1 } },
     ]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toEqual([1, 3])
   })
 
-  it('parses compound Chinese numeral paragraph locations', () => {
+  it('does not parse compound Chinese numeral paragraph locations', () => {
     const issues = [
       { description: '第十二段语气生硬', location: '第十二段' },
     ]
 
     const manyParagraphs = Array.from({ length: 25 }, (_, i) => `第${i + 1}段内容。`)
     const affected = findAffectedParagraphs(manyParagraphs, issues)
-    expect(affected).toContain(11)
+    expect(affected).toEqual([])
   })
 })
 
 describe('extractLocationInfo', () => {
-  it('parses compound Chinese numeral locations', () => {
-    const paragraphLoc = extractLocationInfo({ description: '第十二段语气生硬' })
+  it('reads structured locationRef only', () => {
+    const paragraphLoc = extractLocationInfo({ description: '第十二段语气生硬', locationRef: { paragraphIndex: 11 } })
     expect(paragraphLoc).toContainEqual({ paragraphIndex: 11 })
 
-    const sentenceLoc = extractLocationInfo({ description: '第二十三句重复' })
+    const sentenceLoc = extractLocationInfo({ description: '第二十三句重复', locationRef: { sentenceIndex: 22 } })
     expect(sentenceLoc).toContainEqual({ sentenceIndex: 22 })
+  })
+
+  it('ignores prose-only descriptions', () => {
+    expect(extractLocationInfo({ description: '第十二段语气生硬' })).toEqual([])
+    expect(extractLocationInfo({ description: '第二十三句重复' })).toEqual([])
   })
 })
 
@@ -255,42 +211,6 @@ describe('applyParagraphDiffProtection', () => {
   })
 })
 
-describe('deduplicateSentences', () => {
-  it('removes duplicate sentences', () => {
-    const text = '这是一个非常长的话，足够被检测。这是第二句足够长的话。这是一个非常长的话，足够被检测。这是第三句足够长的话。'
-    const result = deduplicateSentences(text)
-    expect(result).toBe('这是一个非常长的话，足够被检测。这是第二句足够长的话。这是第三句足够长的话。')
-  })
-
-  it('keeps first occurrence of duplicate', () => {
-    const text = '第一句话的内容非常非常的长。第二句话的内容也非常非常的长。第一句话的内容非常非常的长。第三句话的内容非常非常的长。第二句话的内容也非常非常的长。'
-    const result = deduplicateSentences(text)
-    expect(result).toBe('第一句话的内容非常非常的长。第二句话的内容也非常非常的长。第三句话的内容非常非常的长。')
-  })
-
-  it('ignores short sentences', () => {
-    const text = '你好。你好。这是一个很长很长的句子内容。'
-    const result = deduplicateSentences(text)
-    expect(result).toBe('你好。你好。这是一个很长很长的句子内容。')
-  })
-
-  it('handles text without duplicates', () => {
-    const text = '这是第一句话的详细内容。这是第二句话的详细内容。这是第三句话的详细内容。'
-    const result = deduplicateSentences(text)
-    expect(result).toBe('这是第一句话的详细内容。这是第二句话的详细内容。这是第三句话的详细内容。')
-  })
-
-  it('handles empty text', () => {
-    const result = deduplicateSentences('')
-    expect(result).toBe('')
-  })
-
-  it('handles text with question and exclamation marks', () => {
-    const text = '你今天过得怎么样啊？我今天过得非常好呢！你今天过得怎么样啊？非常感谢你的关心啦！'
-    const result = deduplicateSentences(text)
-    expect(result).toBe('你今天过得怎么样啊？我今天过得非常好呢！非常感谢你的关心啦！')
-  })
-})
 
 describe('FixAgent paragraph parsing', () => {
   it('parses paragraph format correctly', async () => {

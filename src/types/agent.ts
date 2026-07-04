@@ -28,12 +28,18 @@ export type IssueSource =
 
 export type RetryStrategy = 'draft' | 'fix' | 'manual'
 
+export interface IssueLocationRef {
+  paragraphIndex?: number
+  sentenceIndex?: number
+}
+
 export interface Issue {
   id: string
   type: IssueType
   severity: IssueSeverity
   description: string
   location?: string
+  locationRef?: IssueLocationRef
   suggestion?: string
   dimension?: string
   source?: IssueSource

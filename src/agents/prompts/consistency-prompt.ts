@@ -267,10 +267,12 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
         "description": "问题描述（请明确指出涉及哪些章节的哪些内容）",
         "aspect": "time|space|causality|character_knowledge|dialogue|information|foreshadowing|pace|world_integrity|outline|quality",
         "location": "具体位置",
+        "locationRef": {"paragraphNumber": 1, "sentenceNumber": 1},
         "suggestion": "具体的修复建议（指明如何修改以消除矛盾）"
       }
     ]
   }
+  如果问题可以精确定位到当前章节正文的段落或句子，必须用 locationRef 输出正整数编号；paragraphNumber 和 sentenceNumber 均从 1 开始计数。不要把"第三段"、"结尾处"等自然语言位置写入 locationRef；不能精确定位时省略 locationRef 或设为 null。
   如果没有任何问题，请返回 {"is_consistent": true, "issues": []}。
 </output_format>`
 

@@ -102,6 +102,12 @@ ${state.chapterContract}
         description?: string
         aspect?: string
         location?: string
+        locationRef?: unknown
+        location_ref?: unknown
+        paragraphIndex?: unknown
+        sentenceIndex?: unknown
+        paragraphNumber?: unknown
+        sentenceNumber?: unknown
         suggestion?: string
       }>
     }
@@ -110,8 +116,8 @@ ${state.chapterContract}
       return []
     }
 
+    void canonicalFacts
     return normalizeIssues(data.issues, 'consistency', this.provider, {
-      canonicalFacts,
       mapType: issue => {
         if (issue.aspect === 'outline') {
           return issue.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'

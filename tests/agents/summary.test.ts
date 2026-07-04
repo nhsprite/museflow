@@ -265,7 +265,7 @@ describe('SummaryAgent prompt', () => {
     ])
   })
 
-  it('normalizes verifiedBeats to matching claimedBeats and drops unrelated descriptions', async () => {
+  it('keeps only exact claimedBeat values from verifiedBeats', async () => {
     const { processSummaryOutput } = await import('../../src/agents/summary.ts')
     const output = {
       success: true as const,
@@ -305,7 +305,6 @@ describe('SummaryAgent prompt', () => {
     const result = processSummaryOutput(output, 2, undefined, undefined, undefined, claimedBeats)
     expect(result?.verifiedBeats).toEqual([
       '主角以新身份重返京城并初步立足',
-      '家族灭门旧事的简要回溯与主角身世确认',
     ])
   })
 
@@ -383,7 +382,7 @@ describe('SummaryAgent prompt', () => {
     expect(fact?.evidence?.chapterIndex).toBe(25)
   })
 
-  it('disambiguates ambiguous pronouns in canonical fact values', async () => {
+  it('keeps canonical fact values unchanged without pronoun-fragment rewriting', async () => {
     const { processSummaryOutput } = await import('../../src/agents/summary.ts')
     const output = {
       success: true as const,
@@ -418,10 +417,10 @@ describe('SummaryAgent prompt', () => {
     }
 
     const result = processSummaryOutput(output, 4)
-    expect(result?.storyState?.canonicalFacts?.[0].value).toBe('某关键道具不用于新走账通道')
+    expect(result?.storyState?.canonicalFacts?.[0].value).toBe('此物不用于新走账通道')
   })
 
-  it('disambiguates ambiguous pronouns in superseded old values', async () => {
+  it('keeps superseded old values unchanged without pronoun-fragment rewriting', async () => {
     const { processSummaryOutput } = await import('../../src/agents/summary.ts')
     const output = {
       success: true as const,
@@ -457,7 +456,7 @@ describe('SummaryAgent prompt', () => {
     }
 
     const result = processSummaryOutput(output, 3)
-    expect(result?.storyState?.canonicalFacts?.[0].supersedes?.[0].oldValue).toBe('样本A在实验室A')
+    expect(result?.storyState?.canonicalFacts?.[0].supersedes?.[0].oldValue).toBe('此物在实验室A')
   })
 
   it('keeps unambiguous canonical fact values unchanged', async () => {

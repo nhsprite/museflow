@@ -53,6 +53,8 @@ export async function draft_chapter(
 
   const agentState: ChapterAgentInput = mergeAgentState(baseContext, {
     outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
+    ...(outlineItem?.title ? { chapterTitle: outlineItem.title } : {}),
+    ...(outlineItem?.description ? { chapterSummary: outlineItem.description } : {}),
     ...(mergedIssues.length > 0 ? { issues: mergedIssues } : {}),
     ...(existingContent ? { chapterContent: existingContent } : {}),
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),

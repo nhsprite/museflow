@@ -7,7 +7,6 @@ import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import {
   judgeMandatoryBeatCoverage,
   judgeMandatoryBeatCoverageAcrossAct,
-  matchMandatoryBeat,
 } from '../../../utils/story-arc.js'
 import { createActPressureConstraint } from '../../../utils/verified-constraints.js'
 import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
@@ -48,10 +47,10 @@ export function normalizeVerifiedBeats(
   mandatoryBeats: string[]
 ): string[] {
   const matched = new Set<string>()
+  const allowed = new Set(mandatoryBeats)
   for (const raw of rawVerifiedBeats) {
-    const candidate = matchMandatoryBeat(raw, mandatoryBeats)
-    if (candidate) {
-      matched.add(candidate)
+    if (allowed.has(raw)) {
+      matched.add(raw)
     }
   }
   return Array.from(matched)
@@ -63,16 +62,16 @@ function findIssueMandatoryBeat(
 ): MandatoryBeatLocation | undefined {
   if (!storyArc) return undefined
 
-  for (const act of storyArc.acts) {
-    const matched = matchMandatoryBeat(
-      `${issue.id} ${issue.description} ${issue.suggestion ?? ''}`,
-      act.mandatoryBeats
-    )
-    if (matched) {
-      return { act, beat: matched }
-    }
-  }
-  return undefined
+  const match = /^unverified-beat-(\d+)-(\d+)$/.exec(issue.id)
+  if (!match || !match[1] || !match[2]) return undefined
+
+  const actIndex = Number.parseInt(match[1], 10)
+  const beatIndex = Number.parseInt(match[2], 10)
+  if (!Number.isInteger(actIndex) || !Number.isInteger(beatIndex)) return undefined
+
+  const act = storyArc.acts.find(candidate => candidate.index === actIndex)
+  const beat = act?.mandatoryBeats[beatIndex]
+  return act && beat ? { act, beat } : undefined
 }
 
 export function pruneResolvedOutlineCoverageIssues(
@@ -209,14 +208,15 @@ function buildBeatVerificationIssues(
   claimedBeats: string[],
   verifiedBeats: string[],
   act: ActArc,
-  chapterIndex: number
+  _chapterIndex: number
 ): Issue[] {
   const issues: Issue[] = []
   const unverifiedClaimed = claimedBeats.filter(beat => !verifiedBeats.includes(beat))
   for (const beat of unverifiedClaimed) {
-    if (act.mandatoryBeats.includes(beat)) {
+    const beatIndex = act.mandatoryBeats.indexOf(beat)
+    if (beatIndex >= 0) {
       issues.push({
-        id: `unverified-beat-${chapterIndex}-${beat}`,
+        id: `unverified-beat-${act.index}-${beatIndex}`,
         type: 'outline_coverage',
         severity: 'warning',
         description: `本章大纲声称推进 mandatory beat「${beat}」，但正文未验证到该 beat 的发生。`,

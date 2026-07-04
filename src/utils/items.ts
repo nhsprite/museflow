@@ -1,18 +1,35 @@
-const DESCRIPTIVE_SUFFIXES = /[（(][^）)]*[）)]/g
+const WRAPPER_PAIRS: Array<[string, string]> = [
+  ['《', '》'],
+  ['〈', '〉'],
+  ['「', '」'],
+  ['『', '』'],
+  ['【', '】'],
+  ['（', '）'],
+  ['[', ']'],
+  ['{', '}'],
+]
 
 /**
  * 规范化物品名。
  *
- * 删除书名号、括号注释等装饰性内容，使不同表述形式的同一物品更容易匹配。
- * 不维护任何中文词汇列表或量词集合。
+ * 仅去除完整包裹整个名称的装饰性定界符与多余空白。
+ * 名称内部的括号限定语会保留，避免把原件、副本、残片等不同对象误合并。
  */
 export function canonicalizeItemName(name: string): string {
-  const normalized = name
-    .replace(DESCRIPTIVE_SUFFIXES, '')
-    .replace(/^[《〈「『【（\u005b\u007b\s]+|[》〉」』】）\u005d\u007d\s]+$/g, '')
-    .trim()
+  let normalized = name.replace(/\s+/g, ' ').trim()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [open, close] of WRAPPER_PAIRS) {
+      if (normalized.startsWith(open) && normalized.endsWith(close) && normalized.length > open.length + close.length) {
+        normalized = normalized.slice(open.length, normalized.length - close.length).trim()
+        changed = true
+        break
+      }
+    }
+  }
 
-  return normalized.replace(/\s+/g, ' ').trim()
+  return normalized
 }
 
 export interface CanonicalEntry<T = string> {

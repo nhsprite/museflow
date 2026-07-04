@@ -79,16 +79,16 @@ describe('filterRelevantPendingTasks', () => {
     expect(relevant.map(t => t.id)).not.toContain('future')
   })
 
-  it('includes tasks whose description overlaps with current outline', async () => {
+  it('includes tasks judged relevant by the model', async () => {
     const tasks: PendingTask[] = [
-      task({ id: 'overlap', dueChapter: undefined, description: '陈裕堂登门拜访苏半城' }),
+      task({ id: 'relevant', dueChapter: undefined, description: '陈裕堂登门拜访苏半城' }),
       task({ id: 'unrelated', dueChapter: undefined, description: '延绥镖局四百两旧线待查' }),
     ]
     vi.mocked(contextJudge.batchJudgeTaskRelevance).mockResolvedValueOnce([true, false])
 
     const relevant = await filterRelevantPendingTasks(tasks, 6, '买办商人陈裕堂主动登门', createProvider())
 
-    expect(relevant.map(t => t.id)).toContain('overlap')
+    expect(relevant.map(t => t.id)).toContain('relevant')
     expect(relevant.map(t => t.id)).not.toContain('unrelated')
   })
 

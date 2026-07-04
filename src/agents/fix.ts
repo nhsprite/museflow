@@ -17,8 +17,6 @@ import {
   mergeSentenceFixes,
   mergeParagraphFixes,
   applyParagraphDiffProtection,
-  deduplicateSentences,
-  deduplicateParagraphBlocks,
 } from '../graph/utils/text-patching.js'
 
 export class FixAgent extends BaseAgent<FixAgentInput> {
@@ -123,9 +121,7 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     _storyId: string,
     _chapterIndex: number
   ): { content: string; chapterMeta: ChapterMeta } {
-    let content = this.buildFixedContent(output, existingContent, paragraphs, affectedIndices)
-    content = deduplicateSentences(content)
-    content = deduplicateParagraphBlocks(content)
+    const content = this.buildFixedContent(output, existingContent, paragraphs, affectedIndices)
 
     const now = Date.now()
     const chapterMeta: ChapterMeta = {

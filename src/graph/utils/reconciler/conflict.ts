@@ -1,4 +1,3 @@
-import { logger } from '../../../utils/logger.js'
 import type {
   StoryState,
   Conflict,
@@ -15,52 +14,11 @@ import {
   batchDetectTimeJumps,
   batchJudgeBlockingConflictDescriptions,
 } from '../../../utils/context-judge.js'
-import { isSemanticallyRelated } from '../../../utils/text-similarity.js'
 import { generateId } from '../../../utils/id.js'
-import { canonicalizeItemName } from '../../../utils/items.js'
 import { applyCanonicalFactsToState } from './state-merge.js'
-
-const QUOTE_PAIRS: Array<[string, string]> = [
-  ['「', '」'],
-  ['『', '』'],
-  ['“', '”'],
-  ['‘', '’'],
-  ['"', '"'],
-  ["'", "'"],
-  ['【', '】'],
-  ['《', '》'],
-  ['〈', '〉'],
-]
 
 function generateConflictId(subject: string, attribute: string, index: number): string {
   return `${subject}:${attribute}:${index}`
-}
-
-function escapeRegExp(subject: string): string {
-  return subject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function splitSentences(text: string): string[] {
-  return text
-    .split(/(?<=[。！？；])/u)
-    .map(s => s.trim())
-    .filter(Boolean)
-}
-
-function removeQuotedContent(sentence: string): string {
-  let result = sentence
-  for (const [open, close] of QUOTE_PAIRS) {
-    const pattern = new RegExp(
-      `${escapeRegExp(open)}[^${escapeRegExp(close)}]*${escapeRegExp(close)}`,
-      'gu'
-    )
-    result = result.replace(pattern, '')
-  }
-  return result
-}
-
-function isMentionedInSentence(sentence: string, subject: string): boolean {
-  return sentence.includes(subject) || sentence.includes(canonicalizeItemName(subject))
 }
 
 function createConflict(
@@ -93,39 +51,29 @@ async function detectEntityConflicts<T extends Record<string, string>>(
   outline: string,
   attribute: '所在位置' | '状态',
   severity: 'auto' | 'warning',
-  provider: ModelProvider,
-  mentionFilter?: (sentence: string, subject: string) => boolean
+  provider: ModelProvider
 ): Promise<Conflict[]> {
-  const sentences = splitSentences(outline)
   const items: Array<{
-    sentence: string
+    text: string
     subject: string
     currentValue: string
-    originalSentence: string
+    outlineReference: string
   }> = []
 
   for (const [subject, currentValue] of Object.entries(entities)) {
-    for (const sentence of sentences) {
-      const isMentioned = mentionFilter
-        ? mentionFilter(sentence, subject)
-        : sentence.includes(subject)
-      if (!isMentioned) continue
-
-      const cleanSentence = removeQuotedContent(sentence)
-      items.push({
-        sentence: cleanSentence,
-        subject,
-        currentValue,
-        originalSentence: sentence,
-      })
-    }
+    items.push({
+      text: outline,
+      subject,
+      currentValue,
+      outlineReference: outline,
+    })
   }
 
   if (items.length === 0) return []
 
   const changes = await batchExtractEntityChanges(
     provider,
-    items.map(i => ({ sentence: i.sentence, subject: i.subject, attribute }))
+    items.map(i => ({ text: i.text, subject: i.subject, attribute }))
   )
 
   const conflicts: Conflict[] = []
@@ -144,7 +92,7 @@ async function detectEntityConflicts<T extends Record<string, string>>(
         attribute,
         item.currentValue,
         newValue,
-        item.originalSentence,
+        item.outlineReference,
         index++,
         severity
       )
@@ -164,8 +112,7 @@ export async function detectItemLocationConflicts(
     outline,
     '所在位置',
     'auto',
-    provider,
-    isMentionedInSentence
+    provider
   )
 }
 
@@ -179,8 +126,7 @@ export async function detectItemStateConflicts(
     outline,
     '状态',
     'auto',
-    provider,
-    isMentionedInSentence
+    provider
   )
 }
 
@@ -212,64 +158,10 @@ export async function detectCharacterStatusConflicts(
   )
 }
 
-const COMPARISON_STOP_WORDS = new Set([
-  '的', '了', '在', '是', '我', '你', '他', '她', '它', '这', '那', '一个', '一些', '就', '却', '而', '但',
-  '与', '和', '或', '着', '过', '到', '从', '把', '被', '让', '给', '为', '以', '及', '等', '地', '得', '之',
-  '也', '很', '更', '最', '非常', '已经', '然后', '因为', '所以', '如果', '虽然', '但是', '不过', '只是',
-  '只要', '只有', '能够', '可以', '应该', '需要', '必须', '于', '会', '要', '将', '向', '对',
-])
-
-function normalizeForComparison(text: string): string {
-  let normalized = text.replace(/[^\u4e00-\u9fff]/g, '')
-  for (const word of COMPARISON_STOP_WORDS) {
-    normalized = normalized.split(word).join('')
-  }
-  return normalized
-}
-
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {
-  const conflicts: Conflict[] = []
-  if (!outline || state.revealedSecrets.length === 0) return conflicts
-
-  const normalizedOutline = normalizeForComparison(outline)
-  let index = 0
-  for (const secret of state.revealedSecrets) {
-    const secretSentences = splitSentences(secret)
-    let reRevealed = false
-
-    for (const secretSentence of secretSentences) {
-      const normalizedSecret = normalizeForComparison(secretSentence)
-      if (
-        normalizedSecret.length >= 4 &&
-        isSemanticallyRelated(normalizedSecret, normalizedOutline, 0.5)
-      ) {
-        reRevealed = true
-        break
-      }
-    }
-
-    if (!reRevealed) continue
-
-    const hintIndex = outline.indexOf(secret.slice(0, 20))
-    const outlineReference =
-      hintIndex >= 0
-        ? outline.slice(Math.max(0, hintIndex - 30), hintIndex + secret.length + 30)
-        : outline.slice(0, 100)
-
-    conflicts.push({
-      id: generateConflictId('secret', '已揭示', index++),
-      type: 'contradiction',
-      subject: '已揭示秘密',
-      attribute: '重复揭示',
-      oldValue: secret.slice(0, 80),
-      newValue: outlineReference.slice(0, 80),
-      outlineReference,
-      severity: 'blocking',
-      description: `大纲试图再次揭示此前已暴露的秘密：「${secret.slice(0, 50)}...」`,
-    })
-  }
-
-  return conflicts
+  void state
+  void outline
+  return []
 }
 
 export async function detectTimeAnchorConflicts(
@@ -389,30 +281,10 @@ export async function classifyConflicts(
 
 function buildCharacterAliasMap(characters: Array<{ name: string }>): Map<string, string> {
   const aliasToFull = new Map<string, string>()
-  const fullNames = characters.map(c => c.name).filter(Boolean).sort((a, b) => b.length - a.length)
+  const fullNames = characters.map(c => c.name).filter(Boolean)
 
   for (const fullName of fullNames) {
     aliasToFull.set(fullName, fullName)
-
-    if (fullName.length >= 3) {
-      const lastTwo = fullName.slice(-2)
-      if (!aliasToFull.has(lastTwo)) {
-        const isAmbiguous = fullNames.some(other => other !== fullName && other.includes(lastTwo))
-        if (!isAmbiguous) {
-          aliasToFull.set(lastTwo, fullName)
-        }
-      }
-    }
-
-    if (fullName.length >= 4) {
-      const lastThree = fullName.slice(-3)
-      if (!aliasToFull.has(lastThree)) {
-        const isAmbiguous = fullNames.some(other => other !== fullName && other.includes(lastThree))
-        if (!isAmbiguous) {
-          aliasToFull.set(lastThree, fullName)
-        }
-      }
-    }
   }
 
   return aliasToFull
@@ -423,6 +295,7 @@ function reconcileStoryStateContent(
   outline: string,
   characters: Array<{ name: string }> = []
 ): StoryState {
+  void outline
   const reconciled: StoryState = {
     characterLocations: {},
     characterStatus: {},
@@ -447,10 +320,6 @@ function reconcileStoryStateContent(
   }
   reconciled.characterStatus = Object.fromEntries(statusMap)
 
-  const outlineWords = new Set(
-    outline.split(/\s+|，|。|！|？|、|；|\n/).filter(w => w.length >= 2)
-  )
-
   const locMap = new Map<string, string>()
   for (const [char, loc] of Object.entries(storyState.characterLocations)) {
     const normalized = aliasMap.get(char) || char
@@ -459,15 +328,6 @@ function reconcileStoryStateContent(
   reconciled.characterLocations = Object.fromEntries(locMap)
 
   for (const secret of storyState.revealedSecrets) {
-    const secretWords = secret.split(/\s+|，|。|！|？|、|；|\n/).filter(w => w.length >= 2)
-    const overlap = secretWords.filter(w => outlineWords.has(w))
-    const overlapRatio = secretWords.length > 0 ? overlap.length / secretWords.length : 0
-
-    if (overlapRatio >= 0.3) {
-      logger.info(`[MuseFlow] Reconciling: skipping outdated secret with ${Math.round(overlapRatio * 100)}% outline overlap: "${secret.substring(0, 50)}..."`)
-      continue
-    }
-
     reconciled.revealedSecrets.push(secret)
   }
 
@@ -528,20 +388,6 @@ function generateOverrideSuggestion(conflict: Conflict, chapterIndex: number): S
   }
 }
 
-// 判断从大纲解析出的 retcon 新值是否足够可靠，可写入权威事实。
-// 不可靠时降级为 warning，交由 ChapterAgent 在正文中明确处理。
-function isReliableRetconValue(conflict: Conflict): boolean {
-  const newValue = conflict.newValue.trim()
-  const oldValue = conflict.oldValue.trim()
-
-  // 明显截断：新值长度过短，无法承载一个完整地点或状态描述。
-  if (newValue.length < Math.max(4, oldValue.length * 0.5)) {
-    return false
-  }
-
-  return true
-}
-
 export function autoReconcile(
   conflicts: Conflict[],
   state: StoryState,
@@ -565,10 +411,6 @@ export function autoReconcile(
     }
 
     if (conflict.type === 'retcon' && (conflict.attribute === '所在位置' || conflict.attribute === '状态')) {
-      if (!isReliableRetconValue(conflict)) {
-        remaining.push({ ...conflict, severity: 'warning' })
-        continue
-      }
       autoResolved.push(conflict)
       const fact = generateCanonicalFact(conflict, chapterIndex, canonicalFacts)
       const existingIndex = canonicalFacts.findIndex(

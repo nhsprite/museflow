@@ -10,7 +10,6 @@ import { formatStoryState, prepareStoryStateForChapter } from '../../utils/recon
 import { buildEffectiveCharactersList, charactersToString } from '../../utils/characters.js'
 import {
   splitIntoParagraphs,
-  extractIssueKeywords,
 } from '../../utils/text-patching.js'
 
 export async function runSentenceFix(
@@ -106,10 +105,7 @@ export async function runParagraphFix(
     return {
       index: idx,
       content: paragraphContent,
-      issues: state.pendingIssues.filter(issue => {
-        const keywords = extractIssueKeywords(issue)
-        return keywords.some(kw => paragraphContent.includes(kw))
-      }),
+      issues: state.pendingIssues,
     }
   })
 
@@ -224,7 +220,7 @@ export async function runLegacyFix(
     chapterIndex,
     minWordCount: min,
     maxWordCount: max,
-  })
+  }, provider)
 
   if (!validation.valid) {
     throw new Error(`第 ${chapterIndex + 1} 章重写后内容校验失败：${validation.error}`)

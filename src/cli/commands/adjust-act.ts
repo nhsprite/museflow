@@ -14,8 +14,7 @@ function isResolvedActCoverageIssue(issue: Issue, actIndex: number): boolean {
   if (issue.type !== 'outline_coverage') return false
   if (issue.severity !== 'error') return false
   if (issue.source !== 'outline_compliance') return false
-  return issue.description.includes(`第 ${actIndex} 幕`) ||
-    Boolean(issue.suggestion?.includes(`第 ${actIndex} 幕`))
+  return issue.id.startsWith(`unverified-beat-${actIndex}-`)
 }
 
 function ensureOutlineLength(

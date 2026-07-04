@@ -7,24 +7,13 @@ export interface CharacterWhitelist {
   canonical(name: string): string | undefined
 }
 
-function stripParentheticalAliases(name: string): string {
-  return name.replace(/（[^）]*）/g, '').trim()
-}
-
 export function buildCharacterWhitelist(characters: Character[]): CharacterWhitelist {
   const officialNames = new Set<string>()
   const aliases = new Map<string, string>()
 
   for (const character of characters) {
     const rawName = character.name.trim()
-    const canonicalName = stripParentheticalAliases(rawName)
-
-    officialNames.add(canonicalName)
-
-    if (rawName !== canonicalName) {
-      aliases.set(rawName, canonicalName)
-      officialNames.add(rawName)
-    }
+    if (rawName.length > 0) officialNames.add(rawName)
   }
 
   return {
@@ -46,4 +35,3 @@ export function buildCharacterWhitelist(characters: Character[]): CharacterWhite
     },
   }
 }
-

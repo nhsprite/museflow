@@ -93,7 +93,7 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
     expect(hint).toBe('')
   })
 
-  it('includes tasks whose description overlaps with current outline', async () => {
+  it('includes tasks judged relevant by the model', async () => {
     const state = buildState('买办商人陈裕堂主动登门，自称愿以洋行势力相助翻案。', [
       {
         id: 't1',

@@ -1,5 +1,6 @@
 import type { Issue } from '../../../types/agent.js'
 import type { RewritePolicyDeps, RewritePolicyResult, ChapterSession } from './types.js'
+import { ruleBasedFingerprint } from '../../../utils/issue-deduplication.js'
 
 function buildConstraintFromIssue(issue: Issue): string {
   return `[${issue.type}] ${issue.description}${
@@ -18,8 +19,9 @@ export async function buildVerifiedConstraints(
   for (const prev of previousIssues) {
     if (prev.severity !== 'error') continue
     if (await isInterpretiveIssue(prev)) continue
+    const prevFingerprint = ruleBasedFingerprint(prev)
     const stillPresent = currentIssues.some(
-      curr => curr.type === prev.type && curr.description === prev.description
+      curr => ruleBasedFingerprint(curr) === prevFingerprint
     )
     if (!stillPresent) {
       resolvedIssues.push(prev)

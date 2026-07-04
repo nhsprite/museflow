@@ -81,17 +81,13 @@ function buildBlockingReport(
 
   const conflicts = deduplicatedIssues
     .filter(i => i.type === 'state_corruption' || i.type === 'outline_violation' || i.type === 'outline_deviation')
-    .map(issue => {
-      const parts = issue.description.split(/[「」]/)
-      return {
-        subject: parts[1] ?? issue.description.slice(0, 20),
-        attribute: issue.dimension ?? '状态',
-        oldValue: parts[3] ?? '',
-        newValue: parts[5] ?? '',
-        source: (issue.source === 'state_reconciliation' ? 'canonical' : 'outline') as 'outline' | 'canonical' | 'author',
-      }
-    })
-    .filter(c => c.subject.length > 0)
+    .map(issue => ({
+      subject: issue.id,
+      attribute: issue.dimension ?? issue.type,
+      oldValue: '',
+      newValue: '',
+      source: (issue.source === 'state_reconciliation' ? 'canonical' : 'outline') as 'outline' | 'canonical' | 'author',
+    }))
 
   const suggestedActions: BlockingReport['suggestedActions'] = []
 

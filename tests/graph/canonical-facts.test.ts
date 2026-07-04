@@ -90,7 +90,7 @@ describe('mergeStoryState', () => {
     expect(merged.canonicalFacts).toHaveLength(1)
   })
 
-  it('normalizes item aliases with same value to the most descriptive key', () => {
+  it('keeps parenthetical item qualifiers instead of treating them as aliases', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: { '血封信笺': '妆台抽屉' },
@@ -101,11 +101,12 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺（柏字残画）'])
+    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺（柏字残画）', '血封信笺'])
     expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('妆台抽屉')
+    expect(merged.keyItemsLocation['血封信笺']).toBe('妆台抽屉')
   })
 
-  it('overrides old alias when canonical item location changes', () => {
+  it('does not override unqualified item names from parenthetical qualified names', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: { '血封信笺': '妆台抽屉' },
@@ -117,10 +118,10 @@ describe('mergeStoryState', () => {
 
     const merged = mergeStoryState(existing, delta)
     expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('火盆灰烬')
-    expect(merged.keyItemsLocation['血封信笺']).toBeUndefined()
+    expect(merged.keyItemsLocation['血封信笺']).toBe('妆台抽屉')
   })
 
-  it('normalizes item state aliases by stripping parenthetical descriptions', () => {
+  it('keeps parenthetical item state qualifiers', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsState: { '血封信笺': '完整' },
@@ -131,11 +132,12 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsState)).toEqual(['血封信笺（柏字残画）'])
+    expect(Object.keys(merged.keyItemsState)).toEqual(['血封信笺（柏字残画）', '血封信笺'])
     expect(merged.keyItemsState['血封信笺（柏字残画）']).toBe('焚毁')
+    expect(merged.keyItemsState['血封信笺']).toBe('完整')
   })
 
-  it('clears all canonical aliases when item location changes, avoiding lingering conflicts', () => {
+  it('keeps qualified item entries when unqualified item location changes', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -149,11 +151,12 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺'])
+    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺', '血封信笺（柏字残画）'])
     expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
+    expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('苏半城妆台抽屉附近')
   })
 
-  it('clears conflicting base entries when delta uses a canonical alias', () => {
+  it('does not clear qualified base entries when delta uses an unqualified item name', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -167,13 +170,14 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺'])
+    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺', '血封信笺（柏字残画）'])
     expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
+    expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('苏半城妆台抽屉附近')
   })
 })
 
 describe('filterSupersededFactsFromTimeline', () => {
-  it('removes facts that match superseded old values', () => {
+  it('does not remove facts by matching superseded old-value prose', () => {
     const entries = [
       { character: '旁白', facts: ['木之灵物位于东方灵河旧址'] },
       { character: '主角', facts: ['主角决定前往昆仑山'] },
@@ -190,8 +194,7 @@ describe('filterSupersededFactsFromTimeline', () => {
     ]
 
     const filtered = filterSupersededFactsFromTimeline(entries, canonicalFacts)
-    expect(filtered).toHaveLength(1)
-    expect(filtered[0].character).toBe('主角')
+    expect(filtered).toEqual(entries)
   })
 
   it('keeps all facts when no canonical facts exist', () => {
@@ -219,7 +222,7 @@ describe('filterSupersededFactsFromTimeline', () => {
 })
 
 describe('filterSupersededEventsFromTimeline', () => {
-  it('removes key events that match superseded old values', () => {
+  it('does not remove key events by matching superseded old-value prose', () => {
     const events = ['木之灵物在东方灵河旧址被发现', '主角启程前往昆仑山']
     const canonicalFacts = [
       {
@@ -233,8 +236,7 @@ describe('filterSupersededEventsFromTimeline', () => {
     ]
 
     const filtered = filterSupersededEventsFromTimeline(events, canonicalFacts)
-    expect(filtered).toHaveLength(1)
-    expect(filtered[0]).toContain('昆仑山')
+    expect(filtered).toEqual(events)
   })
 })
 

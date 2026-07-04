@@ -2,84 +2,27 @@ import type { Issue } from '../../types/agent.js'
 import type { ModelProvider } from '../../model/provider.js'
 import { batchClassifyIssues, type IssueClassification } from '../../utils/context-judge.js'
 
-const INTERPRETIVE_KEYWORDS = [
-  '描写',
-  '措辞',
-  '风格',
-  '节奏',
-  '冗长',
-  '拖沓',
-  '重复',
-  '啰嗦',
-  '赘述',
-  '语言',
-  '表达',
-  '氛围',
-  '观感',
-  '可读性',
-  '流畅',
-  '生硬',
-  '应明确写出',
-  '应增加',
-  '应交代',
-  '应修改为',
-  '明确写出',
-  '增加描写',
-  '补充交代',
-  '需要作者在',
-  '需要明确',
-]
-
-const TASK_KEYWORDS = [
-  '差事',
-  '任务',
-  '约定',
-  '承诺',
-  '截止',
-  '期限',
-  'due',
-  '待办',
-]
-
-function looksInterpretive(issue: Issue): boolean {
-  const text = `${issue.description} ${issue.location ?? ''} ${issue.suggestion ?? ''}`
-  return INTERPRETIVE_KEYWORDS.some(kw => text.includes(kw))
-}
-
-function looksTaskRelated(issue: Issue): boolean {
-  const text = `${issue.description} ${issue.location ?? ''}`
-  return TASK_KEYWORDS.some(kw => text.includes(kw))
-}
-
-function looksInventedCharacter(issue: Issue): boolean {
-  const text = `${issue.description} ${issue.location ?? ''}`
-  return /虚构角色|非官方角色|不在官方角色|invented|不在角色列表/.test(text)
-}
-
-function looksItemLocationConflict(issue: Issue): boolean {
-  const text = `${issue.description} ${issue.location ?? ''}`
-  return /物品位置|位置冲突|位置漂移|keyItemsLocation|同时出现在|多个位置/.test(text)
-}
-
-function looksOutlineStateConflict(issue: Issue): boolean {
-  const text = `${issue.description} ${issue.location ?? ''}`
-  return /大纲状态|outline.*canonical|canonical.*outline|大纲.*权威事实|权威事实.*大纲/.test(text)
+function issueDimensionIs(issue: Issue, dimension: string): boolean {
+  return issue.dimension === dimension
 }
 
 /**
- * 基于 issue 类型和文本特征做确定性分类。
- * 不再依赖 LLM，避免路由抖动和高昂的模型调用成本。
+ * 基于结构化 issue 字段做确定性分类。
+ * 不读取 description/location/suggestion 的自然语言内容。
  */
 export function classifyIssueByRule(issue: Issue): IssueClassification {
   const isError = issue.severity === 'error'
 
-  const isItemLocationConflict = looksItemLocationConflict(issue)
-  const isInventedCharacter = looksInventedCharacter(issue)
-  const isOutlineStateConflict = looksOutlineStateConflict(issue)
-  const isTaskConsistency = looksTaskRelated(issue)
+  const isItemLocationConflict = issueDimensionIs(issue, 'item_location')
+  const isInventedCharacter = issueDimensionIs(issue, 'invented_character')
+  const isOutlineStateConflict = issueDimensionIs(issue, 'outline_state_conflict')
+  const isTaskConsistency =
+    issueDimensionIs(issue, 'task_consistency') ||
+    issue.type === 'outline_invalid_deadline'
 
   const isStateCorruption =
     issue.type === 'state_corruption' ||
+    issueDimensionIs(issue, 'state_corruption') ||
     isItemLocationConflict ||
     isInventedCharacter ||
     isOutlineStateConflict
@@ -97,15 +40,7 @@ export function classifyIssueByRule(issue: Issue): IssueClassification {
     issue.type === 'consistency' ||
     isTaskConsistency
 
-  // 解释性问题：通常是写作方式、描写深度、交代清晰度的建议。
-  // 对于 error 级别的 consistency 问题，如果命中解释性关键词且不属于状态污染，
-  // 也允许在最终阶段降级为 warning，避免把"建议作者补充交代"当成硬性事实错误。
-  const isInterpretive =
-    !isStateCorruption &&
-    (
-      (issue.dimension === 'quality' && !isError) ||
-      (looksInterpretive(issue) && (!isError || issue.type === 'consistency'))
-    )
+  const isInterpretive = !isStateCorruption && issueDimensionIs(issue, 'quality')
 
   const isStructural =
     isStructuralType ||

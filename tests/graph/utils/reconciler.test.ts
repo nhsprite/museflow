@@ -86,7 +86,7 @@ const characters: Character[] = [
 ]
 
 describe('mergeStoryState', () => {
-  it('deduplicates existing base items when delta does not mention them', () => {
+  it('keeps parenthetical qualified base items when delta does not mention them', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -99,11 +99,13 @@ describe('mergeStoryState', () => {
       keyItemsLocation: {},
     }
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation).length).toBe(1)
-    expect(Object.values(merged.keyItemsLocation)[0]).toBe('主卧暗屉')
+    expect(merged.keyItemsLocation).toEqual({
+      '密信（残片）': '书桌抽屉附近',
+      '密信（副本）': '主卧暗屉',
+    })
   })
 
-  it('overrides old canonical entries with delta entries', () => {
+  it('keeps parenthetical qualified entries when delta adds an unqualified entry', () => {
     const existing: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -118,8 +120,10 @@ describe('mergeStoryState', () => {
       },
     }
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation).length).toBe(1)
+    expect(Object.keys(merged.keyItemsLocation).length).toBe(3)
     expect(merged.keyItemsLocation['密信']).toBe('口袋中')
+    expect(merged.keyItemsLocation['密信（残片）']).toBe('书桌抽屉附近')
+    expect(merged.keyItemsLocation['密信（副本）']).toBe('主卧暗屉')
   })
 
   it('merges supersededFacts and canonicalFacts without duplicates', () => {
@@ -225,7 +229,7 @@ describe('sanitizeStoryState', () => {
     expect(report.itemLocationConflicts.length).toBeGreaterThan(0)
   })
 
-  it('resolves conflicting item locations and generates canonical facts with Chinese attribute', () => {
+  it('keeps parenthetical qualified item locations without generating alias conflicts', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -234,27 +238,24 @@ describe('sanitizeStoryState', () => {
       },
     }
     const report = sanitizeStoryState(state, characters, { chapterIndex: 5 })
-    expect(Object.keys(report.state.keyItemsLocation).length).toBe(1)
-    expect(Object.values(report.state.keyItemsLocation)[0]).toBe('主卧暗屉')
-    expect(report.state.supersededFacts?.length).toBe(1)
-    expect(report.state.supersededFacts?.[0].subject).toBe('密信')
-    expect(report.state.canonicalFacts?.length).toBe(1)
-    expect(report.state.canonicalFacts?.[0].subject).toBe('密信')
-    expect(report.state.canonicalFacts?.[0].attribute).toBe('所在位置')
-    expect(report.state.canonicalFacts?.[0].value).toBe('主卧暗屉')
+    expect(report.state.keyItemsLocation).toEqual({
+      '密信（残片）': '书桌抽屉附近',
+      '密信（副本）': '主卧暗屉',
+    })
+    expect(report.state.supersededFacts).toEqual([])
+    expect(report.state.canonicalFacts).toEqual([])
   })
 
-  it('removes facts that reference invented characters', () => {
+  it('keeps active plots and secrets without reading their prose for character names', () => {
     const state: StoryState = {
       ...emptyState(),
       activePlots: ['配角甲出门办事'],
       revealedSecrets: ['配角乙偷了东西'],
     }
     const report = sanitizeStoryState(state, characters)
-    expect(report.state.activePlots).toEqual([])
-    expect(report.state.revealedSecrets).toEqual([])
-    expect(report.removedFacts).toContain('配角甲出门办事')
-    expect(report.removedFacts).toContain('配角乙偷了东西')
+    expect(report.state.activePlots).toEqual(['配角甲出门办事'])
+    expect(report.state.revealedSecrets).toEqual(['配角乙偷了东西'])
+    expect(report.removedFacts).toEqual([])
   })
 
   it('keeps plots and secrets that reference official characters', () => {
@@ -367,13 +368,12 @@ describe('reconcileStoryState', () => {
     expect(activeFact?.value).toBe('官府仓库')
   })
 
-  it('surfaces contradiction for repeated secret reveal', async () => {
+  it('does not surface repeated secret reveals from prose matching', async () => {
     const state = baseState()
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
 
     const report = await reconcileStoryState(state, '第10章：真相大白，主角是主谋。', [], 9, createMockProvider())
-    expect(report.requiresAuthorDecision.length).toBeGreaterThan(0)
-    expect(report.requiresAuthorDecision[0].type).toBe('contradiction')
+    expect(report.requiresAuthorDecision).toEqual([])
   })
 
   it('preserves canonical facts from input state and updates them', async () => {
@@ -569,7 +569,7 @@ describe('applyAuthorOverrides', () => {
     const result = applyAuthorOverrides({ ...state, overrides })
     expect(result.characterLocations['主角']).toBe('城外')
     expect(result.keyItemsLocation['钥匙']).toBe('箱内')
-    expect(result.keyItemsLocation['钥匙（箱用）']).toBe('箱内')
+    expect(result.keyItemsLocation['钥匙（箱用）']).toBe('口袋')
     expect(result.canonicalFacts?.some(f => f.subject === '主角' && f.value === '城外')).toBe(true)
     expect(result.canonicalFacts?.some(f => f.subject === '钥匙' && f.value === '箱内')).toBe(true)
   })
@@ -955,14 +955,14 @@ describe('detectSecretRevealConflicts', () => {
     expect(conflicts).toHaveLength(0)
   })
 
-  it('flags semantic re-reveal of a secret', () => {
+  it('does not flag semantic re-reveal from prose similarity', () => {
     const state: StoryState = {
       ...emptyState(),
       revealedSecrets: ['真凶是管家'],
     }
     const outline = '本章继续调查，发现真凶就是管家。'
     const conflicts = detectSecretRevealConflicts(state, outline)
-    expect(conflicts.length).toBeGreaterThan(0)
+    expect(conflicts).toEqual([])
   })
 
   it('mergeStoryState keeps canonical facts with same subject-attribute but different values', () => {

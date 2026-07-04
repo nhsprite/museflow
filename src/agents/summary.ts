@@ -16,7 +16,6 @@ import {
 import { parseJsonFromLLM } from '../utils/json.js'
 import type { CanonicalFact, CanonicalFactSource, ChapterHandoff } from '../types/story-state.js'
 import type { VerifiedBeatEvidence } from '../types/outline.js'
-import { matchMandatoryBeat, normalizeTextForMatch } from '../utils/story-arc.js'
 
 export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
   constructor(provider: ModelProvider) {
@@ -50,35 +49,6 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
     return parseJsonFromLLM(content)
   }
 }
-
-function longestCommonSubstringLength(a: string, b: string): number {
-  if (a.length === 0 || b.length === 0) return 0
-  // Ensure 'a' is the shorter string to keep O(min(n,m)) space.
-  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
-  let previous = new Array(shorter.length + 1).fill(0)
-  let current = new Array(shorter.length + 1).fill(0)
-  let maxLength = 0
-
-  for (let i = 1; i <= longer.length; i++) {
-    for (let j = 1; j <= shorter.length; j++) {
-      if (longer[i - 1] === shorter[j - 1]) {
-        current[j] = previous[j - 1] + 1
-        if (current[j] > maxLength) {
-          maxLength = current[j]
-        }
-      } else {
-        current[j] = 0
-      }
-    }
-    [previous, current] = [current, previous]
-    current.fill(0)
-  }
-
-  return maxLength
-}
-
-const FUZZY_MATCH_THRESHOLD = 0.7
-const MAX_CANONICAL_FACT_SUBJECT_LENGTH = 30
 
 const ALLOWED_CANONICAL_FACT_ATTRIBUTES = new Set([
   '所在位置',
@@ -123,109 +93,8 @@ const ALLOWED_CANONICAL_FACT_ATTRIBUTES = new Set([
   'relationship',
 ])
 
-const NOMINALIZED_FACT_LABELS = [
-  '所在位置',
-  '位置',
-  '身份',
-  '状态',
-  '持有者',
-  '来源',
-  '制造者',
-  '赠予者',
-  '材质',
-  '归属',
-  '承诺',
-  '约定',
-  '条件',
-  '已知信息',
-  '计划',
-  '策略',
-  '决定',
-  '态度',
-  '关键事件',
-  '事件',
-  '关系',
-]
-
-type EvidenceMatchResult = 'exact' | 'fuzzy' | false
-
-function evidenceQuoteIsValid(quote: string, chapterContent: string | undefined): EvidenceMatchResult {
-  if (!chapterContent || quote.trim().length === 0) return false
-  const normalizedQuote = normalizeTextForMatch(quote)
-  const normalizedContent = normalizeTextForMatch(chapterContent)
-  if (normalizedQuote.length === 0) return false
-  if (normalizedContent.includes(normalizedQuote)) return 'exact'
-
-  const lcsLength = longestCommonSubstringLength(normalizedQuote, normalizedContent)
-  if (lcsLength >= normalizedQuote.length * FUZZY_MATCH_THRESHOLD) {
-    return 'fuzzy'
-  }
-  return false
-}
-
-function clampConfidence(confidence: 'high' | 'medium' | 'low', max: 'high' | 'medium' | 'low'): 'high' | 'medium' | 'low' {
-  const order: Array<'high' | 'medium' | 'low'> = ['high', 'medium', 'low']
-  const idx = Math.max(order.indexOf(confidence), order.indexOf(max))
-  return order[idx] ?? max
-}
-
-function validateCanonicalFactEvidence(
-  facts: CanonicalFact[],
-  chapterContent: string | undefined,
-): CanonicalFact[] {
-  if (!chapterContent) return facts
-  let fuzzyAcceptedCount = 0
-  let missingEvidenceCount = 0
-  const validated = facts.map(fact => {
-    if (!fact.evidence || fact.evidence.quote.length === 0) return fact
-    const match = evidenceQuoteIsValid(fact.evidence.quote, chapterContent)
-    if (match === 'exact') return fact
-    if (match === 'fuzzy') {
-      fuzzyAcceptedCount++
-      return {
-        ...fact,
-        confidence: clampConfidence(fact.confidence, 'medium'),
-      }
-    }
-    missingEvidenceCount++
-    return {
-      ...fact,
-      confidence: 'low' as const,
-      evidence: undefined,
-    }
-  })
-
-  if (fuzzyAcceptedCount > 0) {
-    logger.info(`[MuseFlow] canonicalFact evidence 校验：${fuzzyAcceptedCount} 条引用与正文存在偏差，已模糊接受`)
-  }
-  if (missingEvidenceCount > 0) {
-    logger.warn(`[MuseFlow] canonicalFact evidence 校验：${missingEvidenceCount} 条引用未在正文中找到，已降级为 low 并移除 evidence`)
-  }
-
-  return validated
-}
-
 function isAllowedCanonicalFactAttribute(attribute: string): boolean {
   return ALLOWED_CANONICAL_FACT_ATTRIBUTES.has(attribute.trim())
-}
-
-function subjectEmbedsFactPayload(subject: string, attribute: string, value: string): boolean {
-  const trimmedSubject = subject.trim()
-  const trimmedAttribute = attribute.trim()
-  const trimmedValue = value.trim()
-  if (trimmedAttribute.length === 0 || trimmedValue.length <= 1) return false
-
-  return trimmedSubject.includes(trimmedAttribute) && trimmedSubject.includes(trimmedValue)
-}
-
-function isStructurallyValidCanonicalFactSubject(subject: string, attribute: string, value: string): boolean {
-  const trimmed = subject.trim()
-  if (trimmed.length === 0) return false
-  if (trimmed.length > MAX_CANONICAL_FACT_SUBJECT_LENGTH) return false
-  if (/[\n\r\t，。；：！？,.!?;:]/.test(trimmed)) return false
-  if (attribute && trimmed.endsWith(`的${attribute}`)) return false
-  if (subjectEmbedsFactPayload(trimmed, attribute, value)) return false
-  return !NOMINALIZED_FACT_LABELS.some(label => trimmed.endsWith(`的${label}`))
 }
 
 function filterHardCanonicalFacts(
@@ -235,7 +104,7 @@ function filterHardCanonicalFacts(
   if (!chapterContent) return facts
 
   let unsupportedChapterTextFacts = 0
-  let structurallyInvalidFacts = 0
+  let unsupportedAttributeFacts = 0
   const kept: CanonicalFact[] = []
 
   for (const fact of facts) {
@@ -244,11 +113,8 @@ function filterHardCanonicalFacts(
       continue
     }
 
-    const structureValid =
-      isAllowedCanonicalFactAttribute(fact.attribute) &&
-      isStructurallyValidCanonicalFactSubject(fact.subject, fact.attribute, fact.value)
-    if (!structureValid) {
-      structurallyInvalidFacts++
+    if (!isAllowedCanonicalFactAttribute(fact.attribute)) {
+      unsupportedAttributeFacts++
       continue
     }
 
@@ -260,9 +126,9 @@ function filterHardCanonicalFacts(
     kept.push(fact)
   }
 
-  if (unsupportedChapterTextFacts > 0 || structurallyInvalidFacts > 0) {
+  if (unsupportedChapterTextFacts > 0 || unsupportedAttributeFacts > 0) {
     logger.warn(
-      `[MuseFlow] SummaryAgent 权威事实晋升过滤：${unsupportedChapterTextFacts} 条缺少可靠正文证据，${structurallyInvalidFacts} 条结构不合格，已从硬 canonicalFacts 移除`
+      `[MuseFlow] SummaryAgent 权威事实晋升过滤：${unsupportedChapterTextFacts} 条缺少可靠正文证据，${unsupportedAttributeFacts} 条 attribute 不在结构化枚举内，已从硬 canonicalFacts 移除`
     )
   }
 
@@ -306,14 +172,6 @@ export function processSummaryOutput(
     })
   }
 
-  const disambiguateValue = (value: string, subject: string): string => {
-    // 权威事实中禁止使用依赖上下文的代词；如果 LLM 仍然生成了，用完整 subject 兜底替换。
-    const ambiguousPronouns = /此物|该物|前述物品|此件|那件/g
-    if (!ambiguousPronouns.test(value)) return value
-    logger.warn(`[MuseFlow] canonicalFact 中发现模糊指代，将用 '${subject}' 兜底澄清: ${value}`)
-    return value.replace(ambiguousPronouns, subject)
-  }
-
   const toConfidence = (val: unknown): 'high' | 'medium' | 'low' => {
     if (val === 'high' || val === 'medium' || val === 'low') return val
     return 'high'
@@ -351,7 +209,7 @@ export function processSummaryOutput(
               : -1
           ),
           quote: typeof (evidenceRaw as Record<string, unknown>)['quote'] === 'string'
-            ? disambiguateValue((evidenceRaw as Record<string, unknown>)['quote'] as string, subject)
+            ? (evidenceRaw as Record<string, unknown>)['quote'] as string
             : '',
         }
       : undefined
@@ -362,7 +220,7 @@ export function processSummaryOutput(
         : `cf_${chapterIndex ?? 0}_${idx}`,
       subject,
       attribute,
-      value: disambiguateValue(value, subject),
+      value,
       establishedIn: chapterIndex ?? (typeof item['establishedIn'] === 'number' ? item['establishedIn'] : -1),
       confidence: toConfidence(item['confidence']),
       source: toCanonicalFactSource(item['source']) ?? defaultSource,
@@ -370,10 +228,7 @@ export function processSummaryOutput(
       supersedes: supersedesRaw.length > 0
         ? supersedesRaw.map(s => ({
             chapter: typeof s['chapter'] === 'number' ? s['chapter'] : -1,
-            oldValue: disambiguateValue(
-              typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
-              subject
-            ),
+            oldValue: typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
           })).filter(s => s.oldValue.length > 0)
         : undefined,
     }
@@ -546,11 +401,11 @@ export function processSummaryOutput(
     }
 
     const normalized: string[] = []
+    const allowed = new Set(claimedBeats)
     for (const rawBeat of rawBeats) {
-      const matched = matchMandatoryBeat(rawBeat, claimedBeats)
-      if (matched) {
-        if (!normalized.includes(matched)) {
-          normalized.push(matched)
+      if (allowed.has(rawBeat)) {
+        if (!normalized.includes(rawBeat)) {
+          normalized.push(rawBeat)
         }
       } else {
         logger.warn(`[MuseFlow] SummaryAgent 返回的 verifiedBeat 与 claimedBeats 不匹配，已丢弃：${rawBeat.slice(0, 80)}`)
@@ -572,7 +427,7 @@ export function processSummaryOutput(
       if (!item || typeof item !== 'object') continue
       const record = item as Record<string, unknown>
       const rawBeat = typeof record['beat'] === 'string' ? record['beat'].trim() : ''
-      const beat = allowedBeats.length > 0 ? matchMandatoryBeat(rawBeat, allowedBeats) : rawBeat
+      const beat = allowedBeats.length > 0 && allowedBeats.includes(rawBeat) ? rawBeat : ''
       if (!beat || !verifiedBeats.includes(beat)) continue
 
       const evidence = record['evidence']
@@ -582,19 +437,10 @@ export function processSummaryOutput(
         : ''
       if (quote.length === 0) continue
 
-      const evidenceMatch = evidenceQuoteIsValid(quote, chapterContent)
-      if (!evidenceMatch) {
-        logger.warn(`[MuseFlow] verifiedBeatEvidence 引用未在正文中找到，已丢弃：${beat}`)
-        continue
-      }
-
       const chapter = typeof (evidence as Record<string, unknown>)['chapterIndex'] === 'number'
         ? (evidence as Record<string, unknown>)['chapterIndex'] as number
         : (chapterIndex ?? -1)
-      const confidence = clampConfidence(
-        toConfidence(record['confidence']),
-        evidenceMatch === 'fuzzy' ? 'medium' : 'high'
-      )
+      const confidence = toConfidence(record['confidence'])
       const key = `${beat}|${chapter}|${quote}`
       if (seen.has(key)) continue
       seen.add(key)
@@ -610,7 +456,6 @@ export function processSummaryOutput(
 
   if (storyState) {
     if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {
-      storyState.canonicalFacts = validateCanonicalFactEvidence(storyState.canonicalFacts, chapterContent)
       storyState.canonicalFacts = filterHardCanonicalFacts(storyState.canonicalFacts, chapterContent)
     }
 

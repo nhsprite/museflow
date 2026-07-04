@@ -180,7 +180,7 @@ describe('expandOutlineForChapter', () => {
     expect(agentInput.verifiedConstraints).toEqual([durableConstraint.text, currentActPressure.text])
   })
 
-  it('regenerates JIT outline when claimed beats are not supported by the description', async () => {
+  it('keeps exact current-act claimed beats without description support matching', async () => {
     const jitState: ReducedGraphState = {
       ...baseState,
       totalChapters: 4,
@@ -222,35 +222,24 @@ describe('expandOutlineForChapter', () => {
       chapters: [null, null, null, null],
     }
 
-    chapterOutlineRunMock
-      .mockResolvedValueOnce({
-        success: true,
-        data: {
-          title: '常规赴约',
-          description: '主角午后赴约，得知常规规矩，归处后等待同伴回报。',
-          introducedCharacters: [],
-          claimedBeats: ['外部势力干扰核心安排'],
-        },
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        data: {
-          title: '安排受扰',
-          description: '外部势力干扰核心安排，散布假消息，迫使主角意识到既定安排已被外力利用。',
-          introducedCharacters: [],
-          claimedBeats: ['外部势力干扰核心安排'],
-        },
-      })
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '常规赴约',
+        description: '主角午后赴约，得知常规规矩，归处后等待同伴回报。',
+        introducedCharacters: [],
+        claimedBeats: ['外部势力干扰核心安排', '非当前幕节拍'],
+      },
+    })
 
     const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
 
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
-    expect(result.outline?.[1]?.title).toBe('安排受扰')
-    expect(result.outline?.[1]?.description).toContain('外部势力干扰核心安排')
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[1]?.title).toBe('常规赴约')
     expect(result.outline?.[1]?.claimedBeats).toEqual(['外部势力干扰核心安排'])
   })
 
-  it('retries JIT outline when the model reports unsupported claimed beats as a conflict', async () => {
+  it('throws JIT outline conflicts without parsing conflictReason text for retries', async () => {
     const jitState: ReducedGraphState = {
       ...baseState,
       totalChapters: 4,
@@ -292,42 +281,21 @@ describe('expandOutlineForChapter', () => {
       chapters: [null, null, null, null],
     }
 
-    chapterOutlineRunMock
-      .mockResolvedValueOnce({
-        success: true,
-        data: {
-          title: '过渡',
-          description: '主角整理前事，准备继续原有安排。',
-          introducedCharacters: [],
-          claimedBeats: ['外部压力打破既定安排'],
-        },
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        data: {
-          title: '冲突',
-          description: '主角继续原有安排。',
-          introducedCharacters: [],
-          claimedBeats: ['外部压力打破既定安排'],
-          conflict: true,
-          conflictReason: "本描述将 '外部压力打破既定安排' 列为 claimedBeat，但 description 未承载对应事件，属于强行贴标签。",
-        },
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        data: {
-          title: '压力入局',
-          description: '外部压力突然介入，打断主角原有安排，迫使他改换路径。',
-          introducedCharacters: [],
-          claimedBeats: ['外部压力打破既定安排'],
-        },
-      })
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '冲突',
+        description: '主角继续原有安排。',
+        introducedCharacters: [],
+        claimedBeats: ['外部压力打破既定安排'],
+        conflict: true,
+        conflictReason: "本描述将 '外部压力打破既定安排' 列为 claimedBeat，但 description 未承载对应事件，属于强行贴标签。",
+      },
+    })
 
-    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
-
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
-    expect(result.outline?.[1]?.title).toBe('压力入局')
-    expect(result.outline?.[1]?.claimedBeats).toEqual(['外部压力打破既定安排'])
+    await expect(expandOutlineForChapter(jitState, 1, createMockProvider()))
+      .rejects.toThrow('即时大纲与权威事实冲突')
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
   })
 
   it('extends an overloaded current act before generating a JIT outline', async () => {

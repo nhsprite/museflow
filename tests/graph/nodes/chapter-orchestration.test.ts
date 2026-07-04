@@ -332,7 +332,7 @@ describe('converge_and_decide', () => {
 
   it('auto-fixes patchable warnings when no errors remain', async () => {
     const pendingIssues: Issue[] = [
-      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },
+      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段', locationRef: { paragraphIndex: 0 } },
     ]
     const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 0 }, pendingIssues })
 
@@ -373,7 +373,7 @@ describe('converge_and_decide', () => {
     vi.mocked(isLocalIssue).mockResolvedValue(true)
     vi.mocked(isStructuralIssue).mockResolvedValue(false)
 
-    const warning: Issue = { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' }
+    const warning: Issue = { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段', locationRef: { paragraphIndex: 0 } }
     const error: Issue = { id: 'e1', type: 'consistency', severity: 'error', description: '时间顺序不一致' }
     const state = buildBaseState({ session: { rewriteApproved: true }, pendingIssues: [error, warning] })
 
@@ -385,7 +385,7 @@ describe('converge_and_decide', () => {
 
   it('does not auto-fix warnings when max auto-fix attempts reached', async () => {
     const pendingIssues: Issue[] = [
-      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段' },
+      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段', locationRef: { paragraphIndex: 0 } },
     ]
     const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 3, rewriteAttempts: 1 }, pendingIssues })
 

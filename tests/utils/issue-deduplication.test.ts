@@ -14,25 +14,31 @@ function createMockProvider(response: string | string[]): ModelProvider {
 }
 
 describe('ruleBasedFingerprint', () => {
-  it('produces same fingerprint for rephrased invented-character errors', () => {
+  it('uses structured fields rather than rephrased descriptions', () => {
     const a: Issue = { id: '1', type: 'hallucination', severity: 'error', description: '角色乙不在官方角色列表' }
     const b: Issue = { id: '2', type: 'hallucination', severity: 'error', description: '角色乙不在官方角色列表中' }
     expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
   })
 
-  it('produces different fingerprints for different core entities', () => {
-    const a: Issue = { id: '1', type: 'hallucination', severity: 'error', description: '角色甲不在官方列表' }
-    const b: Issue = { id: '2', type: 'hallucination', severity: 'error', description: '角色乙不在官方列表' }
+  it('produces different fingerprints for different structured locations', () => {
+    const a: Issue = { id: '1', type: 'hallucination', severity: 'error', description: '角色甲不在官方列表', locationRef: { paragraphIndex: 0 } }
+    const b: Issue = { id: '2', type: 'hallucination', severity: 'error', description: '角色乙不在官方列表', locationRef: { paragraphIndex: 1 } }
     expect(ruleBasedFingerprint(a)).not.toBe(ruleBasedFingerprint(b))
   })
 
-  it('normalizes numbers in descriptions', () => {
+  it('ignores natural-language location strings', () => {
+    const a: Issue = { id: '1', type: 'hallucination', severity: 'error', description: '角色甲不在官方列表', location: '第1段' }
+    const b: Issue = { id: '2', type: 'hallucination', severity: 'error', description: '角色乙不在官方列表', location: '第2段' }
+    expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
+  })
+
+  it('ignores numbers in descriptions', () => {
     const a: Issue = { id: '1', type: 'quality', severity: 'warning', description: '第12章字数不足' }
     const b: Issue = { id: '2', type: 'quality', severity: 'warning', description: '第3章字数不足' }
     expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
   })
 
-  it('extracts Chinese quoted entities', () => {
+  it('does not extract quoted natural-language entities', () => {
     const a: Issue = { id: '1', type: 'consistency', severity: 'error', description: '「长命锁」不应出现在当铺' }
     const b: Issue = { id: '2', type: 'consistency', severity: 'error', description: '“长命锁”不应出现在当铺' }
     expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
@@ -55,20 +61,20 @@ describe('issueFingerprint with provider', () => {
 })
 
 describe('deduplicateIssuesSemantically', () => {
-  it('deduplicates rephrased errors using rule-based fallback without provider', async () => {
+  it('deduplicates by structured fields using rule-based fallback without provider', async () => {
     const issues: Issue[] = [
-      { id: '1', type: 'hallucination', severity: 'error', description: '角色乙不在官方角色列表' },
-      { id: '2', type: 'hallucination', severity: 'error', description: '角色乙不在官方角色列表中' },
-      { id: '3', type: 'hallucination', severity: 'error', description: '角色丙不在官方角色列表' },
+      { id: '1', type: 'hallucination', severity: 'error', description: '角色乙不在官方角色列表', locationRef: { paragraphIndex: 0 } },
+      { id: '2', type: 'hallucination', severity: 'error', description: '角色乙不在官方角色列表中', locationRef: { paragraphIndex: 0 } },
+      { id: '3', type: 'hallucination', severity: 'error', description: '角色丙不在官方角色列表', locationRef: { paragraphIndex: 1 } },
     ]
     const deduped = await deduplicateIssuesSemantically(undefined, issues)
     expect(deduped.length).toBe(2)
   })
 
-  it('keeps distinct errors separate with rule-based fallback', async () => {
+  it('keeps distinct structured locations separate with rule-based fallback', async () => {
     const issues: Issue[] = [
-      { id: '1', type: 'consistency', severity: 'error', description: '物品甲同时出现在仓库和书房' },
-      { id: '2', type: 'consistency', severity: 'error', description: '角色甲在城东却于同一时刻现身城西' },
+      { id: '1', type: 'consistency', severity: 'error', description: '物品甲同时出现在仓库和书房', locationRef: { paragraphIndex: 0 } },
+      { id: '2', type: 'consistency', severity: 'error', description: '角色甲在城东却于同一时刻现身城西', locationRef: { paragraphIndex: 1 } },
     ]
     const deduped = await deduplicateIssuesSemantically(undefined, issues)
     expect(deduped.length).toBe(2)

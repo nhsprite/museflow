@@ -19,11 +19,11 @@ describe('buildCharacterWhitelist', () => {
     expect(list.isOfficial(' invented 角色')).toBe(false)
   })
 
-  it('treats parenthetical aliases as official variants', () => {
+  it('keeps parenthetical names exact without generating aliases', () => {
     const list = buildCharacterWhitelist([character('何氏（奶娘）')])
     expect(list.isOfficial('何氏（奶娘）')).toBe(true)
-    expect(list.isOfficial('何氏')).toBe(true)
-    expect(list.canonical('何氏（奶娘）')).toBe('何氏')
+    expect(list.isOfficial('何氏')).toBe(false)
+    expect(list.canonical('何氏（奶娘）')).toBe('何氏（奶娘）')
   })
 
   it('trims whitespace around names', () => {
@@ -32,10 +32,10 @@ describe('buildCharacterWhitelist', () => {
     expect(list.canonical('  主角  ')).toBe('主角')
   })
 
-  it('returns the canonical name for aliases', () => {
+  it('does not derive canonical names from parenthetical variants', () => {
     const list = buildCharacterWhitelist([character('苏氏（夫人）')])
-    expect(list.canonical('苏氏（夫人）')).toBe('苏氏')
-    expect(list.canonical('苏氏')).toBe('苏氏')
+    expect(list.canonical('苏氏（夫人）')).toBe('苏氏（夫人）')
+    expect(list.canonical('苏氏')).toBeUndefined()
     expect(list.canonical('未知')).toBeUndefined()
   })
 })

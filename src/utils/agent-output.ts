@@ -1,9 +1,7 @@
-import type { Issue, IssueSeverity, IssueType } from '../types/agent.js'
+import type { Issue, IssueLocationRef, IssueSeverity, IssueType } from '../types/agent.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ModelProvider } from '../model/provider.js'
-import type { CanonicalFact } from '../types/story-state.js'
 import { generateId } from './id.js'
-import { logger } from './logger.js'
 import {
   batchJudgeWithdrawnIssues,
   batchJudgePositiveFeedback,
@@ -14,6 +12,12 @@ export interface RawIssue {
   severity?: string
   description?: string
   location?: string
+  locationRef?: unknown
+  location_ref?: unknown
+  paragraphIndex?: unknown
+  sentenceIndex?: unknown
+  paragraphNumber?: unknown
+  sentenceNumber?: unknown
   suggestion?: string
   aspect?: string
   conflict_with?: string
@@ -24,19 +28,6 @@ export interface NormalizeIssuesOptions {
   filter?: (issue: RawIssue) => boolean
   mapType?: (issue: RawIssue) => IssueType
   defaultSeverity?: IssueSeverity
-  canonicalFacts?: CanonicalFact[] | undefined
-}
-
-function isSelfWithdrawnIssue(issue: RawIssue): boolean {
-  const text = `${issue.description ?? ''} ${issue.suggestion ?? ''}`.replace(/\s+/g, '')
-  if (text.length === 0) return false
-
-  return (
-    /不构成(?:严重|硬性|明确)?(?:矛盾|冲突|问题|错误)/.test(text) ||
-    /不属于(?:严重|硬性|明确)?(?:矛盾|冲突|问题|错误)/.test(text) ||
-    /(?:本身|自身|这本身|此处|该处)?并?不(?:矛盾|冲突)/.test(text) ||
-    /无(?:明显|直接|硬性|严重)?(?:矛盾|冲突|问题)/.test(text)
-  )
 }
 
 export async function normalizeIssues(
@@ -51,22 +42,20 @@ export async function normalizeIssues(
     ? rawIssues.filter(options.filter)
     : rawIssues
 
-  const deterministicFiltered = afterFilter.filter(issue => !isSelfWithdrawnIssue(issue))
-
-  if (deterministicFiltered.length === 0) return []
+  if (afterFilter.length === 0) return []
 
   let withdrawn: boolean[] = []
   let positive: boolean[] = []
 
   if (provider) {
-    const descriptions = deterministicFiltered.map(i => i.description || '')
+    const descriptions = afterFilter.map(i => i.description || '')
     ;[withdrawn, positive] = await Promise.all([
       batchJudgeWithdrawnIssues(provider, descriptions),
       batchJudgePositiveFeedback(provider, descriptions),
     ])
   }
 
-  const issues = deterministicFiltered
+  return afterFilter
     .filter((_issue, index) => !withdrawn[index] && !positive[index])
     .map(issue => {
       const mappedType = options.mapType ? options.mapType(issue) : type
@@ -80,6 +69,10 @@ export async function normalizeIssues(
       if (issue.location) {
         result.location = issue.location
       }
+      const locationRef = normalizeLocationRef(issue)
+      if (locationRef) {
+        result.locationRef = locationRef
+      }
       if (issue.suggestion) {
         result.suggestion = issue.suggestion
       }
@@ -88,53 +81,45 @@ export async function normalizeIssues(
       }
       return result
     })
-
-  if (options.canonicalFacts && options.canonicalFacts.length > 0) {
-    return filterIssuesAgainstCanonicalFacts(issues, options.canonicalFacts)
-  }
-
-  return issues
 }
 
-/**
- * 保守过滤：如果某个 consistency issue 的描述直接否定了 canonicalFact 中记录的事实，
- * 则视为校验器自身违背 canonical_facts_authority 规则，予以丢弃。
- * 该函数只处理明显矛盾，避免误伤合理的质疑。
- */
-export function filterIssuesAgainstCanonicalFacts(issues: Issue[], canonicalFacts: CanonicalFact[]): Issue[] {
-  if (canonicalFacts.length === 0) return issues
+function normalizeLocationRef(issue: RawIssue): IssueLocationRef | undefined {
+  const source = readLocationSource(issue)
+  const paragraphIndex = readIndex(source['paragraphIndex'])
+  const sentenceIndex = readIndex(source['sentenceIndex'])
+  const paragraphNumber = readNumber(source['paragraphNumber'])
+  const sentenceNumber = readNumber(source['sentenceNumber'])
 
-  const negationMarkers = /不应|不应该|不可能|并非|不是|不在|没有|错误|矛盾|冲突|未在|并未|并无|否认|否决|不成立|不存在|已不|不再|不会|不能|未能/g
+  const result: IssueLocationRef = {}
+  if (paragraphIndex !== undefined) {
+    result.paragraphIndex = paragraphIndex
+  } else if (paragraphNumber !== undefined) {
+    result.paragraphIndex = paragraphNumber - 1
+  }
 
-  return issues.filter(issue => {
-    if (issue.type !== 'consistency') return true
-    const text = `${issue.description ?? ''} ${issue.suggestion ?? ''}`
-    if (!negationMarkers.test(text)) return true
+  if (sentenceIndex !== undefined) {
+    result.sentenceIndex = sentenceIndex
+  } else if (sentenceNumber !== undefined) {
+    result.sentenceIndex = sentenceNumber - 1
+  }
 
-    for (const fact of canonicalFacts) {
-      const subject = fact.subject?.trim() ?? ''
-      const value = fact.value?.trim() ?? ''
-      if (subject.length < 2 || value.length < 5) continue
+  return Object.keys(result).length > 0 ? result : undefined
+}
 
-      if (!text.includes(subject)) continue
+function readLocationSource(issue: RawIssue): Record<string, unknown> {
+  const nested = issue.locationRef ?? issue.location_ref
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    return nested as Record<string, unknown>
+  }
+  return issue
+}
 
-      const coreAssertion = value.replaceAll(subject, '').trim()
-      if (coreAssertion.length >= 2 && text.includes(coreAssertion)) {
-        logger.warn(
-          `[MuseFlow] consistency issue 与 canonicalFact 直接矛盾，已过滤: ${issue.description?.slice(0, 80)}... (fact: ${fact.subject}/${fact.attribute})`
-        )
-        return false
-      }
+function readIndex(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined
+}
 
-      if (text.includes(value)) {
-        logger.warn(
-          `[MuseFlow] consistency issue 与 canonicalFact 直接矛盾，已过滤: ${issue.description?.slice(0, 80)}... (fact: ${fact.subject}/${fact.attribute})`
-        )
-        return false
-      }
-    }
-    return true
-  })
+function readNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined
 }
 
 export function createChapterMeta(

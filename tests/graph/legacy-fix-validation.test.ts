@@ -72,6 +72,9 @@ describe('runLegacyFix validation', () => {
     await fs.writeFile(path.join(outputDir, 'chapters', 'chapter_4.md'), existingContent, 'utf-8')
 
     const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValueOnce({
+      results: [{ looksLikeRevisionPlan: true, containsChecklistArtifacts: false }],
+    })
     await expect(
       runLegacyFix(agent as never, context.provider, state, existingContent, 3, state.outline[3], '前几章摘要', '时间线', '')
     ).rejects.toThrow('修改计划')

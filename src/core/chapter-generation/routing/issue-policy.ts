@@ -1,6 +1,6 @@
 import type { Issue } from '../../../types/agent.js'
 import type { IssuePolicyDeps, IssuePolicyResult } from './types.js'
-import { deduplicateByRule } from '../../../utils/issue-deduplication.js'
+import { deduplicateByRule, ruleBasedFingerprint } from '../../../utils/issue-deduplication.js'
 
 export async function calculateIssueSetSimilarity(
   prev: Issue[],
@@ -10,10 +10,7 @@ export async function calculateIssueSetSimilarity(
   if (prev.length === 0 || curr.length === 0) return 0
 
   const fingerprintFn =
-    issueFingerprint ?? (async issue => {
-      const text = `${issue.type}:${issue.description}`
-      return text.slice(0, 100)
-    })
+    issueFingerprint ?? (async issue => ruleBasedFingerprint(issue))
 
   const prevFps = await Promise.all(prev.map(fingerprintFn))
   const currFps = await Promise.all(curr.map(fingerprintFn))

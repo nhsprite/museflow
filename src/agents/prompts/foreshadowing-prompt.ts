@@ -66,8 +66,8 @@ const FORESHADOWING_USER_PROMPT_TEMPLATE = `<instruction>
         "confidence": "high|medium|low"
       }
     ],
-    "fulfilled_foreshadows": ["被回收的伏笔文本"],
-    "overdue_foreshadows": ["超过预期章节仍未回收的伏笔文本"]
+    "fulfilled_foreshadows": ["被回收伏笔的 id 或 index 数字，不要输出伏笔文本"],
+    "overdue_foreshadows": ["超过预期章节仍未回收伏笔的 id 或 index 数字，不要输出伏笔文本"]
   }
   如果本章没有发现值得埋下的伏笔，new_foreshadows 返回空数组 []。
 </output_format>`
@@ -110,7 +110,7 @@ export function buildForeshadowingUserPrompt(
     : '请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。'
 
   const existingForeshadowsSection = `${existingForeshadows.length > 0
-    ? existingForeshadows.map((f, i) => `  <item index="${i + 1}" created_at="${f.createdAtChapter ?? '?'}" expected="${f.expectedFulfillChapter}">${f.text}</item>`).join('\n')
+    ? existingForeshadows.map((f, i) => `  <item id="${f.id}" index="${i + 1}" created_at="${f.createdAtChapter ?? '?'}" expected="${f.expectedFulfillChapter}">${f.text}</item>`).join('\n')
     : '（暂无已埋伏笔）'}
   ${mustFulfillForeshadows.length > 0 ? `
   <must_fulfill>

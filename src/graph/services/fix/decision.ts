@@ -9,8 +9,8 @@ export function hasPatchableIssues(issues: Issue[]): boolean {
   return issues.some(issue => {
     if (issue.severity !== 'warning') return true
     if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
-    if (issue.type === 'consistency' && issue.dimension === 'quality' && issue.location) {
-      return /第\s*\d+\s*[段节]|段落\s*\d+|第\s*\d+\s*句/.test(issue.location)
+    if (issue.type === 'consistency' && issue.dimension === 'quality') {
+      return issue.locationRef?.paragraphIndex !== undefined || issue.locationRef?.sentenceIndex !== undefined
     }
     return false
   })

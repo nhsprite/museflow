@@ -82,7 +82,7 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
      - 对于 background，必须在 reason 中说明为什么与核心事件无关，且 sections 中不得为其分配独立场景
      - 禁止无任何说明地忽略前章差事
      - 【重要】不得为了让所有 pending task 都在本章 executed 而挤占核心事件篇幅。如果 pending task 过多或与核心事件无关，优先选择 postponed 或 background 并说明原因
-     - 【绝对规则】判断一条 pending task 能否标记为 executed 的唯一标准：该 task 的描述与第 {displayChapterNumber} 章大纲描述存在明确的关键词重叠。没有关键词重叠的 task，即使 deadline 落在本章，resolution 也只能是 postponed 或 background，禁止 executed。
+     - 【绝对规则】判断一条 pending task 能否标记为 executed 的唯一标准：该 task 是本章大纲核心事件的必要组成部分，或由本章大纲明确要求在本章完成。否则即使 deadline 落在本章，resolution 也只能是 postponed 或 background，禁止 executed。
      - 【绝对规则】如果某条 pending task 与第 {displayChapterNumber} 章大纲核心事件无关，即使其 deadline 落在本章，也必须选择 postponed 或 background（或在一句话内 background 处理），总字数不得超过 {MAX_BACKGROUND_TASK_WORD_COUNT} 字，不得在 sections 中为其分配独立场景或超过 {MAX_EXECUTED_TASK_RATIO_PERCENT}% 的总字数
      - 【硬性规则】如果 taskResolutions 中某条差事为 postponed 或 background，sections 中不得出现专门执行该差事的场景；只允许在过渡句中提及
   7. 【关键物品操作规则 - 必须执行】
@@ -220,7 +220,7 @@ function buildIssuesSection(state: import('../types.js').ChapterPlannerAgentInpu
 
   const characterOmissionIssues = state.issues.filter(i =>
     i.type === 'consistency' &&
-    (i.description.includes('角色遗漏') || i.description.includes('未提及') || i.description.includes('未出现')),
+    i.dimension === 'character_omission',
   )
 
   return `【上轮问题反馈 - 必须在本次规划中修复】

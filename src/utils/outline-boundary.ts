@@ -57,7 +57,7 @@ export function shouldForceTemporaryReplan(
   _outline: ChapterOutline[],
   _chapterIndex: number
 ): boolean {
-  // 不再基于关键词列表强制重新规划；规划阶段的 absolute_constraints 与预算校验负责控制章节边界。
+  // 不再用本地自然语言规则强制重新规划；规划阶段的 absolute_constraints 与预算校验负责控制章节边界。
   return false
 }
 
@@ -93,7 +93,7 @@ ${relevantTasks.map(t => {
 
 <mandatory>【强制要求】
 1. 以上差事来自前章角色领受的任务，本章计划必须对每条差事给出明确处理：
-   - executed：在本章某 section 中执行该差事（仅当该差事与第 ${outlineItem.number} 章大纲核心事件直接相关，且该差事描述与大纲描述有明确关键词重叠时）
+   - executed：在本章某 section 中执行该差事（仅当该差事是第 ${outlineItem.number} 章大纲核心事件的必要组成部分，或由本章大纲明确要求完成时）
    - postponed：明确推迟到 ${nextTitle} 或更晚，并说明原因（当差事与第 ${outlineItem.number} 章核心事件无关、或会挤占核心事件篇幅时，优先选择此项）
    - background：一句话带过，总字数不得超过 ${config.maxBackgroundTaskWordCount} 字，不得写成独立场景
    - superseded：因后续大纲覆盖而取消，并说明原因

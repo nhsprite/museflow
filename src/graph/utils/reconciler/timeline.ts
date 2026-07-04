@@ -23,38 +23,20 @@ function formatCharacterFactEntries(
   return lines.join('\n')
 }
 
-function isSupersededFact(text: string, canonicalFacts: CanonicalFact[]): boolean {
-  for (const fact of canonicalFacts) {
-    if (!fact.supersedes || fact.supersedes.length === 0) continue
-    for (const old of fact.supersedes) {
-      if (old.oldValue.length === 0) continue
-      if (text.includes(fact.subject) && text.includes(old.oldValue)) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
 export function filterSupersededFactsFromTimeline(
   entries: Array<{ character: string; facts: string[] }>,
   canonicalFacts: CanonicalFact[]
 ): Array<{ character: string; facts: string[] }> {
-  if (canonicalFacts.length === 0) return entries
+  void canonicalFacts
   return entries
-    .map(entry => ({
-      character: entry.character,
-      facts: entry.facts.filter(fact => !isSupersededFact(fact, canonicalFacts)),
-    }))
-    .filter(entry => entry.facts.length > 0)
 }
 
 export function filterSupersededEventsFromTimeline(
   events: string[],
   canonicalFacts: CanonicalFact[]
 ): string[] {
-  if (canonicalFacts.length === 0) return events
-  return events.filter(event => !isSupersededFact(event, canonicalFacts))
+  void canonicalFacts
+  return events
 }
 
 function isFactActiveAt(fact: CanonicalFact, upToChapterIndex: number): boolean {
@@ -112,7 +94,7 @@ export function buildCanonicalFactTimeline(
 
 export function isCharacterSubject(subject: string, characters?: Array<{ name: string }>): boolean {
   if (!characters) return false
-  return characters.some(c => subject.includes(c.name) || c.name.includes(subject))
+  return characters.some(c => subject === c.name)
 }
 
 function isCharacterFact(fact: CanonicalFact, characters: Array<{ name: string }>): boolean {

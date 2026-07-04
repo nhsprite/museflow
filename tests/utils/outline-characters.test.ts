@@ -39,12 +39,12 @@ describe('extractOutlineCharacters', () => {
     expect(result).toEqual([])
   })
 
-  it('filters out empty or invalid names', () => {
+  it('filters out empty names only', () => {
     const result = extractOutlineCharacters(
       [makeOutline(7, '买办登场', '陈裕堂登场。', ['', '  ', '陈裕堂', 'a'])],
       6
     )
-    expect(result.map(r => r.name)).toEqual(['陈裕堂'])
+    expect(result.map(r => r.name)).toEqual(['a', '陈裕堂'])
   })
 
   it('deduplicates repeated names across chapters', () => {

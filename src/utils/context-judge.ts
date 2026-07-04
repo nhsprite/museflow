@@ -291,7 +291,7 @@ interface EntityChangeResult {
 
 export async function batchExtractEntityChanges(
   provider: ModelProvider,
-  items: Array<{ sentence: string; subject: string; attribute: '所在位置' | '状态' }>
+  items: Array<{ text: string; subject: string; attribute: '所在位置' | '状态' }>
 ): Promise<EntityChangeResult[]> {
   const schema: JsonSchema = {
     type: 'object',
@@ -316,12 +316,12 @@ export async function batchExtractEntityChanges(
 
   return batchJudge(
     provider,
-    `你是小说状态抽取助手。对每条输入，判断句子中是否描述了 subject 的位置或状态变化：
-- 若句子处于回忆、假设、梦境、条件句、未来计划或否定语境，则 skip=true，不提取。
+    `你是小说状态抽取助手。对每条输入，判断文本中是否描述了 subject 的位置或状态变化：
+- 若文本处于回忆、假设、梦境、条件句、未来计划或否定语境，则 skip=true，不提取。
 - 若 attribute 为"所在位置"，提取 subject 所在的地点作为 location。
 - 若 attribute 为"状态"，提取 subject 的状态作为 state。
 - 只输出 JSON {"results": [{"skip": bool, "location": "..."|null, "state": "..."|null}, ...]}，顺序与输入一致。`,
-    items.map(i => `attribute=${i.attribute}, subject=${i.subject}, sentence=${i.sentence}`),
+    items.map(i => `attribute=${i.attribute}, subject=${i.subject}, text=${i.text}`),
     schema,
     defaultResult,
     raw => {

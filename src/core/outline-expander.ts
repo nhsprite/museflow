@@ -23,7 +23,6 @@ import { generateOutlineRevisionProposal } from './chapter-generation/outline-re
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 import type { Conflict } from '../types/story-state.js'
 import { applyActBoundaryAdjustment, proposeActBoundaryAdjustments } from '../utils/story-arc.js'
-import { extractChineseKeywords } from '../utils/text.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
 import {
   createGenericVerifiedConstraint,
@@ -45,8 +44,6 @@ export interface ExpandedOutline {
 type ChapterContextSource = ModelProvider | RuntimeContext
 
 const MAX_JIT_OUTLINE_ATTEMPTS = 3
-const CLAIMED_BEAT_SUPPORT_THRESHOLD = 0.18
-const MIN_CLAIMED_BEAT_SHARED_KEYWORDS = 3
 
 function isRuntimeContext(source: ChapterContextSource): source is RuntimeContext {
   return 'provider' in source
@@ -155,91 +152,17 @@ function getCurrentActMandatoryBeats(state: ReducedGraphState, chapterIndex: num
   return new Set((currentAct?.mandatoryBeats ?? []).map(beat => beat.trim()).filter(Boolean))
 }
 
-function extractOutlineSupportKeywords(text: string): Set<string> {
-  const chineseKeywords = extractChineseKeywords(text, { minLen: 2, maxLen: 4, ngrams: true })
-  const latinKeywords = text.toLowerCase().match(/[a-z0-9][a-z0-9_-]{1,}/g) ?? []
-  return new Set([...chineseKeywords, ...latinKeywords])
-}
-
-function claimedBeatSupportedByDescription(beat: string, description: string): boolean {
-  const normalizedBeat = beat.trim()
-  const normalizedDescription = description.trim()
-  if (!normalizedBeat || !normalizedDescription) return false
-  if (normalizedDescription.includes(normalizedBeat)) return true
-
-  const beatKeywords = extractOutlineSupportKeywords(normalizedBeat)
-  const descriptionKeywords = extractOutlineSupportKeywords(normalizedDescription)
-  if (beatKeywords.size === 0 || descriptionKeywords.size === 0) {
-    return normalizedDescription.includes(normalizedBeat)
-  }
-
-  let shared = 0
-  for (const keyword of beatKeywords) {
-    if (descriptionKeywords.has(keyword)) {
-      shared++
-    }
-  }
-
-  return (
-    shared >= Math.min(MIN_CLAIMED_BEAT_SHARED_KEYWORDS, beatKeywords.size) &&
-    shared / beatKeywords.size >= CLAIMED_BEAT_SUPPORT_THRESHOLD
-  )
-}
-
-function findUnsupportedClaimedBeats(
-  result: ChapterOutlineResult,
+function filterClaimedBeatsToCurrentAct(
+  claimedBeats: string[] | undefined,
   state: ReducedGraphState,
   chapterIndex: number
 ): string[] {
   const currentActMandatoryBeats = getCurrentActMandatoryBeats(state, chapterIndex)
   if (currentActMandatoryBeats.size === 0) return []
 
-  return (result.claimedBeats ?? []).filter(beat => {
-    const normalizedBeat = beat.trim()
-    if (!currentActMandatoryBeats.has(normalizedBeat)) return false
-    return !claimedBeatSupportedByDescription(normalizedBeat, result.description)
-  })
-}
-
-function buildJitOutlineCorrectionConstraint(chapterIndex: number, unsupportedBeats: string[]): string {
-  return [
-    `【即时大纲修正】上一版第 ${chapterIndex + 1} 章大纲声称推进以下本幕 mandatory beats，但 description 没有写出对应事件：${unsupportedBeats.join('、')}。`,
-    '请重新生成本章大纲：若 claimedBeats 包含某个 mandatory beat，description 必须明确写出该 beat 对应的具体事件、冲突或状态变化；如果本章只是过渡或前章尾声，不要把该 beat 放入 claimedBeats。',
-  ].join('')
-}
-
-function isRecoverableJitOutlineConflict(reason: string | undefined): boolean {
-  const text = (reason ?? '').replace(/\s+/g, '').toLowerCase()
-  if (!text) return false
-
-  const mentionsBeatClaim =
-    /claimedbeats?/.test(text) ||
-    /mandatorybeats?/.test(text) ||
-    /声称推进/.test(text) ||
-    /消费.*beat/.test(text) ||
-    /推进.*beat/.test(text)
-  const describesUnsupportedClaim =
-    /未承载/.test(text) ||
-    /没有写出/.test(text) ||
-    /未写出/.test(text) ||
-    /不适合推进/.test(text) ||
-    /无法推进/.test(text) ||
-    /不能推进/.test(text) ||
-    /不应推进/.test(text) ||
-    /强行贴标签/.test(text)
-  const describesHardFactConflict =
-    (/权威事实/.test(text) || /canonicalfacts?/.test(text) || /story_?state/.test(text) || /已确立/.test(text)) &&
-    (/冲突/.test(text) || /矛盾/.test(text) || /违背/.test(text) || /不一致/.test(text))
-
-  return mentionsBeatClaim && describesUnsupportedClaim && !describesHardFactConflict
-}
-
-function buildJitOutlineConflictCorrectionConstraint(chapterIndex: number, reason: string): string {
-  return [
-    `【即时大纲修正】上一版第 ${chapterIndex + 1} 章把 mandatory beat 承载不足的问题返回为 conflict：${reason}`,
-    '请重新生成本章大纲：conflict: true 只能用于 description 与 story_state 或 canonical_facts 中已确立事实发生硬冲突的情况。',
-    '如果只是本章不适合推进某个 mandatory beat，请返回 conflict: false，并从 claimedBeats 中移除该 beat；如果要保留 claimedBeats，description 必须写出对应的具体事件、冲突或状态变化。',
-  ].join('')
+  return (claimedBeats ?? [])
+    .map(beat => beat.trim())
+    .filter(beat => currentActMandatoryBeats.has(beat))
 }
 
 async function judgeCoreSectionsWithModel(
@@ -343,8 +266,6 @@ async function generateChapterOutlineIfNeeded(
   )
   let correctionConstraints: string[] = []
   let result: ChapterOutlineResult | null = null
-  let unsupportedBeats: string[] = []
-  let recoverableConflictReason = ''
 
   for (let attempt = 0; attempt < MAX_JIT_OUTLINE_ATTEMPTS; attempt++) {
     const verifiedConstraints = [
@@ -374,38 +295,18 @@ async function generateChapterOutlineIfNeeded(
 
     const candidate = output.data as ChapterOutlineResult
     if (candidate.conflict) {
-      if (isRecoverableJitOutlineConflict(candidate.conflictReason)) {
-        recoverableConflictReason = candidate.conflictReason || '未说明原因'
-        logger.warn(
-          `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲将 mandatory beat 承载不足返回为 conflict，将尝试重新生成：${recoverableConflictReason}`
-        )
-        correctionConstraints = [buildJitOutlineConflictCorrectionConstraint(chapterIndex, recoverableConflictReason)]
-        continue
-      }
       throw new Error(`第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`)
     }
 
-    unsupportedBeats = findUnsupportedClaimedBeats(candidate, state, chapterIndex)
-    if (unsupportedBeats.length === 0) {
-      result = candidate
-      break
+    result = {
+      ...candidate,
+      claimedBeats: filterClaimedBeatsToCurrentAct(candidate.claimedBeats, state, chapterIndex),
     }
-
-    logger.warn(
-      `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲声称推进 mandatory beats，但描述未承载：${unsupportedBeats.join('、')}`
-    )
-    correctionConstraints = [buildJitOutlineCorrectionConstraint(chapterIndex, unsupportedBeats)]
+    break
   }
 
   if (!result) {
-    if (recoverableConflictReason) {
-      throw new Error(
-        `第 ${chapterIndex + 1} 章即时大纲返回可修正冲突但未能生成可执行大纲：${recoverableConflictReason}`
-      )
-    }
-    throw new Error(
-      `第 ${chapterIndex + 1} 章即时大纲声称推进 mandatory beats，但描述未承载：${unsupportedBeats.join('、')}`
-    )
+    throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：未返回可执行大纲`)
   }
 
   const newOutline = [...state.outline]

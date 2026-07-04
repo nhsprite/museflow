@@ -129,31 +129,7 @@ export function sanitizeStoryState(
     }
   }
 
-  const officialNames = Array.from(whitelist.officialNames).concat(
-    Array.from(whitelist.aliases.keys()),
-  )
-
-  function referencesOfficialCharacter(text: string): boolean {
-    return officialNames.some((officialName) => text.includes(officialName))
-  }
-
   const removedFacts: string[] = []
-
-  const activePlots = state.activePlots.filter((plot) => {
-    if (!referencesOfficialCharacter(plot)) {
-      removedFacts.push(plot)
-      return false
-    }
-    return true
-  })
-
-  const revealedSecrets = state.revealedSecrets.filter((secret) => {
-    if (!referencesOfficialCharacter(secret)) {
-      removedFacts.push(secret)
-      return false
-    }
-    return true
-  })
 
   const ambiguousItems = detectAmbiguousItemNames(state)
   if (ambiguousItems.length > 0) {
@@ -172,8 +148,8 @@ export function sanitizeStoryState(
       characterLocations,
       characterStatus,
       keyItemsLocation,
-      activePlots,
-      revealedSecrets,
+      activePlots: [...state.activePlots],
+      revealedSecrets: [...state.revealedSecrets],
       supersededFacts: mergedSupersededFacts,
       canonicalFacts: mergedCanonicalFacts,
     },

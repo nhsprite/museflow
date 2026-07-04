@@ -40,7 +40,7 @@ describe('processSummaryOutput evidence validation', () => {
     expect(fact?.evidence?.quote).toBe('密信已被秘密转移至官府仓库')
   })
 
-  it('drops chapter_text canonical facts when evidence quote is not found', () => {
+  it('keeps structurally valid chapter_text facts without prose quote verification', () => {
     const output = {
       success: true as const,
       content: '',
@@ -73,10 +73,12 @@ describe('processSummaryOutput evidence validation', () => {
 
     const chapterContent = '当夜，密信已被秘密转移至官府仓库，由专人看守。'
     const result = processSummaryOutput(output, 0, [], undefined, chapterContent)
-    expect(result?.storyState?.canonicalFacts).toEqual([])
+    const fact = result?.storyState?.canonicalFacts?.[0]
+    expect(fact?.confidence).toBe('high')
+    expect(fact?.evidence?.quote).toBe('密信飞到了火星基地')
   })
 
-  it('accepts fuzzy evidence match with medium confidence cap', () => {
+  it('preserves declared confidence without fuzzy evidence matching', () => {
     const output = {
       success: true as const,
       content: '',
@@ -107,11 +109,10 @@ describe('processSummaryOutput evidence validation', () => {
       },
     }
 
-    // 正文不包含 quote 开头的主语"他"，但 quote 的绝大部分（15/16）以连续子串出现在正文中，应触发模糊匹配。
     const chapterContent = '他吹熄了油灯，将油纸包小心地藏在了枕头下面，又掖了掖被角。'
     const result = processSummaryOutput(output, 0, [], undefined, chapterContent)
     const fact = result?.storyState?.canonicalFacts?.[0]
-    expect(fact?.confidence).toBe('medium')
+    expect(fact?.confidence).toBe('high')
     expect(fact?.evidence).toBeDefined()
     expect(fact?.evidence?.quote).toBe('他将油纸包小心地藏在了枕头下面')
   })
@@ -152,7 +153,7 @@ describe('processSummaryOutput evidence validation', () => {
     expect(result?.storyState?.canonicalFacts).toEqual([])
   })
 
-  it('drops structurally invalid subjects from hard canonical facts', () => {
+  it('keeps subjects without prose-character filtering', () => {
     const output = {
       success: true as const,
       content: '',
@@ -167,8 +168,49 @@ describe('processSummaryOutput evidence validation', () => {
           pendingTasks: [],
           canonicalFacts: [
             {
-              subject: '密信在官府仓库的所在位置',
+              subject: '密信，官府仓库',
               attribute: '所在位置',
+              value: '官府仓库',
+              establishedIn: 0,
+              confidence: 'high',
+              source: 'chapter_text',
+              evidence: {
+                chapterIndex: 0,
+                quote: '密信已被秘密转移至官府仓库',
+              },
+            },
+          ],
+        },
+      },
+    }
+
+    const chapterContent = '当夜，密信已被秘密转移至官府仓库，由专人看守。'
+    const result = processSummaryOutput(output, 0, [], undefined, chapterContent)
+    expect(result?.storyState?.canonicalFacts).toHaveLength(1)
+    expect(result?.storyState?.canonicalFacts?.[0]).toMatchObject({
+      subject: '密信，官府仓库',
+      attribute: '所在位置',
+      value: '官府仓库',
+    })
+  })
+
+  it('drops chapter_text facts with attributes outside the structured enum', () => {
+    const output = {
+      success: true as const,
+      content: '',
+      data: {
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            {
+              subject: '密信',
+              attribute: '不支持的字段',
               value: '官府仓库',
               establishedIn: 0,
               confidence: 'high',
@@ -188,7 +230,7 @@ describe('processSummaryOutput evidence validation', () => {
     expect(result?.storyState?.canonicalFacts).toEqual([])
   })
 
-  it('drops subjects that embed the fact value from hard canonical facts', () => {
+  it('keeps subjects that embed the fact value without prose-fragment filtering', () => {
     const output = {
       success: true as const,
       content: '',
@@ -221,7 +263,12 @@ describe('processSummaryOutput evidence validation', () => {
 
     const chapterContent = '当夜，关键文件由专人看守。'
     const result = processSummaryOutput(output, 0, [], undefined, chapterContent)
-    expect(result?.storyState?.canonicalFacts).toEqual([])
+    expect(result?.storyState?.canonicalFacts).toHaveLength(1)
+    expect(result?.storyState?.canonicalFacts?.[0]).toMatchObject({
+      subject: '关键文件持有者专人',
+      attribute: '持有者',
+      value: '专人',
+    })
   })
 
   it('keeps structurally valid subjects that contain relation marker characters', () => {

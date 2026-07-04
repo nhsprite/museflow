@@ -352,7 +352,7 @@ describe('chapter report generation', () => {
     const state = buildState(tmpDir, {
       pendingIssues: [
         {
-          id: 'unverified-beat-0-主角离开家乡',
+          id: 'unverified-beat-1-0',
           type: 'outline_coverage',
           severity: 'warning',
           description: '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
@@ -373,8 +373,8 @@ describe('chapter report generation', () => {
     const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
-    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
-    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
+    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
+    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
   })
 
   it('clears stale outline coverage warning from a past act', async () => {
@@ -425,7 +425,7 @@ describe('chapter report generation', () => {
       },
       pendingIssues: [
         {
-          id: 'unverified-beat-0-主角离开家乡',
+          id: 'unverified-beat-1-0',
           type: 'outline_coverage',
           severity: 'warning',
           description: '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
@@ -445,8 +445,8 @@ describe('chapter report generation', () => {
 
     const result = await finalize_chapter(createMockContext(), state)
 
-    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
-    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-0-主角离开家乡')).toBe(false)
+    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
+    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
   })
 
   it('syncs total chapters and empty slots when auto act extension shifts following acts', async () => {

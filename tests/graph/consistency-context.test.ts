@@ -183,7 +183,7 @@ describe('detect_consistency validation context', () => {
     expect(capturedStoryState).toContain('昆仑山')
   })
 
-  it('filters superseded facts from timeline when canonical facts exist', async () => {
+  it('keeps summary timeline prose unchanged while providing canonical facts separately', async () => {
     const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
     const state = buildBaseState()
@@ -226,8 +226,8 @@ describe('detect_consistency validation context', () => {
 
     await detect_consistency(createMockContext(), state)
     expect(capturedStoryState).toContain('【权威事实】')
-    // The superseded old location should not appear in the timeline snapshot
-    expect(capturedTimelineSnapshot).not.toContain('东方灵河旧址')
+    expect(capturedStoryState).toContain('昆仑山')
+    expect(capturedTimelineSnapshot).toContain('东方灵河旧址')
   })
 
   it('passes authoritative story state instead of only the reconciled state', async () => {

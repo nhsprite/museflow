@@ -140,7 +140,7 @@ describe('adjust-act command', () => {
   it('clears resolved outline coverage errors for the adjusted act only', async () => {
     const issues: Issue[] = [
       {
-        id: 'act-1-coverage',
+        id: 'unverified-beat-1-0',
         type: 'outline_coverage',
         severity: 'error',
         description: '第 1 幕自动延长已达到上限，仍有 mandatory beats 未消费。',
@@ -148,7 +148,7 @@ describe('adjust-act command', () => {
         retryStrategy: 'manual',
       },
       {
-        id: 'act-2-coverage',
+        id: 'unverified-beat-2-0',
         type: 'outline_coverage',
         severity: 'error',
         description: '第 2 幕自动延长已达到上限，仍有 mandatory beats 未消费。',
@@ -172,7 +172,7 @@ describe('adjust-act command', () => {
 
     const updatedState = updateLatestStateMock.mock.calls[0]![0] as { pendingIssues: Issue[] }
     expect(updatedState.pendingIssues.map(issue => issue.id)).toEqual([
-      'act-2-coverage',
+      'unverified-beat-2-0',
       'consistency-info',
     ])
     logSpy.mockRestore()

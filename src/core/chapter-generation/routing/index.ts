@@ -29,9 +29,8 @@ function hasPatchableWarnings(issues: Issue[]): Issue[] {
   return issues.filter(issue => {
     if (issue.severity !== 'warning') return false
     if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
-    if (issue.type === 'consistency' && issue.dimension === 'quality' && issue.location) {
-      const cnNumeral = '[一二三四五六七八九十百千万零]+'
-      return new RegExp(`第\\s*(?:\\d+|${cnNumeral})\\s*[段节]|段落\\s*(?:\\d+|${cnNumeral})|第\\s*(?:\\d+|${cnNumeral})\\s*句`).test(issue.location)
+    if (issue.type === 'consistency' && issue.dimension === 'quality') {
+      return issue.locationRef?.paragraphIndex !== undefined || issue.locationRef?.sentenceIndex !== undefined
     }
     return false
   })
