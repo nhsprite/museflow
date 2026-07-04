@@ -2,6 +2,95 @@ import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import { logger } from './logger.js'
 import type { Issue } from '../types/agent.js'
 
+const MAX_BATCH_JUDGE_ITEMS = 20
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function itemId(index: number): string {
+  return `item_${index + 1}`
+}
+
+function getResultsItemSchema(schema: JsonSchema): unknown {
+  const results = schema.properties['results']
+  if (!isRecord(results)) return {}
+  return results['items'] ?? {}
+}
+
+function buildIndexedResultsSchema(schema: JsonSchema): JsonSchema {
+  return {
+    type: 'object',
+    properties: {
+      results: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            value: getResultsItemSchema(schema),
+          },
+          required: ['id', 'value'],
+        },
+      },
+    },
+    required: ['results'],
+  }
+}
+
+function mapResult<T>(raw: unknown, transform?: (raw: unknown) => T): T {
+  return transform ? transform(raw) : raw as T
+}
+
+function parseBatchResults<T>(
+  rawResults: unknown,
+  expectedIds: string[],
+  transform?: (raw: unknown) => T
+): T[] | undefined {
+  if (!Array.isArray(rawResults)) return undefined
+
+  const hasIndexedResult = rawResults.some(
+    result => isRecord(result) && typeof result['id'] === 'string' && 'value' in result
+  )
+
+  if (hasIndexedResult) {
+    const expected = new Set(expectedIds)
+    const byId = new Map<string, unknown>()
+    for (const result of rawResults) {
+      if (!isRecord(result) || typeof result['id'] !== 'string' || !('value' in result)) {
+        return undefined
+      }
+      const id = result['id']
+      if (!expected.has(id)) {
+        continue
+      }
+      if (byId.has(id)) {
+        return undefined
+      }
+      byId.set(id, result['value'])
+    }
+    if (!expectedIds.every(id => byId.has(id))) {
+      return undefined
+    }
+    return expectedIds.map(id => mapResult(byId.get(id), transform))
+  }
+
+  if (rawResults.length !== expectedIds.length) {
+    return undefined
+  }
+  return rawResults.map(result => mapResult(result, transform))
+}
+
+function describeResults(rawResults: unknown): string {
+  if (Array.isArray(rawResults)) {
+    return `数组（长度 ${rawResults.length}）`
+  }
+  if (rawResults === undefined) {
+    return '未定义'
+  }
+  return `${typeof rawResults}（${JSON.stringify(rawResults).slice(0, 200)}）`
+}
+
 async function tryBatchJudge<T>(
   provider: ModelProvider,
   systemPrompt: string,
@@ -11,28 +100,26 @@ async function tryBatchJudge<T>(
 ): Promise<T[] | undefined> {
   if (items.length === 0) return []
 
+  const ids = items.map((_item, i) => itemId(i))
   const messages: Message[] = [
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `请判断以下 ${items.length} 个条目，按顺序返回 JSON 数组：\n\n${items.map((item, i) => `${i + 1}. ${item}`).join('\n')}`,
+      content: `请判断以下 ${items.length} 个条目。每个条目都有 ITEM_ID。\n\n返回要求：\n- 只输出 JSON，格式为 {"results":[{"id":"item_1","value":...}, ...]}。\n- results 必须包含每个输入 ITEM_ID；不要新增、删除、合并或改写 ITEM_ID。\n- value 按系统任务要求填写。\n\n${items.map((item, i) => `ITEM_ID=${ids[i]}\n${item}`).join('\n\n')}`,
     },
   ]
 
   let rawResponse: unknown
   try {
     if (provider.chatStructured) {
-      const response = await provider.chatStructured<{ results: T[] }>(messages, schema, 0.1)
+      const response = await provider.chatStructured<{ results: unknown[] }>(messages, buildIndexedResultsSchema(schema), 0.1)
       rawResponse = response
       const results = response.results
-      if (Array.isArray(results) && results.length === items.length) {
-        return transform ? results.map(transform) : results
+      const parsed = parseBatchResults(results, ids, transform)
+      if (parsed) {
+        return parsed
       }
-      const actualDesc = Array.isArray(results)
-        ? `数组（长度 ${results.length}）`
-        : results === undefined
-          ? '未定义'
-          : `${typeof results}（${JSON.stringify(results).slice(0, 200)}）`
+      const actualDesc = describeResults(results)
       const preview = JSON.stringify(rawResponse).slice(0, 400)
       logger.warn(`[MuseFlow] chatStructured 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${preview}`)
       return undefined
@@ -41,16 +128,13 @@ async function tryBatchJudge<T>(
     const text = await provider.chat(messages, 0.1)
     rawResponse = text
     const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
-    const parsed = JSON.parse(cleaned) as { results: T[] }
-    const results = parsed.results
-    if (Array.isArray(results) && results.length === items.length) {
-      return transform ? results.map(transform) : results
+    const response = JSON.parse(cleaned) as { results: unknown[] }
+    const results = response.results
+    const parsed = parseBatchResults(results, ids, transform)
+    if (parsed) {
+      return parsed
     }
-    const actualDesc = Array.isArray(results)
-      ? `数组（长度 ${results.length}）`
-      : results === undefined
-        ? '未定义'
-        : `${typeof results}（${JSON.stringify(results).slice(0, 200)}）`
+    const actualDesc = describeResults(results)
     logger.warn(`[MuseFlow] chat 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${rawResponse?.toString().slice(0, 400)}`)
     return undefined
   } catch (err) {
@@ -77,6 +161,16 @@ async function batchJudge<T>(
 ): Promise<T[]> {
   if (items.length === 0) return []
 
+  if (items.length > MAX_BATCH_JUDGE_ITEMS) {
+    logger.debug(`[MuseFlow] 批量判断条目较多，按 ${MAX_BATCH_JUDGE_ITEMS} 条分块处理（条目数 ${items.length}）`)
+    const results: T[] = []
+    for (let start = 0; start < items.length; start += MAX_BATCH_JUDGE_ITEMS) {
+      const chunk = items.slice(start, start + MAX_BATCH_JUDGE_ITEMS)
+      results.push(...await batchJudge(provider, systemPrompt, chunk, schema, fallback, transform))
+    }
+    return results
+  }
+
   // 1. Try full batch first.
   const fullResult = await tryBatchJudge(provider, systemPrompt, items, schema, transform)
   if (fullResult) return fullResult
@@ -87,10 +181,8 @@ async function batchJudge<T>(
     const mid = Math.ceil(items.length / 2)
     const left = items.slice(0, mid)
     const right = items.slice(mid)
-    const [leftResult, rightResult] = await Promise.all([
-      batchJudge(provider, systemPrompt, left, schema, fallback, transform),
-      batchJudge(provider, systemPrompt, right, schema, fallback, transform),
-    ])
+    const leftResult = await batchJudge(provider, systemPrompt, left, schema, fallback, transform)
+    const rightResult = await batchJudge(provider, systemPrompt, right, schema, fallback, transform)
     return [...leftResult, ...rightResult]
   }
 

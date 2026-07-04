@@ -6,6 +6,52 @@ import {
 } from '../../src/utils/context-judge.js'
 
 describe('context-judge robustness', () => {
+  it('maps indexed structured results by id', async () => {
+    const provider = {
+      chatStructured: vi.fn(async (): Promise<unknown> => ({
+        results: [
+          { id: 'item_2', value: false },
+          { id: 'item_1', value: true },
+        ],
+      })),
+      chat: vi.fn(),
+    } as unknown as ModelProvider
+
+    const items = [
+      { taskDescription: 'task1', outlineDescription: 'outline' },
+      { taskDescription: 'task2', outlineDescription: 'outline' },
+    ]
+    const relevance = await batchJudgeTaskRelevance(provider, items)
+    expect(relevance).toEqual([true, false])
+    expect(provider.chatStructured).toHaveBeenCalledTimes(1)
+  })
+
+  it('splits large batches before calling the model', async () => {
+    const seenBatchSizes: number[] = []
+    const provider = {
+      chatStructured: vi.fn(async (messages: Array<{ role: string; content: string }>): Promise<unknown> => {
+        const userContent = messages.find(m => m.role === 'user')?.content ?? ''
+        const ids = Array.from(userContent.matchAll(/ITEM_ID=(item_\d+)/g), match => match[1]!)
+        seenBatchSizes.push(ids.length)
+        return {
+          results: ids.map(id => ({ id, value: true })),
+        }
+      }),
+      chat: vi.fn(),
+    } as unknown as ModelProvider
+
+    const items = Array.from({ length: 25 }, (_, index) => ({
+      taskDescription: `task${index + 1}`,
+      outlineDescription: 'outline',
+    }))
+
+    const relevance = await batchJudgeTaskRelevance(provider, items)
+
+    expect(relevance).toEqual(Array.from({ length: 25 }, () => true))
+    expect(Math.max(...seenBatchSizes)).toBeLessThan(25)
+    expect(seenBatchSizes.reduce((sum, size) => sum + size, 0)).toBe(25)
+  })
+
   it('falls back to smaller batches when full batch fails', async () => {
     const expected = [true, false, true]
     const provider = {

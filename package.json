@@ -1,6 +1,6 @@
 {
   "name": "museflow",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "AI Native 长篇小说生成工具 - 端到端 AI 写作助手",
   "type": "module",
   "author": "nihao.sensation@gmail.com",
@@ -16,10 +16,11 @@
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/clean-dist.js && tsc",
     "prepublishOnly": "npm run build",
     "release": "node scripts/release.js",
     "start": "tsx src/cli/index.ts",

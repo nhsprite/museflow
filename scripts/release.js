@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const RED = '\x1b[31m'
 const GREEN = '\x1b[32m'
@@ -74,8 +74,21 @@ async function main() {
     success('Package name "museflow" is available')
   }
 
+  const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'))
+  const version = packageJson.version
+  if (!existsSync('CHANGELOG.md')) {
+    error('CHANGELOG.md not found. Add a changelog entry before releasing.')
+    process.exit(1)
+  }
+  const changelog = readFileSync('CHANGELOG.md', 'utf-8')
+  if (!changelog.includes(`## [${version}]`)) {
+    error(`CHANGELOG.md does not contain an entry for version ${version}`)
+    process.exit(1)
+  }
+  success(`CHANGELOG.md entry found for v${version}`)
+
   console.log('')
-  log('Step 1/4: TypeScript type check')
+  log('Step 1/5: TypeScript type check')
   try {
     run('npm run typecheck')
     success('Type check passed')
@@ -85,7 +98,7 @@ async function main() {
   }
 
   console.log('')
-  log('Step 2/4: Run test suite')
+  log('Step 2/5: Run test suite')
   try {
     run('npm test')
     success('All tests passed')
@@ -95,7 +108,7 @@ async function main() {
   }
 
   console.log('')
-  log('Step 3/4: Build TypeScript')
+  log('Step 3/5: Build TypeScript')
   try {
     run('npm run build')
     success('Build completed')
@@ -118,7 +131,7 @@ async function main() {
   success('Shebang verified in dist/cli/index.js')
 
   console.log('')
-  log('Step 4/4: Verify package contents')
+  log('Step 4/5: Verify package contents')
   try {
     run('npm pack --dry-run')
     success('Package contents verified')
@@ -130,6 +143,7 @@ async function main() {
   console.log('')
   console.log(`${GREEN}✓ All checks passed!${RESET}`)
   console.log('')
+  log('Step 5/5: Publish confirmation')
   log('Ready to publish. prepublishOnly will auto-build before upload.')
   console.log('')
 
