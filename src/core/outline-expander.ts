@@ -39,7 +39,7 @@ export interface ExpandedOutline {
 
 type ChapterContextSource = ModelProvider | RuntimeContext
 
-const MAX_JIT_OUTLINE_ATTEMPTS = 2
+const MAX_JIT_OUTLINE_ATTEMPTS = 3
 const CLAIMED_BEAT_SUPPORT_THRESHOLD = 0.18
 const MIN_CLAIMED_BEAT_SHARED_KEYWORDS = 3
 
@@ -203,6 +203,40 @@ function buildJitOutlineCorrectionConstraint(chapterIndex: number, unsupportedBe
   ].join('')
 }
 
+function isRecoverableJitOutlineConflict(reason: string | undefined): boolean {
+  const text = (reason ?? '').replace(/\s+/g, '').toLowerCase()
+  if (!text) return false
+
+  const mentionsBeatClaim =
+    /claimedbeats?/.test(text) ||
+    /mandatorybeats?/.test(text) ||
+    /声称推进/.test(text) ||
+    /消费.*beat/.test(text) ||
+    /推进.*beat/.test(text)
+  const describesUnsupportedClaim =
+    /未承载/.test(text) ||
+    /没有写出/.test(text) ||
+    /未写出/.test(text) ||
+    /不适合推进/.test(text) ||
+    /无法推进/.test(text) ||
+    /不能推进/.test(text) ||
+    /不应推进/.test(text) ||
+    /强行贴标签/.test(text)
+  const describesHardFactConflict =
+    (/权威事实/.test(text) || /canonicalfacts?/.test(text) || /story_?state/.test(text) || /已确立/.test(text)) &&
+    (/冲突/.test(text) || /矛盾/.test(text) || /违背/.test(text) || /不一致/.test(text))
+
+  return mentionsBeatClaim && describesUnsupportedClaim && !describesHardFactConflict
+}
+
+function buildJitOutlineConflictCorrectionConstraint(chapterIndex: number, reason: string): string {
+  return [
+    `【即时大纲修正】上一版第 ${chapterIndex + 1} 章把 mandatory beat 承载不足的问题返回为 conflict：${reason}`,
+    '请重新生成本章大纲：conflict: true 只能用于 description 与 story_state 或 canonical_facts 中已确立事实发生硬冲突的情况。',
+    '如果只是本章不适合推进某个 mandatory beat，请返回 conflict: false，并从 claimedBeats 中移除该 beat；如果要保留 claimedBeats，description 必须写出对应的具体事件、冲突或状态变化。',
+  ].join('')
+}
+
 async function judgeCoreSectionsWithModel(
   provider: ModelProvider,
   outlineDescription: string | undefined,
@@ -301,6 +335,7 @@ async function generateChapterOutlineIfNeeded(
   let correctionConstraints: string[] = []
   let result: ChapterOutlineResult | null = null
   let unsupportedBeats: string[] = []
+  let recoverableConflictReason = ''
 
   for (let attempt = 0; attempt < MAX_JIT_OUTLINE_ATTEMPTS; attempt++) {
     const verifiedConstraints = [...baseVerifiedConstraints, ...correctionConstraints]
@@ -327,6 +362,14 @@ async function generateChapterOutlineIfNeeded(
 
     const candidate = output.data as ChapterOutlineResult
     if (candidate.conflict) {
+      if (isRecoverableJitOutlineConflict(candidate.conflictReason)) {
+        recoverableConflictReason = candidate.conflictReason || '未说明原因'
+        logger.warn(
+          `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲将 mandatory beat 承载不足返回为 conflict，将尝试重新生成：${recoverableConflictReason}`
+        )
+        correctionConstraints = [buildJitOutlineConflictCorrectionConstraint(chapterIndex, recoverableConflictReason)]
+        continue
+      }
       throw new Error(`第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`)
     }
 
@@ -343,6 +386,11 @@ async function generateChapterOutlineIfNeeded(
   }
 
   if (!result) {
+    if (recoverableConflictReason) {
+      throw new Error(
+        `第 ${chapterIndex + 1} 章即时大纲返回可修正冲突但未能生成可执行大纲：${recoverableConflictReason}`
+      )
+    }
     throw new Error(
       `第 ${chapterIndex + 1} 章即时大纲声称推进 mandatory beats，但描述未承载：${unsupportedBeats.join('、')}`
     )

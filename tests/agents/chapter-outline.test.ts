@@ -124,6 +124,32 @@ describe('ChapterOutlineAgent', () => {
     expect(output.success).toBe(true)
   })
 
+  it('instructs the model to reserve conflict for hard fact contradictions', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(JSON.stringify({
+      title: '过渡',
+      description: '主角整理线索，暂不推进新的强制节拍。',
+      claimedBeats: [],
+      conflict: false,
+      conflictReason: '',
+    }))
+
+    const output = await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 1,
+      storyArc,
+      actProgress: { 1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] } },
+    } as ChapterOutlineAgentInput)
+
+    expect(output.success).toBe(true)
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>
+    const prompt = messages.map(message => message.content).join('\n')
+    expect(prompt).toContain('conflict: true 只能用于')
+    expect(prompt).toContain('不适合推进某个 mandatory beat')
+  })
+
   it('propagates conflict flag and reason', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(JSON.stringify({

@@ -162,8 +162,8 @@ describe('expandOutlineForChapter', () => {
             endChapter: 4,
             title: '新幕',
             theme: '裂变',
-            function: '联姻棋局被外部势力破坏，主角身份危机浮现',
-            mandatoryBeats: ['联姻棋局被外部势力利用或破坏'],
+            function: '外部势力干扰核心安排，主角危机浮现',
+            mandatoryBeats: ['外部势力干扰核心安排'],
           },
         ],
         keyBeats: [],
@@ -175,7 +175,7 @@ describe('expandOutlineForChapter', () => {
         { number: 4, title: '', description: '' },
       ],
       actProgress: {
-        2: { consumed: [], pending: ['联姻棋局被外部势力利用或破坏'] },
+        2: { consumed: [], pending: ['外部势力干扰核心安排'] },
       },
       chapters: [null, null, null, null],
     }
@@ -184,28 +184,108 @@ describe('expandOutlineForChapter', () => {
       .mockResolvedValueOnce({
         success: true,
         data: {
-          title: '松鹤斋午后',
-          description: '沈砚秋午后赴松鹤斋，赵管事告知三日听信结果，归馆后等沈福回京面禀。',
+          title: '常规赴约',
+          description: '主角午后赴约，得知常规规矩，归处后等待同伴回报。',
           introducedCharacters: [],
-          claimedBeats: ['联姻棋局被外部势力利用或破坏'],
+          claimedBeats: ['外部势力干扰核心安排'],
         },
       })
       .mockResolvedValueOnce({
         success: true,
         data: {
-          title: '棋局裂口',
-          description: '外部势力借联姻棋局散布假消息，试图破坏指婚安排，沈砚秋第一次意识到棋局已被外力利用。',
+          title: '安排受扰',
+          description: '外部势力干扰核心安排，散布假消息，迫使主角意识到既定安排已被外力利用。',
           introducedCharacters: [],
-          claimedBeats: ['联姻棋局被外部势力利用或破坏'],
+          claimedBeats: ['外部势力干扰核心安排'],
         },
       })
 
     const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
 
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
-    expect(result.outline?.[1]?.title).toBe('棋局裂口')
-    expect(result.outline?.[1]?.description).toContain('外部势力借联姻棋局')
-    expect(result.outline?.[1]?.claimedBeats).toEqual(['联姻棋局被外部势力利用或破坏'])
+    expect(result.outline?.[1]?.title).toBe('安排受扰')
+    expect(result.outline?.[1]?.description).toContain('外部势力干扰核心安排')
+    expect(result.outline?.[1]?.claimedBeats).toEqual(['外部势力干扰核心安排'])
+  })
+
+  it('retries JIT outline when the model reports unsupported claimed beats as a conflict', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 4,
+      story: { ...baseState.story, totalChapters: 4 },
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 4,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '上一幕',
+            theme: '收束',
+            function: '处理上一幕尾声',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 4,
+            title: '新幕',
+            theme: '转折',
+            function: '外部压力打破既定安排',
+            mandatoryBeats: ['外部压力打破既定安排'],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        { number: 1, title: '旧幕收束', description: '旧幕收束。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '', description: '' },
+        { number: 4, title: '', description: '' },
+      ],
+      actProgress: {
+        2: { consumed: [], pending: ['外部压力打破既定安排'] },
+      },
+      chapters: [null, null, null, null],
+    }
+
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '过渡',
+          description: '主角整理前事，准备继续原有安排。',
+          introducedCharacters: [],
+          claimedBeats: ['外部压力打破既定安排'],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '冲突',
+          description: '主角继续原有安排。',
+          introducedCharacters: [],
+          claimedBeats: ['外部压力打破既定安排'],
+          conflict: true,
+          conflictReason: "本描述将 '外部压力打破既定安排' 列为 claimedBeat，但 description 未承载对应事件，属于强行贴标签。",
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '压力入局',
+          description: '外部压力突然介入，打断主角原有安排，迫使他改换路径。',
+          introducedCharacters: [],
+          claimedBeats: ['外部压力打破既定安排'],
+        },
+      })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+    expect(result.outline?.[1]?.title).toBe('压力入局')
+    expect(result.outline?.[1]?.claimedBeats).toEqual(['外部压力打破既定安排'])
   })
 
   it('extends an overloaded current act before generating a JIT outline', async () => {

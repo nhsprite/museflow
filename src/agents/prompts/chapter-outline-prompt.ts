@@ -38,8 +38,10 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 4. 优先推进当前幕尚未消费的 mandatory beats；如果本章不适合推进任何 beat，请说明原因。
 5. 不得提前执行下一幕的叙事功能，不得提前完成后续幕的 mandatory beats。
 6. 如果当前幕进度偏慢（剩余章节少、pending beats 多），请在本章安排推进至少一个 pending beat。
-7. 如果推进某个 mandatory beat 会与权威事实冲突，请返回 conflict: true 并说明原因，不要强行写入。
-8. 输出 JSON 格式：
+7. conflict: true 只能用于本章 description 与 <story_state> 或 <canonical_facts> 中已确立事实发生硬冲突的情况，并必须说明冲突的具体事实。
+8. 如果只是本章不适合推进某个 mandatory beat，不要返回 conflict: true；请返回 conflict: false，并从 claimedBeats 中移除该 beat，或改写 description 使其明确承载该 beat。
+9. claimedBeats 只能包含 description 已明确写出具体事件、冲突或状态变化的本幕 mandatory beats，不要强行贴标签。
+10. 输出 JSON 格式：
    {
      "title": "章节标题",
      "description": "本章具体执行描述",
