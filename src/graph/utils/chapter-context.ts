@@ -24,10 +24,7 @@ function isRuntimeContext(source: ChapterContextSource): source is RuntimeContex
   return 'provider' in source
 }
 
-function buildPreparedStoryStateCacheKey(
-  state: ReducedGraphState,
-  chapterIndex: number
-): string {
+function buildPreparedStoryStateCacheKey(state: ReducedGraphState, chapterIndex: number): string {
   const outlineItem = state.outline[chapterIndex]
   return JSON.stringify({
     storyId: state.story.id,
@@ -42,7 +39,7 @@ function buildPreparedStoryStateCacheKey(
 export async function prepareStoryStateForChapterCached(
   state: ReducedGraphState,
   chapterIndex: number,
-  source: ChapterContextSource,
+  source: ChapterContextSource
 ): Promise<PreparedStoryState> {
   if (!isRuntimeContext(source)) {
     return prepareStoryStateForChapter(state, chapterIndex, source)
@@ -124,7 +121,9 @@ export function buildChapterContract(
       consumed: [],
       pending: [...currentAct.mandatoryBeats],
     }
-    const pendingBeats = currentAct.mandatoryBeats.filter(beat => !progress.consumed.includes(beat))
+    const pendingBeats = currentAct.mandatoryBeats.filter(
+      (beat) => !progress.consumed.includes(beat)
+    )
     if (pendingBeats.length > 0) {
       lines.push('【本章可推进的 mandatory beats】')
       for (const beat of pendingBeats) {
@@ -133,8 +132,8 @@ export function buildChapterContract(
     }
 
     const futureBeats = (state.storyArc?.acts ?? [])
-      .filter(act => act.index > currentAct.index)
-      .flatMap(act => act.mandatoryBeats)
+      .filter((act) => act.index > currentAct.index)
+      .flatMap((act) => act.mandatoryBeats)
       .slice(0, 12)
     if (futureBeats.length > 0) {
       lines.push('【不得提前消费的后续 mandatory beats】')
@@ -145,7 +144,7 @@ export function buildChapterContract(
   }
 
   const protectedFacts = (reconciledState.canonicalFacts ?? [])
-    .filter(fact => fact.retiredIn === undefined && fact.confidence !== 'low')
+    .filter((fact) => fact.retiredIn === undefined && fact.confidence !== 'low')
     .slice(0, 20)
   if (protectedFacts.length > 0) {
     lines.push('【受保护权威事实】')
@@ -155,14 +154,16 @@ export function buildChapterContract(
   }
 
   if (lines.length === 1) return ''
-  lines.push('【执行要求】规划、正文与一致性检查必须优先满足本契约；如需改变受保护事实，必须由本章大纲明确授权并在正文中提供清晰动作或证据。')
+  lines.push(
+    '【执行要求】规划、正文与一致性检查必须优先满足本契约；如需改变受保护事实，必须由本章大纲明确授权并在正文中提供清晰动作或证据。'
+  )
   return lines.join('\n')
 }
 
 export async function buildChapterAgentContext(
   state: ReducedGraphState,
   chapterIndex: number,
-  source: ChapterContextSource,
+  source: ChapterContextSource
 ): Promise<ChapterAgentContext> {
   const worldContent = state.world?.content
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
@@ -174,13 +175,18 @@ export async function buildChapterAgentContext(
   const previousChapters = [
     buildLayeredSummaries(state.chapterSummaries, chapterIndex),
     previousChapterEnding,
-  ].filter(Boolean).join('\n\n')
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   const { reconciledState, stateConflicts } = preparedState
   const storyStateStr = formatStoryState(reconciledState)
   const chapterContract = buildChapterContract(state, chapterIndex, reconciledState)
 
-  const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } =
-    buildEffectiveCharactersList(state, chapterIndex)
+  const {
+    merged: effectiveCharacters,
+    outline: outlineCharacters,
+    established: establishedCharacters,
+  } = buildEffectiveCharactersList(state, chapterIndex)
 
   const chapterTimeAnchor = state.chapterPlan?.chapterTimeAnchor ?? state.chapterTimeAnchor
 

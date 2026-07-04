@@ -80,6 +80,7 @@ museflow start --idea "A city archivist uncovers a hidden conspiracy across thre
 ```
 
 This command will:
+
 1. Generate title and world-direction options for selection (`--yes` selects the first option)
 2. Build the world setting
 3. Generate character profiles
@@ -141,70 +142,70 @@ write → Prepare → Decide → Chapter Outline → Chapter Plan → Draft/Fix
 
 Global option: `museflow --debug <command>` writes LLM session debug information.
 
-| Command | Description |
-|---------|-------------|
+| Command                                                       | Description                                                                                              |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `start --idea <text> --chapters <n> [--genre <name>] [--yes]` | Create a new story plan: title/world direction, world, characters, story arc, and empty chapter scaffold |
-| `write <id>` | Write exactly one current chapter |
-| `continue <id> [-y|-n]` | Resume from the latest checkpoint and optionally accept/refuse a pending rewrite request |
-| `rewrite <id> [--chapter <n>]` | Fully rewrite the current or specified chapter; downstream chapter files are truncated by code |
-| `status <id>` | View progress, pending issues, worldbuilding status, and foreshadow status |
-| `info <id>` | View story metadata, genre info, state preview, and storage path |
-| `list` / `ls` | List all local books under `books/` |
-| `delete <id> --force` | Delete a local book directory after explicit confirmation via `--force` |
-| `adjust-act <id> --act <n> --end-chapter <n>` | Manually shift an act boundary when mandatory beats need more chapters |
-| `export <id>` | Export written chapters as a `.txt` file under `output/` and start a temporary QR download server |
-| `config [show|set|get]` | Manage model and runtime configuration |
-| `genres [list|install|uninstall|info]` | View, install, remove, or inspect genre skills |
+| `write <id>`                                                  | Write exactly one current chapter                                                                        |
+| `continue <id> [-y                                            | -n]`                                                                                                     | Resume from the latest checkpoint and optionally accept/refuse a pending rewrite request |
+| `rewrite <id> [--chapter <n>]`                                | Fully rewrite the current or specified chapter; downstream chapter files are truncated by code           |
+| `status <id>`                                                 | View progress, pending issues, worldbuilding status, and foreshadow status                               |
+| `info <id>`                                                   | View story metadata, genre info, state preview, and storage path                                         |
+| `list` / `ls`                                                 | List all local books under `books/`                                                                      |
+| `delete <id> --force`                                         | Delete a local book directory after explicit confirmation via `--force`                                  |
+| `adjust-act <id> --act <n> --end-chapter <n>`                 | Manually shift an act boundary when mandatory beats need more chapters                                   |
+| `export <id>`                                                 | Export written chapters as a `.txt` file under `output/` and start a temporary QR download server        |
+| `config [show                                                 | set                                                                                                      | get]`                                                                                    | Manage model and runtime configuration |
+| `genres [list                                                 | install                                                                                                  | uninstall                                                                                | info]`                                 | View, install, remove, or inspect genre skills |
 
 ## Genres
 
 The following genres are built-in and can be specified via `--genre`:
 
-| Genre | Value | Description |
-|-------|-------|-------------|
-| Fantasy | `fantasy` | Western fantasy, magic, quests |
+| Genre   | Value     | Description                            |
+| ------- | --------- | -------------------------------------- |
+| Fantasy | `fantasy` | Western fantasy, magic, quests         |
 | Xianxia | `xianxia` | Cultivation, Immortality, Martial Arts |
-| Sci-Fi | `scifi` | Future Tech, Space Adventure |
-| Horror | `horror` | Thriller, Supernatural |
-| Mystery | `mystery` | Detective, Puzzle Solving |
-| Urban | `urban` | Modern City, Workplace |
-| Romance | `romance` | Love Stories |
-| Default | `default` | General purpose |
+| Sci-Fi  | `scifi`   | Future Tech, Space Adventure           |
+| Horror  | `horror`  | Thriller, Supernatural                 |
+| Mystery | `mystery` | Detective, Puzzle Solving              |
+| Urban   | `urban`   | Modern City, Workplace                 |
+| Romance | `romance` | Love Stories                           |
+| Default | `default` | General purpose                        |
 
 ## Agent System
 
 MuseFlow uses 10 specialized agent types working together:
 
-| Agent | Responsibility |
-|-------|----------------|
-| **WorldBuilder** | Build world settings, history, and social structures |
-| **Character** | Generate character profiles, personalities, and relationships |
-| **StoryArc** | Generate act structure, mandatory beats, and global key beats |
-| **ChapterOutline** | Generate detailed per-chapter outlines immediately before drafting |
-| **ChapterPlanner** | Plan chapter sections, time anchors, and previous-task handling |
-| **Chapter** | Draft chapter body text with consistent style and state |
-| **Foreshadowing** | Detect foreshadowing creation and payoff from chapter text |
-| **Consistency** | Check cross-chapter logic, setting, and outline compliance issues |
-| **Fix** | Repair patchable issues at sentence, paragraph, or chapter level |
-| **Summary** | Generate chapter summaries and extract canonical facts, tasks, and state updates |
+| Agent              | Responsibility                                                                   |
+| ------------------ | -------------------------------------------------------------------------------- |
+| **WorldBuilder**   | Build world settings, history, and social structures                             |
+| **Character**      | Generate character profiles, personalities, and relationships                    |
+| **StoryArc**       | Generate act structure, mandatory beats, and global key beats                    |
+| **ChapterOutline** | Generate detailed per-chapter outlines immediately before drafting               |
+| **ChapterPlanner** | Plan chapter sections, time anchors, and previous-task handling                  |
+| **Chapter**        | Draft chapter body text with consistent style and state                          |
+| **Foreshadowing**  | Detect foreshadowing creation and payoff from chapter text                       |
+| **Consistency**    | Check cross-chapter logic, setting, and outline compliance issues                |
+| **Fix**            | Repair patchable issues at sentence, paragraph, or chapter level                 |
+| **Summary**        | Generate chapter summaries and extract canonical facts, tasks, and state updates |
 
 ## Data Storage
 
 Story data is saved locally in the `./books/` directory. The concrete story directory is title/id based, for example `books/my-title-abc123def456/`.
 
-| Path | Content |
-|------|---------|
-| `./.museflow/config.json` | Project-level config written by `museflow config set` |
-| `~/.museflow/config.json` | Optional global fallback config |
-| `./books/{story-dir}/checkpoints/latest.json` | Pointer to the latest LangGraph checkpoint |
-| `./books/{story-dir}/checkpoints/*.json` | LangGraph checkpoint JSON files; runtime source of truth |
-| `./books/{story-dir}/meta.json` | Exported projection of the latest checkpoint for CLI display and inspection |
-| `./books/{story-dir}/outline.md` | Human-readable story arc and generated chapter outlines |
-| `./books/{story-dir}/story_bible.md` | Initial world, character, and scaffold reference |
-| `./books/{story-dir}/chapters/chapter_{n}.md` | Chapter body text `.md` files |
-| `./books/{story-dir}/reports/chapter_{n}.report.json` | Per-chapter generation report |
-| `./books/{story-dir}/reports/blocking_*.json` | Manual-resolution report when rewrite convergence stalls |
-| `./output/*.txt` | Exported manuscripts created by `museflow export` |
+| Path                                                  | Content                                                                     |
+| ----------------------------------------------------- | --------------------------------------------------------------------------- |
+| `./.museflow/config.json`                             | Project-level config written by `museflow config set`                       |
+| `~/.museflow/config.json`                             | Optional global fallback config                                             |
+| `./books/{story-dir}/checkpoints/latest.json`         | Pointer to the latest LangGraph checkpoint                                  |
+| `./books/{story-dir}/checkpoints/*.json`              | LangGraph checkpoint JSON files; runtime source of truth                    |
+| `./books/{story-dir}/meta.json`                       | Exported projection of the latest checkpoint for CLI display and inspection |
+| `./books/{story-dir}/outline.md`                      | Human-readable story arc and generated chapter outlines                     |
+| `./books/{story-dir}/story_bible.md`                  | Initial world, character, and scaffold reference                            |
+| `./books/{story-dir}/chapters/chapter_{n}.md`         | Chapter body text `.md` files                                               |
+| `./books/{story-dir}/reports/chapter_{n}.report.json` | Per-chapter generation report                                               |
+| `./books/{story-dir}/reports/blocking_*.json`         | Manual-resolution report when rewrite convergence stalls                    |
+| `./output/*.txt`                                      | Exported manuscripts created by `museflow export`                           |
 
 > **Note**: MuseFlow uses JSON + filesystem storage; it does not depend on SQLite.
 > Checkpoints are authoritative. `meta.json`, `outline.md`, reports, and exports are projections/artifacts produced by code.
@@ -259,18 +260,23 @@ npm run lint
 ## FAQ
 
 ### `write` command has no output
+
 Make sure you passed the story-id: `museflow write <story-id>`
 
 ### API call errors
+
 Check that the api key and base url in config are correct. Use `museflow config show` to verify.
 
 ### "Issues need to be addressed" after finishing a chapter
+
 Run the `rewrite` command to rewrite the current chapter:
+
 ```bash
 museflow rewrite <story-id>  # Full rewrite
 ```
 
 ### Where did my story files go?
+
 Run `museflow info <story-id>` and check `Storage path`. Story directories are named from the selected title plus an id suffix, not just the raw story id.
 
 ## Architecture

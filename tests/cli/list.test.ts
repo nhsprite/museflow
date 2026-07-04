@@ -54,9 +54,7 @@ describe('list command', () => {
   })
 
   it('shows story list with basic info', async () => {
-    listStoriesMock.mockReturnValue([
-      createStory('story-1', 'Test Story', 'writing'),
-    ])
+    listStoriesMock.mockReturnValue([createStory('story-1', 'Test Story', 'writing')])
     const { list } = await import('../../src/cli/commands/list.ts')
 
     await list()

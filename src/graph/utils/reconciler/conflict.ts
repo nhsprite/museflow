@@ -73,7 +73,7 @@ async function detectEntityConflicts<T extends Record<string, string>>(
 
   const changes = await batchExtractEntityChanges(
     provider,
-    items.map(i => ({ text: i.text, subject: i.subject, attribute }))
+    items.map((i) => ({ text: i.text, subject: i.subject, attribute }))
   )
 
   const conflicts: Conflict[] = []
@@ -108,13 +108,7 @@ export async function detectItemLocationConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(
-    state.keyItemsLocation,
-    outline,
-    '所在位置',
-    'auto',
-    provider
-  )
+  return detectEntityConflicts(state.keyItemsLocation, outline, '所在位置', 'auto', provider)
 }
 
 export async function detectItemStateConflicts(
@@ -122,13 +116,7 @@ export async function detectItemStateConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(
-    state.keyItemsState,
-    outline,
-    '状态',
-    'auto',
-    provider
-  )
+  return detectEntityConflicts(state.keyItemsState, outline, '状态', 'auto', provider)
 }
 
 export async function detectCharacterLocationConflicts(
@@ -136,13 +124,7 @@ export async function detectCharacterLocationConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(
-    state.characterLocations,
-    outline,
-    '所在位置',
-    'auto',
-    provider
-  )
+  return detectEntityConflicts(state.characterLocations, outline, '所在位置', 'auto', provider)
 }
 
 export async function detectCharacterStatusConflicts(
@@ -150,13 +132,7 @@ export async function detectCharacterStatusConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(
-    state.characterStatus,
-    outline,
-    '状态',
-    'warning',
-    provider
-  )
+  return detectEntityConflicts(state.characterStatus, outline, '状态', 'warning', provider)
 }
 
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {
@@ -204,21 +180,15 @@ export async function detectAllConflicts(
     return []
   }
 
-  const [
-    itemLocation,
-    itemState,
-    characterLocation,
-    characterStatus,
-    secretReveal,
-    timeAnchor,
-  ] = await Promise.all([
-    detectItemLocationConflicts(state, outline, provider),
-    detectItemStateConflicts(state, outline, provider),
-    detectCharacterLocationConflicts(state, outline, provider),
-    detectCharacterStatusConflicts(state, outline, provider),
-    detectSecretRevealConflicts(state, outline),
-    detectTimeAnchorConflicts(state, outline, chapterIndex, provider),
-  ])
+  const [itemLocation, itemState, characterLocation, characterStatus, secretReveal, timeAnchor] =
+    await Promise.all([
+      detectItemLocationConflicts(state, outline, provider),
+      detectItemStateConflicts(state, outline, provider),
+      detectCharacterLocationConflicts(state, outline, provider),
+      detectCharacterStatusConflicts(state, outline, provider),
+      detectSecretRevealConflicts(state, outline),
+      detectTimeAnchorConflicts(state, outline, chapterIndex, provider),
+    ])
 
   return [
     ...itemLocation,
@@ -234,7 +204,7 @@ async function detectContradictions(
   conflicts: Conflict[],
   provider: ModelProvider
 ): Promise<boolean[]> {
-  const descriptions = conflicts.map(c => c.description)
+  const descriptions = conflicts.map((c) => c.description)
   const results = await batchJudgeBlockingConflictDescriptions(provider, descriptions)
   return results
 }
@@ -282,7 +252,7 @@ export async function classifyConflicts(
 
 function buildCharacterAliasMap(characters: Array<{ name: string }>): Map<string, string> {
   const aliasToFull = new Map<string, string>()
-  const fullNames = characters.map(c => c.name).filter(Boolean)
+  const fullNames = characters.map((c) => c.name).filter(Boolean)
 
   for (const fullName of fullNames) {
     aliasToFull.set(fullName, fullName)
@@ -349,7 +319,7 @@ function generateCanonicalFact(
   existingFacts: CanonicalFact[]
 ): CanonicalFact {
   const existing = existingFacts.find(
-    f => f.subject === conflict.subject && f.attribute === conflict.attribute
+    (f) => f.subject === conflict.subject && f.attribute === conflict.attribute
   )
   return {
     id: existing?.id ?? generateId('fact'),
@@ -360,7 +330,10 @@ function generateCanonicalFact(
     confidence: 'medium',
     source: 'reconciliation',
     supersedes: existing
-      ? [...(existing.supersedes ?? []), { chapter: existing.establishedIn, oldValue: existing.value }]
+      ? [
+          ...(existing.supersedes ?? []),
+          { chapter: existing.establishedIn, oldValue: existing.value },
+        ]
       : [{ chapter: Math.max(0, chapterIndex - 1), oldValue: conflict.oldValue }],
   }
 }
@@ -411,11 +384,15 @@ export function autoReconcile(
       continue
     }
 
-    if (conflict.type === 'retcon' && (conflict.attribute === '所在位置' || conflict.attribute === '状态')) {
+    if (
+      conflict.type === 'retcon' &&
+      (conflict.attribute === '所在位置' || conflict.attribute === '状态')
+    ) {
       autoResolved.push(conflict)
       const fact = generateCanonicalFact(conflict, chapterIndex, canonicalFacts)
       const existingIndex = canonicalFacts.findIndex(
-        f => f.subject === fact.subject && f.attribute === fact.attribute && f.retiredIn === undefined
+        (f) =>
+          f.subject === fact.subject && f.attribute === fact.attribute && f.retiredIn === undefined
       )
       if (existingIndex >= 0) {
         const existing = canonicalFacts[existingIndex]!
@@ -451,8 +428,8 @@ export function generateOverrideSuggestions(
   chapterIndex: number
 ): StateOverride[] {
   return conflicts
-    .filter(c => c.severity === 'blocking' || c.severity === 'warning')
-    .map(c => generateOverrideSuggestion(c, chapterIndex))
+    .filter((c) => c.severity === 'blocking' || c.severity === 'warning')
+    .map((c) => generateOverrideSuggestion(c, chapterIndex))
 }
 
 export function conflictIsDecided(
@@ -472,8 +449,13 @@ export async function reconcileStoryState(
 ): Promise<ReconciliationReport> {
   const rawConflicts = await detectAllConflicts(storyState, outline, chapterIndex, provider)
   const classified = await classifyConflicts(rawConflicts, provider)
-  const { state: preReconciled, autoResolved, remaining, canonicalFacts, supersededFacts } =
-    autoReconcile(classified, storyState, chapterIndex)
+  const {
+    state: preReconciled,
+    autoResolved,
+    remaining,
+    canonicalFacts,
+    supersededFacts,
+  } = autoReconcile(classified, storyState, chapterIndex)
 
   const reconciled = reconcileStoryStateContent(preReconciled, outline, characters)
   reconciled.canonicalFacts = canonicalFacts
@@ -485,7 +467,7 @@ export async function reconcileStoryState(
     state: authoritativeState,
     conflicts: remaining,
     autoResolved,
-    requiresAuthorDecision: remaining.filter(c => c.severity === 'blocking'),
+    requiresAuthorDecision: remaining.filter((c) => c.severity === 'blocking'),
     suggestedOverrides: generateOverrideSuggestions(remaining, chapterIndex),
   }
 }

@@ -10,7 +10,7 @@ function escapeRegExp(value: string): string {
  */
 export function renderTemplate(
   template: string,
-  variables: Record<string, string | number>,
+  variables: Record<string, string | number>
 ): string {
   let result = template
   for (const [key, value] of Object.entries(variables)) {

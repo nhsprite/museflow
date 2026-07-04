@@ -16,7 +16,7 @@ interface ChapterOutlineLike {
 
 export function extractOutlineCharacters(
   outlines: ChapterOutlineLike[],
-  upToChapterIndex: number,
+  upToChapterIndex: number
 ): OutlineCharacter[] {
   const seen = new Map<string, OutlineCharacter>()
 
@@ -39,15 +39,15 @@ export function extractOutlineCharacters(
   }
 
   return Array.from(seen.values()).sort(
-    (a, b) => a.sourceChapter - b.sourceChapter || a.name.localeCompare(b.name),
+    (a, b) => a.sourceChapter - b.sourceChapter || a.name.localeCompare(b.name)
   )
 }
 
 export function mergeCharacterLists(
   officialCharacters: Character[],
-  outlineCharacters: OutlineCharacter[],
+  outlineCharacters: OutlineCharacter[]
 ): Character[] {
-  const officialNames = new Set(officialCharacters.map(c => c.name.trim()))
+  const officialNames = new Set(officialCharacters.map((c) => c.name.trim()))
   const merged: Character[] = [...officialCharacters]
 
   for (const oc of outlineCharacters) {

@@ -43,7 +43,12 @@ export async function migrateLegacyCheckpoints(outputDir: string): Promise<void>
   }
 
   for (const file of readdirSync(dir)) {
-    if (!file.endsWith('.json') || file === 'pending_writes.json' || file === 'chapter_markers.json') continue
+    if (
+      !file.endsWith('.json') ||
+      file === 'pending_writes.json' ||
+      file === 'chapter_markers.json'
+    )
+      continue
     const path = join(dir, file)
     try {
       const record = JSON.parse(readFileSync(path, 'utf-8')) as CheckpointRecord
@@ -60,7 +65,10 @@ export async function migrateLegacyCheckpoints(outputDir: string): Promise<void>
       unlinkSync(path)
 
       if (latestCheckpointId === existingId) {
-        writeFileAtomic(latestPath, JSON.stringify({ checkpointId: newId, ts: record.checkpoint.ts }, null, 2))
+        writeFileAtomic(
+          latestPath,
+          JSON.stringify({ checkpointId: newId, ts: record.checkpoint.ts }, null, 2)
+        )
         latestCheckpointId = newId
       }
     } catch {

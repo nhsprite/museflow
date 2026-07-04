@@ -28,18 +28,18 @@ export function getActForChapter(
 ): ActArc | undefined {
   if (!storyArc) return undefined
   const chapterNumber = chapterIndex + 1
-  return storyArc.acts.find(a => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
+  return storyArc.acts.find((a) => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
 }
 
-export function getPendingMandatoryBeats(
-  state: ReducedGraphState,
-  chapterIndex: number
-): string[] {
+export function getPendingMandatoryBeats(state: ReducedGraphState, chapterIndex: number): string[] {
   const storyArc = state.storyArc
   const act = getActForChapter(storyArc, chapterIndex)
   if (!storyArc || !act) return []
-  const progress = state.actProgress?.[act.index] ?? { consumed: [], pending: [...act.mandatoryBeats] }
-  return act.mandatoryBeats.filter(beat => !progress.consumed.includes(beat))
+  const progress = state.actProgress?.[act.index] ?? {
+    consumed: [],
+    pending: [...act.mandatoryBeats],
+  }
+  return act.mandatoryBeats.filter((beat) => !progress.consumed.includes(beat))
 }
 
 export function normalizeVerifiedBeats(
@@ -69,7 +69,7 @@ function findIssueMandatoryBeat(
   const beatIndex = Number.parseInt(match[2], 10)
   if (!Number.isInteger(actIndex) || !Number.isInteger(beatIndex)) return undefined
 
-  const act = storyArc.acts.find(candidate => candidate.index === actIndex)
+  const act = storyArc.acts.find((candidate) => candidate.index === actIndex)
   const beat = act?.mandatoryBeats[beatIndex]
   return act && beat ? { act, beat } : undefined
 }
@@ -80,7 +80,7 @@ export function pruneResolvedOutlineCoverageIssues(
   actProgress: ReducedGraphState['actProgress'],
   currentChapterIndex: number
 ): Issue[] {
-  return issues.filter(issue => {
+  return issues.filter((issue) => {
     if (issue.type !== 'outline_coverage' || issue.severity !== 'warning') {
       return true
     }
@@ -126,7 +126,7 @@ export async function updateActProgress(
       }
     }
   }
-  let pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
+  let pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
 
   const chaptersRemaining = act.endChapter - (chapterIndex + 1)
   const totalActChapters = act.endChapter - act.startChapter + 1
@@ -138,14 +138,14 @@ export async function updateActProgress(
       act,
       pending,
       state.chapterSummaries,
-      state.outline.map(o => o.description ?? '')
+      state.outline.map((o) => o.description ?? '')
     )
     for (const beat of retroactive) {
       if (!consumed.includes(beat)) {
         consumed.push(beat)
       }
     }
-    pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
+    pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
 
     if (pending.length > 0) {
       const contentVerified = await scanActChaptersForBeats(
@@ -161,7 +161,7 @@ export async function updateActProgress(
           consumed.push(beat)
         }
       }
-      pending = act.mandatoryBeats.filter(beat => !consumed.includes(beat))
+      pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
     }
   }
 
@@ -193,11 +193,14 @@ export async function updateActProgress(
 
   const currentActIndex = act.index
   const overdueKeyBeats = storyArc.keyBeats.filter(
-    kb => kb.deadlineAct <= currentActIndex && !consumed.includes(kb.beat) && !verifiedBeats.includes(kb.beat)
+    (kb) =>
+      kb.deadlineAct <= currentActIndex &&
+      !consumed.includes(kb.beat) &&
+      !verifiedBeats.includes(kb.beat)
   )
   if (overdueKeyBeats.length > 0 && chaptersRemaining === 0) {
     logger.warn(
-      `[MuseFlow] 第 ${act.index} 幕结束时有 ${overdueKeyBeats.length} 个全局 key beats 逾期未消费：${overdueKeyBeats.map(k => k.beat).join('、')}`
+      `[MuseFlow] 第 ${act.index} 幕结束时有 ${overdueKeyBeats.length} 个全局 key beats 逾期未消费：${overdueKeyBeats.map((k) => k.beat).join('、')}`
     )
   }
 
@@ -211,7 +214,7 @@ function buildBeatVerificationIssues(
   _chapterIndex: number
 ): Issue[] {
   const issues: Issue[] = []
-  const unverifiedClaimed = claimedBeats.filter(beat => !verifiedBeats.includes(beat))
+  const unverifiedClaimed = claimedBeats.filter((beat) => !verifiedBeats.includes(beat))
   for (const beat of unverifiedClaimed) {
     const beatIndex = act.mandatoryBeats.indexOf(beat)
     if (beatIndex >= 0) {
@@ -238,7 +241,11 @@ async function scanActChaptersForBeats(
   const newlyVerified: string[] = []
   let remaining = [...pendingBeats]
 
-  for (let chapterNumber = act.startChapter; chapterNumber <= Math.min(act.endChapter, currentChapterIndex + 1); chapterNumber++) {
+  for (
+    let chapterNumber = act.startChapter;
+    chapterNumber <= Math.min(act.endChapter, currentChapterIndex + 1);
+    chapterNumber++
+  ) {
     if (remaining.length === 0) break
     const content = await readChapterContent(outputDir, chapterNumber)
     if (!content || content.trim().length === 0) continue
@@ -257,7 +264,7 @@ async function scanActChaptersForBeats(
       if (!newlyVerified.includes(beat)) {
         newlyVerified.push(beat)
       }
-      remaining = remaining.filter(b => b !== beat)
+      remaining = remaining.filter((b) => b !== beat)
     }
   }
 

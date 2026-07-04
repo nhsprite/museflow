@@ -14,4 +14,3 @@ export function createEmptyStoryState(): StoryState {
     canonicalFacts: [],
   }
 }
-

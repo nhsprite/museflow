@@ -13,7 +13,7 @@ describe('extractEstablishedCharacters', () => {
 
   it('extracts names from structured chapter summary fields only', () => {
     const result = extractEstablishedCharacters([summary1, summary2])
-    const names = result.map(c => c.name).sort()
+    const names = result.map((c) => c.name).sort()
     expect(names).toEqual(['陆廷樾'])
   })
 
@@ -25,12 +25,14 @@ describe('extractEstablishedCharacters', () => {
       keyItemsState: {},
       activePlots: [],
       revealedSecrets: [],
-      pendingTasks: [{ id: 't1', assignee: '陈裕堂', description: '候见', status: 'pending', createdChapter: 1 }],
+      pendingTasks: [
+        { id: 't1', assignee: '陈裕堂', description: '候见', status: 'pending', createdChapter: 1 },
+      ],
       currentScene: '',
       storyTime: '',
     }
     const result = extractEstablishedCharacters([], storyState)
-    const names = result.map(c => c.name).sort()
+    const names = result.map((c) => c.name).sort()
     expect(names).toEqual(['何氏（奶娘）', '陆廷桦', '陆廷樑', '陈裕堂'])
   })
 
@@ -47,7 +49,7 @@ describe('extractEstablishedCharacters', () => {
       storyTime: '',
     }
     const result = extractEstablishedCharacters([summary1], storyState)
-    const names = result.map(c => c.name).sort()
+    const names = result.map((c) => c.name).sort()
     expect(names).toEqual(['苏半城', '陆廷樾'])
   })
 })

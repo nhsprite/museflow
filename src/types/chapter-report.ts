@@ -3,16 +3,10 @@ import type { Issue, IssueType } from './agent.js'
 export type DraftStrategy = 'draft' | 'fix' | 'replan' | 'finalize-only'
 
 export type ConvergenceResult =
-  | 'success'
-  | 'max-attempts-reached'
-  | 'state-corruption-escape'
-  | 'manual-rewrite-requested'
+  'success' | 'max-attempts-reached' | 'state-corruption-escape' | 'manual-rewrite-requested'
 
 export type StateCorrectionReason =
-  | 'canonical_fact'
-  | 'superseded_fact'
-  | 'alias_merge'
-  | 'override'
+  'canonical_fact' | 'superseded_fact' | 'alias_merge' | 'override'
 
 export interface StateCorrection {
   subject: string

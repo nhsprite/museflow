@@ -11,7 +11,7 @@ describe('novel graph', () => {
     const graph = buildNovelGraph(createMockContext()) as unknown as {
       builder: { nodes: Record<string, unknown> }
     }
-    const nodeNames = Object.keys(graph.builder.nodes).filter(n => n !== '__start__')
+    const nodeNames = Object.keys(graph.builder.nodes).filter((n) => n !== '__start__')
 
     expect(nodeNames).toEqual([
       'build_world',

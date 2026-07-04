@@ -63,45 +63,49 @@ describe('draft_chapter output validation', () => {
     await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/起草后校验失败/)
   })
 
-  it('uses updated JIT outline after outline expansion when adding a missing heading', { timeout: 20000 }, async () => {
-    const state = {
-      story: { id: 'test', title: 'Test', outputDir: tmpDir },
-      idea: 'test',
-      genre: 'default',
-      totalChapters: 10,
-      currentChapterIndex: 0,
-      outline: [{ number: 1, title: '', description: '' }],
-      chapters: [null],
-      chapterSummaries: [],
-      foreshadowStack: [],
-      characters: [],
-      world: null,
-      storyState: null,
-      pendingIssues: [],
-      rewriteApproved: false,
-      rewriteRequested: false,
-      isWriting: true,
-      writeOneChapterOnly: true,
-      lastPrintedChapter: 0,
-      lastTimelineSnapshot: null,
-      chapterPlan: null,
-    } as unknown as ReducedGraphState
-    const updatedOutline = [{ number: 1, title: '即时标题', description: '即时生成描述' }]
-    vi.mocked(expandOutlineForChapter).mockResolvedValueOnce({
-      chapterPlan: { sections: [], timeline: [], outlineCheck: [] },
-      boundaryHints: [],
-      pendingIssues: [],
-      outline: updatedOutline,
-    })
-    chapterAgentRunMock.mockResolvedValueOnce({
-      success: true,
-      content: '主角走在路上，心中思绪万千。'.repeat(600),
-    })
+  it(
+    'uses updated JIT outline after outline expansion when adding a missing heading',
+    { timeout: 20000 },
+    async () => {
+      const state = {
+        story: { id: 'test', title: 'Test', outputDir: tmpDir },
+        idea: 'test',
+        genre: 'default',
+        totalChapters: 10,
+        currentChapterIndex: 0,
+        outline: [{ number: 1, title: '', description: '' }],
+        chapters: [null],
+        chapterSummaries: [],
+        foreshadowStack: [],
+        characters: [],
+        world: null,
+        storyState: null,
+        pendingIssues: [],
+        rewriteApproved: false,
+        rewriteRequested: false,
+        isWriting: true,
+        writeOneChapterOnly: true,
+        lastPrintedChapter: 0,
+        lastTimelineSnapshot: null,
+        chapterPlan: null,
+      } as unknown as ReducedGraphState
+      const updatedOutline = [{ number: 1, title: '即时标题', description: '即时生成描述' }]
+      vi.mocked(expandOutlineForChapter).mockResolvedValueOnce({
+        chapterPlan: { sections: [], timeline: [], outlineCheck: [] },
+        boundaryHints: [],
+        pendingIssues: [],
+        outline: updatedOutline,
+      })
+      chapterAgentRunMock.mockResolvedValueOnce({
+        success: true,
+        content: '主角走在路上，心中思绪万千。'.repeat(600),
+      })
 
-    const result = await draft_chapter(createMockContext(), state)
-    const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_1.md'), 'utf8')
+      const result = await draft_chapter(createMockContext(), state)
+      const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_1.md'), 'utf8')
 
-    expect(written.startsWith('# 第1章 即时标题')).toBe(true)
-    expect(result.chapters?.[0]?.outline).toBe('即时生成描述')
-  })
+      expect(written.startsWith('# 第1章 即时标题')).toBe(true)
+      expect(result.chapters?.[0]?.outline).toBe('即时生成描述')
+    }
+  )
 })

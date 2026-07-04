@@ -9,12 +9,14 @@ export function expandPath(path: string): string {
 }
 
 function slugify(title: string): string {
-  return title
-    .trim()
-    .replace(/\s+/g, '_')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
-    .replace(/_{2,}/g, '_')
+  return (
+    title
+      .trim()
+      .replace(/\s+/g, '_')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+      .replace(/_{2,}/g, '_')
+  )
 }
 
 function getGlobalConfigDir(): string {

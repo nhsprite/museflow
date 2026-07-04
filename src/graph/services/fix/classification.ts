@@ -1,9 +1,6 @@
 import type { Issue } from '../../../types/agent.js'
 import type { SentenceFix } from '../../../agents/base.js'
-import {
-  findAffectedSentences,
-  splitParagraphIntoSentences,
-} from '../../utils/text-patching.js'
+import { findAffectedSentences, splitParagraphIntoSentences } from '../../utils/text-patching.js'
 
 export function buildSentenceFixes(
   paragraphs: string[],

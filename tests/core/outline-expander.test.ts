@@ -151,14 +151,31 @@ describe('expandOutlineForChapter', () => {
       2,
       '第 2 幕「新幕」还剩 2 章结束，必须优先消费以下 mandatory beats：新幕节拍。'
     )
-    const durableConstraint = createGenericVerifiedConstraint('【伏笔边界】不要提前揭示尚未到期的伏笔。')
+    const durableConstraint =
+      createGenericVerifiedConstraint('【伏笔边界】不要提前揭示尚未到期的伏笔。')
     const jitState: ReducedGraphState = {
       ...baseState,
       storyArc: {
         totalChapters: 3,
         acts: [
-          { index: 1, startChapter: 1, endChapter: 1, title: '旧幕', theme: '收束', function: '收束旧目标', mandatoryBeats: ['旧幕节拍'] },
-          { index: 2, startChapter: 2, endChapter: 3, title: '新幕', theme: '转折', function: '推进新目标', mandatoryBeats: ['新幕节拍'] },
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '旧幕',
+            theme: '收束',
+            function: '收束旧目标',
+            mandatoryBeats: ['旧幕节拍'],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 3,
+            title: '新幕',
+            theme: '转折',
+            function: '推进新目标',
+            mandatoryBeats: ['新幕节拍'],
+          },
         ],
         keyBeats: [],
       },
@@ -177,7 +194,10 @@ describe('expandOutlineForChapter', () => {
     await expandOutlineForChapter(jitState, 1, createMockProvider())
 
     const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as { verifiedConstraints?: string[] }
-    expect(agentInput.verifiedConstraints).toEqual([durableConstraint.text, currentActPressure.text])
+    expect(agentInput.verifiedConstraints).toEqual([
+      durableConstraint.text,
+      currentActPressure.text,
+    ])
   })
 
   it('keeps exact current-act claimed beats without description support matching', async () => {
@@ -289,12 +309,14 @@ describe('expandOutlineForChapter', () => {
         introducedCharacters: [],
         claimedBeats: ['外部压力打破既定安排'],
         conflict: true,
-        conflictReason: "本描述将 '外部压力打破既定安排' 列为 claimedBeat，但 description 未承载对应事件，属于强行贴标签。",
+        conflictReason:
+          "本描述将 '外部压力打破既定安排' 列为 claimedBeat，但 description 未承载对应事件，属于强行贴标签。",
       },
     })
 
-    await expect(expandOutlineForChapter(jitState, 1, createMockProvider()))
-      .rejects.toThrow('即时大纲与权威事实冲突')
+    await expect(expandOutlineForChapter(jitState, 1, createMockProvider())).rejects.toThrow(
+      '即时大纲与权威事实冲突'
+    )
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
   })
 
@@ -307,9 +329,33 @@ describe('expandOutlineForChapter', () => {
       storyArc: {
         totalChapters: 6,
         acts: [
-          { index: 1, startChapter: 1, endChapter: 1, title: '第一幕', theme: '建立', function: '开篇', mandatoryBeats: ['开篇'] },
-          { index: 2, startChapter: 2, endChapter: 2, title: '第二幕', theme: '对抗', function: '升级冲突', mandatoryBeats: ['beat1', 'beat2', 'beat3', 'beat4'] },
-          { index: 3, startChapter: 3, endChapter: 6, title: '第三幕', theme: '收束', function: '解决', mandatoryBeats: ['beat5'] },
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '第一幕',
+            theme: '建立',
+            function: '开篇',
+            mandatoryBeats: ['开篇'],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 2,
+            title: '第二幕',
+            theme: '对抗',
+            function: '升级冲突',
+            mandatoryBeats: ['beat1', 'beat2', 'beat3', 'beat4'],
+          },
+          {
+            index: 3,
+            startChapter: 3,
+            endChapter: 6,
+            title: '第三幕',
+            theme: '收束',
+            function: '解决',
+            mandatoryBeats: ['beat5'],
+          },
         ],
         keyBeats: [],
       },
@@ -329,8 +375,11 @@ describe('expandOutlineForChapter', () => {
 
     const result = await expandOutlineForChapter(overloadedState, 1, createMockProvider())
 
-    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as { storyArc: typeof overloadedState.storyArc; totalChapters: number }
-    expect(agentInput.storyArc.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      storyArc: typeof overloadedState.storyArc
+      totalChapters: number
+    }
+    expect(agentInput.storyArc.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
       [1, 1],
       [2, 4],
       [5, 8],
@@ -346,8 +395,24 @@ describe('expandOutlineForChapter', () => {
       storyArc: {
         totalChapters: 3,
         acts: [
-          { index: 1, startChapter: 1, endChapter: 1, title: '第一幕', theme: '启程', function: '出发', mandatoryBeats: [] },
-          { index: 2, startChapter: 2, endChapter: 3, title: '第二幕', theme: '冲突', function: '对抗', mandatoryBeats: [] },
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '第一幕',
+            theme: '启程',
+            function: '出发',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 3,
+            title: '第二幕',
+            theme: '冲突',
+            function: '对抗',
+            mandatoryBeats: [],
+          },
         ],
         keyBeats: [],
       },
@@ -368,19 +433,33 @@ describe('expandOutlineForChapter', () => {
 
   it('throws when plan_chapter returns no plan', async () => {
     planChapterWithOverrideMock.mockResolvedValueOnce({})
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toThrow('详细计划生成失败')
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toThrow(
+      '详细计划生成失败'
+    )
   })
 
   it('returns warning issue when budget validation fails after max attempts', async () => {
     const badPlan: ChapterPlan = {
       sections: [
-        { title: '核心事件', summary: '买办登场', wordCount: 1000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
-        { title: '过渡', summary: '亲王回话谈判', wordCount: 2000, events: ['回话亲王'], characters: ['苏半城', '亲王'], timeMark: '巳时' },
+        {
+          title: '核心事件',
+          summary: '买办登场',
+          wordCount: 1000,
+          events: ['陈裕堂登门'],
+          characters: ['苏半城', '陈裕堂'],
+          timeMark: '午时',
+        },
+        {
+          title: '过渡',
+          summary: '亲王回话谈判',
+          wordCount: 2000,
+          events: ['回话亲王'],
+          characters: ['苏半城', '亲王'],
+          timeMark: '巳时',
+        },
       ],
       timeline: [],
-      outlineCheck: [
-        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
-      ],
+      outlineCheck: [{ requirement: '买办登场', fulfilled: true, section: '核心事件' }],
     }
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: badPlan })
     mockChatStructured.mockResolvedValue({ results: [true, false] })
@@ -409,7 +488,9 @@ describe('validateChapterTimeAnchor', () => {
       chapterTimeAnchor: '三日期限第三日卯时（继续推进）',
     }
 
-    const result = await validateChapterTimeAnchor(plan, '第六章正文：苏半城睡去。', { chat: vi.fn() })
+    const result = await validateChapterTimeAnchor(plan, '第六章正文：苏半城睡去。', {
+      chat: vi.fn(),
+    })
 
     expect(result.valid).toBe(true)
   })
@@ -422,10 +503,17 @@ describe('validateChapterTimeAnchor', () => {
       chapterTimeAnchor: '三日期限第三日卯时末，昨日午时回话亲王已落地',
     }
     vi.mocked(contextJudge.batchValidateTimeAnchors).mockResolvedValueOnce([
-      { valid: false, reason: 'chapterTimeAnchor 声称上一章已完成"回话亲王"，但上一章正文未提及该事件' },
+      {
+        valid: false,
+        reason: 'chapterTimeAnchor 声称上一章已完成"回话亲王"，但上一章正文未提及该事件',
+      },
     ])
 
-    const result = await validateChapterTimeAnchor(plan, '第六章正文：苏半城亥时末睡去，次日清晨才起身赴王府。', { chat: vi.fn() })
+    const result = await validateChapterTimeAnchor(
+      plan,
+      '第六章正文：苏半城亥时末睡去，次日清晨才起身赴王府。',
+      { chat: vi.fn() }
+    )
 
     expect(result.valid).toBe(false)
     expect(result.reason).toContain('回话亲王')
@@ -439,7 +527,11 @@ describe('validateChapterTimeAnchor', () => {
       chapterTimeAnchor: '三日期限第三日卯时末，昨日午时回话亲王已落地',
     }
 
-    const result = await validateChapterTimeAnchor(plan, '第六章正文：苏半城昨日午时赴亲王府回话，当面答了办得成三字。', { chat: vi.fn() })
+    const result = await validateChapterTimeAnchor(
+      plan,
+      '第六章正文：苏半城昨日午时赴亲王府回话，当面答了办得成三字。',
+      { chat: vi.fn() }
+    )
 
     expect(result.valid).toBe(true)
   })
@@ -465,13 +557,25 @@ describe('validateChapterPlanBudget', () => {
   it('passes when core sections account for at least 50% of word count', async () => {
     const plan: ChapterPlan = {
       sections: [
-        { title: '核心事件', summary: '买办登场', wordCount: 2500, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
-        { title: '过渡', summary: '亲王回话收尾', wordCount: 800, events: ['回话亲王'], characters: ['苏半城'], timeMark: '巳时' },
+        {
+          title: '核心事件',
+          summary: '买办登场',
+          wordCount: 2500,
+          events: ['陈裕堂登门'],
+          characters: ['苏半城', '陈裕堂'],
+          timeMark: '午时',
+        },
+        {
+          title: '过渡',
+          summary: '亲王回话收尾',
+          wordCount: 800,
+          events: ['回话亲王'],
+          characters: ['苏半城'],
+          timeMark: '巳时',
+        },
       ],
       timeline: [],
-      outlineCheck: [
-        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
-      ],
+      outlineCheck: [{ requirement: '买办登场', fulfilled: true, section: '核心事件' }],
     }
 
     const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
@@ -482,13 +586,25 @@ describe('validateChapterPlanBudget', () => {
   it('fails when core sections account for less than 50% of word count', async () => {
     const plan: ChapterPlan = {
       sections: [
-        { title: '核心事件', summary: '买办登场', wordCount: 1000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
-        { title: '过渡', summary: '亲王回话谈判', wordCount: 2000, events: ['回话亲王'], characters: ['苏半城', '亲王'], timeMark: '巳时' },
+        {
+          title: '核心事件',
+          summary: '买办登场',
+          wordCount: 1000,
+          events: ['陈裕堂登门'],
+          characters: ['苏半城', '陈裕堂'],
+          timeMark: '午时',
+        },
+        {
+          title: '过渡',
+          summary: '亲王回话谈判',
+          wordCount: 2000,
+          events: ['回话亲王'],
+          characters: ['苏半城', '亲王'],
+          timeMark: '巳时',
+        },
       ],
       timeline: [],
-      outlineCheck: [
-        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
-      ],
+      outlineCheck: [{ requirement: '买办登场', fulfilled: true, section: '核心事件' }],
     }
 
     const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
@@ -500,13 +616,25 @@ describe('validateChapterPlanBudget', () => {
   it('fails when a non-core section exceeds 800 words', async () => {
     const plan: ChapterPlan = {
       sections: [
-        { title: '核心事件', summary: '买办登场', wordCount: 3000, events: ['陈裕堂登门'], characters: ['苏半城', '陈裕堂'], timeMark: '午时' },
-        { title: '过渡', summary: '亲王回话谈判', wordCount: 1200, events: ['回话亲王'], characters: ['苏半城', '亲王'], timeMark: '巳时' },
+        {
+          title: '核心事件',
+          summary: '买办登场',
+          wordCount: 3000,
+          events: ['陈裕堂登门'],
+          characters: ['苏半城', '陈裕堂'],
+          timeMark: '午时',
+        },
+        {
+          title: '过渡',
+          summary: '亲王回话谈判',
+          wordCount: 1200,
+          events: ['回话亲王'],
+          characters: ['苏半城', '亲王'],
+          timeMark: '巳时',
+        },
       ],
       timeline: [],
-      outlineCheck: [
-        { requirement: '买办登场', fulfilled: true, section: '核心事件' },
-      ],
+      outlineCheck: [{ requirement: '买办登场', fulfilled: true, section: '核心事件' }],
     }
 
     const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)

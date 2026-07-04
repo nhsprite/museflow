@@ -1,9 +1,14 @@
 import { renderTemplate } from '../../utils/template.js'
-import { OFFICIAL_CHARACTER_RULES, FORESHADOW_DISCIPLINE_RULES, buildCharacterWhitelistSection } from './fragments/index.js'
+import {
+  OFFICIAL_CHARACTER_RULES,
+  FORESHADOW_DISCIPLINE_RULES,
+  buildCharacterWhitelistSection,
+} from './fragments/index.js'
 import { isClosingPhase } from '../../utils/story-arc.js'
 import { computePromptHash } from './version.js'
 
-const CHAPTER_PLANNER_SYSTEM_PROMPT = '你是一位严谨的小说结构规划师。你的任务是在写作前生成详细的章节规划，确保每个大纲要求都被精确落实。你对时间线和情节顺序的准确性有零容忍态度。'
+const CHAPTER_PLANNER_SYSTEM_PROMPT =
+  '你是一位严谨的小说结构规划师。你的任务是在写作前生成详细的章节规划，确保每个大纲要求都被精确落实。你对时间线和情节顺序的准确性有零容忍态度。'
 
 export function buildChapterPlannerSystemPrompt(): string {
   return CHAPTER_PLANNER_SYSTEM_PROMPT
@@ -218,9 +223,8 @@ export interface ChapterPlannerPromptVariables {
 function buildIssuesSection(state: import('../types.js').ChapterPlannerAgentInput): string {
   if (!state.issues || state.issues.length === 0) return ''
 
-  const characterOmissionIssues = state.issues.filter(i =>
-    i.type === 'consistency' &&
-    i.dimension === 'character_omission',
+  const characterOmissionIssues = state.issues.filter(
+    (i) => i.type === 'consistency' && i.dimension === 'character_omission'
   )
 
   return `【上轮问题反馈 - 必须在本次规划中修复】
@@ -232,14 +236,18 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
 - 每个未落实的要求都在 outlineCheck 中标记为 fulfilled
 - 不得为了修补前文矛盾而发明新事实、新来源、新因果或新设定；只能使用大纲、世界观、人物设定和前文摘要中已经提供的信息
 - 不得让角色说出其未在前文获得的信息；如果某个矛盾无法在已知信息内自然解决，应在规划中回避该解释或保持待解，而不是强行解释
-${characterOmissionIssues.length > 0 ? `
+${
+  characterOmissionIssues.length > 0
+    ? `
 【角色遗漏专项修复】
 上轮检测到以下角色遗漏问题，本次规划必须修复：
 ${characterOmissionIssues.map((issue, i) => `${i + 1}. ${issue.description}`).join('\n')}
 修复方式（二选一）：
 - 方式A：在相关段落的 characters 列表中加入该角色，并在 events 中设计该角色的出场情节
 - 方式B：在 timeline 或某段落的 events 中明确说明该角色缺席的合理原因，且该原因必须来自已确立的剧情、人物状态或世界观信息
-禁止方式：不得无视该角色，不得让其无故消失且不作任何交代。` : ''}`
+禁止方式：不得无视该角色，不得让其无故消失且不作任何交代。`
+    : ''
+}`
 }
 
 function buildVerifiedConstraintsSection(verifiedConstraints: string[] | undefined): string {
@@ -258,7 +266,7 @@ ${verifiedConstraints.map((constraint, i) => `${i + 1}. ${constraint}`).join('\n
 function buildClosingPhaseSection(
   totalChapters: number,
   chapterIndex: number,
-  closingPhaseRatio: number,
+  closingPhaseRatio: number
 ): string {
   if (!isClosingPhase(totalChapters, chapterIndex, closingPhaseRatio)) return ''
 
@@ -302,14 +310,18 @@ export function buildChapterPlannerUserPrompt(
   planningConfig: import('../../types/genre.js').ChapterPlanningConfig,
   chapterWordCountMin: number,
   chapterWordCountMax: number,
-  displayChapterNumber: string | number,
+  displayChapterNumber: string | number
 ): string {
   const chapterIndex = state.chapterIndex ?? 0
 
   const sections: ChapterPlannerPromptSections = {
     issuesSection: buildIssuesSection(state),
     verifiedConstraintsSection: buildVerifiedConstraintsSection(state.verifiedConstraints),
-    closingPhaseSection: buildClosingPhaseSection(state.totalChapters, chapterIndex, planningConfig.closingPhaseRatio),
+    closingPhaseSection: buildClosingPhaseSection(
+      state.totalChapters,
+      chapterIndex,
+      planningConfig.closingPhaseRatio
+    ),
     storyStateSection: buildStoryStateSection(state.storyState),
     chapterContractSection: buildChapterContractSection(state.chapterContract),
     stateConflictsSection: buildStateConflictsSection(state.stateConflicts),
@@ -345,4 +357,7 @@ export function buildChapterPlannerUserPrompt(
   })
 }
 
-export const PROMPT_VERSION = computePromptHash(CHAPTER_PLANNER_SYSTEM_PROMPT, CHAPTER_PLANNER_USER_PROMPT_TEMPLATE)
+export const PROMPT_VERSION = computePromptHash(
+  CHAPTER_PLANNER_SYSTEM_PROMPT,
+  CHAPTER_PLANNER_USER_PROMPT_TEMPLATE
+)

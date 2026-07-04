@@ -60,7 +60,15 @@ function createState(currentChapterIndex: number, totalChapters: number): Reduce
     storyArc: {
       totalChapters,
       acts: [
-        { index: 1, startChapter: 1, endChapter: totalChapters, title: '测试幕', theme: '测试主题', function: '测试功能', mandatoryBeats: ['主角出发'] },
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: totalChapters,
+          title: '测试幕',
+          theme: '测试主题',
+          function: '测试功能',
+          mandatoryBeats: ['主角出发'],
+        },
       ],
       keyBeats: [],
     },
@@ -125,8 +133,24 @@ describe('status command chapter display', () => {
     state.storyArc = {
       totalChapters: 4,
       acts: [
-        { index: 1, startChapter: 1, endChapter: 2, title: '第一幕', theme: '出发', function: '建立', mandatoryBeats: ['主角出发'] },
-        { index: 2, startChapter: 3, endChapter: 4, title: '第二幕', theme: '揭秘', function: '冲突', mandatoryBeats: ['核心秘密揭晓'] },
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 2,
+          title: '第一幕',
+          theme: '出发',
+          function: '建立',
+          mandatoryBeats: ['主角出发'],
+        },
+        {
+          index: 2,
+          startChapter: 3,
+          endChapter: 4,
+          title: '第二幕',
+          theme: '揭秘',
+          function: '冲突',
+          mandatoryBeats: ['核心秘密揭晓'],
+        },
       ],
       keyBeats: [{ beat: '核心秘密揭晓', deadlineAct: 1 }],
     }

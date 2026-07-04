@@ -11,11 +11,14 @@ import type { Issue } from '../../types/agent.js'
 
 export type FixPromptMode = 'sentence' | 'paragraph' | 'legacy'
 
-const FIX_SENTENCE_SYSTEM_PROMPT = '你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的句子。你绝对不可以修改未指定的句子，不可以添加新句子，不可以删除句子。你只能修改标记为【段落 N · 第 M 句】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'
+const FIX_SENTENCE_SYSTEM_PROMPT =
+  '你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的句子。你绝对不可以修改未指定的句子，不可以添加新句子，不可以删除句子。你只能修改标记为【段落 N · 第 M 句】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'
 
-const FIX_PARAGRAPH_SYSTEM_PROMPT = '你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的段落。你绝对不可以修改未指定的段落，不可以添加新段落，不可以删除段落。你只能修改标记为【需要修改的段落】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'
+const FIX_PARAGRAPH_SYSTEM_PROMPT =
+  '你是一位极其谨慎的小说编辑。你的唯一任务是修改指定的段落。你绝对不可以修改未指定的段落，不可以添加新段落，不可以删除段落。你只能修改标记为【需要修改的段落】的内容。修改时彻底替换原句，不要残留。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'
 
-const FIX_LEGACY_SYSTEM_PROMPT = '你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'
+const FIX_LEGACY_SYSTEM_PROMPT =
+  '你是一位极其谨慎的小说编辑，擅长精准定位问题并进行最小化修改。修改前必须对照前文摘要和角色状态，确保不引入新的跨章节矛盾。'
 
 export function buildFixSystemPrompt(mode: FixPromptMode): string {
   if (mode === 'sentence') {
@@ -27,7 +30,11 @@ export function buildFixSystemPrompt(mode: FixPromptMode): string {
   return FIX_LEGACY_SYSTEM_PROMPT
 }
 
-function buildOptionalSection(tag: string, content: string | undefined | null, skipValue?: string): string {
+function buildOptionalSection(
+  tag: string,
+  content: string | undefined | null,
+  skipValue?: string
+): string {
   if (!content || content.length === 0) return ''
   if (skipValue !== undefined && content === skipValue) return ''
   return `<${tag}>
@@ -38,9 +45,13 @@ ${content}
 function buildIssuesSection(issues: Issue[] | undefined): string {
   if (!issues || issues.length === 0) return ''
   return `<issues>
-${issues.map((issue, i) => `  <issue index="${i + 1}" type="${issue.type}">
+${issues
+  .map(
+    (issue, i) => `  <issue index="${i + 1}" type="${issue.type}">
     <description>${issue.description}</description>${issue.location ? `\n    <location>${issue.location}</location>` : ''}${issue.suggestion ? `\n    <suggestion>${issue.suggestion}</suggestion>` : ''}
-  </issue>`).join('\n')}
+  </issue>`
+  )
+  .join('\n')}
 </issues>`
 }
 
@@ -64,10 +75,17 @@ export interface FixPromptSections {
   existingChapterSection: string
 }
 
-export function buildFixPromptSections(state: FixAgentInput, targetSection: string): FixPromptSections {
+export function buildFixPromptSections(
+  state: FixAgentInput,
+  targetSection: string
+): FixPromptSections {
   return {
     issuesSection: buildIssuesSection(state.issues),
-    previousChaptersSection: buildOptionalSection('previous_chapters', state.previousChapters, '（这是第一章）'),
+    previousChaptersSection: buildOptionalSection(
+      'previous_chapters',
+      state.previousChapters,
+      '（这是第一章）'
+    ),
     timelineSection: buildOptionalSection('timeline', state.timelineSnapshot, '（暂无历史记录）'),
     storyStateSection: buildOptionalSection('story_state', state.storyState, '（暂无状态记录）'),
     boundarySection: state.nextChapterBoundary
@@ -84,20 +102,20 @@ export function buildFixPromptSections(state: FixAgentInput, targetSection: stri
 export function buildSentenceTargetSection(sentences: SentenceFix[]): string {
   return sentences
     .map(
-      s =>
-        `  <sentence paragraph="${s.paragraphIndex}" index="${s.sentenceIndex + 1}">\n    <original>${s.original}</original>\n    <problem>${s.issue.description}</problem>${s.issue.suggestion ? `\n    <suggestion>${s.issue.suggestion}</suggestion>` : ''}\n  </sentence>`,
+      (s) =>
+        `  <sentence paragraph="${s.paragraphIndex}" index="${s.sentenceIndex + 1}">\n    <original>${s.original}</original>\n    <problem>${s.issue.description}</problem>${s.issue.suggestion ? `\n    <suggestion>${s.issue.suggestion}</suggestion>` : ''}\n  </sentence>`
     )
     .join('\n')
 }
 
 export function buildParagraphTargetSection(
   paragraphs: ParagraphFix[],
-  issueIndexMap: Map<Issue, number>,
+  issueIndexMap: Map<Issue, number>
 ): string {
   return paragraphs
     .map(
-      p =>
-        `  <paragraph index="${p.index}">${p.issues.length > 0 ? `\n    <related_issues>${p.issues.map(issue => issueIndexMap.get(issue) ?? '?').join(', ')}</related_issues>` : ''}\n    <content>${p.content}</content>\n  </paragraph>`,
+      (p) =>
+        `  <paragraph index="${p.index}">${p.issues.length > 0 ? `\n    <related_issues>${p.issues.map((issue) => issueIndexMap.get(issue) ?? '?').join(', ')}</related_issues>` : ''}\n    <content>${p.content}</content>\n  </paragraph>`
     )
     .join('\n')
 }
@@ -252,19 +270,22 @@ const LEGACY_USER_PROMPT_TEMPLATE = `<instruction>
 
 export function buildSentenceUserPrompt(
   sections: Omit<FixPromptSections, 'existingChapterSection'> & { context: string },
-  vars: FixPromptVariables,
+  vars: FixPromptVariables
 ): string {
   return renderTemplate(SENTENCE_USER_PROMPT_TEMPLATE, { ...sections, ...vars })
 }
 
 export function buildParagraphUserPrompt(
   sections: Omit<FixPromptSections, 'existingChapterSection'> & { context: string },
-  vars: FixPromptVariables,
+  vars: FixPromptVariables
 ): string {
   return renderTemplate(PARAGRAPH_USER_PROMPT_TEMPLATE, { ...sections, ...vars })
 }
 
-export function buildLegacyUserPrompt(sections: FixPromptSections, vars: FixPromptVariables): string {
+export function buildLegacyUserPrompt(
+  sections: FixPromptSections,
+  vars: FixPromptVariables
+): string {
   return renderTemplate(LEGACY_USER_PROMPT_TEMPLATE, { ...sections, ...vars })
 }
 
@@ -274,5 +295,5 @@ export const PROMPT_VERSION = computePromptHash(
   FIX_LEGACY_SYSTEM_PROMPT,
   SENTENCE_USER_PROMPT_TEMPLATE,
   PARAGRAPH_USER_PROMPT_TEMPLATE,
-  LEGACY_USER_PROMPT_TEMPLATE,
+  LEGACY_USER_PROMPT_TEMPLATE
 )

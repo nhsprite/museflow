@@ -35,7 +35,13 @@ vi.mock('../../src/core/outline-expander.js', () => ({
     chapterPlan: {
       chapterNumber: chapterIndex + 1,
       sections: [
-        { title: '开端', summary: '主角出场', wordCount: 2000, events: ['主角出场'], characters: ['主角'] },
+        {
+          title: '开端',
+          summary: '主角出场',
+          wordCount: 2000,
+          events: ['主角出场'],
+          characters: ['主角'],
+        },
       ],
       timeline: [],
       outlineCheck: [],
@@ -53,7 +59,10 @@ vi.mock('../../src/graph/utils/reconciler/index.js', () => ({
   })),
   formatStoryState: vi.fn(() => ''),
   buildCharacterFactTimeline: vi.fn(() => ''),
-  mergeStoryState: vi.fn((existing: unknown, update: unknown) => ({ ...(existing as object), ...(update as object) })),
+  mergeStoryState: vi.fn((existing: unknown, update: unknown) => ({
+    ...(existing as object),
+    ...(update as object),
+  })),
 }))
 
 const longChapterContent = '# 第1章 测试章节\n\n' + '主角走在路上，心中思绪万千。'.repeat(600)
@@ -68,7 +77,9 @@ const mockChapterAgent = {
 
 const mockForeshadowingAgent = {
   run: vi.fn(async () => ({ success: true, content: '', data: { planted: [], fulfilled: [] } })),
-  processOutput: vi.fn(async (_output: unknown, _chapterIndex: number, existingStack: unknown) => existingStack),
+  processOutput: vi.fn(
+    async (_output: unknown, _chapterIndex: number, existingStack: unknown) => existingStack
+  ),
 }
 
 const mockConsistencyAgent = {
@@ -98,7 +109,11 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
   getSummaryAgent: () => mockSummaryAgent,
 }))
 
-function createInitialState(storyId: string, outputDir: string, totalChapters: number): ReducedGraphState {
+function createInitialState(
+  storyId: string,
+  outputDir: string,
+  totalChapters: number
+): ReducedGraphState {
   return {
     story: {
       id: storyId,
@@ -116,7 +131,14 @@ function createInitialState(storyId: string, outputDir: string, totalChapters: n
     totalChapters,
     world: { id: 'world-1', storyId, content: '测试世界观' },
     characters: [
-      { id: 'char-1', storyId, name: '主角', description: null, dialogueStyle: null, createdAt: Date.now() },
+      {
+        id: 'char-1',
+        storyId,
+        name: '主角',
+        description: null,
+        dialogueStyle: null,
+        createdAt: Date.now(),
+      },
     ],
     outline: Array.from({ length: totalChapters }, (_, i) => ({
       id: `outline-${i}`,
@@ -182,7 +204,11 @@ function writeInitialCheckpoint(outputDir: string, state: ReducedGraphState): vo
   }
 
   writeFileSync(join(checkpointDir, `${checkpointId}.json`), JSON.stringify(checkpoint), 'utf-8')
-  writeFileSync(join(checkpointDir, 'latest.json'), JSON.stringify({ checkpointId, ts: checkpoint.checkpoint.ts }), 'utf-8')
+  writeFileSync(
+    join(checkpointDir, 'latest.json'),
+    JSON.stringify({ checkpointId, ts: checkpoint.checkpoint.ts }),
+    'utf-8'
+  )
 }
 
 describe('chapter writing integration', () => {
@@ -204,12 +230,16 @@ describe('chapter writing integration', () => {
     writeFileSync(join(tmpDir, 'meta.json'), JSON.stringify({ story: state.story }), 'utf-8')
     writeInitialCheckpoint(tmpDir, state)
 
-    const result = await runOneChapter(storyId, { mode: 'draft', targetChapterIndex: 0 }, createMockContext())
+    const result = await runOneChapter(
+      storyId,
+      { mode: 'draft', targetChapterIndex: 0 },
+      createMockContext()
+    )
 
     expect(result.currentChapterIndex).toBe(1)
     expect(result.chapters[0]).not.toBeNull()
     expect(result.chapters[0]?.number).toBe(1)
-    expect(result.pendingIssues.filter(i => i.severity === 'error')).toHaveLength(0)
+    expect(result.pendingIssues.filter((i) => i.severity === 'error')).toHaveLength(0)
 
     const chapterFile = join(tmpDir, 'chapters', 'chapter_1.md')
     expect(existsSync(chapterFile)).toBe(true)

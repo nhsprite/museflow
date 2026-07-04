@@ -30,7 +30,10 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
                 items: { type: 'string' },
                 description: '2-4个独特的世界观元素',
               },
-              powerSystem: { type: 'string', description: '力量/规则体系，如魔法、超能力、诅咒规则、社会制度等（可选）' },
+              powerSystem: {
+                type: 'string',
+                description: '力量/规则体系，如魔法、超能力、诅咒规则、社会制度等（可选）',
+              },
             },
             required: ['coreConflict', 'worldFeatures'],
           },
@@ -77,15 +80,17 @@ export async function generateTitleOptions(
   const skill = getGenreSkill(genre)
   const displayName = skill?.displayName || genre
 
-  const userContent = TITLE_SELECTION_PROMPT
-    .replace('{idea}', idea)
+  const userContent = TITLE_SELECTION_PROMPT.replace('{idea}', idea)
     .replace('{totalChapters}', String(totalChapters))
     .replace('{genre}', `${genre}（${displayName}）`)
 
   const genreConstraint = getGenreConstraints(genre)
 
   const messages = [
-    { role: 'system' as const, content: `你是一位资深的小说策划师，擅长起书名和构建世界观。\n\n${genreConstraint}` },
+    {
+      role: 'system' as const,
+      content: `你是一位资深的小说策划师，擅长起书名和构建世界观。\n\n${genreConstraint}`,
+    },
     { role: 'user' as const, content: userContent },
   ]
 
@@ -109,20 +114,25 @@ export async function generateTitleOptions(
     }
   }
 
-  throw new Error('AI 返回的标题选项数量不足：多次尝试后仍少于 3 个。请检查模型是否支持结构化输出，或稍后重试。')
+  throw new Error(
+    'AI 返回的标题选项数量不足：多次尝试后仍少于 3 个。请检查模型是否支持结构化输出，或稍后重试。'
+  )
 }
 
-export async function selectTitleOption(options: TitleOption[], genre: string = 'default'): Promise<TitleOption> {
-  const choices: Array<{ name: string; value: number } | InstanceType<typeof inquirer.Separator>> = [
-    ...options.map((opt, index) => ({
-      name: formatOptionForDisplay(opt, index + 1, genre),
-      value: index,
-    })),
-    new inquirer.Separator(),
-    { name: '重新生成选项', value: -1 },
-  ]
+export async function selectTitleOption(
+  options: TitleOption[],
+  genre: string = 'default'
+): Promise<TitleOption> {
+  const choices: Array<{ name: string; value: number } | InstanceType<typeof inquirer.Separator>> =
+    [
+      ...options.map((opt, index) => ({
+        name: formatOptionForDisplay(opt, index + 1, genre),
+        value: index,
+      })),
+      new inquirer.Separator(),
+      { name: '重新生成选项', value: -1 },
+    ]
 
-   
   const answer = await (inquirer.prompt as any)([
     {
       type: 'rawlist',
@@ -150,7 +160,8 @@ export async function selectTitleOption(options: TitleOption[], genre: string = 
 function formatOptionForDisplay(option: TitleOption, number: number, _genre?: string): string {
   const features = option.worldDirection.worldFeatures.join('、')
   const powerSystem = option.worldDirection.powerSystem?.trim()
-  const isEmptyPowerSystem = !powerSystem || powerSystem === '无' || powerSystem.startsWith('无体系')
+  const isEmptyPowerSystem =
+    !powerSystem || powerSystem === '无' || powerSystem.startsWith('无体系')
   const powerLine = !isEmptyPowerSystem ? `规则体系：${powerSystem} | ` : ''
   return `${number}. ${option.title} | ${powerLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
 }

@@ -48,7 +48,9 @@ vi.mock('../../../src/utils/issue-deduplication.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/utils/issue-deduplication.js')>()
   return {
     ...actual,
-    deduplicateIssuesSemantically: vi.fn().mockImplementation(async (_provider: unknown, issues: unknown[]) => issues),
+    deduplicateIssuesSemantically: vi
+      .fn()
+      .mockImplementation(async (_provider: unknown, issues: unknown[]) => issues),
     issueFingerprint: vi.fn().mockResolvedValue('fingerprint'),
   }
 })
@@ -65,9 +67,7 @@ function createMockContext(): RuntimeContext {
   }
 }
 
-function buildBaseSession(
-  overrides: Partial<ChapterSession> = {}
-): ChapterSession {
+function buildBaseSession(overrides: Partial<ChapterSession> = {}): ChapterSession {
   return {
     chapterIndex: 1,
     rewriteAttempts: 0,
@@ -170,7 +170,8 @@ describe('converge_and_decide', () => {
   })
 
   it('routes to fix_chapter for local consistency errors when rewrite is approved', async () => {
-    const { isLocalIssue, isStructuralIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    const { isLocalIssue, isStructuralIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
     vi.mocked(isLocalIssue).mockResolvedValue(true)
     vi.mocked(isStructuralIssue).mockResolvedValue(false)
 
@@ -187,7 +188,8 @@ describe('converge_and_decide', () => {
   })
 
   it('routes to draft_chapter and discards the plan for structural errors', async () => {
-    const { isStructuralIssue, isLocalIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    const { isStructuralIssue, isLocalIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
     vi.mocked(isStructuralIssue).mockResolvedValue(true)
     vi.mocked(isLocalIssue).mockResolvedValue(false)
 
@@ -204,7 +206,8 @@ describe('converge_and_decide', () => {
   })
 
   it('requests rewrite after max error rewrite attempts', async () => {
-    const { isStateCorruptionIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    const { isStateCorruptionIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
     vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
 
     const pendingIssues: Issue[] = [
@@ -227,7 +230,8 @@ describe('converge_and_decide', () => {
   })
 
   it('stops rewrite loop early when issues are highly similar and involve state corruption', async () => {
-    const { isStateCorruptionIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    const { isStateCorruptionIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
     vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
 
     const pendingIssues: Issue[] = [
@@ -251,7 +255,8 @@ describe('converge_and_decide', () => {
   })
 
   it('does not suggest unavailable reconcile commands in state-corruption blocking reports', async () => {
-    const { isStateCorruptionIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    const { isStateCorruptionIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
     vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
 
     const pendingIssues: Issue[] = [
@@ -274,7 +279,8 @@ describe('converge_and_decide', () => {
 
     const result = await converge_and_decide(createMockContext(), state)
 
-    const descriptions = result.blockingReport?.suggestedActions.map(action => action.description).join('\n') ?? ''
+    const descriptions =
+      result.blockingReport?.suggestedActions.map((action) => action.description).join('\n') ?? ''
     expect(result.blockingReport?.reason).toBe('state_corruption')
     expect(descriptions).not.toContain('museflow reconcile')
     expect(descriptions).toContain('museflow rewrite')
@@ -310,9 +316,24 @@ describe('converge_and_decide', () => {
     vi.mocked(issueFingerprint).mockResolvedValue('stalled-fingerprint')
 
     const pendingIssues: Issue[] = [
-      { id: '1', type: 'consistency', severity: 'error', description: '应明确写出原定计划被改期的原因' },
-      { id: '2', type: 'consistency', severity: 'error', description: '应明确写出原定计划被改期的原因' },
-      { id: '3', type: 'consistency', severity: 'error', description: '应明确写出原定计划被改期的原因' },
+      {
+        id: '1',
+        type: 'consistency',
+        severity: 'error',
+        description: '应明确写出原定计划被改期的原因',
+      },
+      {
+        id: '2',
+        type: 'consistency',
+        severity: 'error',
+        description: '应明确写出原定计划被改期的原因',
+      },
+      {
+        id: '3',
+        type: 'consistency',
+        severity: 'error',
+        description: '应明确写出原定计划被改期的原因',
+      },
     ]
     const state = buildBaseState({
       session: {
@@ -332,9 +353,19 @@ describe('converge_and_decide', () => {
 
   it('auto-fixes patchable warnings when no errors remain', async () => {
     const pendingIssues: Issue[] = [
-      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段', locationRef: { paragraphIndex: 0 } },
+      {
+        id: 'w1',
+        type: 'consistency',
+        severity: 'warning',
+        description: '描写重复',
+        location: '第一段',
+        locationRef: { paragraphIndex: 0 },
+      },
     ]
-    const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 0 }, pendingIssues })
+    const state = buildBaseState({
+      session: { rewriteApproved: true, autoFixAttempts: 0 },
+      pendingIssues,
+    })
 
     const result = await converge_and_decide(createMockContext(), state)
 
@@ -346,10 +377,19 @@ describe('converge_and_decide', () => {
 
   it('preserves abstract quality warnings and finalizes instead of fixing them', async () => {
     const pendingIssues: Issue[] = [
-      { id: 'w1', type: 'consistency', severity: 'warning', description: '情感层次略显单一，应该增加内心描写', dimension: 'quality' },
+      {
+        id: 'w1',
+        type: 'consistency',
+        severity: 'warning',
+        description: '情感层次略显单一，应该增加内心描写',
+        dimension: 'quality',
+      },
     ]
     // rewriteAttempts > 0 表示已经历过至少一次起草/验证循环
-    const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 0, rewriteAttempts: 1 }, pendingIssues })
+    const state = buildBaseState({
+      session: { rewriteApproved: true, autoFixAttempts: 0, rewriteAttempts: 1 },
+      pendingIssues,
+    })
 
     const result = await converge_and_decide(createMockContext(), state)
 
@@ -361,7 +401,10 @@ describe('converge_and_decide', () => {
   it('routes to draft_chapter on first iteration when rewrite is approved and chapter file is missing', async () => {
     vi.mocked(readChapterContent).mockResolvedValue(null)
 
-    const state = buildBaseState({ session: { rewriteApproved: true, rewriteAttempts: 0 }, pendingIssues: [] })
+    const state = buildBaseState({
+      session: { rewriteApproved: true, rewriteAttempts: 0 },
+      pendingIssues: [],
+    })
     const result = await converge_and_decide(createMockContext(), state)
 
     expect(result.session?.routingDecision).toBe('draft_chapter')
@@ -369,25 +412,51 @@ describe('converge_and_decide', () => {
   })
 
   it('does not auto-fix warnings when errors still exist', async () => {
-    const { isLocalIssue, isStructuralIssue } = await import('../../../src/core/chapter-generation/issue-classifier.js')
+    const { isLocalIssue, isStructuralIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
     vi.mocked(isLocalIssue).mockResolvedValue(true)
     vi.mocked(isStructuralIssue).mockResolvedValue(false)
 
-    const warning: Issue = { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段', locationRef: { paragraphIndex: 0 } }
-    const error: Issue = { id: 'e1', type: 'consistency', severity: 'error', description: '时间顺序不一致' }
-    const state = buildBaseState({ session: { rewriteApproved: true }, pendingIssues: [error, warning] })
+    const warning: Issue = {
+      id: 'w1',
+      type: 'consistency',
+      severity: 'warning',
+      description: '描写重复',
+      location: '第一段',
+      locationRef: { paragraphIndex: 0 },
+    }
+    const error: Issue = {
+      id: 'e1',
+      type: 'consistency',
+      severity: 'error',
+      description: '时间顺序不一致',
+    }
+    const state = buildBaseState({
+      session: { rewriteApproved: true },
+      pendingIssues: [error, warning],
+    })
 
     const result = await converge_and_decide(createMockContext(), state)
 
     expect(result.session?.routingDecision).toBe('fix_chapter')
-    expect(result.pendingIssues?.some(i => i.id === 'w1')).toBe(true)
+    expect(result.pendingIssues?.some((i) => i.id === 'w1')).toBe(true)
   })
 
   it('does not auto-fix warnings when max auto-fix attempts reached', async () => {
     const pendingIssues: Issue[] = [
-      { id: 'w1', type: 'consistency', severity: 'warning', description: '描写重复', location: '第一段', locationRef: { paragraphIndex: 0 } },
+      {
+        id: 'w1',
+        type: 'consistency',
+        severity: 'warning',
+        description: '描写重复',
+        location: '第一段',
+        locationRef: { paragraphIndex: 0 },
+      },
     ]
-    const state = buildBaseState({ session: { rewriteApproved: true, autoFixAttempts: 3, rewriteAttempts: 1 }, pendingIssues })
+    const state = buildBaseState({
+      session: { rewriteApproved: true, autoFixAttempts: 3, rewriteAttempts: 1 },
+      pendingIssues,
+    })
 
     const result = await converge_and_decide(createMockContext(), state)
 

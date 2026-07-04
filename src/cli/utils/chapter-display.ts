@@ -7,7 +7,10 @@ function toDisplayChapterNumber(chapterIndex: number): number {
   return chapterIndex + 1
 }
 
-export function printChapterOutline(outlineItem: ChapterOutline | undefined, chapterIndex: number): boolean {
+export function printChapterOutline(
+  outlineItem: ChapterOutline | undefined,
+  chapterIndex: number
+): boolean {
   if (!outlineItem) {
     console.error('[MuseFlow] 错误: 未找到章节大纲')
     return false
@@ -19,7 +22,10 @@ export function printChapterOutline(outlineItem: ChapterOutline | undefined, cha
   return true
 }
 
-export function printActProgress(state: ReducedGraphState, chapterIndex = state.currentChapterIndex): void {
+export function printActProgress(
+  state: ReducedGraphState,
+  chapterIndex = state.currentChapterIndex
+): void {
   if (!state.storyArc) return
 
   const arcStatus = buildArcStatus(state.storyArc, state.actProgress ?? {}, chapterIndex)
@@ -31,9 +37,15 @@ export function printActProgress(state: ReducedGraphState, chapterIndex = state.
   const actChapterTotal = act.endChapter - act.startChapter + 1
   const actChaptersRemaining = Math.max(0, act.endChapter - chapterNumber)
 
-  console.log(`  当前幕: 第 ${act.index} 幕「${act.title}」（第 ${act.startChapter}-${act.endChapter} 章）`)
-  console.log(`  幕内进度: 第 ${actChapterNumber}/${actChapterTotal} 章，剩余 ${actChaptersRemaining} 章`)
-  console.log(`  节拍进度: ${arcStatus.beatsConsumed}/${arcStatus.beatsTotal} 已消费，剩余 ${arcStatus.beatsPending.length}`)
+  console.log(
+    `  当前幕: 第 ${act.index} 幕「${act.title}」（第 ${act.startChapter}-${act.endChapter} 章）`
+  )
+  console.log(
+    `  幕内进度: 第 ${actChapterNumber}/${actChapterTotal} 章，剩余 ${actChaptersRemaining} 章`
+  )
+  console.log(
+    `  节拍进度: ${arcStatus.beatsConsumed}/${arcStatus.beatsTotal} 已消费，剩余 ${arcStatus.beatsPending.length}`
+  )
   if (arcStatus.beatsPending.length > 0) {
     console.log(`  待消费: ${arcStatus.beatsPending.join('、')}`)
   }
@@ -80,7 +92,9 @@ export function printChapterReport(report: ChapterReport | null | undefined): vo
 
   if (report.actProgress) {
     const progress = report.actProgress
-    console.log(`📚 幕进度：第 ${progress.actIndex} 幕，${progress.beatsConsumed}/${progress.beatsTotal} 节拍已消费，剩余 ${progress.beatsPending.length} 个，幕内剩余 ${progress.chaptersRemaining} 章`)
+    console.log(
+      `📚 幕进度：第 ${progress.actIndex} 幕，${progress.beatsConsumed}/${progress.beatsTotal} 节拍已消费，剩余 ${progress.beatsPending.length} 个，幕内剩余 ${progress.chaptersRemaining} 章`
+    )
     if (progress.beatsPending.length > 0) {
       console.log(`   待消费：${progress.beatsPending.join('、')}`)
     }

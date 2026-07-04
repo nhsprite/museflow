@@ -19,9 +19,7 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     'looksItemLocationConflict',
     'looksOutlineStateConflict',
   ],
-  'src/graph/utils/reconciler/sanitize.ts': [
-    'referencesOfficialCharacter',
-  ],
+  'src/graph/utils/reconciler/sanitize.ts': ['referencesOfficialCharacter'],
   'src/core/outline-expander.ts': [
     'extractOutlineSupportKeywords',
     'claimedBeatSupportedByDescription',
@@ -33,10 +31,7 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     'sentenceDelimiters',
     'text.split(sentenceDelimiters)',
   ],
-  'src/utils/story-arc.ts': [
-    'matchMandatoryBeat',
-    'normalizeTextForMatch',
-  ],
+  'src/utils/story-arc.ts': ['matchMandatoryBeat', 'normalizeTextForMatch'],
   'src/agents/foreshadowing.ts': [
     'normalizedChapter.includes',
     'isSemanticallyRelated(item.text!, chapterContent',
@@ -67,18 +62,9 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     'normalized.match',
     'issue.location ??',
   ],
-  'src/utils/chapter-content-validation.ts': [
-    'REVISION_PLAN_KEYWORDS',
-    'detectRevisionPlanShape',
-  ],
-  'src/utils/items.ts': [
-    'DESCRIPTIVE_SUFFIXES',
-    '.replace(DESCRIPTIVE_SUFFIXES',
-  ],
-  'src/utils/character-whitelist.ts': [
-    'stripParentheticalAliases',
-    'replace(/（[^）]*）/g',
-  ],
+  'src/utils/chapter-content-validation.ts': ['REVISION_PLAN_KEYWORDS', 'detectRevisionPlanShape'],
+  'src/utils/items.ts': ['DESCRIPTIVE_SUFFIXES', '.replace(DESCRIPTIVE_SUFFIXES'],
+  'src/utils/character-whitelist.ts': ['stripParentheticalAliases', 'replace(/（[^）]*）/g'],
   'src/utils/established-characters.ts': [
     'stripParentheticalAliases',
     'extractNameFromSummaryEntry',
@@ -96,21 +82,10 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     'deduplicateParagraphBlocks',
     'seenBlocks',
   ],
-  'src/utils/text.ts': [
-    'tokenizeWords',
-  ],
-  'src/graph/services/fix/execution.ts': [
-    'extractIssueKeywords',
-    'paragraphContent.includes',
-  ],
-  'src/graph/services/fix/decision.ts': [
-    'issue.location)',
-    '/第\\s*\\d+',
-  ],
-  'src/core/chapter-generation/routing/index.ts': [
-    'issue.location)',
-    'new RegExp(`第',
-  ],
+  'src/utils/text.ts': ['tokenizeWords'],
+  'src/graph/services/fix/execution.ts': ['extractIssueKeywords', 'paragraphContent.includes'],
+  'src/graph/services/fix/decision.ts': ['issue.location)', '/第\\s*\\d+'],
+  'src/core/chapter-generation/routing/index.ts': ['issue.location)', 'new RegExp(`第'],
   'src/agents/chapter.ts': [
     'state.characters.match',
     'extractChapterOutline',
@@ -132,19 +107,13 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     'isReliableRetconValue',
     'newValue.length <',
   ],
-  'src/utils/outline-characters.ts': [
-    'trimmed.length < 2',
-    'trimmed.length > 6',
-  ],
+  'src/utils/outline-characters.ts': ['trimmed.length < 2', 'trimmed.length > 6'],
   'src/graph/utils/reconciler/timeline.ts': [
     'isSupersededFact',
     'text.includes(fact.subject)',
     'text.includes(old.oldValue)',
   ],
-  'src/cli/commands/adjust-act.ts': [
-    'description.includes(`第',
-    'suggestion?.includes',
-  ],
+  'src/cli/commands/adjust-act.ts': ['description.includes(`第', 'suggestion?.includes'],
 }
 
 describe('runtime semantic decisions avoid prose string matching', () => {

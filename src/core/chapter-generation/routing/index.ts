@@ -12,7 +12,11 @@ import { classifyIssues, decideRepairApproach } from './fix-policy.js'
 import { issueFingerprint } from '../../../utils/issue-deduplication.js'
 
 export * from './types.js'
-export { applyIssuePolicy, capNonErrorIssuesByType, calculateIssueSetSimilarity } from './issue-policy.js'
+export {
+  applyIssuePolicy,
+  capNonErrorIssuesByType,
+  calculateIssueSetSimilarity,
+} from './issue-policy.js'
 export { applyRewritePolicy, buildVerifiedConstraints } from './rewrite-policy.js'
 export { classifyIssues, decideRepairApproach } from './fix-policy.js'
 
@@ -26,11 +30,14 @@ export interface RoutingDeps {
 }
 
 function hasPatchableWarnings(issues: Issue[]): Issue[] {
-  return issues.filter(issue => {
+  return issues.filter((issue) => {
     if (issue.severity !== 'warning') return false
     if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
     if (issue.type === 'consistency' && issue.dimension === 'quality') {
-      return issue.locationRef?.paragraphIndex !== undefined || issue.locationRef?.sentenceIndex !== undefined
+      return (
+        issue.locationRef?.paragraphIndex !== undefined ||
+        issue.locationRef?.sentenceIndex !== undefined
+      )
     }
     return false
   })
@@ -41,7 +48,7 @@ function allIssuesMatch(
   predicate: (issue: Issue) => Promise<boolean> | boolean
 ): Promise<boolean> {
   if (issues.length === 0) return Promise.resolve(false)
-  return Promise.all(issues.map(predicate)).then(results => results.every(Boolean))
+  return Promise.all(issues.map(predicate)).then((results) => results.every(Boolean))
 }
 
 function calculateFingerprintSetSimilarity(prev: string[], curr: string[]): number {
@@ -75,8 +82,8 @@ function isRewriteLoopStalled(
 
 function decideStrategyFromRetryStrategies(errors: Issue[]): 'draft' | 'fix' | 'manual' {
   if (errors.length === 0) return 'draft'
-  if (errors.some(e => e.retryStrategy === 'manual')) return 'manual'
-  if (errors.every(e => e.retryStrategy === 'fix')) return 'fix'
+  if (errors.some((e) => e.retryStrategy === 'manual')) return 'manual'
+  if (errors.every((e) => e.retryStrategy === 'fix')) return 'fix'
   return 'draft'
 }
 
@@ -91,10 +98,10 @@ export async function decideNextStep(
 
   const policyResult = await applyRewritePolicy(session, processedIssues, deps.rewritePolicy)
 
-  const remainingErrors = policyResult.issues.filter(i => i.severity === 'error')
+  const remainingErrors = policyResult.issues.filter((i) => i.severity === 'error')
 
   const currentErrorFingerprints = await Promise.all(
-    remainingErrors.map(issue => issueFingerprint(undefined, issue))
+    remainingErrors.map((issue) => issueFingerprint(undefined, issue))
   )
 
   const nextFingerprintHistory = [...session.issueFingerprintHistory, currentErrorFingerprints]
@@ -163,7 +170,9 @@ export async function decideNextStep(
 
     if (!session.rewriteApproved) {
       return {
-        step: ctx.chapterFileExists ? { kind: 'finalize' } : { kind: 'draft', discardPlan: false, feedbackIssues: [] },
+        step: ctx.chapterFileExists
+          ? { kind: 'finalize' }
+          : { kind: 'draft', discardPlan: false, feedbackIssues: [] },
         sessionUpdate: {
           rewriteApproved: false,
           issueFingerprintHistory: nextFingerprintHistory,
@@ -257,12 +266,7 @@ export async function decideNextStep(
     deps.isTaskConsistencyIssue
   )
 
-  const approach = decideRepairApproach(
-    session,
-    summary,
-    ctx.chapterFileExists,
-    deps.fixPolicy.log
-  )
+  const approach = decideRepairApproach(session, summary, ctx.chapterFileExists, deps.fixPolicy.log)
 
   if (approach.kind === 'fix') {
     return {

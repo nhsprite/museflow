@@ -87,7 +87,7 @@ export async function adjustAct(
     process.exit(1)
   }
 
-  if (!storyArc.acts.some(a => a.index === actIndex)) {
+  if (!storyArc.acts.some((a) => a.index === actIndex)) {
     console.error('[MuseFlow] 错误: 幕不存在')
     process.exit(1)
   }
@@ -97,9 +97,10 @@ export async function adjustAct(
   const newTotalChapters = newStoryArc.totalChapters
   const newOutline = ensureOutlineLength(state.outline, newTotalChapters)
   const newChapters = ensureChaptersLength(state.chapters, newTotalChapters)
-  const newStory = newTotalChapters === state.story.totalChapters
-    ? state.story
-    : { ...state.story, totalChapters: newTotalChapters, updatedAt: Date.now() }
+  const newStory =
+    newTotalChapters === state.story.totalChapters
+      ? state.story
+      : { ...state.story, totalChapters: newTotalChapters, updatedAt: Date.now() }
 
   await checkpointService.updateLatestState({
     story: newStory,
@@ -107,15 +108,12 @@ export async function adjustAct(
     storyArc: newStoryArc,
     outline: newOutline,
     chapters: newChapters,
-    pendingIssues: state.pendingIssues.filter(issue => !isResolvedActCoverageIssue(issue, actIndex)),
+    pendingIssues: state.pendingIssues.filter(
+      (issue) => !isResolvedActCoverageIssue(issue, actIndex)
+    ),
   })
 
-  await writeOutlineContent(
-    story.outputDir,
-    state.story.title,
-    newOutline,
-    newStoryArc
-  )
+  await writeOutlineContent(story.outputDir, state.story.title, newOutline, newStoryArc)
   await exportMetaFromCheckpoint(story.outputDir)
 
   console.log(`[MuseFlow] 已调整第 ${actIndex} 幕边界：结束于第 ${proposedEndChapter} 章`)
@@ -123,6 +121,8 @@ export async function adjustAct(
     console.log(`  目标总章节数：${state.totalChapters} → ${newTotalChapters}`)
   }
   if (currentActAfter) {
-    console.log(`  当前章（第 ${state.currentChapterIndex + 1} 章）位于第 ${currentActAfter.index} 幕「${currentActAfter.title}」`)
+    console.log(
+      `  当前章（第 ${state.currentChapterIndex + 1} 章）位于第 ${currentActAfter.index} 幕「${currentActAfter.title}」`
+    )
   }
 }

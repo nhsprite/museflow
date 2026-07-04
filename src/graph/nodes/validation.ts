@@ -1,22 +1,30 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { ForeshadowingAgentInput, ConsistencyAgentInput } from '../../agents/types.js'
-import {
-  getForeshadowingAgent,
-  getConsistencyAgent,
-} from '../agent-factory.js'
+import { getForeshadowingAgent, getConsistencyAgent } from '../agent-factory.js'
 import { generateId } from '../../utils/id.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { buildConsistencyOutlineContext } from './planning.js'
 import { countChineseWords } from '../../utils/text.js'
-import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
+import {
+  DEFAULT_CHAPTER_WORD_COUNT_MIN,
+  DEFAULT_CHAPTER_WORD_COUNT_MAX,
+} from '../../types/genre.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 import { charactersToString } from '../utils/characters.js'
 import type { RuntimeContext } from '../../core/context.js'
-import { chatStructuredFallback, type JsonSchema, type Message, type ModelProvider } from '../../model/provider.js'
+import {
+  chatStructuredFallback,
+  type JsonSchema,
+  type Message,
+  type ModelProvider,
+} from '../../model/provider.js'
 import type { Issue, IssueSource, RetryStrategy } from '../../types/agent.js'
-import { extractChapterEndingSnippet, extractChapterOpeningSnippet } from '../utils/chapter-window.js'
+import {
+  extractChapterEndingSnippet,
+  extractChapterOpeningSnippet,
+} from '../utils/chapter-window.js'
 
 const CONTINUITY_CHECK_SCHEMA: JsonSchema = {
   type: 'object',
@@ -52,12 +60,12 @@ ${characters}
   }
 
   const canonicalFacts = (state.storyState?.canonicalFacts ?? [])
-    .filter(fact => fact.retiredIn === undefined)
+    .filter((fact) => fact.retiredIn === undefined)
     .slice(-20)
   if (canonicalFacts.length > 0) {
     sections.push(`<canonical_facts>
 【权威事实摘要】
-${canonicalFacts.map(fact => `- [${fact.subject}] ${fact.attribute}: ${fact.value}`).join('\n')}
+${canonicalFacts.map((fact) => `- [${fact.subject}] ${fact.attribute}: ${fact.value}`).join('\n')}
 </canonical_facts>`)
   }
 
@@ -94,13 +102,19 @@ async function judgeChapterOpeningContinuity(
   try {
     const result = provider.chatStructured
       ? await provider.chatStructured<ContinuityCheckResult>(messages, CONTINUITY_CHECK_SCHEMA, 0.1)
-      : await chatStructuredFallback<ContinuityCheckResult>(provider, messages, CONTINUITY_CHECK_SCHEMA, 0.1)
+      : await chatStructuredFallback<ContinuityCheckResult>(
+          provider,
+          messages,
+          CONTINUITY_CHECK_SCHEMA,
+          0.1
+        )
 
     if (result.isContinuous !== false) return []
 
-    const reason = typeof result.reason === 'string' && result.reason.trim().length > 0
-      ? result.reason.trim()
-      : '当前章开头未自然承接上一章结尾，存在跨章节连续性断裂。'
+    const reason =
+      typeof result.reason === 'string' && result.reason.trim().length > 0
+        ? result.reason.trim()
+        : '当前章开头未自然承接上一章结尾，存在跨章节连续性断裂。'
 
     const issue: Issue = {
       id: generateId(),
@@ -242,7 +256,7 @@ export async function detect_foreshadowing(
   const worldContent = state.world?.content
 
   const currentChapter = chapterIndex + 1
-  const cleanedForeshadowStack = state.foreshadowStack.filter(f => {
+  const cleanedForeshadowStack = state.foreshadowStack.filter((f) => {
     const createdAt = f.createdAtChapter ?? 0
     if (createdAt > currentChapter) return false
     return true
@@ -259,7 +273,12 @@ export async function detect_foreshadowing(
   }
 
   const output = await agent.run(agentState)
-  const foreshadowStack = await agent.processOutput(output, chapterIndex, cleanedForeshadowStack, content || undefined)
+  const foreshadowStack = await agent.processOutput(
+    output,
+    chapterIndex,
+    cleanedForeshadowStack,
+    content || undefined
+  )
 
   return { foreshadowStack }
 }
@@ -289,7 +308,7 @@ export async function detect_continuity(
     buildContinuityContext(state)
   )
 
-  const taggedIssues = issues.map(issue =>
+  const taggedIssues = issues.map((issue) =>
     tagIssueSource(issue, 'consistency', inferRetryStrategy(issue))
   )
   return taggedIssues.length > 0 ? { pendingIssues: taggedIssues } : {}
@@ -309,9 +328,10 @@ export async function detect_consistency(
   const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
   const supersededFacts = state.storyState?.supersededFacts ?? []
-  const supersededFactsStr = supersededFacts.length > 0
-    ? supersededFacts.map(f => `- [${f.subject}] ${f.oldFact}（原因：${f.reason}）`).join('\n')
-    : '（无）'
+  const supersededFactsStr =
+    supersededFacts.length > 0
+      ? supersededFacts.map((f) => `- [${f.subject}] ${f.oldFact}（原因：${f.reason}）`).join('\n')
+      : '（无）'
 
   const agentState: ConsistencyAgentInput = mergeAgentState(baseContext, {
     outline: buildConsistencyOutlineContext(state, chapterIndex),
@@ -325,7 +345,7 @@ export async function detect_consistency(
   const output = await agent.run(agentState)
   const issues = await agent.processOutput(output, baseContext.canonicalFacts)
 
-  const taggedIssues = issues.map(issue =>
+  const taggedIssues = issues.map((issue) =>
     tagIssueSource(issue, 'consistency', inferRetryStrategy(issue))
   )
 
@@ -343,7 +363,7 @@ export async function validate_chapter_comprehensive(
 
   function mergePendingIssues(updates: Partial<ReducedGraphState>): void {
     if (updates.pendingIssues) {
-      const seen = new Set(workingState.pendingIssues.map(i => i.id))
+      const seen = new Set(workingState.pendingIssues.map((i) => i.id))
       const merged = [...workingState.pendingIssues]
       for (const issue of updates.pendingIssues) {
         if (!seen.has(issue.id)) {

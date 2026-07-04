@@ -38,9 +38,10 @@ function findJsonBoundaries(text: string): { start: number; end: number } | null
 
   if (firstBrace === null && firstBracket === null) return null
 
-  const start = firstBrace !== null && firstBracket !== null
-    ? Math.min(firstBrace, firstBracket)
-    : (firstBrace ?? firstBracket!)
+  const start =
+    firstBrace !== null && firstBracket !== null
+      ? Math.min(firstBrace, firstBracket)
+      : (firstBrace ?? firstBracket!)
   const openChar = text[start]
   const closeChar = openChar === '{' ? '}' : ']'
 
@@ -83,12 +84,18 @@ function escapeInnerQuotes(json: string): string {
 
   const escapeControlChar = (char: string): string => {
     switch (char) {
-      case '\b': return '\\b'
-      case '\f': return '\\f'
-      case '\n': return '\\n'
-      case '\r': return '\\r'
-      case '\t': return '\\t'
-      case '\v': return '\\u000b'
+      case '\b':
+        return '\\b'
+      case '\f':
+        return '\\f'
+      case '\n':
+        return '\\n'
+      case '\r':
+        return '\\r'
+      case '\t':
+        return '\\t'
+      case '\v':
+        return '\\u000b'
       default:
         return '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0')
     }

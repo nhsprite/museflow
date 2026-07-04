@@ -39,7 +39,7 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
         displayChapterNumber:
           state.chapterIndex !== undefined ? `第${state.chapterIndex + 1}章` : '未知',
         chapterContent: state.chapterContent ?? '（无内容）',
-      },
+      }
     )
 
     return [this.systemMessage(buildSummarySystemPrompt()), this.userMessage(userContent)]
@@ -99,7 +99,7 @@ function isAllowedCanonicalFactAttribute(attribute: string): boolean {
 
 function filterHardCanonicalFacts(
   facts: CanonicalFact[],
-  chapterContent: string | undefined,
+  chapterContent: string | undefined
 ): CanonicalFact[] {
   if (!chapterContent) return facts
 
@@ -141,14 +141,21 @@ export function processSummaryOutput(
   characters?: Character[],
   existingStoryState?: StoryState,
   chapterContent?: string,
-  claimedBeats?: string[],
-): { summary: string; storyState?: StoryState; verifiedBeats?: string[]; verifiedBeatEvidence?: VerifiedBeatEvidence[] } | null {
+  claimedBeats?: string[]
+): {
+  summary: string
+  storyState?: StoryState
+  verifiedBeats?: string[]
+  verifiedBeatEvidence?: VerifiedBeatEvidence[]
+} | null {
   if (!output.success || !output.data) return null
   const data = output.data as Record<string, unknown>
 
-  const migrateStringArrayToImportanceObjects = (arr: unknown): Array<{ text: string; importance: string }> => {
+  const migrateStringArrayToImportanceObjects = (
+    arr: unknown
+  ): Array<{ text: string; importance: string }> => {
     if (!Array.isArray(arr)) return []
-    return arr.map(item => {
+    return arr.map((item) => {
       if (typeof item === 'string') {
         return { text: item, importance: 'major' }
       }
@@ -158,7 +165,7 @@ export function processSummaryOutput(
 
   const migrateCharacterFactEntries = (arr: unknown): unknown[] => {
     if (!Array.isArray(arr)) return []
-    return arr.map(entry => {
+    return arr.map((entry) => {
       if (!entry || typeof entry !== 'object') return entry
       const e = entry as Record<string, unknown>
       const rawFacts = e['facts']
@@ -178,7 +185,12 @@ export function processSummaryOutput(
   }
 
   const toCanonicalFactSource = (val: unknown): CanonicalFactSource => {
-    if (val === 'chapter_text' || val === 'outline_inference' || val === 'author_override' || val === 'reconciliation') {
+    if (
+      val === 'chapter_text' ||
+      val === 'outline_inference' ||
+      val === 'author_override' ||
+      val === 'reconciliation'
+    ) {
       return val
     }
     return 'chapter_text'
@@ -187,7 +199,7 @@ export function processSummaryOutput(
   const parseCanonicalFact = (
     item: Record<string, unknown>,
     idx: number,
-    defaultSource: CanonicalFactSource = 'chapter_text',
+    defaultSource: CanonicalFactSource = 'chapter_text'
   ): CanonicalFact | null => {
     const supersedesRaw = Array.isArray(item['supersedes'])
       ? item['supersedes'].filter((s): s is Record<string, unknown> => s && typeof s === 'object')
@@ -201,36 +213,43 @@ export function processSummaryOutput(
     if (value.length === 0) return null
 
     const evidenceRaw = item['evidence']
-    const evidence = evidenceRaw && typeof evidenceRaw === 'object'
-      ? {
-          chapterIndex: chapterIndex ?? (
-            typeof (evidenceRaw as Record<string, unknown>)['chapterIndex'] === 'number'
-              ? (evidenceRaw as Record<string, unknown>)['chapterIndex'] as number
-              : -1
-          ),
-          quote: typeof (evidenceRaw as Record<string, unknown>)['quote'] === 'string'
-            ? (evidenceRaw as Record<string, unknown>)['quote'] as string
-            : '',
-        }
-      : undefined
+    const evidence =
+      evidenceRaw && typeof evidenceRaw === 'object'
+        ? {
+            chapterIndex:
+              chapterIndex ??
+              (typeof (evidenceRaw as Record<string, unknown>)['chapterIndex'] === 'number'
+                ? ((evidenceRaw as Record<string, unknown>)['chapterIndex'] as number)
+                : -1),
+            quote:
+              typeof (evidenceRaw as Record<string, unknown>)['quote'] === 'string'
+                ? ((evidenceRaw as Record<string, unknown>)['quote'] as string)
+                : '',
+          }
+        : undefined
 
     return {
-      id: typeof item['id'] === 'string' && item['id'].length > 0
-        ? item['id']
-        : `cf_${chapterIndex ?? 0}_${idx}`,
+      id:
+        typeof item['id'] === 'string' && item['id'].length > 0
+          ? item['id']
+          : `cf_${chapterIndex ?? 0}_${idx}`,
       subject,
       attribute,
       value,
-      establishedIn: chapterIndex ?? (typeof item['establishedIn'] === 'number' ? item['establishedIn'] : -1),
+      establishedIn:
+        chapterIndex ?? (typeof item['establishedIn'] === 'number' ? item['establishedIn'] : -1),
       confidence: toConfidence(item['confidence']),
       source: toCanonicalFactSource(item['source']) ?? defaultSource,
       ...(evidence && evidence.quote.length > 0 ? { evidence } : {}),
-      supersedes: supersedesRaw.length > 0
-        ? supersedesRaw.map(s => ({
-            chapter: typeof s['chapter'] === 'number' ? s['chapter'] : -1,
-            oldValue: typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
-          })).filter(s => s.oldValue.length > 0)
-        : undefined,
+      supersedes:
+        supersedesRaw.length > 0
+          ? supersedesRaw
+              .map((s) => ({
+                chapter: typeof s['chapter'] === 'number' ? s['chapter'] : -1,
+                oldValue: typeof s['oldValue'] === 'string' ? s['oldValue'] : '',
+              }))
+              .filter((s) => s.oldValue.length > 0)
+          : undefined,
     }
   }
 
@@ -255,17 +274,23 @@ export function processSummaryOutput(
 
     const toPendingTasks = (val: unknown): import('../types/story-state.js').PendingTask[] => {
       if (!Array.isArray(val)) return []
-      return val.filter((item): item is Record<string, unknown> =>
-        item && typeof item === 'object'
-      ).map((item, idx) => ({
-        id: typeof item['id'] === 'string' ? item['id'] : `task_${idx}`,
-        assignee: typeof item['assignee'] === 'string' ? item['assignee'] : '',
-        description: typeof item['description'] === 'string' ? item['description'] : '',
-        createdChapter: typeof item['createdChapter'] === 'number' ? item['createdChapter'] : (chapterIndex ?? -1),
-        dueChapter: typeof item['dueChapter'] === 'number' ? item['dueChapter'] : undefined,
-        dueTime: typeof item['dueTime'] === 'string' ? item['dueTime'] : undefined,
-        status: (typeof item['status'] === 'string' ? item['status'] : 'pending') as import('../types/story-state.js').PendingTask['status'],
-      })).filter(item => item.assignee.length > 0 && item.description.length > 0)
+      return val
+        .filter((item): item is Record<string, unknown> => item && typeof item === 'object')
+        .map((item, idx) => ({
+          id: typeof item['id'] === 'string' ? item['id'] : `task_${idx}`,
+          assignee: typeof item['assignee'] === 'string' ? item['assignee'] : '',
+          description: typeof item['description'] === 'string' ? item['description'] : '',
+          createdChapter:
+            typeof item['createdChapter'] === 'number'
+              ? item['createdChapter']
+              : (chapterIndex ?? -1),
+          dueChapter: typeof item['dueChapter'] === 'number' ? item['dueChapter'] : undefined,
+          dueTime: typeof item['dueTime'] === 'string' ? item['dueTime'] : undefined,
+          status: (typeof item['status'] === 'string'
+            ? item['status']
+            : 'pending') as import('../types/story-state.js').PendingTask['status'],
+        }))
+        .filter((item) => item.assignee.length > 0 && item.description.length > 0)
     }
 
     const toCanonicalFacts = (val: unknown): CanonicalFact[] => {
@@ -282,9 +307,8 @@ export function processSummaryOutput(
       const endScene = typeof raw['endScene'] === 'string' ? raw['endScene'].trim() : ''
       const endTime = typeof raw['endTime'] === 'string' ? raw['endTime'].trim() : ''
       const lastAction = typeof raw['lastAction'] === 'string' ? raw['lastAction'].trim() : ''
-      const requiredNextOpening = typeof raw['requiredNextOpening'] === 'string'
-        ? raw['requiredNextOpening'].trim()
-        : ''
+      const requiredNextOpening =
+        typeof raw['requiredNextOpening'] === 'string' ? raw['requiredNextOpening'].trim() : ''
       const charactersPresent = toStringArray(raw['charactersPresent'])
       const openQuestions = toStringArray(raw['openQuestions'])
 
@@ -300,7 +324,10 @@ export function processSummaryOutput(
       }
 
       const handoff: ChapterHandoff = {
-        chapterNumber: typeof raw['chapterNumber'] === 'number' ? raw['chapterNumber'] : (chapterIndex ?? -1) + 1,
+        chapterNumber:
+          typeof raw['chapterNumber'] === 'number'
+            ? raw['chapterNumber']
+            : (chapterIndex ?? -1) + 1,
         endScene,
         endTime,
         charactersPresent,
@@ -354,8 +381,12 @@ export function processSummaryOutput(
 
     if (parsedSourceFacts.length > 0) {
       const existingFacts = storyState.canonicalFacts ?? []
-      const existingKeys = new Set(existingFacts.map(f => `${f.subject}|${f.attribute}|${f.value}`))
-      const newFacts = parsedSourceFacts.filter(f => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`))
+      const existingKeys = new Set(
+        existingFacts.map((f) => `${f.subject}|${f.attribute}|${f.value}`)
+      )
+      const newFacts = parsedSourceFacts.filter(
+        (f) => !existingKeys.has(`${f.subject}|${f.attribute}|${f.value}`)
+      )
       if (newFacts.length > 0) {
         storyState.canonicalFacts = [...existingFacts, ...newFacts]
       }
@@ -363,38 +394,46 @@ export function processSummaryOutput(
   }
 
   if (storyState && characters && characters.length > 0) {
-    const report = sanitizeStoryState(storyState, characters, { preserveExisting: true, existingStoryState, chapterIndex })
+    const report = sanitizeStoryState(storyState, characters, {
+      preserveExisting: true,
+      existingStoryState,
+      chapterIndex,
+    })
     if (report.removedCharacters.length > 0) {
-      logger.warn(`[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`)
+      logger.warn(
+        `[MuseFlow] SummaryAgent 移除了 invented 角色: ${report.removedCharacters.join(', ')}`
+      )
     }
     if (report.itemLocationConflicts.length > 0) {
-      logger.info(`[MuseFlow] SummaryAgent 自动协调物品位置冲突: ${report.itemLocationConflicts.map(c => c.item).join(', ')}`)
+      logger.info(
+        `[MuseFlow] SummaryAgent 自动协调物品位置冲突: ${report.itemLocationConflicts.map((c) => c.item).join(', ')}`
+      )
     }
     storyState = report.state
   }
 
-  const extractSupersededFacts = (): import('../types/story-state.js').SupersededFact[] | undefined => {
+  const extractSupersededFacts = ():
+    import('../types/story-state.js').SupersededFact[] | undefined => {
     const raw = data['supersededFacts']
     if (!Array.isArray(raw)) return undefined
-    return raw.filter((item): item is Record<string, unknown> => 
-      item && typeof item === 'object'
-    ).map((item, idx) => ({
-      subject: typeof item['subject'] === 'string' ? item['subject'] : `fact_${idx}`,
-      oldFact: typeof item['oldFact'] === 'string' ? item['oldFact'] : '',
-      reason: typeof item['reason'] === 'string' ? item['reason'] : '后续大纲已更新',
-      chapterIndex: chapterIndex ?? -1,
-    })).filter(item => item.oldFact.length > 0)
+    return raw
+      .filter((item): item is Record<string, unknown> => item && typeof item === 'object')
+      .map((item, idx) => ({
+        subject: typeof item['subject'] === 'string' ? item['subject'] : `fact_${idx}`,
+        oldFact: typeof item['oldFact'] === 'string' ? item['oldFact'] : '',
+        reason: typeof item['reason'] === 'string' ? item['reason'] : '后续大纲已更新',
+        chapterIndex: chapterIndex ?? -1,
+      }))
+      .filter((item) => item.oldFact.length > 0)
   }
-
-
 
   const extractVerifiedBeats = (): string[] => {
     const raw = data['verifiedBeats']
     if (!Array.isArray(raw)) return []
     const rawBeats = raw
       .filter((item): item is string => typeof item === 'string')
-      .map(beat => beat.trim())
-      .filter(beat => beat.length > 0)
+      .map((beat) => beat.trim())
+      .filter((beat) => beat.length > 0)
 
     if (!claimedBeats || claimedBeats.length === 0) {
       return rawBeats
@@ -408,7 +447,9 @@ export function processSummaryOutput(
           normalized.push(rawBeat)
         }
       } else {
-        logger.warn(`[MuseFlow] SummaryAgent 返回的 verifiedBeat 与 claimedBeats 不匹配，已丢弃：${rawBeat.slice(0, 80)}`)
+        logger.warn(
+          `[MuseFlow] SummaryAgent 返回的 verifiedBeat 与 claimedBeats 不匹配，已丢弃：${rawBeat.slice(0, 80)}`
+        )
       }
     }
     return normalized
@@ -432,14 +473,16 @@ export function processSummaryOutput(
 
       const evidence = record['evidence']
       if (!evidence || typeof evidence !== 'object') continue
-      const quote = typeof (evidence as Record<string, unknown>)['quote'] === 'string'
-        ? ((evidence as Record<string, unknown>)['quote'] as string).trim()
-        : ''
+      const quote =
+        typeof (evidence as Record<string, unknown>)['quote'] === 'string'
+          ? ((evidence as Record<string, unknown>)['quote'] as string).trim()
+          : ''
       if (quote.length === 0) continue
 
-      const chapter = typeof (evidence as Record<string, unknown>)['chapterIndex'] === 'number'
-        ? (evidence as Record<string, unknown>)['chapterIndex'] as number
-        : (chapterIndex ?? -1)
+      const chapter =
+        typeof (evidence as Record<string, unknown>)['chapterIndex'] === 'number'
+          ? ((evidence as Record<string, unknown>)['chapterIndex'] as number)
+          : (chapterIndex ?? -1)
       const confidence = toConfidence(record['confidence'])
       const key = `${beat}|${chapter}|${quote}`
       if (seen.has(key)) continue
@@ -452,11 +495,12 @@ export function processSummaryOutput(
 
   const verifiedBeatEvidence = extractVerifiedBeatEvidence()
 
-
-
   if (storyState) {
     if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {
-      storyState.canonicalFacts = filterHardCanonicalFacts(storyState.canonicalFacts, chapterContent)
+      storyState.canonicalFacts = filterHardCanonicalFacts(
+        storyState.canonicalFacts,
+        chapterContent
+      )
     }
 
     const extractedSupersededFacts = extractSupersededFacts() ?? []
@@ -466,7 +510,8 @@ export function processSummaryOutput(
       storyState.supersededFacts = mergedSupersededFacts
     }
 
-    const newCount = (storyState.canonicalFacts?.length ?? 0) - (existingStoryState?.canonicalFacts?.length ?? 0)
+    const newCount =
+      (storyState.canonicalFacts?.length ?? 0) - (existingStoryState?.canonicalFacts?.length ?? 0)
     if (newCount > 0) {
       logger.info(`SummaryAgent 新增 ${newCount} 条权威事实`)
     }

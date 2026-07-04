@@ -7,8 +7,9 @@ import { DEFAULT_CONFIG } from '../types/config.js'
 
 const ConfigSchema = z.object({
   model: z.object({
-    provider: z.enum(['openai', 'anthropic', 'minimax', 'local'])
-      .transform(v => v === 'minimax' || v === 'local' ? 'openai' : v),
+    provider: z
+      .enum(['openai', 'anthropic', 'minimax', 'local'])
+      .transform((v) => (v === 'minimax' || v === 'local' ? 'openai' : v)),
     model: z.string().optional(),
     apiKey: z.string().optional(),
     baseUrl: z.string().optional(),
@@ -58,7 +59,7 @@ export function saveConfig(config: AppConfig): void {
 function deepMerge(target: unknown, source: unknown): unknown {
   if (typeof target !== 'object' || typeof source !== 'object') return source
   if (target === null || source === null) return source
-  const result: Record<string, unknown> = { ...target as Record<string, unknown> }
+  const result: Record<string, unknown> = { ...(target as Record<string, unknown>) }
   for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
     if (key in result && typeof result[key] === 'object' && typeof value === 'object') {
       result[key] = deepMerge(result[key], value)

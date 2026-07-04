@@ -13,11 +13,18 @@ interface ExportOptions {
 }
 
 function hasChapterTitle(content: string, chapterNum: number): boolean {
-  const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+  const lines = content
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
   if (lines.length === 0) return false
   const firstLine = lines[0]
   if (!firstLine) return false
-  return /^#{1,2}\s/.test(firstLine) || firstLine.includes(`第${chapterNum}章`) || firstLine.includes(`第 ${chapterNum} 章`)
+  return (
+    /^#{1,2}\s/.test(firstLine) ||
+    firstLine.includes(`第${chapterNum}章`) ||
+    firstLine.includes(`第 ${chapterNum} 章`)
+  )
 }
 
 function getLocalIp(): string | null {
@@ -34,7 +41,10 @@ function getLocalIp(): string | null {
   return null
 }
 
-async function startDownloadServer(filePath: string, fileName: string): Promise<{ url: string; server: ReturnType<typeof createServer>; displayUrl: string }> {
+async function startDownloadServer(
+  filePath: string,
+  fileName: string
+): Promise<{ url: string; server: ReturnType<typeof createServer>; displayUrl: string }> {
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       if (req.url === `/${encodeURIComponent(fileName)}`) {

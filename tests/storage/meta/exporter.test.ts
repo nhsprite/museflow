@@ -9,12 +9,31 @@ import * as checkpointerModule from '../../../src/graph/checkpointer.js'
 
 function createMockState(): ReducedGraphState {
   return {
-    story: { id: 'story_abc', title: 'Test Story', outputDir: '', genre: 'default', totalChapters: 3, status: 'writing', provider: 'openai', createdAt: 0, updatedAt: 0 },
+    story: {
+      id: 'story_abc',
+      title: 'Test Story',
+      outputDir: '',
+      genre: 'default',
+      totalChapters: 3,
+      status: 'writing',
+      provider: 'openai',
+      createdAt: 0,
+      updatedAt: 0,
+    },
     idea: 'test idea',
     genre: 'default',
     totalChapters: 3,
     world: { id: 'world_1', storyId: 'story_abc', content: '世界观内容' },
-    characters: [{ id: 'char_1', storyId: 'story_abc', name: '主角', description: '主角描述', dialogueStyle: null, createdAt: 0 }],
+    characters: [
+      {
+        id: 'char_1',
+        storyId: 'story_abc',
+        name: '主角',
+        description: '主角描述',
+        dialogueStyle: null,
+        createdAt: 0,
+      },
+    ],
     outline: [{ number: 1, title: '第一章', description: '开始' }],
     chapters: [null, null, null],
     currentChapterIndex: 1,

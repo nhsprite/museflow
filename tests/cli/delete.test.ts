@@ -65,7 +65,9 @@ describe('delete command', () => {
 
   it('exits when story not found', async () => {
     getStoryMock.mockReturnValue(null)
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit') })
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit')
+    })
     const { del } = await import('../../src/cli/commands/delete.ts')
 
     await expect(del('missing')).rejects.toThrow('exit')

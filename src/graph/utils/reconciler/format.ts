@@ -2,12 +2,12 @@ import type { StoryState, PendingTask } from '../../../types/story-state.js'
 import { canonicalizeItemName } from '../../../utils/items.js'
 
 export function buildPendingTasksConstraints(tasks: PendingTask[]): string {
-  const pending = tasks.filter(t => t.status === 'pending')
+  const pending = tasks.filter((t) => t.status === 'pending')
   if (pending.length === 0) return ''
 
   const lines = [
     '【必须继承的前章任务约束】',
-    ...pending.map(t => {
+    ...pending.map((t) => {
       const due = t.dueTime
         ? `（截止：${t.dueTime}）`
         : t.dueChapter
@@ -23,7 +23,10 @@ export function buildPendingTasksConstraints(tasks: PendingTask[]): string {
   return lines.join('\n')
 }
 
-export function findMatchingKey(record: Record<string, string>, subject: string): string | undefined {
+export function findMatchingKey(
+  record: Record<string, string>,
+  subject: string
+): string | undefined {
   if (record[subject] !== undefined) return subject
   const canonicalSubject = canonicalizeItemName(subject)
   if (canonicalSubject.length === 0) return undefined
@@ -56,10 +59,7 @@ export function formatCanonicalItemEntries(
   const items = Object.entries(entries)
   if (items.length === 0) return []
 
-  const groups = new Map<
-    string,
-    { representative: string; aliases: string[]; value: string }
-  >()
+  const groups = new Map<string, { representative: string; aliases: string[]; value: string }>()
 
   for (const [item, value] of items) {
     const canonical = canonicalizeItemName(item)
@@ -126,7 +126,16 @@ export function formatStoryState(storyState: StoryState): string {
     lines.push('【待办差事】')
     for (const task of storyState.pendingTasks) {
       const due = task.dueTime ?? (task.dueChapter ? `第${task.dueChapter}章前` : '未指定')
-      const statusLabel = task.status === 'done' ? '已完成' : task.status === 'postponed' ? '已推迟' : task.status === 'superseded' ? '已覆盖' : task.status === 'expired' ? '已到期' : '待执行'
+      const statusLabel =
+        task.status === 'done'
+          ? '已完成'
+          : task.status === 'postponed'
+            ? '已推迟'
+            : task.status === 'superseded'
+              ? '已覆盖'
+              : task.status === 'expired'
+                ? '已到期'
+                : '待执行'
       lines.push(`  - [${statusLabel}] ${task.assignee}：${task.description}（截止：${due}）`)
     }
   }
@@ -141,7 +150,9 @@ export function formatStoryState(storyState: StoryState): string {
   if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {
     lines.push('【权威事实】')
     for (const fact of storyState.canonicalFacts) {
-      lines.push(`  - [${fact.subject}] ${fact.attribute}: ${fact.value} (第${fact.establishedIn + 1}章确立)`)
+      lines.push(
+        `  - [${fact.subject}] ${fact.attribute}: ${fact.value} (第${fact.establishedIn + 1}章确立)`
+      )
       for (const old of fact.supersedes ?? []) {
         lines.push(`    覆盖第${old.chapter + 1}章: ${old.oldValue}`)
       }

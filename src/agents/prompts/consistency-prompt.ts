@@ -296,7 +296,7 @@ export interface ConsistencyPromptVariables {
 
 export function buildConsistencyUserPrompt(
   sections: ConsistencyPromptSections,
-  vars: ConsistencyPromptVariables,
+  vars: ConsistencyPromptVariables
 ): string {
   return renderTemplate(CONSISTENCY_USER_PROMPT_TEMPLATE, {
     ...sections,
@@ -304,4 +304,7 @@ export function buildConsistencyUserPrompt(
   })
 }
 
-export const PROMPT_VERSION = computePromptHash(CONSISTENCY_SYSTEM_PROMPT, CONSISTENCY_USER_PROMPT_TEMPLATE)
+export const PROMPT_VERSION = computePromptHash(
+  CONSISTENCY_SYSTEM_PROMPT,
+  CONSISTENCY_USER_PROMPT_TEMPLATE
+)

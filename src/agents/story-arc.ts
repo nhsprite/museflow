@@ -3,10 +3,7 @@ import { BaseAgent, type AgentOutput } from './base.js'
 import type { StoryArcAgentInput } from './types.js'
 import type { StoryArc } from '../types/outline.js'
 import { parseJsonFromLLM } from '../utils/json.js'
-import {
-  buildStoryArcSystemPrompt,
-  buildStoryArcUserPrompt,
-} from './prompts/story-arc-prompt.js'
+import { buildStoryArcSystemPrompt, buildStoryArcUserPrompt } from './prompts/story-arc-prompt.js'
 
 export class StoryArcAgent extends BaseAgent<StoryArcAgentInput> {
   constructor(provider: ModelProvider) {

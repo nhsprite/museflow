@@ -64,7 +64,9 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
         process.exit(1)
       }
       // minimax/local use the OpenAI-compatible provider with custom baseUrl/model.
-      cfg.model.provider = (options.provider === 'minimax' || options.provider === 'local' ? 'openai' : options.provider) as 'openai' | 'anthropic'
+      cfg.model.provider = (
+        options.provider === 'minimax' || options.provider === 'local' ? 'openai' : options.provider
+      ) as 'openai' | 'anthropic'
       console.log(`[MuseFlow] 已设置协议: ${options.provider}`)
     }
 
@@ -93,7 +95,13 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
       console.log(`[MuseFlow] 已设置自动调整幕边界: ${cfg.autoAdjustActBoundaries}`)
     }
 
-    if (!options.provider && !options.model && !options.apiKey && !options.baseUrl && options.autoAdjustActBoundaries === undefined) {
+    if (
+      !options.provider &&
+      !options.model &&
+      !options.apiKey &&
+      !options.baseUrl &&
+      options.autoAdjustActBoundaries === undefined
+    ) {
       console.error('[MuseFlow] 错误: 请指定要设置的选项')
       console.log('用法: museflow config set --provider <name> --model <name>')
       process.exit(1)

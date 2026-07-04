@@ -60,9 +60,10 @@ function groupCanonicalFactsByChapter(
 }
 
 function formatCanonicalFact(fact: CanonicalFact): string {
-  const supersedesNote = (fact.supersedes ?? []).length > 0
-    ? `（覆盖：${fact.supersedes!.map(s => s.oldValue).join('、')}）`
-    : ''
+  const supersedesNote =
+    (fact.supersedes ?? []).length > 0
+      ? `（覆盖：${fact.supersedes!.map((s) => s.oldValue).join('、')}）`
+      : ''
   return `  - [${fact.subject}] ${fact.attribute}: ${fact.value}${supersedesNote}`
 }
 
@@ -94,12 +95,23 @@ export function buildCanonicalFactTimeline(
 
 export function isCharacterSubject(subject: string, characters?: Array<{ name: string }>): boolean {
   if (!characters) return false
-  return characters.some(c => subject === c.name)
+  return characters.some((c) => subject === c.name)
 }
 
 function isCharacterFact(fact: CanonicalFact, characters: Array<{ name: string }>): boolean {
-  const characterAttributes = ['所在位置', '状态', '已知信息', '承诺', '态度', '对话', '决定', '计划']
-  return isCharacterSubject(fact.subject, characters) && characterAttributes.includes(fact.attribute)
+  const characterAttributes = [
+    '所在位置',
+    '状态',
+    '已知信息',
+    '承诺',
+    '态度',
+    '对话',
+    '决定',
+    '计划',
+  ]
+  return (
+    isCharacterSubject(fact.subject, characters) && characterAttributes.includes(fact.attribute)
+  )
 }
 
 function isKeyEventFact(fact: CanonicalFact): boolean {
@@ -118,7 +130,7 @@ export function buildCharacterFactTimeline(
     const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
     const result: string[] = []
     for (const chapterIndex of Array.from(groups.keys()).sort((a, b) => a - b)) {
-      const facts = groups.get(chapterIndex)?.filter(f => isCharacterFact(f, state.characters))
+      const facts = groups.get(chapterIndex)?.filter((f) => isCharacterFact(f, state.characters))
       if (!facts || facts.length === 0) continue
       const chapterNum = chapterIndex + 1
       result.push(`第${chapterNum}章角色事实：\n${facts.map(formatCanonicalFact).join('\n')}`)
@@ -153,10 +165,7 @@ export function buildCharacterFactTimeline(
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
 }
 
-export function buildKeyEventsTimeline(
-  state: ReducedGraphState,
-  upToChapterIndex: number
-): string {
+export function buildKeyEventsTimeline(state: ReducedGraphState, upToChapterIndex: number): string {
   const canonicalFacts = state.storyState?.canonicalFacts ?? []
 
   // 当存在权威事实时，优先从权威事实构建关键事件时间线。
@@ -190,7 +199,9 @@ export function buildKeyEventsTimeline(
     const events = filterKeyEventsByImportance(summary, threshold)
     const withoutSuperseded = filterSupersededEventsFromTimeline(events, canonicalFacts)
     if (withoutSuperseded.length > 0) {
-      result.push(`第${chapterNum}章关键事件：\n${withoutSuperseded.map(e => `  - ${e}`).join('\n')}`)
+      result.push(
+        `第${chapterNum}章关键事件：\n${withoutSuperseded.map((e) => `  - ${e}`).join('\n')}`
+      )
     }
   }
 

@@ -10,8 +10,24 @@ function buildState(): ReducedGraphState {
     storyArc: {
       totalChapters: 10,
       acts: [
-        { index: 1, startChapter: 1, endChapter: 3, title: '第一幕', theme: '主题一', function: '叙事功能一', mandatoryBeats: ['节拍一'] },
-        { index: 2, startChapter: 4, endChapter: 8, title: '第二幕', theme: '主题二', function: '叙事功能二', mandatoryBeats: ['节拍二', '节拍三', '节拍四'] },
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: '第一幕',
+          theme: '主题一',
+          function: '叙事功能一',
+          mandatoryBeats: ['节拍一'],
+        },
+        {
+          index: 2,
+          startChapter: 4,
+          endChapter: 8,
+          title: '第二幕',
+          theme: '主题二',
+          function: '叙事功能二',
+          mandatoryBeats: ['节拍二', '节拍三', '节拍四'],
+        },
       ],
       keyBeats: [],
     },
@@ -54,7 +70,9 @@ describe('CLI chapter display', () => {
 
     printChapterReport(report)
 
-    expect(logSpy).toHaveBeenCalledWith('📚 幕进度：第 2 幕，1/3 节拍已消费，剩余 2 个，幕内剩余 2 章')
+    expect(logSpy).toHaveBeenCalledWith(
+      '📚 幕进度：第 2 幕，1/3 节拍已消费，剩余 2 个，幕内剩余 2 章'
+    )
     expect(logSpy).toHaveBeenCalledWith('   待消费：节拍三、节拍四')
   })
 })

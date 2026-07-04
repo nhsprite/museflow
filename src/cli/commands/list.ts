@@ -21,9 +21,8 @@ export async function list(): Promise<void> {
       ? getCurrentChapterDisplayNumber(state.currentChapterIndex, state.totalChapters)
       : '0'
     const totalChapters = state?.totalChapters ?? story.totalChapters
-    const progress = totalChapters > 0
-      ? Math.round(((state?.currentChapterIndex ?? 0) / totalChapters) * 100)
-      : 0
+    const progress =
+      totalChapters > 0 ? Math.round(((state?.currentChapterIndex ?? 0) / totalChapters) * 100) : 0
 
     console.log('')
     console.log(`  📖 ${story.title || '(未命名)'}`)

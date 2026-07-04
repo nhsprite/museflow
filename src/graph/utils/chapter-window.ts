@@ -6,9 +6,9 @@ const DEFAULT_SNIPPET_MAX_CHARS = 900
 function contentParagraphs(content: string): string[] {
   return content
     .split(/\n\s*\n/)
-    .map(paragraph => paragraph.trim())
-    .filter(paragraph => paragraph.length > 0)
-    .filter(paragraph => !/^#{1,6}\s+/.test(paragraph))
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0)
+    .filter((paragraph) => !/^#{1,6}\s+/.test(paragraph))
 }
 
 export function extractChapterOpeningSnippet(

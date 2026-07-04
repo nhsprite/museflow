@@ -9,10 +9,7 @@ import {
 import { draft_chapter } from './nodes/draft.js'
 import { fix_chapter } from './nodes/fix.js'
 import { validate_chapter_comprehensive } from './nodes/validation.js'
-import {
-  finalize_chapter,
-  finalize_story,
-} from './nodes/finalization.js'
+import { finalize_chapter, finalize_story } from './nodes/finalization.js'
 import {
   prepare_chapter,
   converge_and_decide,
@@ -28,10 +25,10 @@ import type { RuntimeContext } from '../core/context.js'
 export function buildNovelGraph(context: RuntimeContext) {
   const builder = new StateGraph(GraphState)
 
-  const withContext = <T>(
-    fn: (ctx: RuntimeContext, state: ReducedGraphState) => Promise<T> | T
-  ) =>
-    (state: ReducedGraphState) => fn(context, state)
+  const withContext =
+    <T>(fn: (ctx: RuntimeContext, state: ReducedGraphState) => Promise<T> | T) =>
+    (state: ReducedGraphState) =>
+      fn(context, state)
 
   const b1 = builder.addNode({
     build_world: withContext(build_world),
@@ -84,5 +81,8 @@ export function buildNovelGraph(context: RuntimeContext) {
 
   b1.addEdge('finalize_story', END)
 
-  return b1.compile({ checkpointer: context.checkpointer as unknown as import('@langchain/langgraph-checkpoint').BaseCheckpointSaver<number> })
+  return b1.compile({
+    checkpointer:
+      context.checkpointer as unknown as import('@langchain/langgraph-checkpoint').BaseCheckpointSaver<number>,
+  })
 }

@@ -2,13 +2,20 @@ import type { ActArc, KeyBeat, StoryArc } from '../types/outline.js'
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import { logger } from './logger.js'
 
-export function getActForChapter(storyArc: StoryArc | null | undefined, chapterIndex: number): ActArc | undefined {
+export function getActForChapter(
+  storyArc: StoryArc | null | undefined,
+  chapterIndex: number
+): ActArc | undefined {
   if (!storyArc) return undefined
   const chapterNumber = chapterIndex + 1
-  return storyArc.acts.find(a => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
+  return storyArc.acts.find((a) => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
 }
 
-export function isClosingPhase(totalChapters: number, currentChapterIndex: number, ratio = 0.15): boolean {
+export function isClosingPhase(
+  totalChapters: number,
+  currentChapterIndex: number,
+  ratio = 0.15
+): boolean {
   return currentChapterIndex + 1 >= totalChapters * (1 - ratio)
 }
 
@@ -44,10 +51,10 @@ export function buildArcStatus(
 
   const currentActIndex = currentAct?.index ?? 0
   const overdueKeyBeats = storyArc.keyBeats.filter(
-    kb => kb.deadlineAct < currentActIndex && !progress.consumed.includes(kb.beat)
+    (kb) => kb.deadlineAct < currentActIndex && !progress.consumed.includes(kb.beat)
   )
   const upcomingKeyBeats = storyArc.keyBeats.filter(
-    kb => kb.deadlineAct === currentActIndex && !progress.consumed.includes(kb.beat)
+    (kb) => kb.deadlineAct === currentActIndex && !progress.consumed.includes(kb.beat)
   )
 
   let riskLevel: ArcStatus['riskLevel'] = 'low'
@@ -58,7 +65,9 @@ export function buildArcStatus(
     riskLevel = 'high'
   } else if (
     upcomingKeyBeats.length > 0 ||
-    (currentAct && beatsPending.length > 0 && currentAct.endChapter - (currentChapterIndex + 1) <= 2)
+    (currentAct &&
+      beatsPending.length > 0 &&
+      currentAct.endChapter - (currentChapterIndex + 1) <= 2)
   ) {
     riskLevel = 'medium'
   }
@@ -105,7 +114,7 @@ export function buildClosingPhaseConstraint(
   }
 
   const pendingKeyBeats = storyArc.keyBeats.filter(
-    kb => !pendingBeats.includes(kb.beat) && kb.deadlineAct <= currentActIndex
+    (kb) => !pendingBeats.includes(kb.beat) && kb.deadlineAct <= currentActIndex
   )
 
   const parts: string[] = [
@@ -116,7 +125,9 @@ export function buildClosingPhaseConstraint(
     parts.push(`必须优先消费以下仍未消费的 mandatory beats：${pendingBeats.join('、')}。`)
   }
   if (pendingKeyBeats.length > 0) {
-    parts.push(`必须回收以下逾期/即将到期的关键节拍：${pendingKeyBeats.map(k => k.beat).join('、')}。`)
+    parts.push(
+      `必须回收以下逾期/即将到期的关键节拍：${pendingKeyBeats.map((k) => k.beat).join('、')}。`
+    )
   }
   parts.push('本章必须向最终高潮/结局推进，不得扩展无关过渡场景。')
   return parts.join('')
@@ -151,7 +162,7 @@ export function proposeActBoundaryAdjustments(
   } else if (progress.pending.length === 0 && chaptersRemaining > 0) {
     const reduction = Math.min(chaptersRemaining, 2)
     const proposedEnd = currentAct.endChapter - reduction
-    const prevAct = storyArc.acts.find(a => a.index === currentAct.index - 1)
+    const prevAct = storyArc.acts.find((a) => a.index === currentAct.index - 1)
     const minEnd = Math.max(prevAct ? prevAct.endChapter + 1 : 1, currentChapterIndex + 1)
     if (proposedEnd >= minEnd) {
       proposals.push({
@@ -176,15 +187,15 @@ export function validateActBoundaryAdjustment(
   proposedEndChapter: number,
   currentChapterIndex: number
 ): BoundaryAdjustmentValidation {
-  const act = storyArc.acts.find(a => a.index === actIndex)
+  const act = storyArc.acts.find((a) => a.index === actIndex)
   if (!act) return { valid: false, reason: '幕不存在' }
 
   if (proposedEndChapter < currentChapterIndex + 1) {
     return { valid: false, reason: '不能将幕边界调整到已写章节之前' }
   }
 
-  const prevAct = storyArc.acts.find(a => a.index === actIndex - 1)
-  const nextAct = storyArc.acts.find(a => a.index === actIndex + 1)
+  const prevAct = storyArc.acts.find((a) => a.index === actIndex - 1)
+  const nextAct = storyArc.acts.find((a) => a.index === actIndex + 1)
 
   const minEnd = prevAct ? prevAct.endChapter + 1 : 1
   if (proposedEndChapter < minEnd) {
@@ -240,14 +251,14 @@ export function applyActBoundaryShift(
   actIndex: number,
   proposedEndChapter: number
 ): StoryArc {
-  const currentAct = storyArc.acts.find(a => a.index === actIndex)
+  const currentAct = storyArc.acts.find((a) => a.index === actIndex)
   if (!currentAct) return storyArc
 
   const delta = proposedEndChapter - currentAct.endChapter
   if (delta === 0) return storyArc
 
-  const nextAct = storyArc.acts.find(a => a.index === actIndex + 1)
-  const newActs = storyArc.acts.map(act => {
+  const nextAct = storyArc.acts.find((a) => a.index === actIndex + 1)
+  const newActs = storyArc.acts.map((act) => {
     if (act.index === actIndex) {
       return { ...act, endChapter: proposedEndChapter }
     }
@@ -279,7 +290,7 @@ export function applyActBoundaryAdjustment(
   proposal: ActBoundaryProposal,
   currentChapterIndex: number
 ): ApplyActBoundaryAdjustmentResult {
-  const currentAct = storyArc.acts.find(a => a.index === proposal.actIndex)
+  const currentAct = storyArc.acts.find((a) => a.index === proposal.actIndex)
   if (!currentAct) {
     return { storyArc, applied: false, reason: '幕不存在' }
   }
@@ -290,14 +301,16 @@ export function applyActBoundaryAdjustment(
 
   const isExtension = proposal.proposedEndChapter > currentAct.endChapter
   const rawDelta = Math.abs(proposal.proposedEndChapter - currentAct.endChapter)
-  const originalEndChapter = currentAct.autoBoundaryAdjustment?.originalEndChapter ?? currentAct.endChapter
+  const originalEndChapter =
+    currentAct.autoBoundaryAdjustment?.originalEndChapter ?? currentAct.endChapter
   const alreadyExtendedBy = Math.max(
     currentAct.autoBoundaryAdjustment?.totalExtendedChapters ?? 0,
     currentAct.autoBoundaryAdjustment ? currentAct.endChapter - originalEndChapter : 0,
     0
   )
   const remainingCumulativeExtension = AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION - alreadyExtendedBy
-  const originalTotalChapters = storyArc.autoBoundaryAdjustment?.originalTotalChapters ?? storyArc.totalChapters
+  const originalTotalChapters =
+    storyArc.autoBoundaryAdjustment?.originalTotalChapters ?? storyArc.totalChapters
   const globalExtensionCap = Math.max(
     AUTO_ADJUST_MAX_EXTENSION,
     Math.ceil(originalTotalChapters * AUTO_ADJUST_MAX_GLOBAL_EXTENSION_RATIO)
@@ -328,7 +341,12 @@ export function applyActBoundaryAdjustment(
   }
 
   const cappedDelta = isExtension
-    ? Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION, remainingCumulativeExtension, remainingGlobalExtension)
+    ? Math.min(
+        rawDelta,
+        AUTO_ADJUST_MAX_EXTENSION,
+        remainingCumulativeExtension,
+        remainingGlobalExtension
+      )
     : Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
   const cappedProposedEnd = isExtension
     ? currentAct.endChapter + cappedDelta
@@ -345,7 +363,7 @@ export function applyActBoundaryAdjustment(
   }
 
   const shiftedStoryArc = applyActBoundaryShift(storyArc, proposal.actIndex, cappedProposedEnd)
-  const newActs = shiftedStoryArc.acts.map(act => {
+  const newActs = shiftedStoryArc.acts.map((act) => {
     if (act.index !== proposal.actIndex) return act
 
     const totalExtendedChapters = Math.max(0, cappedProposedEnd - originalEndChapter)
@@ -391,7 +409,7 @@ async function requestCoveredBeats(
   provider: ModelProvider,
   contextText: string,
   beats: string[],
-  contextLabel: string,
+  contextLabel: string
 ): Promise<string[]> {
   const schema: JsonSchema = {
     type: 'object',
@@ -407,7 +425,8 @@ async function requestCoveredBeats(
   const messages: Message[] = [
     {
       role: 'system',
-      content: '你是一位小说结构分析师。请严格根据提供的章节内容，判断给定的 mandatory beats 中哪些已经确实发生或确立。只返回确实发生的 beat 原文，不得改写、不得推断未发生的内容。',
+      content:
+        '你是一位小说结构分析师。请严格根据提供的章节内容，判断给定的 mandatory beats 中哪些已经确实发生或确立。只返回确实发生的 beat 原文，不得改写、不得推断未发生的内容。',
     },
     {
       role: 'user',
@@ -418,7 +437,9 @@ async function requestCoveredBeats(
   try {
     const response = provider.chatStructured
       ? await provider.chatStructured<{ coveredBeats: unknown[] }>(messages, schema, 0.1)
-      : (JSON.parse((await provider.chat(messages, 0.1)).replace(/^```(?:json)?\s*|\s*```$/g, '').trim()) as { coveredBeats: unknown[] })
+      : (JSON.parse(
+          (await provider.chat(messages, 0.1)).replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
+        ) as { coveredBeats: unknown[] })
 
     const raw = Array.isArray(response.coveredBeats) ? response.coveredBeats : []
     const matched: string[] = []
@@ -432,7 +453,9 @@ async function requestCoveredBeats(
     }
     return matched
   } catch (err) {
-    logger.debug(`[MuseFlow] mandatory beat 覆盖判定失败: ${err instanceof Error ? err.message : String(err)}`)
+    logger.debug(
+      `[MuseFlow] mandatory beat 覆盖判定失败: ${err instanceof Error ? err.message : String(err)}`
+    )
     return []
   }
 }
@@ -466,8 +489,14 @@ export async function judgeMandatoryBeatCoverageAcrossAct(
   if (pendingBeats.length === 0) return []
 
   const actChapterCount = act.endChapter - act.startChapter + 1
-  const availableSummaries = chapterSummaries.slice(act.startChapter - 1, act.startChapter - 1 + actChapterCount)
-  const availableDescriptions = outlineDescriptions.slice(act.startChapter - 1, act.startChapter - 1 + actChapterCount)
+  const availableSummaries = chapterSummaries.slice(
+    act.startChapter - 1,
+    act.startChapter - 1 + actChapterCount
+  )
+  const availableDescriptions = outlineDescriptions.slice(
+    act.startChapter - 1,
+    act.startChapter - 1 + actChapterCount
+  )
 
   const contextParts: string[] = []
   for (let i = 0; i < actChapterCount; i++) {
@@ -482,5 +511,10 @@ export async function judgeMandatoryBeatCoverageAcrossAct(
 
   if (contextParts.length === 0) return []
 
-  return requestCoveredBeats(provider, contextParts.join('\n\n'), pendingBeats, '当前幕已写章节的大纲与摘要')
+  return requestCoveredBeats(
+    provider,
+    contextParts.join('\n\n'),
+    pendingBeats,
+    '当前幕已写章节的大纲与摘要'
+  )
 }

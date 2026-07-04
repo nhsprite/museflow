@@ -16,7 +16,6 @@ class TestableSummaryAgent extends (await import('../../src/agents/summary.ts'))
 }
 
 describe('SummaryAgent prompt', () => {
-
   it('includes chapter content in the prompt', () => {
     const agent = new TestableSummaryAgent(createMockProvider())
     const chapterContent = '顾承舟站在办公室窗前，看着窗外的城市夜景。电话响了，是苏晚棠打来的。'
@@ -32,7 +31,7 @@ describe('SummaryAgent prompt', () => {
       chapterSummaries: [],
     })
 
-    const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain(chapterContent)
     expect(userMessage).toContain('<chapter_content>')
   })
@@ -51,7 +50,7 @@ describe('SummaryAgent prompt', () => {
       chapterSummaries: [],
     })
 
-    const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain('<title>Test Title</title>')
     expect(userMessage).toContain('<number>第6章</number>')
   })
@@ -70,7 +69,7 @@ describe('SummaryAgent prompt', () => {
       chapterSummaries: [],
     })
 
-    const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain('（无内容）')
     expect(userMessage).toContain('<title>未知</title>')
     expect(userMessage).toContain('<number>未知</number>')
@@ -87,9 +86,11 @@ describe('SummaryAgent prompt', () => {
       chapterIndex: 0,
       foreshadowStack: [],
       chapterSummaries: [],
-      charactersList: [{ id: '1', storyId: 's', name: '苏半城', description: '主角', createdAt: 1 }],
+      charactersList: [
+        { id: '1', storyId: 's', name: '苏半城', description: '主角', createdAt: 1 },
+      ],
     })
-    const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain('<official_characters>')
     expect(userMessage).toContain('苏半城')
   })
@@ -106,7 +107,7 @@ describe('SummaryAgent prompt', () => {
       foreshadowStack: [],
       chapterSummaries: [],
     })
-    const userMessage = messages.find(m => m.role === 'user')?.content ?? ''
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain('canonicalFacts')
     expect(userMessage).toContain('subject')
     expect(userMessage).toContain('attribute')
@@ -247,7 +248,9 @@ describe('SummaryAgent prompt', () => {
       },
     }
 
-    const result = processSummaryOutput(output, 1, undefined, undefined, chapterContent, ['主角交出关键物品'])
+    const result = processSummaryOutput(output, 1, undefined, undefined, chapterContent, [
+      '主角交出关键物品',
+    ])
 
     expect(result?.storyState?.chapterHandoff).toMatchObject({
       chapterNumber: 2,
@@ -303,9 +306,7 @@ describe('SummaryAgent prompt', () => {
       '联姻棋局传闻浮现（被指婚对象与仇家关联）',
     ]
     const result = processSummaryOutput(output, 2, undefined, undefined, undefined, claimedBeats)
-    expect(result?.verifiedBeats).toEqual([
-      '主角以新身份重返京城并初步立足',
-    ])
+    expect(result?.verifiedBeats).toEqual(['主角以新身份重返京城并初步立足'])
   })
 
   it('preserves canonical fact id when provided', async () => {
@@ -329,7 +330,13 @@ describe('SummaryAgent prompt', () => {
           revealedSecrets: [],
           pendingTasks: [],
           canonicalFacts: [
-            { id: 'custom-id', subject: '样本', attribute: '位置', value: '实验室B', establishedIn: 3 },
+            {
+              id: 'custom-id',
+              subject: '样本',
+              attribute: '位置',
+              value: '实验室B',
+              establishedIn: 3,
+            },
           ],
           currentScene: '',
           storyTime: '',
@@ -496,7 +503,6 @@ describe('SummaryAgent prompt', () => {
     const result = processSummaryOutput(output, 3)
     expect(result?.storyState?.canonicalFacts?.[0].value).toBe('样本A在实验室B')
   })
-
 })
 
 import { processSummaryOutput } from '../../src/agents/summary.js'
@@ -513,13 +519,11 @@ describe('processSummaryOutput sourceFacts', () => {
         keyItems: [{ text: '龙纹玉佩：主角随身玉佩', importance: 'critical' }],
         activePlots: [],
         mood: '沉重',
-        sourceFacts: [
-          { subject: '龙纹玉佩', attribute: '制造者', value: '前朝铸玉大师周子衡' },
-        ],
+        sourceFacts: [{ subject: '龙纹玉佩', attribute: '制造者', value: '前朝铸玉大师周子衡' }],
         storyState: {
           characterLocations: {},
           characterStatus: {},
-          keyItemsLocation: { '龙纹玉佩': '主角怀中' },
+          keyItemsLocation: { 龙纹玉佩: '主角怀中' },
           keyItemsState: {},
           activePlots: [],
           revealedSecrets: [],
@@ -533,7 +537,12 @@ describe('processSummaryOutput sourceFacts', () => {
     const result = processSummaryOutput(output, 2)
     expect(result).not.toBeNull()
     const facts = result!.storyState?.canonicalFacts ?? []
-    expect(facts.some(f => f.subject === '龙纹玉佩' && f.attribute === '制造者' && f.value === '前朝铸玉大师周子衡')).toBe(true)
+    expect(
+      facts.some(
+        (f) =>
+          f.subject === '龙纹玉佩' && f.attribute === '制造者' && f.value === '前朝铸玉大师周子衡'
+      )
+    ).toBe(true)
   })
 
   it('keeps multiple canonical facts with same subject and attribute but different values', () => {
@@ -558,8 +567,18 @@ describe('processSummaryOutput sourceFacts', () => {
           currentScene: '书房',
           storyTime: '深夜',
           canonicalFacts: [
-            { subject: '顾承舟', attribute: '已知信息', value: '顾承舟知道凶手是管家', establishedIn: 3 },
-            { subject: '顾承舟', attribute: '已知信息', value: '顾承舟知道密信藏在书房', establishedIn: 3 },
+            {
+              subject: '顾承舟',
+              attribute: '已知信息',
+              value: '顾承舟知道凶手是管家',
+              establishedIn: 3,
+            },
+            {
+              subject: '顾承舟',
+              attribute: '已知信息',
+              value: '顾承舟知道密信藏在书房',
+              establishedIn: 3,
+            },
           ],
         },
       },
@@ -567,7 +586,7 @@ describe('processSummaryOutput sourceFacts', () => {
 
     const result = processSummaryOutput(output, 3)
     const facts = result!.storyState!.canonicalFacts ?? []
-    expect(facts.filter(f => f.subject === '顾承舟' && f.attribute === '已知信息').length).toBe(2)
+    expect(facts.filter((f) => f.subject === '顾承舟' && f.attribute === '已知信息').length).toBe(2)
   })
 
   it('does not auto-promote characterFacts or keyItems to canonicalFacts', () => {
@@ -633,7 +652,7 @@ describe('processSummaryOutput sourceFacts', () => {
         storyState: {
           characterLocations: {},
           characterStatus: {},
-          keyItemsLocation: { '龙纹玉佩': '主角怀中' },
+          keyItemsLocation: { 龙纹玉佩: '主角怀中' },
           keyItemsState: {},
           activePlots: [],
           revealedSecrets: [],
@@ -650,7 +669,7 @@ describe('processSummaryOutput sourceFacts', () => {
       2,
       undefined,
       undefined,
-      '龙纹玉佩出自前朝铸玉大师周子衡之手，是主角母亲临终前留下的遗物。',
+      '龙纹玉佩出自前朝铸玉大师周子衡之手，是主角母亲临终前留下的遗物。'
     )
     const facts = result!.storyState!.canonicalFacts ?? []
     expect(facts).toHaveLength(1)

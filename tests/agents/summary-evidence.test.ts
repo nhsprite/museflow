@@ -10,7 +10,7 @@ describe('processSummaryOutput evidence validation', () => {
         storyState: {
           characterLocations: {},
           characterStatus: {},
-          keyItemsLocation: { '密信': '官府仓库' },
+          keyItemsLocation: { 密信: '官府仓库' },
           keyItemsState: {},
           activePlots: [],
           revealedSecrets: [],
@@ -48,7 +48,7 @@ describe('processSummaryOutput evidence validation', () => {
         storyState: {
           characterLocations: {},
           characterStatus: {},
-          keyItemsLocation: { '密信': '官府仓库' },
+          keyItemsLocation: { 密信: '官府仓库' },
           keyItemsState: {},
           activePlots: [],
           revealedSecrets: [],
@@ -86,7 +86,7 @@ describe('processSummaryOutput evidence validation', () => {
         storyState: {
           characterLocations: {},
           characterStatus: {},
-          keyItemsLocation: { '油纸包': '枕头下' },
+          keyItemsLocation: { 油纸包: '枕头下' },
           keyItemsState: {},
           activePlots: [],
           revealedSecrets: [],

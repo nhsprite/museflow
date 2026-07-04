@@ -1,7 +1,8 @@
 import { renderTemplate } from '../../utils/template.js'
 import { computePromptHash } from './version.js'
 
-const FORESHADOWING_SYSTEM_PROMPT = '<role>你是一位擅长埋伏笔和制造悬念的作家，擅长在叙述中埋下不引人注意但回味无穷的线索。</role>'
+const FORESHADOWING_SYSTEM_PROMPT =
+  '<role>你是一位擅长埋伏笔和制造悬念的作家，擅长在叙述中埋下不引人注意但回味无穷的线索。</role>'
 
 export function buildForeshadowingSystemPrompt(): string {
   return FORESHADOWING_SYSTEM_PROMPT
@@ -83,7 +84,7 @@ export interface ForeshadowingPromptVariables {
 
 export function buildForeshadowingUserPrompt(
   state: import('../types.js').ForeshadowingAgentInput,
-  planningConfig: import('../../types/genre.js').ChapterPlanningConfig,
+  planningConfig: import('../../types/genre.js').ChapterPlanningConfig
 ): string {
   const existingForeshadows = state.foreshadowStack || []
   const currentChapter = (state.chapterIndex ?? 0) + 1
@@ -93,41 +94,70 @@ export function buildForeshadowingUserPrompt(
   const isClosingPhase = currentChapter > totalChapters - noNewThreshold
 
   const overdueForeshadows = existingForeshadows.filter(
-    f => !f.fulfilledChapter && currentChapter > f.expectedFulfillChapter + 1,
+    (f) => !f.fulfilledChapter && currentChapter > f.expectedFulfillChapter + 1
   )
   const mustFulfillForeshadows = existingForeshadows.filter(
-    f => !f.fulfilledChapter && currentChapter >= f.expectedFulfillChapter && currentChapter <= f.expectedFulfillChapter + 1,
+    (f) =>
+      !f.fulfilledChapter &&
+      currentChapter >= f.expectedFulfillChapter &&
+      currentChapter <= f.expectedFulfillChapter + 1
   )
   const urgentForeshadows = existingForeshadows.filter(
-    f => !f.fulfilledChapter && currentChapter >= f.expectedFulfillChapter - 1 && currentChapter < f.expectedFulfillChapter,
+    (f) =>
+      !f.fulfilledChapter &&
+      currentChapter >= f.expectedFulfillChapter - 1 &&
+      currentChapter < f.expectedFulfillChapter
   )
   const normalForeshadows = existingForeshadows.filter(
-    f => !f.fulfilledChapter && currentChapter < f.expectedFulfillChapter - 1,
+    (f) => !f.fulfilledChapter && currentChapter < f.expectedFulfillChapter - 1
   )
 
   const closingPhaseInstruction = isClosingPhase
     ? `当前已进入收尾阶段（第 ${currentChapter}/${totalChapters} 章，剩余 ${totalChapters - currentChapter} 章）。**禁止埋下新的伏笔**。所有未回收的伏笔必须在本章或剩余章节内回收完毕。new_foreshadows 必须返回空数组 []。`
     : '请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。'
 
-  const existingForeshadowsSection = `${existingForeshadows.length > 0
-    ? existingForeshadows.map((f, i) => `  <item id="${f.id}" index="${i + 1}" created_at="${f.createdAtChapter ?? '?'}" expected="${f.expectedFulfillChapter}">${f.text}</item>`).join('\n')
-    : '（暂无已埋伏笔）'}
-  ${mustFulfillForeshadows.length > 0 ? `
+  const existingForeshadowsSection = `${
+    existingForeshadows.length > 0
+      ? existingForeshadows
+          .map(
+            (f, i) =>
+              `  <item id="${f.id}" index="${i + 1}" created_at="${f.createdAtChapter ?? '?'}" expected="${f.expectedFulfillChapter}">${f.text}</item>`
+          )
+          .join('\n')
+      : '（暂无已埋伏笔）'
+  }
+  ${
+    mustFulfillForeshadows.length > 0
+      ? `
   <must_fulfill>
     ${mustFulfillForeshadows.map((f, i) => `    <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${currentChapter}">${f.text}</item>`).join('\n')}
-  </must_fulfill>` : ''}
-  ${overdueForeshadows.length > 0 ? `
+  </must_fulfill>`
+      : ''
+  }
+  ${
+    overdueForeshadows.length > 0
+      ? `
   <overdue>
     ${overdueForeshadows.map((f, i) => `    <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${currentChapter}" overdue="${currentChapter - f.expectedFulfillChapter}">${f.text}</item>`).join('\n')}
-  </overdue>` : ''}
-  ${urgentForeshadows.length > 0 ? `
+  </overdue>`
+      : ''
+  }
+  ${
+    urgentForeshadows.length > 0
+      ? `
   <urgent>
     ${urgentForeshadows.map((f, i) => `    <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${currentChapter}">${f.text}</item>`).join('\n')}
-  </urgent>` : ''}
-  ${normalForeshadows.length > 0 ? `
+  </urgent>`
+      : ''
+  }
+  ${
+    normalForeshadows.length > 0
+      ? `
   <normal>
     ${normalForeshadows.map((f, i) => `    <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${currentChapter}">${f.text}</item>`).join('\n')}
-  </normal>` : ''}`
+  </normal>`
+      : ''
+  }`
 
   return renderTemplate(FORESHADOWING_USER_PROMPT_TEMPLATE, {
     CLOSING_PHASE_INSTRUCTION: closingPhaseInstruction,
@@ -139,4 +169,7 @@ export function buildForeshadowingUserPrompt(
   })
 }
 
-export const PROMPT_VERSION = computePromptHash(FORESHADOWING_SYSTEM_PROMPT, FORESHADOWING_USER_PROMPT_TEMPLATE)
+export const PROMPT_VERSION = computePromptHash(
+  FORESHADOWING_SYSTEM_PROMPT,
+  FORESHADOWING_USER_PROMPT_TEMPLATE
+)

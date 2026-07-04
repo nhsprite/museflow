@@ -7,9 +7,15 @@ import { createChapterMeta } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { formatChapterOutlineForAgent } from './planning.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
-import { validateFixedChapterContent, tryCorrectOffByOneChapterHeading } from '../../utils/chapter-content-validation.js'
+import {
+  validateFixedChapterContent,
+  tryCorrectOffByOneChapterHeading,
+} from '../../utils/chapter-content-validation.js'
 import { getGenreSkill } from '../../genres/registry.js'
-import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../../types/genre.js'
+import {
+  DEFAULT_CHAPTER_WORD_COUNT_MIN,
+  DEFAULT_CHAPTER_WORD_COUNT_MAX,
+} from '../../types/genre.js'
 import type { RuntimeContext } from '../../core/context.js'
 
 export async function draft_chapter(
@@ -63,16 +69,12 @@ export async function draft_chapter(
   const output = await agent.run(agentState)
 
   if (!output.success && output.error) {
-    throw new Error(
-      `第 ${chapterIndex + 1} 章 AI 生成失败：${output.error}`
-    )
+    throw new Error(`第 ${chapterIndex + 1} 章 AI 生成失败：${output.error}`)
   }
 
   let content = output.content ?? ''
   if (!content || content.trim().length === 0) {
-    throw new Error(
-      `第 ${chapterIndex + 1} 章内容为空，AI 未返回有效内容。请检查模型配置或重试。`
-    )
+    throw new Error(`第 ${chapterIndex + 1} 章内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
   }
 
   const preWriteCheck = (output.data as { preWriteCheck?: string } | undefined)?.preWriteCheck
@@ -81,12 +83,15 @@ export async function draft_chapter(
   }
 
   const trimmedContent = content.trim()
-  const firstLine = trimmedContent.split('\n').map(l => l.trim()).find(l => l.length > 0)
-  const hasTitle = firstLine && (
-    /^#{1,2}\s/.test(firstLine) ||
-    firstLine.includes(`第${chapterIndex + 1}章`) ||
-    firstLine.includes(`第 ${chapterIndex + 1} 章`)
-  )
+  const firstLine = trimmedContent
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0)
+  const hasTitle =
+    firstLine &&
+    (/^#{1,2}\s/.test(firstLine) ||
+      firstLine.includes(`第${chapterIndex + 1}章`) ||
+      firstLine.includes(`第 ${chapterIndex + 1} 章`))
 
   if (!hasTitle && outlineItem) {
     content = `# 第${chapterIndex + 1}章 ${outlineItem.title}\n\n${trimmedContent}`

@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createStory, getStory, updateStoryStatus, updateStoryTitle, listStories, deleteStory } from '../../../src/storage/meta/stores/story.ts'
+import {
+  createStory,
+  getStory,
+  updateStoryStatus,
+  updateStoryTitle,
+  listStories,
+  deleteStory,
+} from '../../../src/storage/meta/stores/story.ts'
 import { getStoryOutputDir } from '../../../src/utils/paths.js'
 
 describe('story DAO', () => {
@@ -9,13 +16,17 @@ describe('story DAO', () => {
 
   beforeEach(async () => {
     for (const story of ['story_test1', 'story_test2', 'story_test3']) {
-      await rm(join(process.cwd(), 'books', story), { force: true, recursive: true }).catch(() => {})
+      await rm(join(process.cwd(), 'books', story), { force: true, recursive: true }).catch(
+        () => {}
+      )
     }
   })
 
   afterEach(async () => {
     await Promise.all(
-      createdStories.splice(0).map(({ outputDir }) => rm(outputDir, { force: true, recursive: true }))
+      createdStories
+        .splice(0)
+        .map(({ outputDir }) => rm(outputDir, { force: true, recursive: true }))
     )
   })
 
@@ -74,7 +85,7 @@ describe('story DAO', () => {
 
     const list = listStories()
     expect(list.length).toBeGreaterThanOrEqual(2)
-    const ids = list.map(s => s.id)
+    const ids = list.map((s) => s.id)
     expect(ids).toContain(storyA.id)
     expect(ids).toContain(storyB.id)
     expect(list[0]!.updatedAt).toBeGreaterThanOrEqual(list[1]!.updatedAt)
@@ -89,7 +100,10 @@ describe('story DAO', () => {
     expect(result).toBe(true)
     expect(getStory(story.id)).toBeNull()
 
-    createdStories.splice(createdStories.findIndex(s => s.id === story.id), 1)
+    createdStories.splice(
+      createdStories.findIndex((s) => s.id === story.id),
+      1
+    )
   })
 
   it('should return false when deleting non-existent story', async () => {

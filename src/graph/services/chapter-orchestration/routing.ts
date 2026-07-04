@@ -15,7 +15,11 @@ import {
   isStateCorruptionIssue,
   isInterpretiveIssue,
 } from '../../../core/chapter-generation/issue-classifier.js'
-import { deduplicateIssuesSemantically, issueFingerprint, deduplicateByRule } from '../../../utils/issue-deduplication.js'
+import {
+  deduplicateIssuesSemantically,
+  issueFingerprint,
+  deduplicateByRule,
+} from '../../../utils/issue-deduplication.js'
 import {
   decideNextStep,
   capNonErrorIssuesByType,
@@ -80,35 +84,55 @@ function buildBlockingReport(
   const deduplicatedIssues = deduplicateByRule(blockingIssues)
 
   const conflicts = deduplicatedIssues
-    .filter(i => i.type === 'state_corruption' || i.type === 'outline_violation' || i.type === 'outline_deviation')
-    .map(issue => ({
+    .filter(
+      (i) =>
+        i.type === 'state_corruption' ||
+        i.type === 'outline_violation' ||
+        i.type === 'outline_deviation'
+    )
+    .map((issue) => ({
       subject: issue.id,
       attribute: issue.dimension ?? issue.type,
       oldValue: '',
       newValue: '',
-      source: (issue.source === 'state_reconciliation' ? 'canonical' : 'outline') as 'outline' | 'canonical' | 'author',
+      source: (issue.source === 'state_reconciliation' ? 'canonical' : 'outline') as
+        'outline' | 'canonical' | 'author',
     }))
 
   const suggestedActions: BlockingReport['suggestedActions'] = []
 
   if (reason === 'rewrite_loop_stalled') {
-    suggestedActions.push(
-      { type: 'manual_rewrite', description: '运行 museflow rewrite <story-id> 从本章开始人工重写' }
-    )
+    suggestedActions.push({
+      type: 'manual_rewrite',
+      description: '运行 museflow rewrite <story-id> 从本章开始人工重写',
+    })
   }
 
   if (reason === 'state_corruption' || conflicts.length > 0) {
     suggestedActions.push(
-      { type: 'choose_canonical', description: '若认为当前权威事实正确，请根据阻断报告调整本章大纲，或运行 museflow rewrite <story-id> 后在交互式冲突提示中选择权威事实' },
-      { type: 'choose_outline', description: '若认为大纲要求正确，请运行 museflow rewrite <story-id> 后在交互式冲突提示中选择以大纲为准' },
-      { type: 'author_override', description: '若需要作者裁决，请先记录裁决内容并重新运行 museflow rewrite <story-id>；当前版本未提供独立 reconcile 命令' }
+      {
+        type: 'choose_canonical',
+        description:
+          '若认为当前权威事实正确，请根据阻断报告调整本章大纲，或运行 museflow rewrite <story-id> 后在交互式冲突提示中选择权威事实',
+      },
+      {
+        type: 'choose_outline',
+        description:
+          '若认为大纲要求正确，请运行 museflow rewrite <story-id> 后在交互式冲突提示中选择以大纲为准',
+      },
+      {
+        type: 'author_override',
+        description:
+          '若需要作者裁决，请先记录裁决内容并重新运行 museflow rewrite <story-id>；当前版本未提供独立 reconcile 命令',
+      }
     )
   }
 
   if (reason === 'max_rewrite_attempts') {
-    suggestedActions.push(
-      { type: 'manual_rewrite', description: '已连续重写多次未收敛，建议人工审视问题后运行 rewrite 或 fix' }
-    )
+    suggestedActions.push({
+      type: 'manual_rewrite',
+      description: '已连续重写多次未收敛，建议人工审视问题后运行 rewrite 或 fix',
+    })
   }
 
   return {
@@ -140,11 +164,9 @@ export function cleanCurrentChapterInferredFacts(state: ReducedGraphState): Stor
   const supersededFacts = storyState.supersededFacts ?? []
 
   const cleanedCanonicalFacts = canonicalFacts.filter(
-    f => f.source === 'author_override' || f.establishedIn < currentChapterIndex
+    (f) => f.source === 'author_override' || f.establishedIn < currentChapterIndex
   )
-  const cleanedSupersededFacts = supersededFacts.filter(
-    f => f.chapterIndex < currentChapterIndex
-  )
+  const cleanedSupersededFacts = supersededFacts.filter((f) => f.chapterIndex < currentChapterIndex)
 
   const hasChanges =
     cleanedCanonicalFacts.length !== canonicalFacts.length ||
@@ -178,8 +200,8 @@ export async function convergeAndDecide(
   const routingDeps: RoutingDeps = {
     issuePolicy: {
       planningConfig: getChapterPlanningConfig(state.genre),
-      isInterpretiveIssue: issue => isInterpretiveIssue(undefined, issue, preferLLM),
-      deduplicateIssues: async issues => {
+      isInterpretiveIssue: (issue) => isInterpretiveIssue(undefined, issue, preferLLM),
+      deduplicateIssues: async (issues) => {
         if (config.useLLMForIssueClassification) {
           return deduplicateIssuesSemantically(context.provider, issues)
         }
@@ -191,11 +213,11 @@ export async function convergeAndDecide(
     rewritePolicy: {
       planningConfig: getChapterPlanningConfig(state.genre),
       calculateIssueSetSimilarity: (prev, curr) =>
-        calculateIssueSetSimilarity(prev, curr, async issue =>
+        calculateIssueSetSimilarity(prev, curr, async (issue) =>
           issueFingerprint(undefined, issue)
         ),
-      isInterpretiveIssue: issue => isInterpretiveIssue(undefined, issue, preferLLM),
-      isStateCorruptionIssue: issue => isStateCorruptionIssue(undefined, issue, preferLLM),
+      isInterpretiveIssue: (issue) => isInterpretiveIssue(undefined, issue, preferLLM),
+      isStateCorruptionIssue: (issue) => isStateCorruptionIssue(undefined, issue, preferLLM),
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },
     fixPolicy: {
@@ -204,9 +226,9 @@ export async function convergeAndDecide(
       findAffectedParagraphs: () => [],
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },
-    isStructuralIssue: issue => isStructuralIssue(undefined, issue, preferLLM),
-    isLocalIssue: issue => isLocalIssue(undefined, issue, preferLLM),
-    isTaskConsistencyIssue: issue => isTaskConsistencyIssue(undefined, issue, preferLLM),
+    isStructuralIssue: (issue) => isStructuralIssue(undefined, issue, preferLLM),
+    isLocalIssue: (issue) => isLocalIssue(undefined, issue, preferLLM),
+    isTaskConsistencyIssue: (issue) => isTaskConsistencyIssue(undefined, issue, preferLLM),
   }
 
   const ctx: RoutingContext = {
@@ -283,7 +305,7 @@ export async function convergeAndDecide(
     const report = buildBlockingReport(state, reason, step.blockingIssues)
     update.blockingReport = report
     const checkpointService = createCheckpointService(state.story.outputDir)
-    await checkpointService.saveBlockingReport(report).catch(err => {
+    await checkpointService.saveBlockingReport(report).catch((err) => {
       logger.warn(
         `[MuseFlow] 保存阻断报告失败: ${err instanceof Error ? err.message : String(err)}`
       )
@@ -324,4 +346,7 @@ export async function downgradeInterpretiveErrors(
 }
 
 export { capNonErrorIssuesByType }
-export { calculateIssueSetSimilarity, buildVerifiedConstraints } from '../../../core/chapter-generation/routing/index.js'
+export {
+  calculateIssueSetSimilarity,
+  buildVerifiedConstraints,
+} from '../../../core/chapter-generation/routing/index.js'

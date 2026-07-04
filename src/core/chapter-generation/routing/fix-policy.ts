@@ -1,9 +1,7 @@
 import type { Issue } from '../../../types/agent.js'
 import type { ChapterSession } from './types.js'
 
-export type RepairApproach =
-  | { kind: 'draft'; discardPlan: boolean }
-  | { kind: 'fix' }
+export type RepairApproach = { kind: 'draft'; discardPlan: boolean } | { kind: 'fix' }
 
 export interface IssueClassificationSummary {
   hasStructural: boolean
@@ -17,15 +15,15 @@ export async function classifyIssues(
   isLocalIssue: (issue: Issue) => Promise<boolean> | boolean,
   isTaskConsistencyIssue: (issue: Issue) => Promise<boolean> | boolean
 ): Promise<IssueClassificationSummary> {
-  const errorIssues = issues.filter(i => i.severity === 'error')
+  const errorIssues = issues.filter((i) => i.severity === 'error')
   if (errorIssues.length === 0) {
     return { hasStructural: false, hasLocal: false, hasTaskConsistency: false }
   }
 
   const [structuralFlags, localFlags, taskFlags] = await Promise.all([
-    Promise.all(errorIssues.map(i => isStructuralIssue(i))),
-    Promise.all(errorIssues.map(i => isLocalIssue(i))),
-    Promise.all(errorIssues.map(i => isTaskConsistencyIssue(i))),
+    Promise.all(errorIssues.map((i) => isStructuralIssue(i))),
+    Promise.all(errorIssues.map((i) => isLocalIssue(i))),
+    Promise.all(errorIssues.map((i) => isTaskConsistencyIssue(i))),
   ])
 
   return {
@@ -42,7 +40,10 @@ export function decideRepairApproach(
   log?: (level: 'info' | 'warn' | 'error', message: string, ...meta: unknown[]) => void
 ): RepairApproach {
   if (!chapterFileExists) {
-    log?.('info', `[MuseFlow] 第 ${session.chapterIndex + 1} 章文件不存在，跳过修复模式，直接重新起草...`)
+    log?.(
+      'info',
+      `[MuseFlow] 第 ${session.chapterIndex + 1} 章文件不存在，跳过修复模式，直接重新起草...`
+    )
     return { kind: 'draft', discardPlan: false }
   }
 

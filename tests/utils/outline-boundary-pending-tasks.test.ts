@@ -3,9 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import * as contextJudge from '../../src/utils/context-judge.js'
-import {
-  reconcileOutlineWithState,
-} from '../../src/utils/outline-boundary.js'
+import { reconcileOutlineWithState } from '../../src/utils/outline-boundary.js'
 import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../src/utils/chapter-planning.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { PendingTask } from '../../src/types/story-state.js'
@@ -113,7 +111,12 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
     ])
 
     vi.mocked(contextJudge.batchJudgeTaskRelevance).mockResolvedValueOnce([true])
-    const hint = await reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG, createProvider())
+    const hint = await reconcileOutlineWithState(
+      state,
+      6,
+      DEFAULT_CHAPTER_PLANNING_CONFIG,
+      createProvider()
+    )
 
     expect(hint).toContain('陈裕堂登门拜访苏半城')
     expect(hint).not.toContain('回话亲王')
@@ -149,7 +152,12 @@ describe('reconcileOutlineWithState filters stale pending tasks', () => {
     ])
 
     vi.mocked(contextJudge.batchJudgeTaskRelevance).mockResolvedValueOnce([false])
-    const hint = await reconcileOutlineWithState(state, 6, DEFAULT_CHAPTER_PLANNING_CONFIG, createProvider())
+    const hint = await reconcileOutlineWithState(
+      state,
+      6,
+      DEFAULT_CHAPTER_PLANNING_CONFIG,
+      createProvider()
+    )
 
     expect(hint).toContain('回话亲王')
     expect(hint).toContain('postponed')

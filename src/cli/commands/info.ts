@@ -46,12 +46,17 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
   }
 
   if (state) {
-    const currentChapter = getCurrentChapterDisplayNumber(state.currentChapterIndex, state.totalChapters)
+    const currentChapter = getCurrentChapterDisplayNumber(
+      state.currentChapterIndex,
+      state.totalChapters
+    )
 
     console.log('生成状态:')
     console.log(`  当前章节: ${currentChapter}/${state.totalChapters}`)
     console.log(`  世界观: ${state.world ? '✓ 已构建' : '✗ 未构建'}`)
-    console.log(`  人物: ${state.characters.length > 0 ? `✓ ${state.characters.length} 个` : '✗ 未创建'}`)
+    console.log(
+      `  人物: ${state.characters.length > 0 ? `✓ ${state.characters.length} 个` : '✗ 未创建'}`
+    )
     console.log(`  大纲: ${state.outline.length > 0 ? `✓ ${state.outline.length} 章` : '✗ 未生成'}`)
     console.log('')
 
@@ -78,8 +83,8 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
     }
 
     if (state.foreshadowStack.length > 0) {
-      const unfulfilled = state.foreshadowStack.filter(f => !f.fulfilledChapter)
-      const fulfilled = state.foreshadowStack.filter(f => f.fulfilledChapter)
+      const unfulfilled = state.foreshadowStack.filter((f) => !f.fulfilledChapter)
+      const fulfilled = state.foreshadowStack.filter((f) => f.fulfilledChapter)
       console.log(`伏笔: ${unfulfilled.length} 个待回收, ${fulfilled.length} 个已回收`)
       console.log('')
 
@@ -87,7 +92,9 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
         console.log('待回收伏笔:')
         for (const fs of unfulfilled.slice(0, 3)) {
           const createdCh = fs.createdAtChapter || '?'
-          console.log(`  - 第${fs.expectedFulfillChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`)
+          console.log(
+            `  - 第${fs.expectedFulfillChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`
+          )
         }
         if (unfulfilled.length > 3) {
           console.log(`  ... 还有 ${unfulfilled.length - 3} 个`)
@@ -99,7 +106,9 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
         console.log('已回收伏笔:')
         for (const fs of fulfilled.slice(0, 3)) {
           const createdCh = fs.createdAtChapter || '?'
-          console.log(`  ✓ 第${fs.fulfilledChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`)
+          console.log(
+            `  ✓ 第${fs.fulfilledChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`
+          )
         }
         if (fulfilled.length > 3) {
           console.log(`  ... 还有 ${fulfilled.length - 3} 个`)

@@ -1,11 +1,19 @@
-import { getGenreRegistry, installCustomGenre, uninstallCustomGenre } from '../../genres/registry.js'
+import {
+  getGenreRegistry,
+  installCustomGenre,
+  uninstallCustomGenre,
+} from '../../genres/registry.js'
 import { getGenreSkill } from '../../genres/registry.js'
 
 interface GenresOptions {
   file?: string
 }
 
-export async function genres(action: string, name?: string, options?: GenresOptions): Promise<void> {
+export async function genres(
+  action: string,
+  name?: string,
+  options?: GenresOptions
+): Promise<void> {
   if (action === 'list') {
     const registry = getGenreRegistry()
 
@@ -14,14 +22,16 @@ export async function genres(action: string, name?: string, options?: GenresOpti
     console.log('='.repeat(50))
     console.log('')
 
-    const builtin = registry.filter(e => e.source === 'builtin')
-    const custom = registry.filter(e => e.source === 'custom')
+    const builtin = registry.filter((e) => e.source === 'builtin')
+    const custom = registry.filter((e) => e.source === 'custom')
 
     console.log(`内置题材 (${builtin.length}):`)
     for (const entry of builtin) {
       console.log(`  ${entry.skill.name.padEnd(12)} ${entry.skill.displayName}`)
       if (entry.skill.tropes.length > 0) {
-        console.log(`               元素: ${entry.skill.tropes.slice(0, 3).join(', ')}${entry.skill.tropes.length > 3 ? '...' : ''}`)
+        console.log(
+          `               元素: ${entry.skill.tropes.slice(0, 3).join(', ')}${entry.skill.tropes.length > 3 ? '...' : ''}`
+        )
       }
     }
     console.log('')
@@ -79,7 +89,7 @@ export async function genres(action: string, name?: string, options?: GenresOpti
     }
 
     const registry = getGenreRegistry()
-    const entry = registry.find(e => e.skill.name === name)
+    const entry = registry.find((e) => e.skill.name === name)
     if (entry?.source !== 'custom') {
       console.error('[MuseFlow] 错误: 只能卸载自定义题材')
       process.exit(1)
@@ -109,7 +119,7 @@ export async function genres(action: string, name?: string, options?: GenresOpti
     }
 
     const registry = getGenreRegistry()
-    const entry = registry.find(e => e.skill.name === name)
+    const entry = registry.find((e) => e.skill.name === name)
 
     console.log('='.repeat(50))
     console.log(`题材详情: ${skill.displayName}`)

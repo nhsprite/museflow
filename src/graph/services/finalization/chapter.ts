@@ -79,12 +79,10 @@ export async function finalizeChapter(
 
   const chapterContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   if (chapterContent === null || chapterContent.trim().length === 0) {
-    throw new Error(
-      `第 ${chapterIndex + 1} 章文件为空或不存在，无法标记为完成。请重试撰写。`
-    )
+    throw new Error(`第 ${chapterIndex + 1} 章文件为空或不存在，无法标记为完成。请重试撰写。`)
   }
 
-  const pendingErrors = state.pendingIssues.filter(i => i.severity === 'error')
+  const pendingErrors = state.pendingIssues.filter((i) => i.severity === 'error')
   if (pendingErrors.length > 0) {
     logger.warn(
       `[MuseFlow] 第 ${chapterIndex + 1} 章存在 ${pendingErrors.length} 个未解决的严重问题，跳过 finalize，避免未验证内容进入 storyState。`
@@ -99,11 +97,16 @@ export async function finalizeChapter(
     const needsSummary = !summary && chapterContent
     if (needsSummary) {
       const summaryAgent = getSummaryAgent(provider)
-      const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
+      const {
+        merged: effectiveCharacters,
+        outline: outlineCharacters,
+        established: establishedCharacters,
+      } = buildEffectiveCharactersList(state, chapterIndex)
       const currentOutline = updatedOutline[chapterIndex]
-      const beatsToVerify = currentOutline?.claimedBeats && currentOutline.claimedBeats.length > 0
-        ? currentOutline.claimedBeats
-        : getPendingMandatoryBeats(state, chapterIndex)
+      const beatsToVerify =
+        currentOutline?.claimedBeats && currentOutline.claimedBeats.length > 0
+          ? currentOutline.claimedBeats
+          : getPendingMandatoryBeats(state, chapterIndex)
       const summaryState: SummaryAgentInput = {
         idea: state.idea,
         genre: state.genre,
@@ -121,15 +124,26 @@ export async function finalizeChapter(
       let summarySuccess = false
       for (let attempt = 0; attempt <= MAX_SUMMARY_RETRIES; attempt++) {
         if (attempt > 0) {
-          logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成失败，第 ${attempt}/${MAX_SUMMARY_RETRIES} 次重试...`)
+          logger.info(
+            `[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成失败，第 ${attempt}/${MAX_SUMMARY_RETRIES} 次重试...`
+          )
         }
         try {
           const summaryOutput = await summaryAgent.run(summaryState)
           if (!summaryOutput.success) {
-            logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`)
+            logger.warn(
+              `[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`
+            )
             continue
           }
-          const processed = processSummaryOutput(summaryOutput, chapterIndex, effectiveCharacters, state.storyState, chapterContent, beatsToVerify)
+          const processed = processSummaryOutput(
+            summaryOutput,
+            chapterIndex,
+            effectiveCharacters,
+            state.storyState,
+            chapterContent,
+            beatsToVerify
+          )
           if (!processed || !processed.summary) {
             logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
@@ -144,7 +158,9 @@ export async function finalizeChapter(
             newOutline[chapterIndex] = {
               ...currentOutline,
               ...(processed.verifiedBeats ? { verifiedBeats: processed.verifiedBeats } : {}),
-              ...(processed.verifiedBeatEvidence ? { verifiedBeatEvidence: processed.verifiedBeatEvidence } : {}),
+              ...(processed.verifiedBeatEvidence
+                ? { verifiedBeatEvidence: processed.verifiedBeatEvidence }
+                : {}),
             }
             updatedOutline = newOutline
           }
@@ -154,34 +170,50 @@ export async function finalizeChapter(
           const actForCoverage = getActForChapter(state.storyArc, chapterIndex)
           const latestCurrentOutline = updatedOutline[chapterIndex] ?? currentOutline
           if (actForCoverage && latestCurrentOutline && chapterContent) {
-            const summaryVerified = normalizeVerifiedBeats(processed.verifiedBeats ?? [], actForCoverage.mandatoryBeats)
-            const missingAfterSummary = actForCoverage.mandatoryBeats.filter(beat => !summaryVerified.includes(beat))
+            const summaryVerified = normalizeVerifiedBeats(
+              processed.verifiedBeats ?? [],
+              actForCoverage.mandatoryBeats
+            )
+            const missingAfterSummary = actForCoverage.mandatoryBeats.filter(
+              (beat) => !summaryVerified.includes(beat)
+            )
             if (missingAfterSummary.length > 0) {
-              const contentVerified = await judgeMandatoryBeatCoverage(provider, chapterContent, actForCoverage.mandatoryBeats)
+              const contentVerified = await judgeMandatoryBeatCoverage(
+                provider,
+                chapterContent,
+                actForCoverage.mandatoryBeats
+              )
               const merged = Array.from(new Set([...summaryVerified, ...contentVerified]))
               if (merged.length > summaryVerified.length) {
                 const newOutline = [...updatedOutline]
                 const latestOutline = newOutline[chapterIndex] ?? latestCurrentOutline
                 newOutline[chapterIndex] = { ...latestOutline, verifiedBeats: merged }
                 updatedOutline = newOutline
-                logger.debug(`[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - summaryVerified.length} 个 beats`)
+                logger.debug(
+                  `[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - summaryVerified.length} 个 beats`
+                )
               }
             }
           }
 
           if (processed.storyState) {
             updatedStoryState = mergeStoryState(state.storyState, processed.storyState)
-            logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`)
+            logger.info(
+              `[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`
+            )
           }
           break
         } catch (err) {
-          logger.warn(`[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`, err)
+          logger.warn(
+            `[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`,
+            err
+          )
         }
       }
 
       if (summarySuccess && summary && updatedStoryState) {
         const newlyEstablishedFacts = (updatedStoryState.canonicalFacts ?? []).filter(
-          f => f.establishedIn === chapterIndex && f.supersedes && f.supersedes.length > 0
+          (f) => f.establishedIn === chapterIndex && f.supersedes && f.supersedes.length > 0
         )
         if (newlyEstablishedFacts.length > 0) {
           summary = patchChapterSummaryWithFacts(summary, newlyEstablishedFacts, chapterIndex)
@@ -193,7 +225,9 @@ export async function finalizeChapter(
       }
 
       if (!summarySuccess) {
-        logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，已阻止 finalize，避免未沉淀内容进入后续章节。`)
+        logger.warn(
+          `[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，已阻止 finalize，避免未沉淀内容进入后续章节。`
+        )
         return {
           pendingIssues: [
             ...state.pendingIssues,
@@ -202,7 +236,8 @@ export async function finalizeChapter(
               type: 'state_corruption',
               severity: 'error',
               description: `第 ${chapterIndex + 1} 章摘要与权威事实提取失败，无法安全进入下一章。`,
-              suggestion: '请重试当前章节 finalize；如果模型持续失败，请检查模型输出或运行 rewrite 重新生成本章。',
+              suggestion:
+                '请重试当前章节 finalize；如果模型持续失败，请检查模型输出或运行 rewrite 重新生成本章。',
               source: 'state_reconciliation',
               retryStrategy: 'manual',
             },
@@ -238,14 +273,17 @@ export async function finalizeChapter(
     chapterSummary: updatedChapter?.summary ?? null,
     wordCount: null,
     stateSummary: null,
-    issuesResolved: state.pendingIssues.filter(i => i.severity !== 'error').length,
-    issuesPending: state.pendingIssues.filter(i => i.severity === 'error').length,
+    issuesResolved: state.pendingIssues.filter((i) => i.severity !== 'error').length,
+    issuesPending: state.pendingIssues.filter((i) => i.severity === 'error').length,
     stateJson: null,
     createdAt: Date.now(),
   }
   const updatedTimeline = [...(state.timeline ?? []), snapshot]
 
-  const newForeshadowConstraints = generateForeshadowConstraints(state.foreshadowStack, chapterIndex + 1)
+  const newForeshadowConstraints = generateForeshadowConstraints(
+    state.foreshadowStack,
+    chapterIndex + 1
+  )
   let updatedVerifiedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints)
   if (newForeshadowConstraints.length > 0) {
     updatedVerifiedConstraints = [
@@ -262,7 +300,11 @@ export async function finalizeChapter(
     storyState: updatedStoryState,
   }
 
-  const { actProgress: updatedActProgress, beatPressureConstraint, beatVerificationIssues } = await updateActProgress(stateForActProgress, chapterIndex, provider)
+  const {
+    actProgress: updatedActProgress,
+    beatPressureConstraint,
+    beatVerificationIssues,
+  } = await updateActProgress(stateForActProgress, chapterIndex, provider)
   if (beatPressureConstraint) {
     updatedVerifiedConstraints = [...updatedVerifiedConstraints, beatPressureConstraint]
   }
@@ -283,9 +325,10 @@ export async function finalizeChapter(
     ]
   }
 
-  let updatedPendingIssues = beatVerificationIssues && beatVerificationIssues.length > 0
-    ? [...state.pendingIssues, ...beatVerificationIssues]
-    : state.pendingIssues
+  let updatedPendingIssues =
+    beatVerificationIssues && beatVerificationIssues.length > 0
+      ? [...state.pendingIssues, ...beatVerificationIssues]
+      : state.pendingIssues
   updatedPendingIssues = pruneResolvedOutlineCoverageIssues(
     updatedPendingIssues,
     state.storyArc,
@@ -301,13 +344,21 @@ export async function finalizeChapter(
   let updatedStory = state.story
 
   if (state.storyArc) {
-    boundaryProposals = proposeActBoundaryAdjustments(state.storyArc, updatedActProgress, chapterIndex)
+    boundaryProposals = proposeActBoundaryAdjustments(
+      state.storyArc,
+      updatedActProgress,
+      chapterIndex
+    )
     if (boundaryProposals.length > 0) {
       const config = loadConfig()
 
       if (config.autoAdjustActBoundaries) {
         for (const proposal of boundaryProposals) {
-          const result = applyActBoundaryAdjustment(updatedStoryArc ?? state.storyArc, proposal, chapterIndex)
+          const result = applyActBoundaryAdjustment(
+            updatedStoryArc ?? state.storyArc,
+            proposal,
+            chapterIndex
+          )
           if (result.applied) {
             updatedStoryArc = result.storyArc
             logger.info(`[MuseFlow] ${result.reason}`)
@@ -321,7 +372,8 @@ export async function finalizeChapter(
                   type: 'outline_coverage',
                   severity: 'error',
                   description: `第 ${proposal.actIndex} 幕自动延长已达到上限，仍有 mandatory beats 未消费。`,
-                  suggestion: result.reason ?? '请重写当前章节消费 pending beats，或人工调整大纲/幕边界。',
+                  suggestion:
+                    result.reason ?? '请重写当前章节消费 pending beats，或人工调整大纲/幕边界。',
                   source: 'outline_compliance',
                   retryStrategy: 'manual',
                 },
@@ -332,9 +384,13 @@ export async function finalizeChapter(
       } else {
         logger.warn('[MuseFlow] 检测到幕边界调整建议：')
         for (const proposal of boundaryProposals) {
-          logger.warn(`  - 第 ${proposal.actIndex} 幕建议结束于第 ${proposal.proposedEndChapter} 章：${proposal.reason}`)
+          logger.warn(
+            `  - 第 ${proposal.actIndex} 幕建议结束于第 ${proposal.proposedEndChapter} 章：${proposal.reason}`
+          )
         }
-        logger.warn('  如要采纳，请运行：museflow adjust-act <story-id> --act <index> --end-chapter <number>')
+        logger.warn(
+          '  如要采纳，请运行：museflow adjust-act <story-id> --act <index> --end-chapter <number>'
+        )
       }
     }
   }
@@ -441,18 +497,21 @@ function buildChapterReport(
 
   const alerts = getForeshadowAlerts(state.foreshadowStack, chapterIndex + 1)
   report.foreshadowsPlanted = state.foreshadowStack.filter(
-    f => f.createdAtChapter === chapterIndex + 1
+    (f) => f.createdAtChapter === chapterIndex + 1
   ).length
   report.foreshadowsFulfilled = state.foreshadowStack.filter(
-    f => f.fulfilledChapter === chapterIndex + 1
+    (f) => f.fulfilledChapter === chapterIndex + 1
   ).length
-  report.foreshadowsOverdue = alerts.filter(a => a.level === 'overdue').length
+  report.foreshadowsOverdue = alerts.filter((a) => a.level === 'overdue').length
 
   report.convergence = inferConvergence(state)
 
   const act = getActForChapter(state.storyArc, chapterIndex)
   if (act) {
-    const progress = state.actProgress[act.index] ?? { consumed: [], pending: [...act.mandatoryBeats] }
+    const progress = state.actProgress[act.index] ?? {
+      consumed: [],
+      pending: [...act.mandatoryBeats],
+    }
     report.actProgress = {
       actIndex: act.index,
       chaptersRemaining: act.endChapter - (chapterIndex + 1),

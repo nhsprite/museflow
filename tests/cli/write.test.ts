@@ -90,7 +90,11 @@ vi.mock('../../src/cli/utils/chapter-display.js', () => ({
 }))
 
 vi.mock('../../src/utils/paths.js', () => ({
-  getChapterFilePath: vi.fn().mockImplementation((outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`),
+  getChapterFilePath: vi
+    .fn()
+    .mockImplementation(
+      (outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`
+    ),
 }))
 
 vi.mock('node:fs', () => ({
@@ -122,8 +126,13 @@ describe('write command', () => {
     await write('story-1', { storyId: 'story-1' })
 
     expect(runOneChapterMock).toHaveBeenCalledTimes(1)
-    expect(runOneChapterMock).toHaveBeenCalledWith('story-1', { mode: 'draft', targetChapterIndex: 0 })
-    expect(printActProgress).toHaveBeenCalledWith(expect.objectContaining({ currentChapterIndex: 0 }), 0)
+    expect(runOneChapterMock).toHaveBeenCalledWith('story-1', {
+      mode: 'draft',
+      targetChapterIndex: 0,
+    })
+    expect(printActProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ currentChapterIndex: 0 }),
+      0
+    )
   })
-
 })

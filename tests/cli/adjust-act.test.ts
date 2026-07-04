@@ -63,9 +63,33 @@ function makeState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphStat
     storyArc: {
       totalChapters: 20,
       acts: [
-        { index: 1, startChapter: 1, endChapter: 5, title: '第一幕', theme: 't', function: 'f', mandatoryBeats: [] },
-        { index: 2, startChapter: 6, endChapter: 10, title: '第二幕', theme: 't', function: 'f', mandatoryBeats: [] },
-        { index: 3, startChapter: 11, endChapter: 20, title: '第三幕', theme: 't', function: 'f', mandatoryBeats: [] },
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 5,
+          title: '第一幕',
+          theme: 't',
+          function: 'f',
+          mandatoryBeats: [],
+        },
+        {
+          index: 2,
+          startChapter: 6,
+          endChapter: 10,
+          title: '第二幕',
+          theme: 't',
+          function: 'f',
+          mandatoryBeats: [],
+        },
+        {
+          index: 3,
+          startChapter: 11,
+          endChapter: 20,
+          title: '第三幕',
+          theme: 't',
+          function: 'f',
+          mandatoryBeats: [],
+        },
       ],
       keyBeats: [],
     },
@@ -90,12 +114,16 @@ describe('adjust-act command', () => {
 
   it('rejects non-numeric act or end-chapter', async () => {
     const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as (code?: number) => never)
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => {}) as (code?: number) => never)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await adjustAct('story-1', { act: 'abc', endChapter: '5' })
 
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('--act 和 --end-chapter 必须是数字'))
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('--act 和 --end-chapter 必须是数字')
+    )
     expect(exitSpy).toHaveBeenCalledWith(1)
     exitSpy.mockRestore()
     errorSpy.mockRestore()
@@ -108,7 +136,9 @@ describe('adjust-act command', () => {
     await adjustAct('story-1', { act: '1', endChapter: '6' })
 
     expect(updateLatestStateMock).toHaveBeenCalledTimes(1)
-    const updatedState = updateLatestStateMock.mock.calls[0]![0] as { storyArc: { acts: Array<{ startChapter: number; endChapter: number }> } }
+    const updatedState = updateLatestStateMock.mock.calls[0]![0] as {
+      storyArc: { acts: Array<{ startChapter: number; endChapter: number }> }
+    }
     expect(updatedState.storyArc.acts[0]?.endChapter).toBe(6)
     expect(updatedState.storyArc.acts[1]?.startChapter).toBe(7)
     expect(writeOutlineContentMock).toHaveBeenCalledTimes(1)
@@ -129,7 +159,7 @@ describe('adjust-act command', () => {
     expect(updatedState.storyArc.totalChapters).toBe(22)
     expect(updatedState.totalChapters).toBe(22)
     expect(updatedState.story.totalChapters).toBe(22)
-    expect(updatedState.storyArc.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+    expect(updatedState.storyArc.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
       [1, 7],
       [8, 12],
       [13, 22],
@@ -171,7 +201,7 @@ describe('adjust-act command', () => {
     await adjustAct('story-1', { act: '1', endChapter: '6' })
 
     const updatedState = updateLatestStateMock.mock.calls[0]![0] as { pendingIssues: Issue[] }
-    expect(updatedState.pendingIssues.map(issue => issue.id)).toEqual([
+    expect(updatedState.pendingIssues.map((issue) => issue.id)).toEqual([
       'unverified-beat-2-0',
       'consistency-info',
     ])

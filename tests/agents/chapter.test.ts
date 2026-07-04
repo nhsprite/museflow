@@ -15,13 +15,20 @@ class TestableChapterAgent extends (await import('../../src/agents/chapter.ts'))
     return this.buildPrompt(state)
   }
 
-  public exposeParse(content: string): { success: boolean; content: string; data?: Record<string, unknown> } {
-    return this.parse(content) as { success: boolean; content: string; data?: Record<string, unknown> }
+  public exposeParse(content: string): {
+    success: boolean
+    content: string
+    data?: Record<string, unknown>
+  } {
+    return this.parse(content) as {
+      success: boolean
+      content: string
+      data?: Record<string, unknown>
+    }
   }
 }
 
 describe('ChapterAgent chapter numbering', () => {
-
   it('builds the first chapter prompt with display numbering', () => {
     const agent = new TestableChapterAgent(createMockProvider())
 
@@ -96,7 +103,8 @@ describe('ChapterAgent chapter numbering', () => {
       chapterIndex: 0,
       foreshadowStack: [],
       chapterSummaries: [],
-      storyState: '【角色位置】\n林玄：破庙\n\n【角色状态】\n林玄：受伤\n\n【关键物品】\n通灵宝玉：女娲补天遗石\n\n【已揭示的秘密】\n通灵宝玉与石猴同出青埂峰\n\n【已被覆盖的旧事实】\n林玄原名林二',
+      storyState:
+        '【角色位置】\n林玄：破庙\n\n【角色状态】\n林玄：受伤\n\n【关键物品】\n通灵宝玉：女娲补天遗石\n\n【已揭示的秘密】\n通灵宝玉与石猴同出青埂峰\n\n【已被覆盖的旧事实】\n林玄原名林二',
     })
 
     const userMessage = messages[1]?.content ?? ''
@@ -268,7 +276,9 @@ describe('ChapterAgent chapter numbering', () => {
     })
 
     const userMessage = messages[1]?.content ?? ''
-    expect(userMessage).toContain('涉及关键物品/设定的来源、制造者、来历、赠予者时，必须与【权威事实】中的记录一致')
+    expect(userMessage).toContain(
+      '涉及关键物品/设定的来源、制造者、来历、赠予者时，必须与【权威事实】中的记录一致'
+    )
     expect(userMessage).toContain('严禁 invent 具体来源')
   })
 })

@@ -39,7 +39,7 @@ describe('applyIssuePolicy', () => {
     })
 
     expect(result.issues).toHaveLength(2)
-    expect(result.issues.map(i => i.id).sort()).toEqual(['a', 'c'])
+    expect(result.issues.map((i) => i.id).sort()).toEqual(['a', 'c'])
   })
 
   it('caps non-error issues per type', async () => {
@@ -56,8 +56,8 @@ describe('applyIssuePolicy', () => {
       isInterpretiveIssue: () => false,
     })
 
-    const errors = result.issues.filter(i => i.severity === 'error')
-    const warnings = result.issues.filter(i => i.severity === 'warning')
+    const errors = result.issues.filter((i) => i.severity === 'error')
+    const warnings = result.issues.filter((i) => i.severity === 'warning')
     expect(errors).toHaveLength(1)
     expect(warnings).toHaveLength(3)
     expect(result.cappedTypes).toContain('consistency')

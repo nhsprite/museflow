@@ -32,7 +32,13 @@ describe('mergeStoryState', () => {
     const delta: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 2 },
+        {
+          id: 'cf1',
+          subject: '木之灵物',
+          attribute: '所在位置',
+          value: '昆仑山',
+          establishedIn: 2,
+        },
       ],
     }
 
@@ -45,13 +51,25 @@ describe('mergeStoryState', () => {
     const existing: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 2 },
+        {
+          id: 'cf1',
+          subject: '木之灵物',
+          attribute: '所在位置',
+          value: '昆仑山',
+          establishedIn: 2,
+        },
       ],
     }
     const delta: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf2', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 3 },
+        {
+          id: 'cf2',
+          subject: '木之灵物',
+          attribute: '所在位置',
+          value: '昆仑山',
+          establishedIn: 3,
+        },
       ],
     }
 
@@ -63,7 +81,13 @@ describe('mergeStoryState', () => {
     const existing: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 2 },
+        {
+          id: 'cf1',
+          subject: '木之灵物',
+          attribute: '所在位置',
+          value: '昆仑山',
+          establishedIn: 2,
+        },
       ],
     }
     const delta: StoryState = {
@@ -81,7 +105,13 @@ describe('mergeStoryState', () => {
     const existing: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 2 },
+        {
+          id: 'cf1',
+          subject: '木之灵物',
+          attribute: '所在位置',
+          value: '昆仑山',
+          establishedIn: 2,
+        },
       ],
     }
     const delta = emptyState()
@@ -93,7 +123,7 @@ describe('mergeStoryState', () => {
   it('keeps parenthetical item qualifiers instead of treating them as aliases', () => {
     const existing: StoryState = {
       ...emptyState(),
-      keyItemsLocation: { '血封信笺': '妆台抽屉' },
+      keyItemsLocation: { 血封信笺: '妆台抽屉' },
     }
     const delta: StoryState = {
       ...emptyState(),
@@ -109,7 +139,7 @@ describe('mergeStoryState', () => {
   it('does not override unqualified item names from parenthetical qualified names', () => {
     const existing: StoryState = {
       ...emptyState(),
-      keyItemsLocation: { '血封信笺': '妆台抽屉' },
+      keyItemsLocation: { 血封信笺: '妆台抽屉' },
     }
     const delta: StoryState = {
       ...emptyState(),
@@ -124,7 +154,7 @@ describe('mergeStoryState', () => {
   it('keeps parenthetical item state qualifiers', () => {
     const existing: StoryState = {
       ...emptyState(),
-      keyItemsState: { '血封信笺': '完整' },
+      keyItemsState: { 血封信笺: '完整' },
     }
     const delta: StoryState = {
       ...emptyState(),
@@ -142,12 +172,12 @@ describe('mergeStoryState', () => {
       ...emptyState(),
       keyItemsLocation: {
         '血封信笺（柏字残画）': '苏半城妆台抽屉附近',
-        '血封信笺': '东院正房妆台暗屉最里层薄油纸内',
+        血封信笺: '东院正房妆台暗屉最里层薄油纸内',
       },
     }
     const delta: StoryState = {
       ...emptyState(),
-      keyItemsLocation: { '血封信笺': '藏经阁夹壁中' },
+      keyItemsLocation: { 血封信笺: '藏经阁夹壁中' },
     }
 
     const merged = mergeStoryState(existing, delta)
@@ -161,12 +191,12 @@ describe('mergeStoryState', () => {
       ...emptyState(),
       keyItemsLocation: {
         '血封信笺（柏字残画）': '苏半城妆台抽屉附近',
-        '血封信笺': '东院正房妆台暗屉最里层薄油纸内',
+        血封信笺: '东院正房妆台暗屉最里层薄油纸内',
       },
     }
     const delta: StoryState = {
       ...emptyState(),
-      keyItemsLocation: { '血封信笺': '藏经阁夹壁中' },
+      keyItemsLocation: { 血封信笺: '藏经阁夹壁中' },
     }
 
     const merged = mergeStoryState(existing, delta)
@@ -240,9 +270,7 @@ describe('filterSupersededEventsFromTimeline', () => {
   })
 })
 
-function buildBaseSession(
-  overrides: Partial<ChapterSession> = {}
-): ChapterSession {
+function buildBaseSession(overrides: Partial<ChapterSession> = {}): ChapterSession {
   return {
     chapterIndex: 0,
     rewriteAttempts: 0,
@@ -263,7 +291,18 @@ function makeGraphState(overrides: Partial<ReducedGraphState> = {}): ReducedGrap
     { id: '2', storyId: 's', name: '侍女', description: '', createdAt: 2 },
   ]
   return {
-    story: { id: 's', title: '测试', idea: '', genre: 'default', totalChapters: 10, status: 'writing', provider: 'openai', outputDir: 'books/s', createdAt: 1, updatedAt: 1 },
+    story: {
+      id: 's',
+      title: '测试',
+      idea: '',
+      genre: 'default',
+      totalChapters: 10,
+      status: 'writing',
+      provider: 'openai',
+      outputDir: 'books/s',
+      createdAt: 1,
+      updatedAt: 1,
+    },
     idea: '',
     genre: 'default',
     totalChapters: 10,
@@ -298,8 +337,21 @@ describe('buildCanonicalFactTimeline', () => {
       storyState: {
         ...emptyState(),
         canonicalFacts: [
-          { id: 'cf1', subject: '木之灵物', attribute: '所在位置', value: '东方灵河旧址', establishedIn: 0 },
-          { id: 'cf2', subject: '木之灵物', attribute: '所在位置', value: '昆仑山', establishedIn: 2, supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }] },
+          {
+            id: 'cf1',
+            subject: '木之灵物',
+            attribute: '所在位置',
+            value: '东方灵河旧址',
+            establishedIn: 0,
+          },
+          {
+            id: 'cf2',
+            subject: '木之灵物',
+            attribute: '所在位置',
+            value: '昆仑山',
+            establishedIn: 2,
+            supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
+          },
         ],
       },
     })
@@ -324,8 +376,20 @@ describe('buildCharacterFactTimeline', () => {
       storyState: {
         ...emptyState(),
         canonicalFacts: [
-          { id: 'cf1', subject: '主角', attribute: '已知信息', value: '主角知道密信在书桌抽屉', establishedIn: 0 },
-          { id: 'cf2', subject: '侍女', attribute: '态度', value: '侍女对主角产生怀疑', establishedIn: 1 },
+          {
+            id: 'cf1',
+            subject: '主角',
+            attribute: '已知信息',
+            value: '主角知道密信在书桌抽屉',
+            establishedIn: 0,
+          },
+          {
+            id: 'cf2',
+            subject: '侍女',
+            attribute: '态度',
+            value: '侍女对主角产生怀疑',
+            establishedIn: 1,
+          },
         ],
       },
       chapterSummaries: ['第1章摘要：主角知道密信在木箱暗格'],
@@ -350,7 +414,13 @@ describe('buildKeyEventsTimeline', () => {
       storyState: {
         ...emptyState(),
         canonicalFacts: [
-          { id: 'cf1', subject: '密信', attribute: '关键事件', value: '密信被转移至官府仓库', establishedIn: 1 },
+          {
+            id: 'cf1',
+            subject: '密信',
+            attribute: '关键事件',
+            value: '密信被转移至官府仓库',
+            establishedIn: 1,
+          },
         ],
       },
       chapterSummaries: ['第2章摘要：密信被转移至东院'],

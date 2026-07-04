@@ -5,7 +5,10 @@ import { randomUUID } from 'node:crypto'
 import { createMockContext } from '../utils/mock-context.ts'
 
 const testTempDir = join(tmpdir(), `museflow-runner-revalidation-${randomUUID().slice(0, 8)}`)
-const testOutputsDir = join(tmpdir(), `museflow-runner-revalidation-outputs-${randomUUID().slice(0, 8)}`)
+const testOutputsDir = join(
+  tmpdir(),
+  `museflow-runner-revalidation-outputs-${randomUUID().slice(0, 8)}`
+)
 
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('chapter content')
@@ -33,9 +36,11 @@ vi.mock('../../src/storage/checkpoint-service.js', () => ({
 
 const mockExistsSync = vi.fn().mockReturnValue(true)
 const mockReaddirSync = vi.fn().mockReturnValue(['test-story-story-1'])
-const mockReadFileSync = vi.fn().mockReturnValue(JSON.stringify({
-  story: { id: 'story-1', outputDir: testTempDir }
-}))
+const mockReadFileSync = vi.fn().mockReturnValue(
+  JSON.stringify({
+    story: { id: 'story-1', outputDir: testTempDir },
+  })
+)
 
 function createBaseGraphState(overrides: Record<string, unknown> = {}) {
   return {
@@ -102,7 +107,9 @@ vi.mock('../../src/storage/meta/stores/chapter.js', () => ({ saveOutline: vi.fn(
 vi.mock('../../src/storage/meta/stores/character.js', () => ({ saveCharacters: vi.fn() }))
 vi.mock('../../src/storage/meta/stores/world.js', () => ({ saveWorld: vi.fn() }))
 vi.mock('../../src/storage/meta/stores/story.js', () => ({
-  getStory: vi.fn().mockReturnValue({ id: 'story-1', title: 'Test', outputDir: testTempDir, status: 'writing' }),
+  getStory: vi
+    .fn()
+    .mockReturnValue({ id: 'story-1', title: 'Test', outputDir: testTempDir, status: 'writing' }),
   updateStoryStatus,
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
@@ -110,7 +117,11 @@ vi.mock('../../src/genres/registry.js', () => ({ getGenreSkill: vi.fn().mockRetu
 vi.mock('../../src/utils/paths.js', () => ({
   getOutputsDir: vi.fn().mockReturnValue(testOutputsDir),
   getStoryOutputDirWithTitle: vi.fn(),
-  getChapterFilePath: vi.fn().mockImplementation((outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`),
+  getChapterFilePath: vi
+    .fn()
+    .mockImplementation(
+      (outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`
+    ),
 }))
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('test-id') }))
 
@@ -162,13 +173,15 @@ vi.mock('../../src/agents/index.js', () => ({
       }
     }
   },
-  processSummaryOutput: vi.fn().mockImplementation((output: { data?: { storyState?: Record<string, unknown> } }) => {
-    if (!output.data) return null
-    return {
-      summary: JSON.stringify(output.data),
-      storyState: output.data.storyState,
-    }
-  }),
+  processSummaryOutput: vi
+    .fn()
+    .mockImplementation((output: { data?: { storyState?: Record<string, unknown> } }) => {
+      if (!output.data) return null
+      return {
+        summary: JSON.stringify(output.data),
+        storyState: output.data.storyState,
+      }
+    }),
   FixAgent: class {
     async run() {
       const fixedContent = '# 第1章 测试章节\n\n' + '测试正文内容。'.repeat(600)
@@ -180,7 +193,6 @@ vi.mock('../../src/agents/index.js', () => ({
     }
   },
 }))
-
 
 describe('runner revalidation', () => {
   beforeEach(() => {
@@ -225,7 +237,9 @@ describe('runner revalidation', () => {
 
     expect(mockGraph.invoke).toHaveBeenCalledTimes(1)
     expect(result.rewriteRequested).toBe(true)
-    expect(result.pendingIssues.some((i: { severity: string }) => i.severity === 'error')).toBe(true)
+    expect(result.pendingIssues.some((i: { severity: string }) => i.severity === 'error')).toBe(
+      true
+    )
   })
 
   it('passes userResponse as rewriteApproved to the graph', async () => {
@@ -314,14 +328,20 @@ describe('runner revalidation', () => {
   it('keeps the target chapter outline when preserving an adopted outline revision', async () => {
     const { runOneChapter } = await import('../../src/core/runner.js')
 
-    await runOneChapter('story-1', {
-      mode: 'rewrite',
-      targetChapterIndex: 1,
-      userResponse: true,
-      preserveTargetOutline: true,
-    }, createMockContext())
+    await runOneChapter(
+      'story-1',
+      {
+        mode: 'rewrite',
+        targetChapterIndex: 1,
+        userResponse: true,
+        preserveTargetOutline: true,
+      },
+      createMockContext()
+    )
 
-    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<typeof createBaseGraphState>
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
     expect(invokedState.outline[1]).toEqual({
       number: 2,
       title: 'Chapter 2',
@@ -332,13 +352,19 @@ describe('runner revalidation', () => {
   it('keeps an existing target chapter outline during targeted rewrite by default', async () => {
     const { runOneChapter } = await import('../../src/core/runner.js')
 
-    await runOneChapter('story-1', {
-      mode: 'rewrite',
-      targetChapterIndex: 1,
-      userResponse: true,
-    }, createMockContext())
+    await runOneChapter(
+      'story-1',
+      {
+        mode: 'rewrite',
+        targetChapterIndex: 1,
+        userResponse: true,
+      },
+      createMockContext()
+    )
 
-    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<typeof createBaseGraphState>
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
     expect(invokedState.outline[1]).toEqual({
       number: 2,
       title: 'Chapter 2',
@@ -362,10 +388,38 @@ describe('runner revalidation', () => {
           currentScene: '上一章结尾',
           storyTime: '上一章时间',
           canonicalFacts: [
-            { id: 'prev', subject: '前章事实', attribute: '状态', value: '保留', establishedIn: 0, source: 'chapter_text' },
-            { id: 'target', subject: '目标章事实', attribute: '状态', value: '删除', establishedIn: 1, source: 'chapter_text' },
-            { id: 'future', subject: '未来章事实', attribute: '状态', value: '删除', establishedIn: 2, source: 'chapter_text' },
-            { id: 'author', subject: '作者裁决', attribute: '状态', value: '保留', establishedIn: 2, source: 'author_override' },
+            {
+              id: 'prev',
+              subject: '前章事实',
+              attribute: '状态',
+              value: '保留',
+              establishedIn: 0,
+              source: 'chapter_text',
+            },
+            {
+              id: 'target',
+              subject: '目标章事实',
+              attribute: '状态',
+              value: '删除',
+              establishedIn: 1,
+              source: 'chapter_text',
+            },
+            {
+              id: 'future',
+              subject: '未来章事实',
+              attribute: '状态',
+              value: '删除',
+              establishedIn: 2,
+              source: 'chapter_text',
+            },
+            {
+              id: 'author',
+              subject: '作者裁决',
+              attribute: '状态',
+              value: '保留',
+              establishedIn: 2,
+              source: 'author_override',
+            },
           ],
           supersededFacts: [
             { subject: '前章事实', oldFact: '旧值', reason: '保留', chapterIndex: 0 },
@@ -377,14 +431,20 @@ describe('runner revalidation', () => {
       config: { configurable: { checkpoint_id: 'checkpoint-123' } },
     })
 
-    await runOneChapter('story-1', {
-      mode: 'rewrite',
-      targetChapterIndex: 1,
-      userResponse: true,
-    }, createMockContext())
+    await runOneChapter(
+      'story-1',
+      {
+        mode: 'rewrite',
+        targetChapterIndex: 1,
+        userResponse: true,
+      },
+      createMockContext()
+    )
 
-    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<typeof createBaseGraphState>
-    expect(invokedState.storyState?.canonicalFacts?.map(f => f.id)).toEqual(['prev', 'author'])
-    expect(invokedState.storyState?.supersededFacts?.map(f => f.subject)).toEqual(['前章事实'])
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    expect(invokedState.storyState?.canonicalFacts?.map((f) => f.id)).toEqual(['prev', 'author'])
+    expect(invokedState.storyState?.supersededFacts?.map((f) => f.subject)).toEqual(['前章事实'])
   })
 })

@@ -35,7 +35,9 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
 }))
 
 vi.mock('../../src/agents/index.js', async () => {
-  const actual = await vi.importActual<typeof import('../../src/agents/index.js')>('../../src/agents/index.js')
+  const actual = await vi.importActual<typeof import('../../src/agents/index.js')>(
+    '../../src/agents/index.js'
+  )
   return {
     ...actual,
     processSummaryOutput: vi.fn().mockReturnValue({
@@ -101,18 +103,20 @@ function buildState(
     genre: 'default',
     totalChapters: 3,
     currentChapterIndex: 0,
-    chapters: [{
-      id: 'ch-1',
-      storyId: 'test-story',
-      number: 1,
-      title: '启程',
-      outline: '主角离开家乡。',
-      summary: null,
-      foreshadows: null,
-      status: 'drafting',
-      createdAt: 0,
-      updatedAt: 0,
-    }],
+    chapters: [
+      {
+        id: 'ch-1',
+        storyId: 'test-story',
+        number: 1,
+        title: '启程',
+        outline: '主角离开家乡。',
+        summary: null,
+        foreshadows: null,
+        status: 'drafting',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ],
     chapterSummaries: [],
     foreshadowStack: [],
     outline: [
@@ -123,12 +127,29 @@ function buildState(
     storyArc: {
       totalChapters: 3,
       acts: [
-        { index: 1, startChapter: 1, endChapter: 3, title: '启程', theme: '出发', function: '建立动机', mandatoryBeats: ['主角离开家乡'] },
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: '启程',
+          theme: '出发',
+          function: '建立动机',
+          mandatoryBeats: ['主角离开家乡'],
+        },
       ],
       keyBeats: [],
     },
     actProgress: { 1: { consumed: [], pending: ['主角离开家乡'] } },
-    characters: [{ id: 'char-1', storyId: 'test-story', name: '主角', description: '主角', dialogueStyle: null, createdAt: 0 }],
+    characters: [
+      {
+        id: 'char-1',
+        storyId: 'test-story',
+        name: '主角',
+        description: '主角',
+        dialogueStyle: null,
+        createdAt: 0,
+      },
+    ],
     world: null,
     storyState: createEmptyStoryState(),
     pendingIssues: [],
@@ -158,7 +179,17 @@ describe('chapter report generation', () => {
     await fs.writeFile(
       path.join(tmpDir, 'meta.json'),
       JSON.stringify({
-        story: { id: 'test-story', title: 'Test', outputDir: tmpDir, genre: 'default', totalChapters: 3, status: 'writing', provider: 'openai', createdAt: 0, updatedAt: 0 },
+        story: {
+          id: 'test-story',
+          title: 'Test',
+          outputDir: tmpDir,
+          genre: 'default',
+          totalChapters: 3,
+          status: 'writing',
+          provider: 'openai',
+          createdAt: 0,
+          updatedAt: 0,
+        },
         world: null,
         characters: [],
         outline: [],
@@ -185,7 +216,10 @@ describe('chapter report generation', () => {
     expect(result.chapterReport!.wordCount).toBeGreaterThan(0)
 
     const reportPath = path.join(tmpDir, 'reports', 'chapter_1.report.json')
-    const exists = await fs.access(reportPath).then(() => true).catch(() => false)
+    const exists = await fs
+      .access(reportPath)
+      .then(() => true)
+      .catch(() => false)
     expect(exists).toBe(true)
 
     const saved = JSON.parse(await fs.readFile(reportPath, 'utf-8'))
@@ -342,10 +376,10 @@ describe('chapter report generation', () => {
     const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.actProgress?.[1]?.consumed).not.toContain('主角离开家乡')
-    const warning = result.pendingIssues?.find(i => i.type === 'outline_coverage')
+    const warning = result.pendingIssues?.find((i) => i.type === 'outline_coverage')
     expect(warning).toBeDefined()
     expect(warning?.description).toContain('主角离开家乡')
-    expect(result.chapterReport?.issues.some(i => i.type === 'outline_coverage')).toBe(true)
+    expect(result.chapterReport?.issues.some((i) => i.type === 'outline_coverage')).toBe(true)
   })
 
   it('clears stale outline coverage warning when its beat becomes verified', async () => {
@@ -355,7 +389,8 @@ describe('chapter report generation', () => {
           id: 'unverified-beat-1-0',
           type: 'outline_coverage',
           severity: 'warning',
-          description: '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
+          description:
+            '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
         },
       ],
       outline: [
@@ -373,8 +408,8 @@ describe('chapter report generation', () => {
     const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
-    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
-    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
+    expect(result.pendingIssues?.some((i) => i.id === 'unverified-beat-1-0')).toBe(false)
+    expect(result.chapterReport?.issues.some((i) => i.id === 'unverified-beat-1-0')).toBe(false)
   })
 
   it('clears stale outline coverage warning from a past act', async () => {
@@ -414,8 +449,24 @@ describe('chapter report generation', () => {
       storyArc: {
         totalChapters: 3,
         acts: [
-          { index: 1, startChapter: 1, endChapter: 1, title: '启程', theme: '出发', function: '建立动机', mandatoryBeats: ['主角离开家乡'] },
-          { index: 2, startChapter: 2, endChapter: 3, title: '遇敌', theme: '对抗', function: '升级冲突', mandatoryBeats: ['反派首次施压'] },
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '启程',
+            theme: '出发',
+            function: '建立动机',
+            mandatoryBeats: ['主角离开家乡'],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 3,
+            title: '遇敌',
+            theme: '对抗',
+            function: '升级冲突',
+            mandatoryBeats: ['反派首次施压'],
+          },
         ],
         keyBeats: [],
       },
@@ -428,7 +479,8 @@ describe('chapter report generation', () => {
           id: 'unverified-beat-1-0',
           type: 'outline_coverage',
           severity: 'warning',
-          description: '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
+          description:
+            '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
         },
       ],
       outline: [
@@ -445,8 +497,8 @@ describe('chapter report generation', () => {
 
     const result = await finalize_chapter(createMockContext(), state)
 
-    expect(result.pendingIssues?.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
-    expect(result.chapterReport?.issues.some(i => i.id === 'unverified-beat-1-0')).toBe(false)
+    expect(result.pendingIssues?.some((i) => i.id === 'unverified-beat-1-0')).toBe(false)
+    expect(result.chapterReport?.issues.some((i) => i.id === 'unverified-beat-1-0')).toBe(false)
   })
 
   it('syncs total chapters and empty slots when auto act extension shifts following acts', async () => {
@@ -460,7 +512,13 @@ describe('chapter report generation', () => {
       'utf-8'
     )
     const state = buildState(tmpDir, {
-      story: { id: 'test-story', title: 'Test', outputDir: tmpDir, genre: 'default', totalChapters: 6 },
+      story: {
+        id: 'test-story',
+        title: 'Test',
+        outputDir: tmpDir,
+        genre: 'default',
+        totalChapters: 6,
+      },
       totalChapters: 6,
       currentChapterIndex: 1,
       chapters: [
@@ -500,8 +558,24 @@ describe('chapter report generation', () => {
       storyArc: {
         totalChapters: 6,
         acts: [
-          { index: 1, startChapter: 1, endChapter: 3, title: '启程', theme: '出发', function: '建立动机', mandatoryBeats: ['主角离开家乡', '反派首次施压'] },
-          { index: 2, startChapter: 4, endChapter: 6, title: '反击', theme: '对抗', function: '升级冲突', mandatoryBeats: ['主角反击'] },
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 3,
+            title: '启程',
+            theme: '出发',
+            function: '建立动机',
+            mandatoryBeats: ['主角离开家乡', '反派首次施压'],
+          },
+          {
+            index: 2,
+            startChapter: 4,
+            endChapter: 6,
+            title: '反击',
+            theme: '对抗',
+            function: '升级冲突',
+            mandatoryBeats: ['主角反击'],
+          },
         ],
         keyBeats: [],
       },
@@ -515,7 +589,7 @@ describe('chapter report generation', () => {
     expect(result.story?.totalChapters).toBe(8)
     expect(result.outline).toHaveLength(8)
     expect(result.chapters).toHaveLength(8)
-    expect(result.storyArc?.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
       [1, 5],
       [6, 8],
     ])

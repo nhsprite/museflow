@@ -1,7 +1,7 @@
 export interface StateSnapshot {
   id: string
   storyId: string
-  chapterNumber: number | null  // null for story-level snapshots
+  chapterNumber: number | null // null for story-level snapshots
   snapshotType: 'chapter_complete' | 'story_init' | 'checkpoint'
 
   // Story state at this point
@@ -19,5 +19,5 @@ export interface StateSnapshot {
 
   // Metadata
   createdAt: number
-  stateJson: string | null  // Full serialized state for recovery (optional, can be large)
+  stateJson: string | null // Full serialized state for recovery (optional, can be large)
 }

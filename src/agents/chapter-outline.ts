@@ -55,7 +55,11 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
       : '<next_act_boundary>（已无后续幕）</next_act_boundary>'
 
     const planningConfig = getChapterPlanningConfig(state.genre)
-    const closingPhaseSection = isClosingPhase(state.totalChapters, chapterIndex, planningConfig.closingPhaseRatio)
+    const closingPhaseSection = isClosingPhase(
+      state.totalChapters,
+      chapterIndex,
+      planningConfig.closingPhaseRatio
+    )
       ? `<closing_phase>
 【全书收尾阶段】本书仅剩 ${state.totalChapters - chapterIndex} 章结束。
 - 禁止引入新的主要支线、新角色或新的未解悬念。
@@ -79,13 +83,15 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
   private getCurrentAct(storyArc: StoryArc | undefined, chapterIndex: number): ActArc | undefined {
     if (!storyArc) return undefined
     const chapterNumber = chapterIndex + 1
-    return storyArc.acts.find(a => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
+    return storyArc.acts.find(
+      (a) => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter
+    )
   }
 
   private getNextAct(storyArc: StoryArc | undefined, chapterIndex: number): ActArc | undefined {
     if (!storyArc) return undefined
     const chapterNumber = chapterIndex + 1
-    return storyArc.acts.find(a => a.startChapter > chapterNumber)
+    return storyArc.acts.find((a) => a.startChapter > chapterNumber)
   }
 
   protected parse(content: string): AgentOutput {
@@ -112,10 +118,14 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
         title: data.title.trim(),
         description: data.description.trim(),
         introducedCharacters: Array.isArray(data.introducedCharacters)
-          ? data.introducedCharacters.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+          ? data.introducedCharacters.filter(
+              (name): name is string => typeof name === 'string' && name.trim().length > 0
+            )
           : undefined,
         claimedBeats: Array.isArray(data.claimedBeats)
-          ? data.claimedBeats.filter((beat): beat is string => typeof beat === 'string' && beat.trim().length > 0)
+          ? data.claimedBeats.filter(
+              (beat): beat is string => typeof beat === 'string' && beat.trim().length > 0
+            )
           : undefined,
         conflict: data.conflict === true,
         conflictReason: data.conflictReason ?? '',

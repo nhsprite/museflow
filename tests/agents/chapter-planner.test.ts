@@ -13,7 +13,9 @@ function createMockProvider(): ModelProvider {
   }
 }
 
-class TestableChapterPlannerAgent extends (await import('../../src/agents/chapter-planner.ts')).ChapterPlannerAgent {
+class TestableChapterPlannerAgent
+  extends (await import('../../src/agents/chapter-planner.ts')).ChapterPlannerAgent
+{
   public exposePrompt(state: Required<ChapterPlannerAgentInput>): Message[] {
     return this.buildPrompt(state)
   }
@@ -152,12 +154,14 @@ describe('ChapterPlannerAgent issues integration', () => {
       chapterIndex: 1,
       foreshadowStack: [],
       chapterSummaries: [],
-      issues: [{
-        id: 'issue-1',
-        type: 'consistency',
-        severity: 'error',
-        description: '前文设定存在互相冲突的来源记录',
-      }],
+      issues: [
+        {
+          id: 'issue-1',
+          type: 'consistency',
+          severity: 'error',
+          description: '前文设定存在互相冲突的来源记录',
+        },
+      ],
     })
 
     const userMessage = messages[1]?.content ?? ''
@@ -279,21 +283,23 @@ describe('ChapterPlannerAgent issues integration', () => {
   })
 
   it('parses chapterTimeAnchor from planner JSON output', async () => {
-    mockChat.mockResolvedValueOnce(JSON.stringify({
-      sections: [
-        {
-          title: '开头',
-          summary: '主角醒来',
-          wordCount: 500,
-          events: ['主角醒来'],
-          characters: ['主角'],
-          timeMark: '三日后',
-        },
-      ],
-      timeline: [{ event: '主角醒来', time: '三日后', notes: '' }],
-      outlineCheck: [{ requirement: '主角醒来', fulfilled: true, section: '开头' }],
-      chapterTimeAnchor: '三日后（跨越三日）',
-    }))
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: [
+          {
+            title: '开头',
+            summary: '主角醒来',
+            wordCount: 500,
+            events: ['主角醒来'],
+            characters: ['主角'],
+            timeMark: '三日后',
+          },
+        ],
+        timeline: [{ event: '主角醒来', time: '三日后', notes: '' }],
+        outlineCheck: [{ requirement: '主角醒来', fulfilled: true, section: '开头' }],
+        chapterTimeAnchor: '三日后（跨越三日）',
+      })
+    )
 
     const agent = new TestableChapterPlannerAgent(createMockProvider())
     const output = await agent.run({
@@ -341,7 +347,9 @@ describe('ChapterPlannerAgent JSON repair', () => {
 
   it('repairs literal tabs inside JSON string values', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
-    const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要\t带制表符",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
+    const output = agent.parseOutput(
+      `{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要\t带制表符",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`
+    )
 
     expect(output.success).toBe(true)
     const data = output.data as { sections: Array<{ summary: string }> }
@@ -350,7 +358,9 @@ describe('ChapterPlannerAgent JSON repair', () => {
 
   it('repairs malformed closing single quote converted from smart quote', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
-    const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "陈裕堂线缓兵三日，但苏半城未承诺' }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
+    const output = agent.parseOutput(
+      `{\n  "sections": [{\n    "title": "段落",\n    "summary": "摘要",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "陈裕堂线缓兵三日，但苏半城未承诺' }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`
+    )
 
     expect(output.success).toBe(true)
     const data = output.data as { timeline: Array<{ notes: string }> }
@@ -359,7 +369,9 @@ describe('ChapterPlannerAgent JSON repair', () => {
 
   it('keeps legitimate single quotes inside JSON string values untouched', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
-    const output = agent.parseOutput(`{\n  "sections": [{\n    "title": "段落",\n    "summary": "It's a test",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`)
+    const output = agent.parseOutput(
+      `{\n  "sections": [{\n    "title": "段落",\n    "summary": "It's a test",\n    "wordCount": 100,\n    "events": ["事件"],\n    "characters": ["角色"],\n    "timeMark": "初六"\n  }],\n  "timeline": [{ "event": "事件", "time": "初六", "notes": "备注" }],\n  "outlineCheck": [{"requirement": "测试", "fulfilled": true, "section": "段落"}],\n  "chapterTimeAnchor": "初六"\n}`
+    )
 
     expect(output.success).toBe(true)
     const data = output.data as { sections: Array<{ summary: string }> }

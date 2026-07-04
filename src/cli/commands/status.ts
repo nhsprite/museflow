@@ -31,9 +31,8 @@ export async function status(storyId?: string): Promise<void> {
     printChapterProgress(state)
 
     const storyDir = state.story?.outputDir
-    const chapterIssues = storyDir && existsSync(storyDir)
-      ? await getChapterIssues(storyDir, state.totalChapters)
-      : []
+    const chapterIssues =
+      storyDir && existsSync(storyDir) ? await getChapterIssues(storyDir, state.totalChapters) : []
     printPendingIssues(state, chapterIssues)
 
     printWorldBuildingStatus(state)

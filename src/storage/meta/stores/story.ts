@@ -5,8 +5,7 @@ import { renameSync, existsSync, mkdirSync, readdirSync, rmSync, readFileSync } 
 import { join } from 'node:path'
 import { readMetaJsonSync, writeMetaJsonSync, type StoryMeta } from '../index.js'
 
-export async function initStoryDb(): Promise<void> {
-}
+export async function initStoryDb(): Promise<void> {}
 
 export function createStory(input: StoryCreateInput): Story {
   const now = Date.now()

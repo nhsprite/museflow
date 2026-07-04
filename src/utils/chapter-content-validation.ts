@@ -16,9 +16,20 @@ interface ValidationResult {
 }
 
 const CHINESE_NUMERALS: Record<string, number> = {
-  '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
-  '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
-  '百': 100, '千': 1000, '万': 10000,
+  零: 0,
+  一: 1,
+  二: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+  十: 10,
+  百: 100,
+  千: 1000,
+  万: 10000,
 }
 
 /** 章节标题中允许的数字字符类（中文数字 + 阿拉伯数字）。 */
@@ -31,9 +42,9 @@ const CHAPTER_NUMERAL_CLASS = '[一二三四五六七八九十百千万零\\d]+'
  */
 export const CHAPTER_HEADING_PATTERN = new RegExp(
   `^(#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*章[\\s:：]?|` +
-  `#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*部分[\\s:：]?|` +
-  `#{1,2}\\s+${CHAPTER_NUMERAL_CLASS}[.、]\\s+|` +
-  `#{1,2}\\s+章节?\\s*${CHAPTER_NUMERAL_CLASS})`,
+    `#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*部分[\\s:：]?|` +
+    `#{1,2}\\s+${CHAPTER_NUMERAL_CLASS}[.、]\\s+|` +
+    `#{1,2}\\s+章节?\\s*${CHAPTER_NUMERAL_CLASS})`,
   'm'
 )
 
@@ -123,7 +134,11 @@ export async function validateFixedChapterContent(
   options: ValidationOptions,
   provider?: ModelProvider
 ): Promise<ValidationResult> {
-  const { chapterIndex, minWordCount = DEFAULT_CHAPTER_WORD_COUNT_MIN, maxWordCount = DEFAULT_CHAPTER_WORD_COUNT_MAX } = options
+  const {
+    chapterIndex,
+    minWordCount = DEFAULT_CHAPTER_WORD_COUNT_MIN,
+    maxWordCount = DEFAULT_CHAPTER_WORD_COUNT_MAX,
+  } = options
 
   if (!rawContent || rawContent.trim().length === 0) {
     return { valid: false, error: '修复后的内容为空' }

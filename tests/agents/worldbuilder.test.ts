@@ -8,14 +8,15 @@ function createMockProvider(chatResponse?: string): ModelProvider {
   }
 }
 
-class TestableWorldbuilderAgent extends (await import('../../src/agents/worldbuilder.ts')).WorldbuilderAgent {
+class TestableWorldbuilderAgent
+  extends (await import('../../src/agents/worldbuilder.ts')).WorldbuilderAgent
+{
   public exposeParse(content: string) {
     return this.parse(content)
   }
 }
 
 describe('WorldbuilderAgent parse', () => {
-
   it('returns success:true with fallback when AI returns garbage with no JSON', () => {
     const agent = new TestableWorldbuilderAgent(createMockProvider())
     const result = agent.exposeParse('我不是洗衣精')

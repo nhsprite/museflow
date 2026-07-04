@@ -7,7 +7,7 @@ export interface LocationInfo {
 }
 
 export function splitIntoParagraphs(text: string): string[] {
-  return text.split(/\n\n+/).filter(p => p.trim().length > 0)
+  return text.split(/\n\n+/).filter((p) => p.trim().length > 0)
 }
 
 export function extractLocationInfo(issue: { locationRef?: IssueLocationRef }): LocationInfo[] {
@@ -29,16 +29,23 @@ function isValidIndex(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
-export function findAffectedParagraphs(paragraphs: string[], issues: Array<{ locationRef?: IssueLocationRef }>): number[] {
+export function findAffectedParagraphs(
+  paragraphs: string[],
+  issues: Array<{ locationRef?: IssueLocationRef }>
+): number[] {
   const affected = new Set<number>()
 
   for (const issue of issues) {
     const locations = extractLocationInfo(issue)
-    const hasExplicitLocation = locations.some(l => l.paragraphIndex !== undefined)
+    const hasExplicitLocation = locations.some((l) => l.paragraphIndex !== undefined)
 
     if (hasExplicitLocation) {
       for (const loc of locations) {
-        if (loc.paragraphIndex !== undefined && loc.paragraphIndex >= 0 && loc.paragraphIndex < paragraphs.length) {
+        if (
+          loc.paragraphIndex !== undefined &&
+          loc.paragraphIndex >= 0 &&
+          loc.paragraphIndex < paragraphs.length
+        ) {
           affected.add(loc.paragraphIndex)
         }
       }
@@ -52,19 +59,26 @@ export function findAffectedParagraphs(paragraphs: string[], issues: Array<{ loc
 export function splitParagraphIntoSentences(paragraph: string): string[] {
   const matches = [...paragraph.matchAll(/[^。！？\n]+[。！？\n]?/g)]
   if (matches.length === 0) return [paragraph]
-  return matches.map(m => m[0]).filter(s => s.trim().length > 0)
+  return matches.map((m) => m[0]).filter((s) => s.trim().length > 0)
 }
 
-export function findAffectedSentences(paragraph: string, issue: { locationRef?: IssueLocationRef }): number[] {
+export function findAffectedSentences(
+  paragraph: string,
+  issue: { locationRef?: IssueLocationRef }
+): number[] {
   const sentences = splitParagraphIntoSentences(paragraph)
   const affected = new Set<number>()
 
   const locations = extractLocationInfo(issue)
-  const hasSentenceLocation = locations.some(l => l.sentenceIndex !== undefined)
+  const hasSentenceLocation = locations.some((l) => l.sentenceIndex !== undefined)
 
   if (hasSentenceLocation) {
     for (const loc of locations) {
-      if (loc.sentenceIndex !== undefined && loc.sentenceIndex >= 0 && loc.sentenceIndex < sentences.length) {
+      if (
+        loc.sentenceIndex !== undefined &&
+        loc.sentenceIndex >= 0 &&
+        loc.sentenceIndex < sentences.length
+      ) {
         affected.add(loc.sentenceIndex)
       }
     }
@@ -79,9 +93,9 @@ export function mergeSentenceFixes(
   modifiedSentences: Array<{ index: number; content: string }>
 ): string {
   const sentences = splitParagraphIntoSentences(originalParagraph)
-  const modifiedMap = new Map(modifiedSentences.map(s => [s.index, s.content]))
+  const modifiedMap = new Map(modifiedSentences.map((s) => [s.index, s.content]))
 
-  const result = sentences.map((s, i) => modifiedMap.has(i) ? modifiedMap.get(i)! : s)
+  const result = sentences.map((s, i) => (modifiedMap.has(i) ? modifiedMap.get(i)! : s))
   return result.join('')
 }
 
@@ -91,7 +105,7 @@ export function mergeParagraphFixes(
   affectedIndices: number[]
 ): string {
   const result = [...originalParagraphs]
-  const modifiedMap = new Map(modifiedParagraphs.map(p => [p.index, p.content]))
+  const modifiedMap = new Map(modifiedParagraphs.map((p) => [p.index, p.content]))
 
   for (const idx of affectedIndices) {
     if (modifiedMap.has(idx)) {

@@ -64,12 +64,11 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
     const currentChapter = chapterIndex + 1
     const planningConfig = getChapterPlanningConfig('default')
     const defaultFulfillDistance = Math.round(
-      (planningConfig.foreshadowMinFulfillDistance + planningConfig.foreshadowMaxFulfillDistance) / 2
+      (planningConfig.foreshadowMinFulfillDistance + planningConfig.foreshadowMaxFulfillDistance) /
+        2
     )
 
-    const fulfilledIds = new Set(
-      (data.fulfilled_foreshadows ?? []).map(item => String(item))
-    )
+    const fulfilledIds = new Set((data.fulfilled_foreshadows ?? []).map((item) => String(item)))
 
     const updatedStack: ForeshadowItem[] = existingStack.map((item, index) => {
       if (item.fulfilledChapter) return item
@@ -85,14 +84,17 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
     })
 
     const newItems = (data.new_foreshadows || [])
-      .filter(item => typeof item.text === 'string' && item.text.trim().length > 0)
-      .map(item => {
+      .filter((item) => typeof item.text === 'string' && item.text.trim().length > 0)
+      .map((item) => {
         const rawExpected = item.expected_fulfill_chapter ?? currentChapter + defaultFulfillDistance
         const farFutureCap = Math.min(
           currentChapter + planningConfig.foreshadowMaxFulfillDistance,
           this.lastTotalChapters ?? currentChapter + planningConfig.foreshadowMaxFulfillDistance
         )
-        const expectedFulfillChapter = Math.max(currentChapter + planningConfig.foreshadowMinFulfillDistance, Math.min(rawExpected, farFutureCap))
+        const expectedFulfillChapter = Math.max(
+          currentChapter + planningConfig.foreshadowMinFulfillDistance,
+          Math.min(rawExpected, farFutureCap)
+        )
         return {
           id: generateId(),
           text: item.text!.trim(),
@@ -105,8 +107,8 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
         }
       })
 
-    const unfufilled = updatedStack.filter(item => !item.fulfilledChapter)
-    const fulfilled = updatedStack.filter(item => item.fulfilledChapter)
+    const unfufilled = updatedStack.filter((item) => !item.fulfilledChapter)
+    const fulfilled = updatedStack.filter((item) => item.fulfilledChapter)
     const merged = [...unfufilled, ...fulfilled, ...newItems]
     return merged.slice(0, planningConfig.foreshadowMaxStackSize)
   }

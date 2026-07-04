@@ -12,7 +12,7 @@ function createMockProvider(): ModelProvider {
   return {
     chat: vi.fn().mockResolvedValue(''),
     chatStructured: vi.fn().mockImplementation(async (messages: Array<{ content?: string }>) => {
-      capturedContinuityPrompt = messages.map(m => m.content ?? '').join('\n')
+      capturedContinuityPrompt = messages.map((m) => m.content ?? '').join('\n')
       return continuityCheckResponse
     }),
   }
@@ -51,7 +51,10 @@ vi.mock('../../src/agents/index.js', () => ({
   ChapterPlannerAgent: class {},
   ForeshadowingAgent: class {
     async run() {
-      return { success: true, data: { new_foreshadows: [], fulfilled_foreshadows: [], overdue_foreshadows: [] } }
+      return {
+        success: true,
+        data: { new_foreshadows: [], fulfilled_foreshadows: [], overdue_foreshadows: [] },
+      }
     }
 
     processOutput(_output: unknown, _chapterIndex: number, existingStack: unknown[]) {
@@ -59,7 +62,13 @@ vi.mock('../../src/agents/index.js', () => ({
     }
   },
   ConsistencyAgent: class {
-    async run(state: { storyState?: string; outline?: string; timelineSnapshot?: string; previousChapters?: string; issues?: unknown[] }) {
+    async run(state: {
+      storyState?: string
+      outline?: string
+      timelineSnapshot?: string
+      previousChapters?: string
+      issues?: unknown[]
+    }) {
       capturedStoryState = state.storyState ?? ''
       capturedOutline = state.outline ?? ''
       capturedTimelineSnapshot = state.timelineSnapshot ?? ''
@@ -129,7 +138,22 @@ describe('detect_consistency validation context', () => {
         { number: 2, title: '第二章', description: '后续。' },
         { number: 3, title: '第三章', description: '结局。' },
       ],
-      chapters: [{ id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 }, null, null],
+      chapters: [
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: null,
+          outline: null,
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        null,
+        null,
+      ],
       currentChapterIndex: 0,
       foreshadowStack: [],
       chapterSummaries: [],
@@ -188,12 +212,26 @@ describe('detect_consistency validation context', () => {
 
     const state = buildBaseState()
     state.currentChapterIndex = 2
-    state.chapters[2] = { id: 'chapter-3', storyId: 'story-1', number: 3, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 }
+    state.chapters[2] = {
+      id: 'chapter-3',
+      storyId: 'story-1',
+      number: 3,
+      title: null,
+      outline: null,
+      summary: null,
+      foreshadows: null,
+      status: 'drafting',
+      createdAt: 0,
+      updatedAt: 0,
+    }
     state.chapterSummaries = [
       JSON.stringify({
         characters: [],
         characterFacts: [
-          { character: '旁白', facts: [{ text: '木之灵物位于东方灵河旧址', importance: 'critical' }] },
+          {
+            character: '旁白',
+            facts: [{ text: '木之灵物位于东方灵河旧址', importance: 'critical' }],
+          },
         ],
         keyEvents: [],
         locations: [],
@@ -204,7 +242,10 @@ describe('detect_consistency validation context', () => {
       JSON.stringify({
         characters: [],
         characterFacts: [
-          { character: '旁白', facts: [{ text: '木之灵物被转移到昆仑山', importance: 'critical' }] },
+          {
+            character: '旁白',
+            facts: [{ text: '木之灵物被转移到昆仑山', importance: 'critical' }],
+          },
         ],
         keyEvents: [],
         locations: [],
@@ -254,7 +295,22 @@ describe('detect_consistency validation context', () => {
         { number: 2, title: '第二章', description: '后续。' },
         { number: 3, title: '第三章', description: '结局。' },
       ],
-      chapters: [{ id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 }, null, null],
+      chapters: [
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: null,
+          outline: null,
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        null,
+        null,
+      ],
       currentChapterIndex: 0,
       foreshadowStack: [],
       chapterSummaries: [],
@@ -312,8 +368,30 @@ describe('detect_consistency validation context', () => {
         { number: 5, title: '第五章', description: '结局。' },
       ],
       chapters: [
-        { id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
-        { id: 'chapter-2', storyId: 'story-1', number: 2, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: null,
+          outline: null,
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        {
+          id: 'chapter-2',
+          storyId: 'story-1',
+          number: 2,
+          title: null,
+          outline: null,
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
         null,
         null,
         null,
@@ -360,8 +438,30 @@ describe('detect_consistency validation context', () => {
     const state = buildBaseState()
     state.currentChapterIndex = 1
     state.chapters = [
-      { id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: '第一章摘要', foreshadows: null, status: 'done', createdAt: 0, updatedAt: 0 },
-      { id: 'chapter-2', storyId: 'story-1', number: 2, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
+      {
+        id: 'chapter-1',
+        storyId: 'story-1',
+        number: 1,
+        title: null,
+        outline: null,
+        summary: '第一章摘要',
+        foreshadows: null,
+        status: 'done',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      {
+        id: 'chapter-2',
+        storyId: 'story-1',
+        number: 2,
+        title: null,
+        outline: null,
+        summary: null,
+        foreshadows: null,
+        status: 'drafting',
+        createdAt: 0,
+        updatedAt: 0,
+      },
       null,
     ]
     state.chapterSummaries = ['第一章摘要']
@@ -390,8 +490,30 @@ describe('detect_consistency validation context', () => {
     const state = buildBaseState()
     state.currentChapterIndex = 1
     state.chapters = [
-      { id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: '第一章摘要', foreshadows: null, status: 'done', createdAt: 0, updatedAt: 0 },
-      { id: 'chapter-2', storyId: 'story-1', number: 2, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
+      {
+        id: 'chapter-1',
+        storyId: 'story-1',
+        number: 1,
+        title: null,
+        outline: null,
+        summary: '第一章摘要',
+        foreshadows: null,
+        status: 'done',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      {
+        id: 'chapter-2',
+        storyId: 'story-1',
+        number: 2,
+        title: null,
+        outline: null,
+        summary: null,
+        foreshadows: null,
+        status: 'drafting',
+        createdAt: 0,
+        updatedAt: 0,
+      },
       null,
     ]
     readChapterContentMock.mockImplementation(async (_outputDir: string, chapterNumber: number) => {
@@ -419,9 +541,7 @@ describe('detect_consistency validation context', () => {
       ])
     )
     expect(capturedIssues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'continuity' }),
-      ])
+      expect.arrayContaining([expect.objectContaining({ type: 'continuity' })])
     )
   })
 
@@ -441,8 +561,30 @@ describe('detect_consistency validation context', () => {
     ]
     state.currentChapterIndex = 1
     state.chapters = [
-      { id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: '第一章摘要', foreshadows: null, status: 'done', createdAt: 0, updatedAt: 0 },
-      { id: 'chapter-2', storyId: 'story-1', number: 2, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
+      {
+        id: 'chapter-1',
+        storyId: 'story-1',
+        number: 1,
+        title: null,
+        outline: null,
+        summary: '第一章摘要',
+        foreshadows: null,
+        status: 'done',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      {
+        id: 'chapter-2',
+        storyId: 'story-1',
+        number: 2,
+        title: null,
+        outline: null,
+        summary: null,
+        foreshadows: null,
+        status: 'drafting',
+        createdAt: 0,
+        updatedAt: 0,
+      },
       null,
     ]
     readChapterContentMock.mockImplementation(async (_outputDir: string, chapterNumber: number) => {

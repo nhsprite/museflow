@@ -1,10 +1,4 @@
-export const CHAPTER_STATUSES = [
-  'outline',
-  'drafting',
-  'reviewing',
-  'done',
-  'error',
-] as const
+export const CHAPTER_STATUSES = ['outline', 'drafting', 'reviewing', 'done', 'error'] as const
 export type ChapterStatus = (typeof CHAPTER_STATUSES)[number]
 
 export interface ChapterMeta {

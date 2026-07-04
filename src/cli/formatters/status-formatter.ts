@@ -16,7 +16,10 @@ export interface ChapterIssue {
   }>
 }
 
-export async function getChapterIssues(outputDir: string, totalChapters: number): Promise<ChapterIssue[]> {
+export async function getChapterIssues(
+  outputDir: string,
+  totalChapters: number
+): Promise<ChapterIssue[]> {
   const service = createCheckpointService(outputDir)
   const results: ChapterIssue[] = []
 
@@ -30,7 +33,14 @@ export async function getChapterIssues(outputDir: string, totalChapters: number)
       })
       if (!tuple) continue
 
-      const values = (tuple.checkpoint as unknown as { channel_values?: { pendingIssues?: ChapterIssue['issues']; outline?: Array<{ title?: string }> } }).channel_values
+      const values = (
+        tuple.checkpoint as unknown as {
+          channel_values?: {
+            pendingIssues?: ChapterIssue['issues']
+            outline?: Array<{ title?: string }>
+          }
+        }
+      ).channel_values
       const pendingIssues = values?.pendingIssues ?? []
       const title = values?.outline?.[chapterNum - 1]?.title ?? `第${chapterNum}章`
 
@@ -65,7 +75,7 @@ export function printStoryInfo(story: Story): void {
 export function printChapterProgress(state: ReducedGraphState): void {
   const current = state.currentChapterIndex
   const total = state.totalChapters
-  const doneChapters = state.chapters.filter(c => c !== null).length
+  const doneChapters = state.chapters.filter((c) => c !== null).length
   const progress = total > 0 ? Math.round((doneChapters / total) * 100) : 0
 
   console.log(`章节进度: ${doneChapters}/${total} (${progress}%)`)
@@ -76,7 +86,9 @@ export function printChapterProgress(state: ReducedGraphState): void {
     console.log('故事弧线')
     console.log('-'.repeat(50))
     if (arcStatus.currentAct) {
-      console.log(`当前幕: 第 ${arcStatus.currentAct.index} 幕「${arcStatus.currentAct.title}」（第 ${arcStatus.currentAct.startChapter}-${arcStatus.currentAct.endChapter} 章）`)
+      console.log(
+        `当前幕: 第 ${arcStatus.currentAct.index} 幕「${arcStatus.currentAct.title}」（第 ${arcStatus.currentAct.startChapter}-${arcStatus.currentAct.endChapter} 章）`
+      )
       console.log(`本章位置: 第 ${current + 1}/${state.totalChapters} 章`)
       console.log(`收尾阶段: ${arcStatus.closingPhase ? '是' : '否'}`)
     } else {
@@ -99,17 +111,22 @@ export function printChapterProgress(state: ReducedGraphState): void {
       }
     }
     console.log('')
-    console.log(`收尾风险: ${arcStatus.riskLevel === 'low' ? '低' : arcStatus.riskLevel === 'medium' ? '中' : '高'}`)
+    console.log(
+      `收尾风险: ${arcStatus.riskLevel === 'low' ? '低' : arcStatus.riskLevel === 'medium' ? '中' : '高'}`
+    )
   }
 }
 
-export function printPendingIssues(state: ReducedGraphState, chapterIssues: ChapterIssue[] = []): void {
+export function printPendingIssues(
+  state: ReducedGraphState,
+  chapterIssues: ChapterIssue[] = []
+): void {
   if (state.pendingIssues.length === 0) return
 
   console.log(`待处理问题: ${state.pendingIssues.length}`)
-  const errors = state.pendingIssues.filter(i => i.severity === 'error')
-  const warnings = state.pendingIssues.filter(i => i.severity === 'warning')
-  const infos = state.pendingIssues.filter(i => i.severity === 'info')
+  const errors = state.pendingIssues.filter((i) => i.severity === 'error')
+  const warnings = state.pendingIssues.filter((i) => i.severity === 'warning')
+  const infos = state.pendingIssues.filter((i) => i.severity === 'info')
   if (errors.length > 0) console.log(`  - 严重问题: ${errors.length}`)
   if (warnings.length > 0) console.log(`  - 警告: ${warnings.length}`)
   if (infos.length > 0) console.log(`  - 提示: ${infos.length}`)
@@ -136,9 +153,9 @@ export function printPendingIssues(state: ReducedGraphState, chapterIssues: Chap
     console.log('')
     console.log('  各章节问题汇总:')
     for (const ci of chapterIssues) {
-      const errorCount = ci.issues.filter(i => i.severity === 'error').length
-      const warningCount = ci.issues.filter(i => i.severity === 'warning').length
-      const infoCount = ci.issues.filter(i => i.severity === 'info').length
+      const errorCount = ci.issues.filter((i) => i.severity === 'error').length
+      const warningCount = ci.issues.filter((i) => i.severity === 'warning').length
+      const infoCount = ci.issues.filter((i) => i.severity === 'info').length
       const parts = []
       if (errorCount > 0) parts.push(`${errorCount} 个错误`)
       if (warningCount > 0) parts.push(`${warningCount} 个警告`)
@@ -173,8 +190,8 @@ export function printForeshadowStatus(state: ReducedGraphState): void {
   console.log('')
   if (state.foreshadowStack.length === 0) return
 
-  const unfulfilled = state.foreshadowStack.filter(f => !f.fulfilledChapter)
-  const fulfilled = state.foreshadowStack.filter(f => f.fulfilledChapter)
+  const unfulfilled = state.foreshadowStack.filter((f) => !f.fulfilledChapter)
+  const fulfilled = state.foreshadowStack.filter((f) => f.fulfilledChapter)
   console.log(`伏笔: ${fulfilled.length} 个已回收, ${unfulfilled.length} 个待回收`)
 
   if (unfulfilled.length > 0) {
@@ -188,7 +205,9 @@ export function printForeshadowStatus(state: ReducedGraphState): void {
     console.log('已回收伏笔:')
     for (const fs of fulfilled.slice(0, 5)) {
       const createdCh = fs.createdAtChapter || '?'
-      console.log(`  ✓ "${fs.text.substring(0, 40)}..." (第${createdCh}章埋下 → 第${fs.fulfilledChapter}章回收)`)
+      console.log(
+        `  ✓ "${fs.text.substring(0, 40)}..." (第${createdCh}章埋下 → 第${fs.fulfilledChapter}章回收)`
+      )
     }
     if (fulfilled.length > 5) {
       console.log(`  ... 还有 ${fulfilled.length - 5} 个`)

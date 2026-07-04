@@ -10,7 +10,9 @@ function createMockProvider(chatResponse?: string): ModelProvider {
   }
 }
 
-class TestableConsistencyAgent extends (await import('../../src/agents/consistency.ts')).ConsistencyAgent {
+class TestableConsistencyAgent
+  extends (await import('../../src/agents/consistency.ts')).ConsistencyAgent
+{
   public exposePrompt(state: Required<ConsistencyAgentInput>): Message[] {
     return this.buildPrompt(state)
   }
@@ -53,8 +55,22 @@ describe('ConsistencyAgent outline-authorized facts', () => {
   it('includes outline-authorized facts in prompt', () => {
     const agent = new TestableConsistencyAgent(createMockProvider())
     const canonicalFacts: CanonicalFact[] = [
-      { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 2, source: 'outline' },
-      { id: 'f2', subject: '密信', attribute: '来源', value: '旧友暗中递送', establishedIn: 2, source: 'outline' },
+      {
+        id: 'f1',
+        subject: '主角',
+        attribute: '所在位置',
+        value: '废弃仓库',
+        establishedIn: 2,
+        source: 'outline',
+      },
+      {
+        id: 'f2',
+        subject: '密信',
+        attribute: '来源',
+        value: '旧友暗中递送',
+        establishedIn: 2,
+        source: 'outline',
+      },
     ]
 
     const messages = agent.exposePrompt({
@@ -125,7 +141,11 @@ describe('ConsistencyAgent canonical facts authority', () => {
     })
 
     const userMessage = messages[1]?.content ?? ''
-    expect(userMessage).toContain('一致性检查必须以本区域中的【权威事实】和【已被覆盖的旧事实】为准')
-    expect(userMessage).toContain('如果本章内容与【权威事实】中的当前有效值一致，即使与旧摘要或旧时间线中的旧值不同，也不构成矛盾')
+    expect(userMessage).toContain(
+      '一致性检查必须以本区域中的【权威事实】和【已被覆盖的旧事实】为准'
+    )
+    expect(userMessage).toContain(
+      '如果本章内容与【权威事实】中的当前有效值一致，即使与旧摘要或旧时间线中的旧值不同，也不构成矛盾'
+    )
   })
 })

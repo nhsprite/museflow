@@ -97,10 +97,12 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
     const nextChapter = currentChapter + 1
 
     if (currentChapter < totalChapters) {
-      console.log(`\n[MuseFlow] 第 ${completedChapter}/${totalChapters} 章已完成，待撰写: 第 ${nextChapter} 章`)
+      console.log(
+        `\n[MuseFlow] 第 ${completedChapter}/${totalChapters} 章已完成，待撰写: 第 ${nextChapter} 章`
+      )
 
       if (result.pendingIssues.length > 0) {
-        const errors = result.pendingIssues.filter(i => i.severity === 'error')
+        const errors = result.pendingIssues.filter((i) => i.severity === 'error')
         if (errors.length > 0) {
           console.log(`\n[MuseFlow] 发现 ${errors.length} 个严重问题：`)
           for (const err of errors) {
@@ -124,7 +126,6 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
     }
 
     console.log('\n[MuseFlow] 使用 "museflow status" 查看进度')
-
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
     updateStatus('error')

@@ -1,11 +1,7 @@
 import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
 
 export type RoutingDecision =
-  | 'draft_chapter'
-  | 'fix_chapter'
-  | 'finalize_chapter'
-  | 'request_rewrite'
-  | 'decide_strategy'
+  'draft_chapter' | 'fix_chapter' | 'finalize_chapter' | 'request_rewrite' | 'decide_strategy'
 
 export interface RewriteRoutingConfig {
   maxErrorRewriteAttempts: number

@@ -20,7 +20,7 @@ async function ensureStoryDir(outputDir: string): Promise<void> {
 export async function writeChapterContent(
   outputDir: string,
   chapterNumber: number,
-  content: string,
+  content: string
 ): Promise<void> {
   await ensureStoryDir(outputDir)
   const filePath = getChapterFilePath(outputDir, chapterNumber)
@@ -32,7 +32,7 @@ export async function writeChapterContent(
 
 export async function deleteChapterContent(
   outputDir: string,
-  chapterNumber: number,
+  chapterNumber: number
 ): Promise<void> {
   const filePath = getChapterFilePath(outputDir, chapterNumber)
   try {
@@ -47,8 +47,13 @@ export async function deleteChapterContent(
 export async function writeOutlineContent(
   outputDir: string,
   storyTitle: string,
-  outline: { number: number; title: string; description: string; introducedCharacters?: string[] }[],
-  storyArc?: StoryArc | null,
+  outline: {
+    number: number
+    title: string
+    description: string
+    introducedCharacters?: string[]
+  }[],
+  storyArc?: StoryArc | null
 ): Promise<void> {
   await ensureStoryDir(outputDir)
   const lines: string[] = [`# ${storyTitle || '故事大纲'}`, '']
@@ -59,11 +64,15 @@ export async function writeOutlineContent(
     lines.push('| 幕 | 章节范围 | 标题 | 主题 | 叙事功能 |', '')
     lines.push('|---|---|---|---|---|', '')
     for (const act of storyArc.acts) {
-      lines.push(`| ${act.index} | ${act.startChapter}-${act.endChapter} | ${act.title} | ${act.theme} | ${act.function} |`)
+      lines.push(
+        `| ${act.index} | ${act.startChapter}-${act.endChapter} | ${act.title} | ${act.theme} | ${act.function} |`
+      )
     }
     lines.push('', '### Mandatory Beats', '')
     for (const act of storyArc.acts) {
-      lines.push(`**第 ${act.index} 幕「${act.title}」**：${act.mandatoryBeats.join('、') || '（无）'}`)
+      lines.push(
+        `**第 ${act.index} 幕「${act.title}」**：${act.mandatoryBeats.join('、') || '（无）'}`
+      )
     }
     if (storyArc.keyBeats.length > 0) {
       lines.push('', '### Key Beats（全局）', '')
@@ -98,7 +107,7 @@ export async function writeOutlineContent(
 
 export async function readChapterContent(
   outputDir: string,
-  chapterNumber: number,
+  chapterNumber: number
 ): Promise<string | null> {
   const filePath = getChapterFilePath(outputDir, chapterNumber)
   if (!existsSync(filePath)) return null
@@ -110,9 +119,9 @@ export async function listChapterFiles(outputDir: string): Promise<number[]> {
   const chaptersDir = join(outputDir, 'chapters')
   if (!existsSync(chaptersDir)) return []
 
-  const files = readdirSync(chaptersDir).filter(f => f.endsWith('.md'))
+  const files = readdirSync(chaptersDir).filter((f) => f.endsWith('.md'))
   const numbers = files
-    .map(f => {
+    .map((f) => {
       const m = f.match(/^chapter_(\d+)\.md$/)
       return m ? parseInt(m[1]!, 10) : null
     })
@@ -156,7 +165,7 @@ export async function writeStoryBible(
   story: StoryBibleStory,
   worldContent: string,
   characters: StoryBibleCharacter[],
-  outline: StoryBibleOutline[],
+  outline: StoryBibleOutline[]
 ): Promise<void> {
   await ensureStoryDir(outputDir)
 

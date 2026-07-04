@@ -13,7 +13,7 @@ export function createGenericVerifiedConstraint(text: string): GenericVerifiedCo
 
 export function createActPressureConstraint(
   actIndex: number,
-  text: string,
+  text: string
 ): ActPressureVerifiedConstraint {
   return { kind: 'act_pressure', actIndex, text }
 }
@@ -31,11 +31,11 @@ function isVerifiedConstraint(value: unknown): value is VerifiedConstraint {
 }
 
 export function normalizeVerifiedConstraints(
-  constraints: readonly VerifiedConstraintLike[] | undefined,
+  constraints: readonly VerifiedConstraintLike[] | undefined
 ): VerifiedConstraint[] {
   if (!constraints || constraints.length === 0) return []
 
-  return constraints.flatMap(constraint => {
+  return constraints.flatMap((constraint) => {
     if (typeof constraint === 'string') {
       return constraint.trim().length > 0 ? [createGenericVerifiedConstraint(constraint)] : []
     }
@@ -47,15 +47,15 @@ export function normalizeVerifiedConstraints(
 }
 
 export function renderVerifiedConstraints(
-  constraints: readonly VerifiedConstraintLike[] | undefined,
+  constraints: readonly VerifiedConstraintLike[] | undefined
 ): string[] {
-  return normalizeVerifiedConstraints(constraints).map(constraint => constraint.text)
+  return normalizeVerifiedConstraints(constraints).map((constraint) => constraint.text)
 }
 
 export function filterVerifiedConstraintsForChapter(
   constraints: readonly VerifiedConstraintLike[] | undefined,
   storyArc: StoryArc | null | undefined,
-  chapterIndex: number,
+  chapterIndex: number
 ): VerifiedConstraint[] {
   const normalized = normalizeVerifiedConstraints(constraints)
   if (normalized.length === 0) return []

@@ -12,7 +12,7 @@ import { isCharacterSubject } from './timeline.js'
  * 并同步更新 canonicalFacts，使后续 agent 把作者裁决视为权威事实。
  */
 export function applyAuthorOverrides(state: StoryState): StoryState {
-  const overrides = state.overrides?.filter(o => o.source === 'author') ?? []
+  const overrides = state.overrides?.filter((o) => o.source === 'author') ?? []
   if (overrides.length === 0) return state
 
   const result: StoryState = { ...state }
@@ -40,7 +40,7 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
     }
 
     const existingIndex = canonicalFacts.findIndex(
-      f => f.subject === subject && f.attribute === attribute && f.retiredIn === undefined
+      (f) => f.subject === subject && f.attribute === attribute && f.retiredIn === undefined
     )
     const fact: CanonicalFact = {
       id: existingIndex >= 0 ? canonicalFacts[existingIndex]!.id : generateId('fact'),
@@ -104,8 +104,12 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     }
   }
 
-  const mergedItems = mergeCanonicalRecords(base.keyItemsLocation, safeDelta.keyItemsLocation, { ignoreValue: '同前' })
-  const mergedItemStates = mergeCanonicalRecords(base.keyItemsState, safeDelta.keyItemsState, { ignoreValue: '同前' })
+  const mergedItems = mergeCanonicalRecords(base.keyItemsLocation, safeDelta.keyItemsLocation, {
+    ignoreValue: '同前',
+  })
+  const mergedItemStates = mergeCanonicalRecords(base.keyItemsState, safeDelta.keyItemsState, {
+    ignoreValue: '同前',
+  })
 
   const mergedPlots = [...base.activePlots]
   for (const plot of safeDelta.activePlots) {
@@ -124,7 +128,7 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
   const mergedSuperseded = [...(base.supersededFacts ?? [])]
   for (const fact of safeDelta.supersededFacts) {
     const isDuplicate = mergedSuperseded.some(
-      existing => existing.subject === fact.subject && existing.oldFact === fact.oldFact
+      (existing) => existing.subject === fact.subject && existing.oldFact === fact.oldFact
     )
     if (!isDuplicate) {
       mergedSuperseded.push(fact)
@@ -134,20 +138,22 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
   const mergedCanonicalFacts = [...(base.canonicalFacts ?? [])]
   for (const fact of safeDelta.canonicalFacts) {
     const sameValueIndex = mergedCanonicalFacts.findIndex(
-      existing =>
+      (existing) =>
         existing.subject === fact.subject &&
         existing.attribute === fact.attribute &&
         existing.value === fact.value
     )
     if (sameValueIndex >= 0) {
-      if ((fact.establishedIn ?? -1) >= (mergedCanonicalFacts[sameValueIndex]!.establishedIn ?? -1)) {
+      if (
+        (fact.establishedIn ?? -1) >= (mergedCanonicalFacts[sameValueIndex]!.establishedIn ?? -1)
+      ) {
         mergedCanonicalFacts[sameValueIndex] = fact
       }
       continue
     }
 
     const sameSubjectIndex = mergedCanonicalFacts.findIndex(
-      existing =>
+      (existing) =>
         existing.subject === fact.subject &&
         existing.attribute === fact.attribute &&
         existing.retiredIn === undefined
@@ -188,9 +194,7 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
 
   const mergedOverrides = [...(base.overrides ?? [])]
   for (const override of safeDelta.overrides) {
-    const isDuplicate = mergedOverrides.some(
-      existing => existing.id === override.id
-    )
+    const isDuplicate = mergedOverrides.some((existing) => existing.id === override.id)
     if (!isDuplicate) {
       mergedOverrides.push(override)
     }
@@ -208,7 +212,10 @@ function mergePendingTasks(existing: PendingTask[], delta: PendingTask[]): Pendi
   if (safeDelta.length === 0) return safeExisting
   const result = [...safeExisting]
   for (const task of safeDelta) {
-    const index = result.findIndex(t => t.id === task.id || (t.assignee === task.assignee && t.description === task.description))
+    const index = result.findIndex(
+      (t) =>
+        t.id === task.id || (t.assignee === task.assignee && t.description === task.description)
+    )
     if (index >= 0) {
       result[index] = { ...result[index], ...task }
     } else {
@@ -218,7 +225,10 @@ function mergePendingTasks(existing: PendingTask[], delta: PendingTask[]): Pendi
   return result
 }
 
-export function applyCanonicalFactsToState(state: StoryState, characters?: Array<{ name: string }>): StoryState {
+export function applyCanonicalFactsToState(
+  state: StoryState,
+  characters?: Array<{ name: string }>
+): StoryState {
   const result: StoryState = { ...state }
   const facts = state.canonicalFacts ?? []
 

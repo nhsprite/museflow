@@ -9,8 +9,7 @@ export async function calculateIssueSetSimilarity(
 ): Promise<number> {
   if (prev.length === 0 || curr.length === 0) return 0
 
-  const fingerprintFn =
-    issueFingerprint ?? (async issue => ruleBasedFingerprint(issue))
+  const fingerprintFn = issueFingerprint ?? (async (issue) => ruleBasedFingerprint(issue))
 
   const prevFps = await Promise.all(prev.map(fingerprintFn))
   const currFps = await Promise.all(curr.map(fingerprintFn))
@@ -40,8 +39,8 @@ export function capNonErrorIssuesByType(
   const cappedTypes: string[] = []
 
   for (const [type, list] of groups) {
-    const errors = list.filter(i => i.severity === 'error')
-    const nonErrors = list.filter(i => i.severity !== 'error')
+    const errors = list.filter((i) => i.severity === 'error')
+    const nonErrors = list.filter((i) => i.severity !== 'error')
     result.push(...errors)
     if (nonErrors.length <= maxPerType) {
       result.push(...nonErrors)
@@ -73,11 +72,7 @@ export async function applyIssuePolicy(
   }
 
   const maxPerType = deps.planningConfig.maxNonErrorIssuesPerType
-  const { result: capped, cappedTypes } = capNonErrorIssuesByType(
-    processed,
-    maxPerType,
-    deps.log
-  )
+  const { result: capped, cappedTypes } = capNonErrorIssuesByType(processed, maxPerType, deps.log)
 
   return {
     issues: capped,

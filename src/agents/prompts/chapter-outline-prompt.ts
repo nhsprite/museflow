@@ -2,7 +2,8 @@ import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { renderTemplate } from '../../utils/template.js'
 import { computePromptHash } from './version.js'
 
-const CHAPTER_OUTLINE_SYSTEM_PROMPT = '你是一位严谨的小说章节策划。你的任务是在每章动笔前，根据当前幕结构、权威事实和叙事进度，即时生成该章的具体大纲。你绝不提前执行后续幕的内容，也绝不与已确立的权威事实冲突。'
+const CHAPTER_OUTLINE_SYSTEM_PROMPT =
+  '你是一位严谨的小说章节策划。你的任务是在每章动笔前，根据当前幕结构、权威事实和叙事进度，即时生成该章的具体大纲。你绝不提前执行后续幕的内容，也绝不与已确立的权威事实冲突。'
 
 const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_NUMBER} 章生成具体的章节大纲。</task>
 
@@ -64,7 +65,7 @@ export interface ChapterOutlinePromptSections {
 
 export function buildChapterOutlineUserPrompt(
   state: import('../types.js').ChapterOutlineAgentInput,
-  sections: ChapterOutlinePromptSections,
+  sections: ChapterOutlinePromptSections
 ): string {
   const storyArc = state.storyArc
   const displayChapterNumber = toDisplayChapterNumber(state.chapterIndex ?? 0)
@@ -75,18 +76,28 @@ export function buildChapterOutlineUserPrompt(
     NEXT_ACT_SECTION: sections.nextActSection,
     CLOSING_PHASE_SECTION: sections.closingPhaseSection,
     TOTAL_CHAPTERS: state.totalChapters,
-    KEY_BEATS: storyArc?.keyBeats.map(k => `${k.beat}（截止第${k.deadlineAct}幕）`).join('、') || '（无）',
+    KEY_BEATS:
+      storyArc?.keyBeats.map((k) => `${k.beat}（截止第${k.deadlineAct}幕）`).join('、') || '（无）',
     WORLD_SECTION: state.world ? `<world>\n${state.world}\n</world>` : '',
     CHARACTERS_SECTION: state.characters ? `<characters>\n${state.characters}\n</characters>` : '',
-    PREVIOUS_SUMMARY_SECTION: state.previousChapters ? `<previous_summary>\n${state.previousChapters}\n</previous_summary>` : '',
-    STORY_STATE_SECTION: state.storyState ? `<story_state>\n${state.storyState}\n</story_state>` : '',
-    CANONICAL_FACTS_SECTION: state.canonicalFacts && state.canonicalFacts.length > 0
-      ? `<canonical_facts>\n${JSON.stringify(state.canonicalFacts, null, 2)}\n</canonical_facts>`
+    PREVIOUS_SUMMARY_SECTION: state.previousChapters
+      ? `<previous_summary>\n${state.previousChapters}\n</previous_summary>`
       : '',
-    VERIFIED_CONSTRAINTS_SECTION: state.verifiedConstraints && state.verifiedConstraints.length > 0
-      ? `<verified_constraints>\n${state.verifiedConstraints.join('\n')}\n</verified_constraints>`
+    STORY_STATE_SECTION: state.storyState
+      ? `<story_state>\n${state.storyState}\n</story_state>`
       : '',
+    CANONICAL_FACTS_SECTION:
+      state.canonicalFacts && state.canonicalFacts.length > 0
+        ? `<canonical_facts>\n${JSON.stringify(state.canonicalFacts, null, 2)}\n</canonical_facts>`
+        : '',
+    VERIFIED_CONSTRAINTS_SECTION:
+      state.verifiedConstraints && state.verifiedConstraints.length > 0
+        ? `<verified_constraints>\n${state.verifiedConstraints.join('\n')}\n</verified_constraints>`
+        : '',
   })
 }
 
-export const PROMPT_VERSION = computePromptHash(CHAPTER_OUTLINE_SYSTEM_PROMPT, CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE)
+export const PROMPT_VERSION = computePromptHash(
+  CHAPTER_OUTLINE_SYSTEM_PROMPT,
+  CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE
+)

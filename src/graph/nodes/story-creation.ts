@@ -1,11 +1,11 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
-import type { WorldbuilderAgentInput, CharacterAgentInput, StoryArcAgentInput } from '../../agents/types.js'
-import {
-  getWorldbuilderAgent,
-  getCharacterAgent,
-  getStoryArcAgent,
-} from '../agent-factory.js'
+import type {
+  WorldbuilderAgentInput,
+  CharacterAgentInput,
+  StoryArcAgentInput,
+} from '../../agents/types.js'
+import { getWorldbuilderAgent, getCharacterAgent, getStoryArcAgent } from '../agent-factory.js'
 import { generateId } from '../../utils/id.js'
 import { writeOutlineContent, writeStoryBible } from '../../storage/filesystem/writer.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../../storage/meta/stores/story.js'
@@ -135,7 +135,7 @@ export async function create_outline(
         (_, i) => ({ number: i + 1, title: '', description: '' })
       )
       const initialActProgress: ReducedGraphState['actProgress'] = Object.fromEntries(
-        storyArc.acts.map(act => [act.index, { consumed: [], pending: [...act.mandatoryBeats] }])
+        storyArc.acts.map((act) => [act.index, { consumed: [], pending: [...act.mandatoryBeats] }])
       )
       await writeOutlineContent(state.story.outputDir, state.story.title, emptyOutline, storyArc)
       await writeStoryBible(
@@ -143,7 +143,7 @@ export async function create_outline(
         state.story,
         worldContent || '',
         state.characters,
-        emptyOutline,
+        emptyOutline
       )
       return {
         storyArc,
@@ -233,7 +233,7 @@ export async function validate_outline(
 
   // 验证 keyBeats 的 deadlineAct 在有效范围内
   for (const keyBeat of storyArc.keyBeats) {
-    const maxAct = Math.max(...storyArc.acts.map(a => a.index))
+    const maxAct = Math.max(...storyArc.acts.map((a) => a.index))
     if (keyBeat.deadlineAct < 1 || keyBeat.deadlineAct > maxAct) {
       issues.push({
         id: generateId(),

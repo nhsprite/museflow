@@ -62,8 +62,18 @@ describe('JsonCheckpointer', () => {
     const cp1 = makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z')
     const cp2 = makeCheckpoint('cp-2', '2024-01-01T00:00:01.000Z')
 
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp1, makeMetadata(0), {})
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp2, makeMetadata(1), {})
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp1,
+      makeMetadata(0),
+      {}
+    )
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp2,
+      makeMetadata(1),
+      {}
+    )
 
     const tuple = await saver.getTuple({ configurable: { thread_id: TEST_STORY_ID, outputDir } })
     expect(tuple).toBeDefined()
@@ -77,8 +87,18 @@ describe('JsonCheckpointer', () => {
     const cp1 = makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z')
     const cp2 = makeCheckpoint('cp-2', '2024-01-01T00:00:01.000Z')
 
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp1, makeMetadata(0), {})
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp2, makeMetadata(1), {})
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp1,
+      makeMetadata(0),
+      {}
+    )
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp2,
+      makeMetadata(1),
+      {}
+    )
 
     const tuple = await saver.getTuple({
       configurable: { thread_id: TEST_STORY_ID, outputDir, checkpoint_id: 'cp-1' },
@@ -89,7 +109,12 @@ describe('JsonCheckpointer', () => {
   it('falls back to directory scan when latest.json is missing', async () => {
     const saver = new JsonCheckpointer()
     const cp = makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z')
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp, makeMetadata(), {})
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp,
+      makeMetadata(),
+      {}
+    )
 
     const latestPath = join(outputDir, 'checkpoints', 'latest.json')
     await rm(latestPath).catch(() => {})
@@ -104,12 +129,29 @@ describe('JsonCheckpointer', () => {
     const cp2 = makeCheckpoint('cp-2', '2024-01-01T00:00:01.000Z')
     const cp3 = makeCheckpoint('cp-3', '2024-01-01T00:00:02.000Z')
 
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp1, makeMetadata(0), {})
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp2, makeMetadata(1), {})
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp3, makeMetadata(2), {})
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp1,
+      makeMetadata(0),
+      {}
+    )
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp2,
+      makeMetadata(1),
+      {}
+    )
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp3,
+      makeMetadata(2),
+      {}
+    )
 
     const results: string[] = []
-    for await (const tuple of saver.list({ configurable: { thread_id: TEST_STORY_ID, outputDir } })) {
+    for await (const tuple of saver.list({
+      configurable: { thread_id: TEST_STORY_ID, outputDir },
+    })) {
       results.push(tuple.checkpoint.id as string)
     }
     expect(results).toEqual(['cp-3', 'cp-2', 'cp-1'])
@@ -152,7 +194,7 @@ describe('StoryCheckpointService', () => {
     await service.saveChapterMarker(10, 'cp-10')
 
     const markers = await service.listChapterMarkers()
-    expect(markers.map(m => m.chapterNumber)).toEqual([1, 2, 10])
+    expect(markers.map((m) => m.chapterNumber)).toEqual([1, 2, 10])
   })
 
   it('prunes intermediate checkpoints while keeping markers', async () => {
@@ -160,8 +202,18 @@ describe('StoryCheckpointService', () => {
     const cp1 = makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z')
     const cp2 = makeCheckpoint('cp-2', '2024-01-01T00:00:01.000Z')
 
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp1, makeMetadata(0), {})
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp2, makeMetadata(1), {})
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp1,
+      makeMetadata(0),
+      {}
+    )
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp2,
+      makeMetadata(1),
+      {}
+    )
 
     const service = createCheckpointService(outputDir)
     await service.saveChapterMarker(1, 'cp-1')
@@ -174,10 +226,17 @@ describe('StoryCheckpointService', () => {
   it('updateLatestState writes a valid UUID checkpoint id and updates latest pointer', async () => {
     const saver = new JsonCheckpointer()
     const cp = makeCheckpoint('550e8400-e29b-41d4-a716-446655440000', '2024-01-01T00:00:00.000Z')
-    await saver.put({ configurable: { thread_id: TEST_STORY_ID, outputDir } }, cp, makeMetadata(), {})
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      cp,
+      makeMetadata(),
+      {}
+    )
 
     const service = createCheckpointService(outputDir)
-    await service.updateLatestState({ idea: 'updated' } as unknown as import('../../src/graph/state.js').ReducedGraphState)
+    await service.updateLatestState({
+      idea: 'updated',
+    } as unknown as import('../../src/graph/state.js').ReducedGraphState)
 
     const latestPath = join(outputDir, 'checkpoints', 'latest.json')
     const latest = JSON.parse(readFileSync(latestPath, 'utf-8'))
@@ -210,7 +269,9 @@ describe('StoryCheckpointService', () => {
     } as unknown as import('../../src/graph/checkpointer.js').JsonCheckpointer
 
     const service = createCheckpointService(outputDir, mockCheckpointer)
-    await service.updateLatestState({ idea: 'injected' } as unknown as import('../../src/graph/state.js').ReducedGraphState)
+    await service.updateLatestState({
+      idea: 'injected',
+    } as unknown as import('../../src/graph/state.js').ReducedGraphState)
 
     expect(mockCheckpointer.getTuple).toHaveBeenCalledWith({
       configurable: { thread_id: '', outputDir },
@@ -218,7 +279,9 @@ describe('StoryCheckpointService', () => {
 
     expect(mockCheckpointer.put).toHaveBeenCalledTimes(1)
     const [, newCheckpoint] = mockCheckpointer.put.mock.calls[0]!
-    expect((newCheckpoint as { channel_values: Record<string, unknown> }).channel_values.idea).toBe('injected')
+    expect((newCheckpoint as { channel_values: Record<string, unknown> }).channel_values.idea).toBe(
+      'injected'
+    )
     expect(validateUuid((newCheckpoint as { id: string }).id)).toBe(true)
   })
 

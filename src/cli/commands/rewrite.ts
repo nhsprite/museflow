@@ -2,7 +2,11 @@ import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { runOneChapter, getState } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
-import { printActProgress, printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
+import {
+  printActProgress,
+  printChapterOutline,
+  printChapterReport,
+} from '../utils/chapter-display.js'
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
@@ -41,7 +45,7 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
   let targetChapterIndex: number | undefined
 
   if (state.pendingIssues.length > 0) {
-    const hasErrors = state.pendingIssues.some(i => i.severity === 'error')
+    const hasErrors = state.pendingIssues.some((i) => i.severity === 'error')
     const currentChapterHasErrors = state.rewriteRequested || hasErrors
     targetChapterIndex = currentChapterHasErrors
       ? state.currentChapterIndex
@@ -92,9 +96,12 @@ async function handleRewrite(
   }
 
   const state = await getState(storyId)
-  const chapterNum = targetChapterIndex !== undefined
-    ? targetChapterIndex + 1
-    : (state ? state.currentChapterIndex + 1 : 1)
+  const chapterNum =
+    targetChapterIndex !== undefined
+      ? targetChapterIndex + 1
+      : state
+        ? state.currentChapterIndex + 1
+        : 1
   const totalChapters = state ? state.totalChapters : 0
 
   try {
@@ -102,13 +109,14 @@ async function handleRewrite(
       try {
         return await withSpinner(
           `正在重写第 ${chapterNum}/${totalChapters} 章...`,
-          () => runOneChapter(storyId, {
-            mode: 'rewrite',
-            targetChapterIndex,
-            userResponse,
-            retryIssues,
-            ...(preserveTargetOutline ? { preserveTargetOutline: true } : {}),
-          }),
+          () =>
+            runOneChapter(storyId, {
+              mode: 'rewrite',
+              targetChapterIndex,
+              userResponse,
+              retryIssues,
+              ...(preserveTargetOutline ? { preserveTargetOutline: true } : {}),
+            }),
           `✅ 第 ${chapterNum} 章重写完成`,
           (result) => !result.rewriteRequested
         )
@@ -124,7 +132,7 @@ async function handleRewrite(
     const result = await runWithConflictResolution()
 
     if (result.rewriteRequested) {
-      const errors = result.pendingIssues.filter(i => i.severity === 'error')
+      const errors = result.pendingIssues.filter((i) => i.severity === 'error')
       console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，重写已中断：`)
       for (const err of errors) {
         const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
@@ -145,7 +153,7 @@ async function handleRewrite(
 
     updateStatus('writing')
 
-    const errors = result.pendingIssues.filter(i => i.severity === 'error')
+    const errors = result.pendingIssues.filter((i) => i.severity === 'error')
 
     printChapterReport(result.chapterReport)
 
@@ -155,7 +163,7 @@ async function handleRewrite(
       return
     }
 
-    const fixedCount = state!.pendingIssues.filter(i => i.severity === 'error').length
+    const fixedCount = state!.pendingIssues.filter((i) => i.severity === 'error').length
     if (fixedCount > 0) {
       console.log(`\n已修复: ${fixedCount} 个严重问题`)
     }
@@ -168,7 +176,6 @@ async function handleRewrite(
     } else {
       updateStatus('done')
     }
-
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
     updateStatus('error')

@@ -27,7 +27,7 @@ function extractNamesFromSummary(summaryText: string): string[] {
 
 export function extractEstablishedCharacters(
   summaries: string[],
-  storyState?: StoryState | null,
+  storyState?: StoryState | null
 ): Character[] {
   const seen = new Map<string, string>()
 

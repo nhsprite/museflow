@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ModelProvider } from '../../src/model/provider.ts'
-import {
-  batchJudgeTaskRelevance,
-  batchClassifyIssues,
-} from '../../src/utils/context-judge.js'
+import { batchJudgeTaskRelevance, batchClassifyIssues } from '../../src/utils/context-judge.js'
 
 describe('context-judge robustness', () => {
   it('maps indexed structured results by id', async () => {
@@ -29,14 +26,16 @@ describe('context-judge robustness', () => {
   it('splits large batches before calling the model', async () => {
     const seenBatchSizes: number[] = []
     const provider = {
-      chatStructured: vi.fn(async (messages: Array<{ role: string; content: string }>): Promise<unknown> => {
-        const userContent = messages.find(m => m.role === 'user')?.content ?? ''
-        const ids = Array.from(userContent.matchAll(/ITEM_ID=(item_\d+)/g), match => match[1]!)
-        seenBatchSizes.push(ids.length)
-        return {
-          results: ids.map(id => ({ id, value: true })),
+      chatStructured: vi.fn(
+        async (messages: Array<{ role: string; content: string }>): Promise<unknown> => {
+          const userContent = messages.find((m) => m.role === 'user')?.content ?? ''
+          const ids = Array.from(userContent.matchAll(/ITEM_ID=(item_\d+)/g), (match) => match[1]!)
+          seenBatchSizes.push(ids.length)
+          return {
+            results: ids.map((id) => ({ id, value: true })),
+          }
         }
-      }),
+      ),
       chat: vi.fn(),
     } as unknown as ModelProvider
 
@@ -56,9 +55,10 @@ describe('context-judge robustness', () => {
     const expected = [true, false, true]
     const provider = {
       chat: vi.fn(async (_messages: unknown): Promise<string> => {
-        const userContent = typeof (_messages as Array<{ role: string; content: string }>)[1]?.content === 'string'
-          ? (_messages as Array<{ role: string; content: string }>)[1].content
-          : ''
+        const userContent =
+          typeof (_messages as Array<{ role: string; content: string }>)[1]?.content === 'string'
+            ? (_messages as Array<{ role: string; content: string }>)[1].content
+            : ''
         // Count how many items are in this batch by counting "taskDescription" occurrences.
         const itemCount = (userContent.match(/taskDescription/g) ?? []).length
         if (itemCount === 3) {

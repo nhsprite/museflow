@@ -35,19 +35,19 @@ describe('ChapterOutlineAgent', () => {
         mandatoryBeats: ['主角找到盟友'],
       },
     ],
-    keyBeats: [
-      { beat: '核心秘密被主角获悉', deadlineAct: 1 },
-    ],
+    keyBeats: [{ beat: '核心秘密被主角获悉', deadlineAct: 1 }],
   }
 
   it('parses chapter outline with claimed beats', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
-    mockChat.mockResolvedValueOnce(JSON.stringify({
-      title: '风雨欲来',
-      description: '主角在旧宅中整理遗物，发现父亲留下的一枚玉佩，隐约觉察家族覆灭另有隐情。',
-      introducedCharacters: ['老管家'],
-      claimedBeats: ['主角失去庇护'],
-    }))
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '风雨欲来',
+        description: '主角在旧宅中整理遗物，发现父亲留下的一枚玉佩，隐约觉察家族覆灭另有隐情。',
+        introducedCharacters: ['老管家'],
+        claimedBeats: ['主角失去庇护'],
+      })
+    )
 
     const output = await agent.run({
       idea: 'a hero journey',
@@ -82,12 +82,14 @@ describe('ChapterOutlineAgent', () => {
 
   it('filters empty introduced characters and beats', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
-    mockChat.mockResolvedValueOnce(JSON.stringify({
-      title: '过渡',
-      description: '主角在城中稍作休整，打探消息。',
-      introducedCharacters: ['', '  '],
-      claimedBeats: [''],
-    }))
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '过渡',
+        description: '主角在城中稍作休整，打探消息。',
+        introducedCharacters: ['', '  '],
+        claimedBeats: [''],
+      })
+    )
 
     const output = await agent.run({
       idea: 'a hero journey',
@@ -106,11 +108,13 @@ describe('ChapterOutlineAgent', () => {
 
   it('includes closing phase prompt near the end of the story', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
-    mockChat.mockResolvedValueOnce(JSON.stringify({
-      title: '过渡',
-      description: '主角整理线索，为最终对决做准备。',
-      claimedBeats: [],
-    }))
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '过渡',
+        description: '主角整理线索，为最终对决做准备。',
+        claimedBeats: [],
+      })
+    )
 
     const output = await agent.run({
       idea: 'a hero journey',
@@ -126,13 +130,15 @@ describe('ChapterOutlineAgent', () => {
 
   it('instructs the model to reserve conflict for hard fact contradictions', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
-    mockChat.mockResolvedValueOnce(JSON.stringify({
-      title: '过渡',
-      description: '主角整理线索，暂不推进新的强制节拍。',
-      claimedBeats: [],
-      conflict: false,
-      conflictReason: '',
-    }))
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '过渡',
+        description: '主角整理线索，暂不推进新的强制节拍。',
+        claimedBeats: [],
+        conflict: false,
+        conflictReason: '',
+      })
+    )
 
     const output = await agent.run({
       idea: 'a hero journey',
@@ -145,19 +151,21 @@ describe('ChapterOutlineAgent', () => {
 
     expect(output.success).toBe(true)
     const messages = mockChat.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>
-    const prompt = messages.map(message => message.content).join('\n')
+    const prompt = messages.map((message) => message.content).join('\n')
     expect(prompt).toContain('conflict: true 只能用于')
     expect(prompt).toContain('不适合推进某个 mandatory beat')
   })
 
   it('propagates conflict flag and reason', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
-    mockChat.mockResolvedValueOnce(JSON.stringify({
-      title: '冲突',
-      description: '主角直接与反派决战。',
-      conflict: true,
-      conflictReason: '当前幕不具备最终对决条件。',
-    }))
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '冲突',
+        description: '主角直接与反派决战。',
+        conflict: true,
+        conflictReason: '当前幕不具备最终对决条件。',
+      })
+    )
 
     const output = await agent.run({
       idea: 'a hero journey',

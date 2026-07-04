@@ -3,7 +3,11 @@ import { runOneChapter, getState, type RunOneChapterOptions } from '../../core/r
 import type { StoryStatus, Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import { withSpinner } from '../utils/spinner.js'
-import { printActProgress, printChapterOutline, printChapterReport } from '../utils/chapter-display.js'
+import {
+  printActProgress,
+  printChapterOutline,
+  printChapterReport,
+} from '../utils/chapter-display.js'
 import { getChapterFilePath } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -22,7 +26,9 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
   let startChapterIndex = state.currentChapterIndex
   if (hasChaptersOnDisk && state.currentChapterIndex === 0) {
     const chaptersDir = join(story.outputDir, 'chapters')
-    const files = readdirSync(chaptersDir).filter(f => f.startsWith('chapter_') && f.endsWith('.md'))
+    const files = readdirSync(chaptersDir).filter(
+      (f) => f.startsWith('chapter_') && f.endsWith('.md')
+    )
     startChapterIndex = files.length
   }
 
@@ -61,12 +67,17 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
   await handleWrite(story, state, startChapterIndex)
 }
 
-async function handleWrite(story: Story, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
+async function handleWrite(
+  story: Story,
+  state: Awaited<ReturnType<typeof getState>>,
+  startChapterIndex: number
+): Promise<void> {
   if (!state) return
 
-  const unresolvedErrors = state.pendingIssues.filter(i => i.severity === 'error')
-  const nonDraftErrors = unresolvedErrors.filter(i => i.type !== 'draft_failure')
-  const hasOnlyDraftFailures = unresolvedErrors.length > 0 && unresolvedErrors.every(i => i.type === 'draft_failure')
+  const unresolvedErrors = state.pendingIssues.filter((i) => i.severity === 'error')
+  const nonDraftErrors = unresolvedErrors.filter((i) => i.type !== 'draft_failure')
+  const hasOnlyDraftFailures =
+    unresolvedErrors.length > 0 && unresolvedErrors.every((i) => i.type === 'draft_failure')
 
   // 当用户主动运行 write 时，清除 rewriteRequested 状态，让 agents 重新评估
   const effectiveRewriteRequested = false
@@ -100,7 +111,11 @@ async function handleWrite(story: Story, state: Awaited<ReturnType<typeof getSta
   await executeWrite(story.id, state, chapterIndex)
 }
 
-async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof getState>>, startChapterIndex: number): Promise<void> {
+async function executeWrite(
+  storyId: string,
+  state: Awaited<ReturnType<typeof getState>>,
+  startChapterIndex: number
+): Promise<void> {
   if (!state) return
 
   const updateStatus = (status: StoryStatus) => {
@@ -137,7 +152,7 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
     const result = await runWithConflictResolution()
 
     if (result.rewriteRequested) {
-      const errors = result.pendingIssues.filter(i => i.severity === 'error')
+      const errors = result.pendingIssues.filter((i) => i.severity === 'error')
       console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，撰写已中断：`)
       for (const err of errors) {
         const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
@@ -159,7 +174,7 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
     updateStatus('writing')
 
     const writtenIndex = result.currentChapterIndex - 1
-    const errors = result.pendingIssues.filter(i => i.severity === 'error')
+    const errors = result.pendingIssues.filter((i) => i.severity === 'error')
 
     printChapterReport(result.chapterReport)
 
@@ -172,7 +187,9 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
       console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
 
       console.log('下一步：')
-      console.log(`   重写第 ${writtenIndex + 1} 章后，再运行 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
+      console.log(
+        `   重写第 ${writtenIndex + 1} 章后，再运行 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`
+      )
       console.log(`   或运行 "museflow info" 查看故事进度\n`)
     } else {
       console.log('✨ 质量检查通过\n')
@@ -181,7 +198,6 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
       console.log(`   输入 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
       console.log(`   或运行 "museflow info" 查看故事进度\n`)
     }
-
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes('Branch condition returned unknown or null destination')) {
@@ -201,6 +217,8 @@ async function executeWrite(storyId: string, state: Awaited<ReturnType<typeof ge
 function checkExistingChapters(outputDir: string): boolean {
   const chaptersDir = join(outputDir, 'chapters')
   if (!existsSync(chaptersDir)) return false
-  const files = readdirSync(chaptersDir).filter(f => f.startsWith('chapter_') && f.endsWith('.md'))
+  const files = readdirSync(chaptersDir).filter(
+    (f) => f.startsWith('chapter_') && f.endsWith('.md')
+  )
   return files.length > 0
 }

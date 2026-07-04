@@ -10,7 +10,8 @@ describe('normalizeIssues', () => {
         {
           type: 'consistency',
           severity: 'error',
-          description: '本章采用第9章细化版本，与第18章的简化表述不完全一致，但属于合理细化，不构成严重矛盾。',
+          description:
+            '本章采用第9章细化版本，与第18章的简化表述不完全一致，但属于合理细化，不构成严重矛盾。',
         },
       ],
       'consistency',

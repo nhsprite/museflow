@@ -21,7 +21,11 @@ export function canonicalizeItemName(name: string): string {
   while (changed) {
     changed = false
     for (const [open, close] of WRAPPER_PAIRS) {
-      if (normalized.startsWith(open) && normalized.endsWith(close) && normalized.length > open.length + close.length) {
+      if (
+        normalized.startsWith(open) &&
+        normalized.endsWith(close) &&
+        normalized.length > open.length + close.length
+      ) {
         normalized = normalized.slice(open.length, normalized.length - close.length).trim()
         changed = true
         break
@@ -49,7 +53,7 @@ export interface MergeCanonicalRecordsOptions {
 export function mergeCanonicalRecords(
   base: Record<string, string>,
   delta: Record<string, string>,
-  options: MergeCanonicalRecordsOptions = {},
+  options: MergeCanonicalRecordsOptions = {}
 ): Record<string, string> {
   const merged: Record<string, string> = { ...base }
   for (const [item, value] of Object.entries(delta)) {
@@ -79,9 +83,10 @@ export function mergeCanonicalRecords(
  * canonical item name. Assumes `entries` are in insertion order; the last
  * entry is treated as the winner.
  */
-export function resolveCanonicalItemGroup<T>(
-  entries: Array<CanonicalEntry<T>>,
-): { winner: CanonicalEntry<T>; superseded: Array<CanonicalEntry<T>> } {
+export function resolveCanonicalItemGroup<T>(entries: Array<CanonicalEntry<T>>): {
+  winner: CanonicalEntry<T>
+  superseded: Array<CanonicalEntry<T>>
+} {
   const reversed = [...entries].reverse()
   const [winner, ...superseded] = reversed
   return { winner: winner!, superseded }

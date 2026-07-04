@@ -145,5 +145,3 @@ describe('chapter-level checkpoints', () => {
     })
   })
 })
-
-

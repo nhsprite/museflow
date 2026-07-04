@@ -38,4 +38,3 @@ export interface StoryCreateInput {
   totalChapters: number
   provider?: ModelConfig['provider']
 }
-

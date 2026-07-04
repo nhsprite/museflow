@@ -75,7 +75,11 @@ vi.mock('../../src/graph/novel.graph.js', () => ({
 vi.mock('../../src/utils/paths.js', () => ({
   getOutputsDir: vi.fn().mockReturnValue(testOutputsDir),
   getStoryOutputDirWithTitle: vi.fn(),
-  getChapterFilePath: vi.fn().mockImplementation((outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`),
+  getChapterFilePath: vi
+    .fn()
+    .mockImplementation(
+      (outputDir: string, chapterNumber: number) => `${outputDir}/chapter_${chapterNumber}.md`
+    ),
 }))
 
 vi.mock('../../src/genres/registry.js', () => ({
@@ -112,12 +116,20 @@ vi.mock('../../src/agents/index.js', () => ({
     }
   },
   ForeshadowingAgent: class {
-    async run() { return { content: '' } }
-    processOutput() { return [] }
+    async run() {
+      return { content: '' }
+    }
+    processOutput() {
+      return []
+    }
   },
   ConsistencyAgent: class {
-    async run() { return { content: '' } }
-    processOutput() { return [] }
+    async run() {
+      return { content: '' }
+    }
+    processOutput() {
+      return []
+    }
   },
   FixAgent: class {
     async run() {
@@ -269,9 +281,7 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
-    const targetLog = logSpy.mock.calls.find(
-      call => String(call[0]).includes('目标章节:')
-    )
+    const targetLog = logSpy.mock.calls.find((call) => String(call[0]).includes('目标章节:'))
     expect(targetLog).toBeDefined()
     expect(String(targetLog![0])).toContain('目标章节: 6/10')
 
@@ -317,9 +327,7 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
-    const targetLog = logSpy.mock.calls.find(
-      call => String(call[0]).includes('目标章节:')
-    )
+    const targetLog = logSpy.mock.calls.find((call) => String(call[0]).includes('目标章节:'))
     expect(targetLog).toBeDefined()
     expect(String(targetLog![0])).toContain('目标章节: 6/10')
 
@@ -365,9 +373,7 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
-    const targetLog = logSpy.mock.calls.find(
-      call => String(call[0]).includes('目标章节:')
-    )
+    const targetLog = logSpy.mock.calls.find((call) => String(call[0]).includes('目标章节:'))
     expect(targetLog).toBeDefined()
     expect(String(targetLog![0])).toContain('目标章节: 6/10')
 
@@ -457,9 +463,7 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1', chapter: '3' }).catch(() => {})
 
-    const targetLog = logSpy.mock.calls.find(
-      call => String(call[0]).includes('目标章节:')
-    )
+    const targetLog = logSpy.mock.calls.find((call) => String(call[0]).includes('目标章节:'))
     expect(targetLog).toBeDefined()
     expect(String(targetLog![0])).toContain('目标章节: 3/10')
 
@@ -516,9 +520,7 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
-    const targetLog = logSpy.mock.calls.find(
-      call => String(call[0]).includes('目标章节:')
-    )
+    const targetLog = logSpy.mock.calls.find((call) => String(call[0]).includes('目标章节:'))
     expect(targetLog).toBeDefined()
     expect(String(targetLog![0])).toContain('目标章节: 8/10')
 
@@ -564,9 +566,7 @@ describe('rewrite command state consistency', () => {
 
     await rewrite('story-1', { storyId: 'story-1' }).catch(() => {})
 
-    const targetLog = logSpy.mock.calls.find(
-      call => String(call[0]).includes('目标章节:')
-    )
+    const targetLog = logSpy.mock.calls.find((call) => String(call[0]).includes('目标章节:'))
     expect(targetLog).toBeDefined()
     expect(String(targetLog![0])).toContain('目标章节: 1/10')
 

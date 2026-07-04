@@ -5,7 +5,8 @@ export interface SupersededFact {
   chapterIndex: number
 }
 
-export type CanonicalFactSource = 'chapter_text' | 'outline_inference' | 'author_override' | 'reconciliation'
+export type CanonicalFactSource =
+  'chapter_text' | 'outline_inference' | 'author_override' | 'reconciliation'
 
 export interface CanonicalFact {
   id: string
@@ -16,14 +17,18 @@ export interface CanonicalFact {
   retiredIn?: number | undefined
   confidence: 'high' | 'medium' | 'low'
   source: CanonicalFactSource
-  evidence?: {
-    chapterIndex: number
-    quote: string
-  } | undefined
-  supersedes?: Array<{
-    chapter: number
-    oldValue: string
-  }> | undefined
+  evidence?:
+    | {
+        chapterIndex: number
+        quote: string
+      }
+    | undefined
+  supersedes?:
+    | Array<{
+        chapter: number
+        oldValue: string
+      }>
+    | undefined
 }
 
 export interface PendingTask {
@@ -83,12 +88,7 @@ export interface StateOverride {
 }
 
 export type ConflictType =
-  | 'retcon'
-  | 'extension'
-  | 'time_jump'
-  | 'alias'
-  | 'contradiction'
-  | 'incomplete'
+  'retcon' | 'extension' | 'time_jump' | 'alias' | 'contradiction' | 'incomplete'
 
 export type ConflictSeverity = 'auto' | 'warning' | 'blocking'
 

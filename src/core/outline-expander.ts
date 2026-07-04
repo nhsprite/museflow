@@ -8,7 +8,12 @@ import {
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type { ChapterPlan, ChapterOutlineAgentInput } from '../agents/types.js'
 import { readChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
-import { getChapterPlanningConfig, validateChapterPlanBudget, type ChapterPlanBudgetValidation, type CoreSectionJudge } from '../utils/chapter-planning.js'
+import {
+  getChapterPlanningConfig,
+  validateChapterPlanBudget,
+  type ChapterPlanBudgetValidation,
+  type CoreSectionJudge,
+} from '../utils/chapter-planning.js'
 import type { Issue } from '../types/agent.js'
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import { batchValidateTimeAnchors } from '../utils/context-judge.js'
@@ -94,7 +99,7 @@ async function autoExtendCurrentActBeforeOutline(
 
   const currentChapterNumber = chapterIndex + 1
   const currentAct = state.storyArc.acts.find(
-    act => currentChapterNumber >= act.startChapter && currentChapterNumber <= act.endChapter
+    (act) => currentChapterNumber >= act.startChapter && currentChapterNumber <= act.endChapter
   )
   if (!currentAct) return state
 
@@ -102,7 +107,10 @@ async function autoExtendCurrentActBeforeOutline(
     state.storyArc,
     state.actProgress,
     chapterIndex
-  ).filter(proposal => proposal.actIndex === currentAct.index && proposal.proposedEndChapter > currentAct.endChapter)
+  ).filter(
+    (proposal) =>
+      proposal.actIndex === currentAct.index && proposal.proposedEndChapter > currentAct.endChapter
+  )
 
   if (extensionProposals.length === 0) return state
 
@@ -122,9 +130,10 @@ async function autoExtendCurrentActBeforeOutline(
   const updatedTotalChapters = Math.max(state.totalChapters, updatedStoryArc.totalChapters)
   const updatedOutline = ensureOutlineLength(state.outline, updatedTotalChapters)
   const updatedChapters = ensureChaptersLength(state.chapters, updatedTotalChapters)
-  const updatedStory = updatedTotalChapters === state.story.totalChapters
-    ? state.story
-    : { ...state.story, totalChapters: updatedTotalChapters, updatedAt: Date.now() }
+  const updatedStory =
+    updatedTotalChapters === state.story.totalChapters
+      ? state.story
+      : { ...state.story, totalChapters: updatedTotalChapters, updatedAt: Date.now() }
 
   await writeOutlineContent(
     state.story.outputDir,
@@ -147,9 +156,9 @@ function getCurrentActMandatoryBeats(state: ReducedGraphState, chapterIndex: num
   if (!state.storyArc) return new Set()
   const chapterNumber = chapterIndex + 1
   const currentAct = state.storyArc.acts.find(
-    act => chapterNumber >= act.startChapter && chapterNumber <= act.endChapter
+    (act) => chapterNumber >= act.startChapter && chapterNumber <= act.endChapter
   )
-  return new Set((currentAct?.mandatoryBeats ?? []).map(beat => beat.trim()).filter(Boolean))
+  return new Set((currentAct?.mandatoryBeats ?? []).map((beat) => beat.trim()).filter(Boolean))
 }
 
 function filterClaimedBeatsToCurrentAct(
@@ -161,8 +170,8 @@ function filterClaimedBeatsToCurrentAct(
   if (currentActMandatoryBeats.size === 0) return []
 
   return (claimedBeats ?? [])
-    .map(beat => beat.trim())
-    .filter(beat => currentActMandatoryBeats.has(beat))
+    .map((beat) => beat.trim())
+    .filter((beat) => currentActMandatoryBeats.has(beat))
 }
 
 async function judgeCoreSectionsWithModel(
@@ -284,7 +293,9 @@ async function generateChapterOutlineIfNeeded(
       characters: charactersToString(state.characters),
       previousChapters: buildLayeredSummaries(state.chapterSummaries, chapterIndex),
       storyState: state.storyState ? formatStoryState(state.storyState) : '',
-      ...(state.storyState?.canonicalFacts ? { canonicalFacts: state.storyState.canonicalFacts } : {}),
+      ...(state.storyState?.canonicalFacts
+        ? { canonicalFacts: state.storyState.canonicalFacts }
+        : {}),
       ...(verifiedConstraints.length > 0 ? { verifiedConstraints } : {}),
     }
 
@@ -295,7 +306,9 @@ async function generateChapterOutlineIfNeeded(
 
     const candidate = output.data as ChapterOutlineResult
     if (candidate.conflict) {
-      throw new Error(`第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`)
+      throw new Error(
+        `第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`
+      )
     }
 
     result = {
@@ -477,15 +490,24 @@ export async function expandOutlineForChapter(
     judgeCoreSectionsWithModel(provider, description, sections)
 
   const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex, state.storyArc)
-  const pendingTasksHint = await reconcileOutlineWithState(state, chapterIndex, planningConfig, provider)
-  const boundaryHints = [nextBoundaryHint].filter(h => h.length > 0)
+  const pendingTasksHint = await reconcileOutlineWithState(
+    state,
+    chapterIndex,
+    planningConfig,
+    provider
+  )
+  const boundaryHints = [nextBoundaryHint].filter((h) => h.length > 0)
 
   // 如果下一章进入新幕，优先使用幕边界提示；否则使用下一章具体描述作为边界
   const currentAct = state.storyArc
-    ? state.storyArc.acts.find(a => (chapterIndex + 1) >= a.startChapter && (chapterIndex + 1) <= a.endChapter)
+    ? state.storyArc.acts.find(
+        (a) => chapterIndex + 1 >= a.startChapter && chapterIndex + 1 <= a.endChapter
+      )
     : undefined
   const nextAct = state.storyArc
-    ? state.storyArc.acts.find(a => (chapterIndex + 2) >= a.startChapter && (chapterIndex + 2) <= a.endChapter)
+    ? state.storyArc.acts.find(
+        (a) => chapterIndex + 2 >= a.startChapter && chapterIndex + 2 <= a.endChapter
+      )
     : undefined
   const entersNewAct = currentAct && nextAct && currentAct.index !== nextAct.index
 
@@ -500,7 +522,9 @@ export async function expandOutlineForChapter(
     outlineItem.description,
     nextBoundaryForPlanner,
     pendingTasksHint,
-  ].filter(part => part.length > 0).join('\n')
+  ]
+    .filter((part) => part.length > 0)
+    .join('\n')
 
   let chapterPlan: ChapterPlan | null = state.chapterPlan
   let currentConstraints = filterVerifiedConstraintsForChapter(
@@ -528,7 +552,12 @@ export async function expandOutlineForChapter(
   // 强制预算循环：校验核心事件占比和非核心段落字数，不合格则带约束重试
   const outlineDescription = outlineItem.description
 
-  let budgetValidation = await validateChapterPlanBudget(chapterPlan, planningConfig, outlineDescription, judgeCoreSections)
+  let budgetValidation = await validateChapterPlanBudget(
+    chapterPlan,
+    planningConfig,
+    outlineDescription,
+    judgeCoreSections
+  )
   let budgetAttempts = 0
   const maxBudgetAttempts = 3
 
@@ -549,12 +578,19 @@ export async function expandOutlineForChapter(
     if (!replanned) break
 
     chapterPlan = replanned
-    budgetValidation = await validateChapterPlanBudget(chapterPlan, planningConfig, outlineDescription, judgeCoreSections)
+    budgetValidation = await validateChapterPlanBudget(
+      chapterPlan,
+      planningConfig,
+      outlineDescription,
+      judgeCoreSections
+    )
     budgetAttempts++
   }
 
   if (!budgetValidation.valid) {
-    logger.warn(`[MuseFlow] 经过 ${maxBudgetAttempts} 次预算修正仍存在重心问题：${budgetValidation.reason}，将使用最新规划继续`)
+    logger.warn(
+      `[MuseFlow] 经过 ${maxBudgetAttempts} 次预算修正仍存在重心问题：${budgetValidation.reason}，将使用最新规划继续`
+    )
     pendingIssues = [
       {
         id: `outline-budget-failure-${chapterIndex}`,
@@ -586,7 +622,9 @@ export async function expandOutlineForChapter(
     for (let i = 0; i < chapterPlan.sections.length; i++) {
       const section = chapterPlan.sections[i]
       if (!section) continue
-      logger.info(`  ${i + 1}. ${section.title || '未命名'}${section.wordCount ? `（约${section.wordCount}字）` : ''}`)
+      logger.info(
+        `  ${i + 1}. ${section.title || '未命名'}${section.wordCount ? `（约${section.wordCount}字）` : ''}`
+      )
       if (section.events && section.events.length > 0) {
         logger.info(`     事件：${section.events.join('、')}`)
       }
@@ -614,7 +652,10 @@ export async function expandOutlineForChapter(
   if (boundaryHints.length > 0) {
     logger.info('边界约束：')
     for (const hint of boundaryHints) {
-      const clean = hint.replace(/<\/?[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+      const clean = hint
+        .replace(/<\/?[^>]+>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
       logger.info(`  ${clean}`)
     }
   }

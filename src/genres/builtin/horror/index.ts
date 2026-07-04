@@ -26,6 +26,12 @@ export function createHorrorSkill(): GenreSkill {
 - 逐步揭露恐惧的来源
 - 利用未知制造恐惧，而非直接展示
 - 适时描写角色的心理崩溃`,
-    tropes: ['psychological horror', 'supernatural entity', 'survival', 'cosmic horror', 'haunting'],
+    tropes: [
+      'psychological horror',
+      'supernatural entity',
+      'survival',
+      'cosmic horror',
+      'haunting',
+    ],
   }
 }

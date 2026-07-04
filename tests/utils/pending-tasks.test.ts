@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import * as contextJudge from '../../src/utils/context-judge.js'
-import {
-  agePendingTasks,
-  filterRelevantPendingTasks,
-} from '../../src/utils/pending-tasks.js'
+import { agePendingTasks, filterRelevantPendingTasks } from '../../src/utils/pending-tasks.js'
 import type { PendingTask } from '../../src/types/story-state.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 
@@ -36,9 +33,9 @@ describe('agePendingTasks', () => {
 
     const aged = agePendingTasks(tasks, 7)
 
-    expect(aged.find(t => t.id === 'due-now')!.status).toBe('expired')
-    expect(aged.find(t => t.id === 'overdue')!.status).toBe('expired')
-    expect(aged.find(t => t.id === 'future')!.status).toBe('pending')
+    expect(aged.find((t) => t.id === 'due-now')!.status).toBe('expired')
+    expect(aged.find((t) => t.id === 'overdue')!.status).toBe('expired')
+    expect(aged.find((t) => t.id === 'future')!.status).toBe('pending')
   })
 
   it('keeps non-pending tasks unchanged', () => {
@@ -50,19 +47,17 @@ describe('agePendingTasks', () => {
 
     const aged = agePendingTasks(tasks, 7)
 
-    expect(aged.find(t => t.id === 'done')!.status).toBe('done')
-    expect(aged.find(t => t.id === 'postponed')!.status).toBe('postponed')
-    expect(aged.find(t => t.id === 'expired')!.status).toBe('expired')
+    expect(aged.find((t) => t.id === 'done')!.status).toBe('done')
+    expect(aged.find((t) => t.id === 'postponed')!.status).toBe('postponed')
+    expect(aged.find((t) => t.id === 'expired')!.status).toBe('expired')
   })
 
   it('does not modify tasks without dueChapter', () => {
-    const tasks: PendingTask[] = [
-      task({ id: 'no-due', dueChapter: undefined }),
-    ]
+    const tasks: PendingTask[] = [task({ id: 'no-due', dueChapter: undefined })]
 
     const aged = agePendingTasks(tasks, 7)
 
-    expect(aged.find(t => t.id === 'no-due')!.status).toBe('pending')
+    expect(aged.find((t) => t.id === 'no-due')!.status).toBe('pending')
   })
 })
 
@@ -75,8 +70,8 @@ describe('filterRelevantPendingTasks', () => {
 
     const relevant = await filterRelevantPendingTasks(tasks, 6, '买办商人陈裕堂主动登门')
 
-    expect(relevant.map(t => t.id)).toContain('due-this-chapter')
-    expect(relevant.map(t => t.id)).not.toContain('future')
+    expect(relevant.map((t) => t.id)).toContain('due-this-chapter')
+    expect(relevant.map((t) => t.id)).not.toContain('future')
   })
 
   it('includes tasks judged relevant by the model', async () => {
@@ -86,10 +81,15 @@ describe('filterRelevantPendingTasks', () => {
     ]
     vi.mocked(contextJudge.batchJudgeTaskRelevance).mockResolvedValueOnce([true, false])
 
-    const relevant = await filterRelevantPendingTasks(tasks, 6, '买办商人陈裕堂主动登门', createProvider())
+    const relevant = await filterRelevantPendingTasks(
+      tasks,
+      6,
+      '买办商人陈裕堂主动登门',
+      createProvider()
+    )
 
-    expect(relevant.map(t => t.id)).toContain('relevant')
-    expect(relevant.map(t => t.id)).not.toContain('unrelated')
+    expect(relevant.map((t) => t.id)).toContain('relevant')
+    expect(relevant.map((t) => t.id)).not.toContain('unrelated')
   })
 
   it('excludes expired or done tasks', async () => {

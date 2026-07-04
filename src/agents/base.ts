@@ -44,7 +44,9 @@ export abstract class BaseAgent<TInput extends AgentInput> {
       logger.debug(`[Agent] ${agentName} completed`)
       return this.parse(content)
     } catch (err) {
-      logger.debug(`[Agent] ${agentName} failed: ${err instanceof Error ? err.message : String(err)}`)
+      logger.debug(
+        `[Agent] ${agentName} failed: ${err instanceof Error ? err.message : String(err)}`
+      )
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   }

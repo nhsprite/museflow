@@ -1,5 +1,10 @@
 import { logger } from '../../../utils/logger.js'
-import type { StoryState, Conflict, ConflictSeverity, CanonicalFact } from '../../../types/story-state.js'
+import type {
+  StoryState,
+  Conflict,
+  ConflictSeverity,
+  CanonicalFact,
+} from '../../../types/story-state.js'
 import type { ModelProvider, Message, JsonSchema } from '../../../model/provider.js'
 import { generateId } from '../../../utils/id.js'
 
@@ -37,12 +42,7 @@ function canonicalFactExists(
   value: string
 ): boolean {
   if (!facts || facts.length === 0) return false
-  return facts.some(
-    f =>
-      f.subject === subject &&
-      f.attribute === attribute &&
-      f.value === value
-  )
+  return facts.some((f) => f.subject === subject && f.attribute === attribute && f.value === value)
 }
 
 function canonicalFactConflicts(
@@ -51,7 +51,7 @@ function canonicalFactConflicts(
   attribute: string
 ): boolean {
   if (!facts || facts.length === 0) return false
-  return facts.some(f => f.subject === subject && f.attribute === attribute)
+  return facts.some((f) => f.subject === subject && f.attribute === attribute)
 }
 
 /**
@@ -109,7 +109,10 @@ export async function authorizeOutlineFacts(
         )
       } catch (structuredErr) {
         // 部分兼容端（如 MiniMax-M3 通过 Anthropic 协议）会返回 markdown 包裹的 JSON 或截断 JSON
-        logger.debug('结构化输出失败，回退到普通 chat 解析:', structuredErr instanceof Error ? structuredErr.message : String(structuredErr))
+        logger.debug(
+          '结构化输出失败，回退到普通 chat 解析:',
+          structuredErr instanceof Error ? structuredErr.message : String(structuredErr)
+        )
         const text = await provider.chat(messages, 0.3)
         raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
       }
@@ -165,7 +168,10 @@ export async function authorizeOutlineFacts(
 
     return facts
   } catch (err) {
-    logger.warn('[MuseFlow] 大纲事实预授权失败，跳过:', err instanceof Error ? err.message : String(err))
+    logger.warn(
+      '[MuseFlow] 大纲事实预授权失败，跳过:',
+      err instanceof Error ? err.message : String(err)
+    )
     return []
   }
 }
@@ -217,8 +223,10 @@ function formatCanonicalFacts(state: StoryState): string {
   if (facts.length === 0) return '（暂无权威事实）'
 
   return facts
-    .map(f => {
-      const lines = [`- [${f.subject}] ${f.attribute}: ${f.value}（第${f.establishedIn + 1}章确立）`]
+    .map((f) => {
+      const lines = [
+        `- [${f.subject}] ${f.attribute}: ${f.value}（第${f.establishedIn + 1}章确立）`,
+      ]
       if (f.supersedes && f.supersedes.length > 0) {
         for (const old of f.supersedes) {
           lines.push(`  覆盖第${old.chapter + 1}章旧值: ${old.oldValue}`)
@@ -267,9 +275,16 @@ export async function detectOutlineStateConflicts(
     let raw: unknown
     if (provider.chatStructured) {
       try {
-        raw = await provider.chatStructured<OutlineStateConflictResult>(messages, DETECTION_SCHEMA, 0.3)
+        raw = await provider.chatStructured<OutlineStateConflictResult>(
+          messages,
+          DETECTION_SCHEMA,
+          0.3
+        )
       } catch (structuredErr) {
-        logger.debug('结构化大纲-状态冲突检测失败，回退到普通 chat 解析:', structuredErr instanceof Error ? structuredErr.message : String(structuredErr))
+        logger.debug(
+          '结构化大纲-状态冲突检测失败，回退到普通 chat 解析:',
+          structuredErr instanceof Error ? structuredErr.message : String(structuredErr)
+        )
         const text = await provider.chat(messages, 0.3)
         raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
       }
@@ -291,7 +306,9 @@ export async function detectOutlineStateConflicts(
       description: c.description,
     }))
 
-    const constraints = (parsed.constraints ?? []).filter((c): c is string => typeof c === 'string' && c.length > 0)
+    const constraints = (parsed.constraints ?? []).filter(
+      (c): c is string => typeof c === 'string' && c.length > 0
+    )
 
     if (conflicts.length > 0) {
       logger.info(`[MuseFlow] 检测到 ${conflicts.length} 个大纲-状态潜在冲突`)
@@ -302,7 +319,10 @@ export async function detectOutlineStateConflicts(
 
     return { conflicts, constraints }
   } catch (err) {
-    logger.warn('[MuseFlow] 大纲-状态冲突检测失败，跳过:', err instanceof Error ? err.message : String(err))
+    logger.warn(
+      '[MuseFlow] 大纲-状态冲突检测失败，跳过:',
+      err instanceof Error ? err.message : String(err)
+    )
     return { conflicts: [], constraints: [] }
   }
 }

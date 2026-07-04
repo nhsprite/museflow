@@ -4,15 +4,15 @@ AI Native 长篇小说生成 CLI 工具。LangGraph 编排多 Agent 协作，本
 
 ## Essential Commands
 
-| Task | Command |
-|------|---------|
-| Dev (watch) | `npm run dev` — tsx watch src/cli/index.ts |
-| Run CLI | `npm start -- <command> [args]` — runs via tsx without building |
-| Build | `npm run build` — `tsc` only, outputs to `dist/` |
-| Type check | `npm run typecheck` — `tsc --noEmit` |
-| Test all | `npm test` — vitest run |
-| Test watch | `npm run test:watch` |
-| Lint | `npm run lint` — eslint (no config file present; fails if rules are violated) |
+| Task        | Command                                                                       |
+| ----------- | ----------------------------------------------------------------------------- |
+| Dev (watch) | `npm run dev` — tsx watch src/cli/index.ts                                    |
+| Run CLI     | `npm start -- <command> [args]` — runs via tsx without building               |
+| Build       | `npm run build` — `tsc` only, outputs to `dist/`                              |
+| Type check  | `npm run typecheck` — `tsc --noEmit`                                          |
+| Test all    | `npm test` — vitest run                                                       |
+| Test watch  | `npm run test:watch`                                                          |
+| Lint        | `npm run lint` — eslint (no config file present; fails if rules are violated) |
 
 **Build is required before `npm start` only if you want to run the compiled JS.** For daily dev, use `npm start` or `npm run dev` which run tsx directly.
 

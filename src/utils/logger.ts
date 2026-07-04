@@ -24,10 +24,14 @@ function formatTimestamp(): string {
 
 function colorize(level: LogLevel): string {
   switch (level) {
-    case 'debug': return BLUE
-    case 'info':  return RESET
-    case 'warn':  return YELLOW
-    case 'error': return RED
+    case 'debug':
+      return BLUE
+    case 'info':
+      return RESET
+    case 'warn':
+      return YELLOW
+    case 'error':
+      return RED
   }
 }
 
@@ -63,7 +67,7 @@ export function logDebugToFile(data: unknown): void {
 
 export const logger = {
   debug: (msg: string, ...args: unknown[]) => log('debug', 'MuseFlow', msg, ...args),
-  info:  (msg: string, ...args: unknown[]) => log('info',  'MuseFlow', msg, ...args),
-  warn:  (msg: string, ...args: unknown[]) => log('warn',  'MuseFlow', msg, ...args),
+  info: (msg: string, ...args: unknown[]) => log('info', 'MuseFlow', msg, ...args),
+  warn: (msg: string, ...args: unknown[]) => log('warn', 'MuseFlow', msg, ...args),
   error: (msg: string, ...args: unknown[]) => log('error', 'MuseFlow', msg, ...args),
 }

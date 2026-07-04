@@ -3,11 +3,7 @@ import type { BlockingReason } from '../../../types/blocking-report.js'
 import type { ChapterPlanningConfig } from '../../../types/genre.js'
 
 export type RoutingDecision =
-  | 'draft_chapter'
-  | 'fix_chapter'
-  | 'finalize_chapter'
-  | 'request_rewrite'
-  | 'decide_strategy'
+  'draft_chapter' | 'fix_chapter' | 'finalize_chapter' | 'request_rewrite' | 'decide_strategy'
 
 export type ChapterStep =
   | { kind: 'draft'; discardPlan: boolean; feedbackIssues: Issue[] }

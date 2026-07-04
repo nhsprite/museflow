@@ -17,5 +17,3 @@ export function saveChapterReport(outputDir: string, report: ChapterReport): voi
   const data = JSON.stringify(report, null, 2)
   writeFileAtomic(path, data)
 }
-
-

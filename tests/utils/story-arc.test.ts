@@ -14,10 +14,42 @@ function makeStoryArc(): StoryArc {
   return {
     totalChapters: 20,
     acts: [
-      { index: 1, startChapter: 1, endChapter: 5, title: '入局', theme: '卷入', function: '建立', mandatoryBeats: ['主角失去庇护', '反派首次施压'] },
-      { index: 2, startChapter: 6, endChapter: 10, title: '反击', theme: '成长', function: '对抗', mandatoryBeats: ['主角找到盟友'] },
-      { index: 3, startChapter: 11, endChapter: 15, title: '揭秘', theme: '真相', function: '揭露', mandatoryBeats: ['核心秘密揭晓'] },
-      { index: 4, startChapter: 16, endChapter: 20, title: '决战', theme: '高潮', function: '解决', mandatoryBeats: ['最终对决'] },
+      {
+        index: 1,
+        startChapter: 1,
+        endChapter: 5,
+        title: '入局',
+        theme: '卷入',
+        function: '建立',
+        mandatoryBeats: ['主角失去庇护', '反派首次施压'],
+      },
+      {
+        index: 2,
+        startChapter: 6,
+        endChapter: 10,
+        title: '反击',
+        theme: '成长',
+        function: '对抗',
+        mandatoryBeats: ['主角找到盟友'],
+      },
+      {
+        index: 3,
+        startChapter: 11,
+        endChapter: 15,
+        title: '揭秘',
+        theme: '真相',
+        function: '揭露',
+        mandatoryBeats: ['核心秘密揭晓'],
+      },
+      {
+        index: 4,
+        startChapter: 16,
+        endChapter: 20,
+        title: '决战',
+        theme: '高潮',
+        function: '解决',
+        mandatoryBeats: ['最终对决'],
+      },
     ],
     keyBeats: [
       { beat: '核心秘密被主角获悉', deadlineAct: 2 },
@@ -149,7 +181,11 @@ describe('story-arc utilities', () => {
         }),
       }
       const beats = ['主角失去庇护', '反派首次施压']
-      const covered = await judgeMandatoryBeatCoverage(provider, '主角被逐出家门，反派派人警告。', beats)
+      const covered = await judgeMandatoryBeatCoverage(
+        provider,
+        '主角被逐出家门，反派派人警告。',
+        beats
+      )
       expect(covered).toEqual(['主角失去庇护', '反派首次施压'])
     })
 
@@ -165,9 +201,7 @@ describe('story-arc utilities', () => {
     it('ignores model-returned beat text that is not an exact candidate', async () => {
       const provider = {
         chatStructured: async () => ({
-          coveredBeats: [
-            '沈砚秋改名换姓，以新身份回到京城并初步立足',
-          ],
+          coveredBeats: ['沈砚秋改名换姓，以新身份回到京城并初步立足'],
         }),
       }
       const beats = ['主角以新身份重返京城并初步立足']
@@ -194,7 +228,7 @@ describe('story-arc utilities', () => {
 
       expect(result.applied).toBe(true)
       expect(result.storyArc.totalChapters).toBe(22)
-      expect(result.storyArc.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+      expect(result.storyArc.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
         [1, 7],
         [8, 12],
         [13, 17],
@@ -238,16 +272,42 @@ describe('story-arc utilities', () => {
       const proposal = { actIndex: 1, proposedEndChapter: 10, reason: 'test' }
       const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
 
-      expect(result.storyArc.acts.map(act => act.endChapter - act.startChapter + 1)).toEqual([8, 5, 5, 5])
+      expect(result.storyArc.acts.map((act) => act.endChapter - act.startChapter + 1)).toEqual([
+        8, 5, 5, 5,
+      ])
     })
 
     it('blocks repeated automatic extension beyond the cumulative act budget', () => {
       const storyArc: StoryArc = {
         totalChapters: 30,
         acts: [
-          { index: 1, startChapter: 1, endChapter: 5, title: '入局', theme: '卷入', function: '建立', mandatoryBeats: ['beat1', 'beat2'] },
-          { index: 2, startChapter: 6, endChapter: 20, title: '对抗', theme: '升级', function: '对抗', mandatoryBeats: ['beat3'] },
-          { index: 3, startChapter: 21, endChapter: 30, title: '收束', theme: '完结', function: '解决', mandatoryBeats: ['beat4'] },
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 5,
+            title: '入局',
+            theme: '卷入',
+            function: '建立',
+            mandatoryBeats: ['beat1', 'beat2'],
+          },
+          {
+            index: 2,
+            startChapter: 6,
+            endChapter: 20,
+            title: '对抗',
+            theme: '升级',
+            function: '对抗',
+            mandatoryBeats: ['beat3'],
+          },
+          {
+            index: 3,
+            startChapter: 21,
+            endChapter: 30,
+            title: '收束',
+            theme: '完结',
+            function: '解决',
+            mandatoryBeats: ['beat4'],
+          },
         ],
         keyBeats: [],
       }

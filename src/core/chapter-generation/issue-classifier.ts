@@ -17,8 +17,7 @@ export function classifyIssueByRule(issue: Issue): IssueClassification {
   const isInventedCharacter = issueDimensionIs(issue, 'invented_character')
   const isOutlineStateConflict = issueDimensionIs(issue, 'outline_state_conflict')
   const isTaskConsistency =
-    issueDimensionIs(issue, 'task_consistency') ||
-    issue.type === 'outline_invalid_deadline'
+    issueDimensionIs(issue, 'task_consistency') || issue.type === 'outline_invalid_deadline'
 
   const isStateCorruption =
     issue.type === 'state_corruption' ||
@@ -36,9 +35,7 @@ export function classifyIssueByRule(issue: Issue): IssueClassification {
     issue.type === 'outline_density' ||
     issue.type === 'outline_foreshadow'
 
-  const isCrossChapter =
-    issue.type === 'consistency' ||
-    isTaskConsistency
+  const isCrossChapter = issue.type === 'consistency' || isTaskConsistency
 
   const isInterpretive = !isStateCorruption && issueDimensionIs(issue, 'quality')
 

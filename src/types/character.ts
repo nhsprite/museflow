@@ -6,4 +6,3 @@ export interface Character {
   dialogueStyle: string | null
   createdAt: number
 }
-

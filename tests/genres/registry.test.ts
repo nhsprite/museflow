@@ -11,9 +11,15 @@ vi.mock('../../src/utils/paths.js', () => ({
     return path
   }),
   getOutputsDir: vi.fn(() => join(process.cwd(), 'books')),
-  getStoryOutputDir: vi.fn((id: string, title?: string) => join(process.cwd(), 'books', `${title || 'untitled'}-${id}`)),
-  getStoryOutputDirWithTitle: vi.fn((title: string, storyId: string) => join(process.cwd(), 'books', `${title}_${storyId}`)),
-  getChapterFilePath: vi.fn((outputDir: string, chapterNumber: number) => join(outputDir, 'chapters', `chapter_${chapterNumber}.md`)),
+  getStoryOutputDir: vi.fn((id: string, title?: string) =>
+    join(process.cwd(), 'books', `${title || 'untitled'}-${id}`)
+  ),
+  getStoryOutputDirWithTitle: vi.fn((title: string, storyId: string) =>
+    join(process.cwd(), 'books', `${title}_${storyId}`)
+  ),
+  getChapterFilePath: vi.fn((outputDir: string, chapterNumber: number) =>
+    join(outputDir, 'chapters', `chapter_${chapterNumber}.md`)
+  ),
   getGlobalConfigFilePath: vi.fn(() => join(process.cwd(), '.museflow', 'config.json')),
   getProjectConfigFilePath: vi.fn(() => join(process.cwd(), '.museflow', 'config.json')),
 }))
@@ -38,8 +44,8 @@ describe('genre registry', () => {
     const registry = getGenreRegistry()
 
     expect(registry).toHaveLength(8)
-    expect(registry.every(e => e.source === 'builtin')).toBe(true)
-    expect(registry.map(e => e.skill.name).sort()).toEqual([
+    expect(registry.every((e) => e.source === 'builtin')).toBe(true)
+    expect(registry.map((e) => e.skill.name).sort()).toEqual([
       'default',
       'fantasy',
       'horror',
@@ -62,14 +68,14 @@ describe('genre registry', () => {
         chapterPromptSupplement: '',
         tropes: [],
       }),
-      'utf-8',
+      'utf-8'
     )
 
     const { getGenreRegistry } = await loadRegistry()
     const registry = getGenreRegistry()
 
     expect(registry).toHaveLength(9)
-    const custom = registry.find(e => e.skill.name === 'custom')
+    const custom = registry.find((e) => e.skill.name === 'custom')
     expect(custom).toBeDefined()
     expect(custom!.source).toBe('custom')
     expect(custom!.path).toBe(join(customDir, 'custom.json'))
@@ -86,13 +92,13 @@ describe('genre registry', () => {
         chapterPromptSupplement: '',
         tropes: [],
       }),
-      'utf-8',
+      'utf-8'
     )
 
     const { getGenreRegistry } = await loadRegistry()
     const registry = getGenreRegistry()
 
-    const defaultEntry = registry.find(e => e.skill.name === 'default')
+    const defaultEntry = registry.find((e) => e.skill.name === 'default')
     expect(defaultEntry).toBeDefined()
     expect(defaultEntry!.source).toBe('custom')
     expect(defaultEntry!.skill.displayName).toBe('Overridden Default')
@@ -110,14 +116,14 @@ describe('genre registry', () => {
         chapterPromptSupplement: '',
         tropes: [],
       }),
-      'utf-8',
+      'utf-8'
     )
 
     const { getGenreRegistry } = await loadRegistry()
     const registry = getGenreRegistry()
 
-    expect(registry.some(e => e.skill.name === 'valid')).toBe(true)
-    expect(registry.some(e => e.skill.name === 'invalid')).toBe(false)
+    expect(registry.some((e) => e.skill.name === 'valid')).toBe(true)
+    expect(registry.some((e) => e.skill.name === 'invalid')).toBe(false)
   })
 
   it('returns null when custom directory does not exist', async () => {
@@ -140,7 +146,7 @@ describe('genre registry', () => {
         chapterPromptSupplement: '',
         tropes: [],
       }),
-      'utf-8',
+      'utf-8'
     )
 
     const { getGenreSkill } = await loadRegistry()
@@ -162,7 +168,7 @@ describe('genre registry', () => {
         chapterPromptSupplement: '',
         tropes: [],
       }),
-      'utf-8',
+      'utf-8'
     )
 
     const { installCustomGenre, getGenreRegistry } = await loadRegistry()
@@ -172,7 +178,7 @@ describe('genre registry', () => {
     expect(existsSync(join(customDir, 'installed.json'))).toBe(true)
 
     const registry = getGenreRegistry()
-    expect(registry.some(e => e.skill.name === 'installed' && e.source === 'custom')).toBe(true)
+    expect(registry.some((e) => e.skill.name === 'installed' && e.source === 'custom')).toBe(true)
   })
 
   it('uninstallCustomGenre deletes custom skill file and invalidates cache', async () => {
@@ -186,12 +192,12 @@ describe('genre registry', () => {
         chapterPromptSupplement: '',
         tropes: [],
       }),
-      'utf-8',
+      'utf-8'
     )
 
     const { uninstallCustomGenre, getGenreRegistry } = await loadRegistry()
     const firstRegistry = getGenreRegistry()
-    expect(firstRegistry.some(e => e.skill.name === 'removable')).toBe(true)
+    expect(firstRegistry.some((e) => e.skill.name === 'removable')).toBe(true)
 
     const result = uninstallCustomGenre('removable')
 
@@ -199,7 +205,7 @@ describe('genre registry', () => {
     expect(existsSync(join(customDir, 'removable.json'))).toBe(false)
 
     const secondRegistry = getGenreRegistry()
-    expect(secondRegistry.some(e => e.skill.name === 'removable')).toBe(false)
+    expect(secondRegistry.some((e) => e.skill.name === 'removable')).toBe(false)
   })
 
   it('uninstallCustomGenre returns false for builtin skill', async () => {

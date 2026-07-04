@@ -6,7 +6,8 @@ import {
   buildCharacterWhitelistSection,
 } from './fragments/index.js'
 
-const SUMMARY_SYSTEM_PROMPT = '<role>你是一位故事结构分析专家，擅长从章节内容中提取关键信息。你必须提取所有角色的关键事实（说过的话、知道的信息、态度变化），以及角色位置、状态、物品追踪等结构化状态信息。</role>'
+const SUMMARY_SYSTEM_PROMPT =
+  '<role>你是一位故事结构分析专家，擅长从章节内容中提取关键信息。你必须提取所有角色的关键事实（说过的话、知道的信息、态度变化），以及角色位置、状态、物品追踪等结构化状态信息。</role>'
 
 export function buildSummarySystemPrompt(): string {
   return SUMMARY_SYSTEM_PROMPT
@@ -16,7 +17,7 @@ export function buildClaimedBeatsSection(claimedBeats: string[]): string {
   if (claimedBeats.length === 0) return ''
   return `<claimed_beats>
 本章大纲声称要推进的 mandatory beats：
-${claimedBeats.map(beat => `- ${beat}`).join('\n')}
+${claimedBeats.map((beat) => `- ${beat}`).join('\n')}
 
 请在本章正文中逐条核验这些 beat 是否真的发生。
 【关键】verifiedBeats 中只能放入上述 claimedBeats 列表里、且在本章正文中确实发生的那几项的**原文原句**。不要改写、不要扩展成情节摘要、不要编造新的表述。如果某条 claimedBeat 未在正文中发生，请勿将其列入 verifiedBeats。
@@ -279,7 +280,7 @@ export interface SummaryPromptVariables {
 
 export function buildSummaryUserPrompt(
   sections: SummaryPromptSections,
-  vars: SummaryPromptVariables,
+  vars: SummaryPromptVariables
 ): string {
   return renderTemplate(SUMMARY_USER_PROMPT_TEMPLATE, {
     ...sections,

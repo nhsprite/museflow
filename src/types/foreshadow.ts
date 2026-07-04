@@ -25,8 +25,8 @@ export function getForeshadowAlerts(
   currentChapter: number
 ): ForeshadowAlert[] {
   return stack
-    .filter(item => !item.fulfilledChapter)
-    .map(item => {
+    .filter((item) => !item.fulfilledChapter)
+    .map((item) => {
       let level: ForeshadowAlertLevel = 'normal'
       if (currentChapter > item.expectedFulfillChapter + 1) {
         level = 'overdue'
@@ -44,9 +44,9 @@ export function getForeshadowAlerts(
 export function formatForeshadowAlerts(alerts: ForeshadowAlert[]): string {
   if (alerts.length === 0) return '暂无未回收伏笔'
 
-  const overdue = alerts.filter(a => a.level === 'overdue')
-  const urgent = alerts.filter(a => a.level === 'urgent')
-  const normal = alerts.filter(a => a.level === 'normal')
+  const overdue = alerts.filter((a) => a.level === 'overdue')
+  const urgent = alerts.filter((a) => a.level === 'urgent')
+  const normal = alerts.filter((a) => a.level === 'normal')
 
   const lines: string[] = []
 
@@ -55,7 +55,9 @@ export function formatForeshadowAlerts(alerts: ForeshadowAlert[]): string {
     overdue.forEach((a, i) => {
       const overdueBy = a.currentChapter - a.item.expectedFulfillChapter
       const createdCh = a.item.createdAtChapter || '?'
-      lines.push(`  ${i + 1}. "${a.item.text.substring(0, 60)}..." (第${createdCh}章埋下 → 预期第${a.item.expectedFulfillChapter}章, 逾期${overdueBy}章)`)
+      lines.push(
+        `  ${i + 1}. "${a.item.text.substring(0, 60)}..." (第${createdCh}章埋下 → 预期第${a.item.expectedFulfillChapter}章, 逾期${overdueBy}章)`
+      )
     })
   }
 
@@ -63,7 +65,9 @@ export function formatForeshadowAlerts(alerts: ForeshadowAlert[]): string {
     lines.push(`🔔 即将到期 (${urgent.length}个):`)
     urgent.forEach((a, i) => {
       const createdCh = a.item.createdAtChapter || '?'
-      lines.push(`  ${i + 1}. "${a.item.text.substring(0, 60)}..." (第${createdCh}章埋下 → 预期第${a.item.expectedFulfillChapter}章)`)
+      lines.push(
+        `  ${i + 1}. "${a.item.text.substring(0, 60)}..." (第${createdCh}章埋下 → 预期第${a.item.expectedFulfillChapter}章)`
+      )
     })
   }
 
@@ -71,7 +75,9 @@ export function formatForeshadowAlerts(alerts: ForeshadowAlert[]): string {
     lines.push(`⏳ 正常 (${normal.length}个):`)
     normal.forEach((a, i) => {
       const createdCh = a.item.createdAtChapter || '?'
-      lines.push(`  ${i + 1}. "${a.item.text.substring(0, 60)}..." (第${createdCh}章埋下 → 预期第${a.item.expectedFulfillChapter}章)`)
+      lines.push(
+        `  ${i + 1}. "${a.item.text.substring(0, 60)}..." (第${createdCh}章埋下 → 预期第${a.item.expectedFulfillChapter}章)`
+      )
     })
   }
 

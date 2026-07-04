@@ -1,5 +1,10 @@
 import { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
-import type { Checkpoint, CheckpointTuple, CheckpointMetadata, ChannelVersions } from '@langchain/langgraph-checkpoint'
+import type {
+  Checkpoint,
+  CheckpointTuple,
+  CheckpointMetadata,
+  ChannelVersions,
+} from '@langchain/langgraph-checkpoint'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -42,7 +47,9 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     return join(this.getCheckpointDir(outputDir), 'latest.json')
   }
 
-  private readLatestCheckpointId(outputDir: string): { checkpointId: string; ts: string } | undefined {
+  private readLatestCheckpointId(
+    outputDir: string
+  ): { checkpointId: string; ts: string } | undefined {
     const path = this.getLatestPointerPath(outputDir)
     if (!existsSync(path)) return undefined
     try {
@@ -62,7 +69,10 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     writeFileAtomic(path, JSON.stringify({ checkpointId, ts }, null, 2))
   }
 
-  private loadCheckpointRecord(outputDir: string, checkpointId: string): CheckpointRecord | undefined {
+  private loadCheckpointRecord(
+    outputDir: string,
+    checkpointId: string
+  ): CheckpointRecord | undefined {
     const path = this.getCheckpointPath(outputDir, checkpointId)
     if (!existsSync(path)) return undefined
     try {
@@ -73,14 +83,22 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     }
   }
 
-  private recordToTuple(record: CheckpointRecord, threadId: string, outputDir: string): CheckpointTuple {
+  private recordToTuple(
+    record: CheckpointRecord,
+    threadId: string,
+    outputDir: string
+  ): CheckpointTuple {
     const tuple: CheckpointTuple = {
-      config: { configurable: { thread_id: threadId, checkpoint_id: record.checkpointId, outputDir } },
+      config: {
+        configurable: { thread_id: threadId, checkpoint_id: record.checkpointId, outputDir },
+      },
       checkpoint: record.checkpoint,
       metadata: record.metadata,
     }
     if (record.parentCheckpointId) {
-      tuple.parentConfig = { configurable: { thread_id: threadId, checkpoint_id: record.parentCheckpointId, outputDir } }
+      tuple.parentConfig = {
+        configurable: { thread_id: threadId, checkpoint_id: record.parentCheckpointId, outputDir },
+      }
     }
     return tuple
   }
@@ -91,7 +109,13 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     if (!existsSync(dir)) return records
 
     for (const file of readdirSync(dir)) {
-      if (!file.endsWith('.json') || file === 'pending_writes.json' || file === 'chapter_markers.json' || file === 'latest.json') continue
+      if (
+        !file.endsWith('.json') ||
+        file === 'pending_writes.json' ||
+        file === 'chapter_markers.json' ||
+        file === 'latest.json'
+      )
+        continue
       try {
         const raw = readFileSync(join(dir, file), 'utf-8')
         const rec = JSON.parse(raw) as CheckpointRecord
@@ -142,7 +166,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
 
   async *list(
     config: RunnableConfig,
-    options?: { limit?: number; before?: RunnableConfig; filter?: Record<string, unknown> },
+    options?: { limit?: number; before?: RunnableConfig; filter?: Record<string, unknown> }
   ): AsyncGenerator<CheckpointTuple> {
     const threadId = config.configurable?.thread_id as string | undefined
     const outputDir = config.configurable?.outputDir as string | undefined
@@ -151,8 +175,9 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     const records = this.loadCheckpointRecords(outputDir)
     const limit = options?.limit ?? 100
 
-    const sorted = [...records.values()]
-      .sort((a, b) => b.checkpoint.ts.localeCompare(a.checkpoint.ts))
+    const sorted = [...records.values()].sort((a, b) =>
+      b.checkpoint.ts.localeCompare(a.checkpoint.ts)
+    )
 
     let count = 0
     for (const rec of sorted) {
@@ -162,12 +187,16 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
         if (beforeId && rec.checkpointId.localeCompare(beforeId) >= 0) continue
       }
       const tuple: CheckpointTuple = {
-        config: { configurable: { thread_id: threadId, checkpoint_id: rec.checkpointId, outputDir } },
+        config: {
+          configurable: { thread_id: threadId, checkpoint_id: rec.checkpointId, outputDir },
+        },
         checkpoint: rec.checkpoint,
         metadata: rec.metadata,
       }
       if (rec.parentCheckpointId) {
-        tuple.parentConfig = { configurable: { thread_id: threadId, checkpoint_id: rec.parentCheckpointId, outputDir } }
+        tuple.parentConfig = {
+          configurable: { thread_id: threadId, checkpoint_id: rec.parentCheckpointId, outputDir },
+        }
       }
       yield tuple
       count++
@@ -178,7 +207,7 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     config: RunnableConfig,
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
-    _newVersions: ChannelVersions,
+    _newVersions: ChannelVersions
   ): Promise<RunnableConfig> {
     const threadId = config.configurable?.thread_id as string | undefined
     const outputDir = config.configurable?.outputDir as string | undefined
@@ -200,12 +229,16 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
     this.writeLatestCheckpointId(outputDir, checkpoint.id as string, checkpoint.ts)
     logger.debug(`Checkpoint saved: ${outputDir}/${checkpoint.id}`)
 
-    return { configurable: { thread_id: threadId, checkpoint_id: checkpoint.id as string, outputDir } }
+    return {
+      configurable: { thread_id: threadId, checkpoint_id: checkpoint.id as string, outputDir },
+    }
   }
 
   async deleteThread(_threadId: string): Promise<void> {
     // Note: outputDir is no longer cached in memory. Callers should delete the story workspace directly.
-    logger.debug('deleteThread is a no-op; use StoryCheckpointService or filesystem deletion instead')
+    logger.debug(
+      'deleteThread is a no-op; use StoryCheckpointService or filesystem deletion instead'
+    )
   }
 
   async putWrites(_config: RunnableConfig, _writes: unknown[], _taskId: string): Promise<void> {

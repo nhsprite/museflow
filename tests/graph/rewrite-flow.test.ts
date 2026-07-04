@@ -10,7 +10,8 @@ const saveChapterCheckpoint = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('old chapter content')
-let mockChapterContentValue = 'rewritten chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600)
+let mockChapterContentValue =
+  'rewritten chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600)
 
 const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [true] }))
 const mockChatStructured = vi.fn().mockResolvedValue({ results: [true] })
@@ -50,14 +51,16 @@ vi.mock('../../src/agents/index.js', () => ({
       return {
         success: true,
         data: {
-          sections: [{
-            title: 'Section 1',
-            summary: 'summary',
-            wordCount: 100,
-            events: ['event'],
-            characters: ['character'],
-            timeMark: 'now',
-          }],
+          sections: [
+            {
+              title: 'Section 1',
+              summary: 'summary',
+              wordCount: 100,
+              events: ['event'],
+              characters: ['character'],
+              timeMark: 'now',
+            },
+          ],
           timeline: [],
           outlineCheck: [],
         },
@@ -133,7 +136,12 @@ vi.mock('../../src/utils/paths.js', async (importOriginal) => {
 
 vi.mock('../../src/utils/id.js', () => ({ generateId: vi.fn().mockReturnValue('generated-id') }))
 vi.mock('../../src/graph/checkpointer.js', () => ({
-  getCheckpointer: () => ({ saveChapterCheckpoint, pruneIntermediateCheckpoints, clearPendingWrites: vi.fn().mockResolvedValue(undefined), getTuple: vi.fn().mockResolvedValue(null) }),
+  getCheckpointer: () => ({
+    saveChapterCheckpoint,
+    pruneIntermediateCheckpoints,
+    clearPendingWrites: vi.fn().mockResolvedValue(undefined),
+    getTuple: vi.fn().mockResolvedValue(null),
+  }),
 }))
 
 let tempDir: string
@@ -185,7 +193,11 @@ describe('rewrite flow regression', () => {
     expect(draftResult.rewriteApproved).toBeUndefined()
     expect(draftResult.pendingIssues).toBeUndefined()
     expect(readChapterContent).toHaveBeenCalledWith(tempDir, 1)
-    expect(writeChapterContent).toHaveBeenCalledWith(tempDir, 1, `# 第1章 Chapter 1\n\n${mockChapterContentValue}`)
+    expect(writeChapterContent).toHaveBeenCalledWith(
+      tempDir,
+      1,
+      `# 第1章 Chapter 1\n\n${mockChapterContentValue}`
+    )
     expect(draftResult.chapters?.[0]?.status).toBe('drafting')
   })
 
@@ -196,25 +208,26 @@ describe('rewrite flow regression', () => {
     const result = await finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
-      chapters: [{
-        id: 'chapter-1',
-        storyId: 'story-1',
-        number: 1,
-        title: 'Chapter 1',
-        outline: 'Desc 1',
-        summary: 'Summary 1',
-        foreshadows: null,
-        status: 'done',
-        createdAt: 1,
-        updatedAt: 1,
-      }],
+      chapters: [
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: 'Chapter 1',
+          outline: 'Desc 1',
+          summary: 'Summary 1',
+          foreshadows: null,
+          status: 'done',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
     } as never)
 
-    const logs = logSpy.mock.calls.map(call => call[0])
+    const logs = logSpy.mock.calls.map((call) => call[0])
     expect(result.rewriteApproved).toBeUndefined()
     expect(result.rewriteRequested).toBeUndefined()
     expect(result.currentChapterIndex).toBe(1)
-
   })
 })
 
@@ -229,10 +242,12 @@ describe('draft_chapter guard against empty content', () => {
 
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    await expect(draft_chapter(createMockContext(), {
-      ...baseState,
-      currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
+    await expect(
+      draft_chapter(createMockContext(), {
+        ...baseState,
+        currentChapterIndex: 0,
+      } as never)
+    ).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
   })
 
   it('throws error when AI returns only whitespace', async () => {
@@ -240,10 +255,12 @@ describe('draft_chapter guard against empty content', () => {
 
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    await expect(draft_chapter(createMockContext(), {
-      ...baseState,
-      currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
+    await expect(
+      draft_chapter(createMockContext(), {
+        ...baseState,
+        currentChapterIndex: 0,
+      } as never)
+    ).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
   })
 
   it('throws error when AI returns null content', async () => {
@@ -251,10 +268,12 @@ describe('draft_chapter guard against empty content', () => {
 
     const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
 
-    await expect(draft_chapter(createMockContext(), {
-      ...baseState,
-      currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
+    await expect(
+      draft_chapter(createMockContext(), {
+        ...baseState,
+        currentChapterIndex: 0,
+      } as never)
+    ).rejects.toThrow('第 1 章内容为空，AI 未返回有效内容')
   })
 })
 
@@ -268,10 +287,12 @@ describe('finalize_chapter guard against empty file', () => {
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
-    await expect(finalize_chapter(createMockContext(), {
-      ...baseState,
-      currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+    await expect(
+      finalize_chapter(createMockContext(), {
+        ...baseState,
+        currentChapterIndex: 0,
+      } as never)
+    ).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
   })
 
   it('throws error when chapter file is empty string', async () => {
@@ -279,10 +300,12 @@ describe('finalize_chapter guard against empty file', () => {
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
-    await expect(finalize_chapter(createMockContext(), {
-      ...baseState,
-      currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+    await expect(
+      finalize_chapter(createMockContext(), {
+        ...baseState,
+        currentChapterIndex: 0,
+      } as never)
+    ).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
   })
 
   it('throws error when chapter file is only whitespace', async () => {
@@ -290,10 +313,12 @@ describe('finalize_chapter guard against empty file', () => {
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
-    await expect(finalize_chapter(createMockContext(), {
-      ...baseState,
-      currentChapterIndex: 0,
-    } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+    await expect(
+      finalize_chapter(createMockContext(), {
+        ...baseState,
+        currentChapterIndex: 0,
+      } as never)
+    ).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
   })
 })
 
@@ -309,18 +334,20 @@ describe('finalize_chapter summary failure guard', () => {
     const result = await finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 0,
-      chapters: [{
-        id: 'chapter-1',
-        storyId: 'story-1',
-        number: 1,
-        title: 'Chapter 1',
-        outline: 'Desc 1',
-        summary: null,
-        foreshadows: null,
-        status: 'drafting',
-        createdAt: 1,
-        updatedAt: 1,
-      }],
+      chapters: [
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: 'Chapter 1',
+          outline: 'Desc 1',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
     } as never)
 
     expect(result.currentChapterIndex).toBeUndefined()
@@ -345,18 +372,20 @@ describe('finalize_chapter ages pending tasks', () => {
     const result = await finalize_chapter(createMockContext(), {
       ...baseState,
       currentChapterIndex: 1,
-      chapters: [{
-        id: 'chapter-2',
-        storyId: 'story-1',
-        number: 2,
-        title: 'Chapter 2',
-        outline: 'Desc 2',
-        summary: 'Summary 2',
-        foreshadows: null,
-        status: 'done',
-        createdAt: 1,
-        updatedAt: 1,
-      }],
+      chapters: [
+        {
+          id: 'chapter-2',
+          storyId: 'story-1',
+          number: 2,
+          title: 'Chapter 2',
+          outline: 'Desc 2',
+          summary: 'Summary 2',
+          foreshadows: null,
+          status: 'done',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
       storyState: {
         characterLocations: {},
         characterStatus: {},
@@ -365,19 +394,40 @@ describe('finalize_chapter ages pending tasks', () => {
         activePlots: [],
         revealedSecrets: [],
         pendingTasks: [
-          { id: 't1', assignee: '主角', description: '明日午时前出发', createdChapter: 1, dueChapter: 2, status: 'pending' },
-          { id: 't2', assignee: '主角', description: '后日赴约', createdChapter: 1, dueChapter: 3, status: 'pending' },
-          { id: 't3', assignee: '主角', description: '已完成之事', createdChapter: 1, dueChapter: 2, status: 'done' },
+          {
+            id: 't1',
+            assignee: '主角',
+            description: '明日午时前出发',
+            createdChapter: 1,
+            dueChapter: 2,
+            status: 'pending',
+          },
+          {
+            id: 't2',
+            assignee: '主角',
+            description: '后日赴约',
+            createdChapter: 1,
+            dueChapter: 3,
+            status: 'pending',
+          },
+          {
+            id: 't3',
+            assignee: '主角',
+            description: '已完成之事',
+            createdChapter: 1,
+            dueChapter: 2,
+            status: 'done',
+          },
         ],
         currentScene: '',
         storyTime: '',
       },
     } as never)
 
-    const updatedTasks = (result.storyState!.pendingTasks as Array<{ id: string; status: string }>)
-    expect(updatedTasks.find(t => t.id === 't1')!.status).toBe('expired')
-    expect(updatedTasks.find(t => t.id === 't2')!.status).toBe('pending')
-    expect(updatedTasks.find(t => t.id === 't3')!.status).toBe('done')
+    const updatedTasks = result.storyState!.pendingTasks as Array<{ id: string; status: string }>
+    expect(updatedTasks.find((t) => t.id === 't1')!.status).toBe('expired')
+    expect(updatedTasks.find((t) => t.id === 't2')!.status).toBe('pending')
+    expect(updatedTasks.find((t) => t.id === 't3')!.status).toBe('done')
   })
 })
 
@@ -404,18 +454,20 @@ describe('detect_foreshadowing preserves current-chapter foreshadows', () => {
       ...baseState,
       currentChapterIndex: 0,
       foreshadowStack: [currentChapterForeshadow],
-      chapters: [{
-        id: 'chapter-1',
-        storyId: 'story-1',
-        number: 1,
-        title: 'Chapter 1',
-        outline: 'Desc 1',
-        summary: null,
-        foreshadows: null,
-        status: 'drafting',
-        createdAt: 1,
-        updatedAt: 1,
-      }],
+      chapters: [
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: 'Chapter 1',
+          outline: 'Desc 1',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
     } as never)
 
     expect(result.foreshadowStack).toHaveLength(1)

@@ -35,7 +35,9 @@ vi.mock('../../src/graph/nodes/planning.js', () => ({
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getChapterOutlineAgent: () => ({
-    run: vi.fn(async (state: { chapterIndex?: number }) => chapterOutlineRunMock(state.chapterIndex ?? 0)),
+    run: vi.fn(async (state: { chapterIndex?: number }) =>
+      chapterOutlineRunMock(state.chapterIndex ?? 0)
+    ),
   }),
 }))
 
@@ -148,13 +150,11 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    prepareStoryStateForChapterMock
-      .mockRejectedValueOnce(blockingError)
-      .mockResolvedValueOnce({
-        reconciledState: {},
-        stateConflicts: '',
-        itemLocationConflicts: [],
-      })
+    prepareStoryStateForChapterMock.mockRejectedValueOnce(blockingError).mockResolvedValueOnce({
+      reconciledState: {},
+      stateConflicts: '',
+      itemLocationConflicts: [],
+    })
 
     generateOutlineRevisionProposalMock.mockResolvedValue({
       revisedDescription: '修订后的描述，不再违反约束。',
@@ -178,7 +178,9 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
+      blockingError
+    )
     // 第一次失败后生成修订，第二次检测到冲突集合未变，提前停止
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
   })
@@ -214,7 +216,9 @@ describe('expandOutlineForChapter auto-revision', () => {
         explanation: '解释',
       })
 
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError2)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
+      blockingError2
+    )
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(3)
   })
 
@@ -228,7 +232,9 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
+      blockingError
+    )
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(1)
     expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
   })
@@ -243,7 +249,9 @@ describe('expandOutlineForChapter auto-revision', () => {
       explanation: '解释',
     })
 
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(blockingError)
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
+      blockingError
+    )
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
     expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
   })

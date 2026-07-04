@@ -1,7 +1,9 @@
 import type { ReducedGraphState } from '../../state.js'
 import { buildChapterSession, mergeSessionUpdate } from './routing.js'
 
-export async function prepareChapter(state: ReducedGraphState): Promise<Partial<ReducedGraphState>> {
+export async function prepareChapter(
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
   const currentSession = buildChapterSession(state)
   return mergeSessionUpdate(currentSession, {
     rewriteAttempts: 0,

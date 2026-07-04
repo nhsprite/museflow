@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { getCurrentChapterDisplayNumber, toDisplayChapterNumber } from '../../src/utils/chapter-display.ts'
+import {
+  getCurrentChapterDisplayNumber,
+  toDisplayChapterNumber,
+} from '../../src/utils/chapter-display.ts'
 
 describe('chapter display helpers', () => {
   it('converts internal indexes to display chapter numbers', () => {

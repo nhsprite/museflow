@@ -26,6 +26,12 @@ export function createRomanceSkill(): GenreSkill {
 - 通过对话和动作展示情感变化
 - 制造心动或心酸的瞬间
 - 情节曲折但情感真实`,
-    tropes: ['slow burn', 'enemies to lovers', 'childhood connection', 'misunderstanding', 'growth'],
+    tropes: [
+      'slow burn',
+      'enemies to lovers',
+      'childhood connection',
+      'misunderstanding',
+      'growth',
+    ],
   }
 }

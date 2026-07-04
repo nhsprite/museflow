@@ -10,10 +10,22 @@ const mockChat = vi.fn(async (): Promise<string> => '{}')
 const mockChatStructured = vi.fn(async <T>(): Promise<T> => {
   return {
     options: [
-      { title: '候选书名一', worldDirection: { coreConflict: '冲突一', worldFeatures: ['特征A', '特征B'] } },
-      { title: '候选书名二', worldDirection: { coreConflict: '冲突二', worldFeatures: ['特征C', '特征D'] } },
-      { title: '候选书名三', worldDirection: { coreConflict: '冲突三', worldFeatures: ['特征E', '特征F'] } },
-      { title: '候选书名四', worldDirection: { coreConflict: '冲突四', worldFeatures: ['特征G', '特征H'] } },
+      {
+        title: '候选书名一',
+        worldDirection: { coreConflict: '冲突一', worldFeatures: ['特征A', '特征B'] },
+      },
+      {
+        title: '候选书名二',
+        worldDirection: { coreConflict: '冲突二', worldFeatures: ['特征C', '特征D'] },
+      },
+      {
+        title: '候选书名三',
+        worldDirection: { coreConflict: '冲突三', worldFeatures: ['特征E', '特征F'] },
+      },
+      {
+        title: '候选书名四',
+        worldDirection: { coreConflict: '冲突四', worldFeatures: ['特征G', '特征H'] },
+      },
     ],
   } as T
 })
@@ -53,7 +65,7 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
         description: (c['背景故事'] || c['description'] || null) as string | null,
         dialogueStyle: (c['对话风格'] || c['dialogueStyle'] || null) as string | null,
         createdAt: Date.now(),
-      })),
+      }))
     ),
   }),
   getStoryArcAgent: () => ({
@@ -112,20 +124,25 @@ describe('CLI end-to-end integration', () => {
   })
 
   it('start command creates a story in non-interactive mode', { timeout: 60000 }, async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number | string | null | undefined) => {
-      throw new Error(`process.exit(${String(code)})`)
-    })
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((code?: number | string | null | undefined) => {
+        throw new Error(`process.exit(${String(code)})`)
+      })
 
     try {
-      await start({
-        idea: '一个测试用的长篇小说',
-        chapters: 3,
-        genre: 'default',
-        yes: true,
-      }, createMockContext())
+      await start(
+        {
+          idea: '一个测试用的长篇小说',
+          chapters: 3,
+          genre: 'default',
+          yes: true,
+        },
+        createMockContext()
+      )
 
       const booksDir = join(process.cwd(), 'books')
-      const dirs = readdirSync(booksDir).filter(d => !preExistingDirs.includes(d))
+      const dirs = readdirSync(booksDir).filter((d) => !preExistingDirs.includes(d))
       expect(dirs.length).toBeGreaterThan(0)
 
       const metaPath = join(booksDir, dirs[0], 'meta.json')

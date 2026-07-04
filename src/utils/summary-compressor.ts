@@ -52,7 +52,10 @@ function meetsImportanceThreshold(
   return order[itemImportance] >= order[threshold]
 }
 
-function extractImportance(item: ImportanceItem | string): { text: string; importance: ImportanceLevel } {
+function extractImportance(item: ImportanceItem | string): {
+  text: string
+  importance: ImportanceLevel
+} {
   if (typeof item === 'string') {
     return { text: item, importance: 'major' }
   }
@@ -77,8 +80,8 @@ function filterByImportance<T extends ImportanceItem | string>(
   if (!items) return []
   return items
     .map(extractImportance)
-    .filter(item => meetsImportanceThreshold(item.importance, threshold))
-    .map(item => item.text)
+    .filter((item) => meetsImportanceThreshold(item.importance, threshold))
+    .map((item) => item.text)
 }
 
 function formatCharacterFacts(
@@ -101,10 +104,7 @@ function formatSummarySection(title: string, items: string[] | undefined): strin
   return `${title}：${items.join('；')}`
 }
 
-function compressSummaryByImportance(
-  summary: string,
-  level: CompressionLevel
-): string {
+function compressSummaryByImportance(summary: string, level: CompressionLevel): string {
   const data = parseSummaryJson(summary)
   if (!data) {
     return compressSummaryLegacy(summary, level)
@@ -176,10 +176,7 @@ function compressSummaryByImportance(
   return result
 }
 
-function compressSummaryLegacy(
-  summary: string,
-  level: CompressionLevel
-): string {
+function compressSummaryLegacy(summary: string, level: CompressionLevel): string {
   const trimmed = summary.trim()
   if (!trimmed) return ''
 
@@ -216,10 +213,7 @@ export function getCompressionLevel(
   }
 }
 
-export function buildLayeredSummaries(
-  summaries: string[],
-  currentChapterIndex: number
-): string {
+export function buildLayeredSummaries(summaries: string[], currentChapterIndex: number): string {
   if (!summaries.length || currentChapterIndex === 0) {
     return '（这是第一章）'
   }
@@ -271,4 +265,3 @@ export function filterKeyEventsByImportance(
   if (!data) return []
   return filterByImportance(data.keyEvents, threshold)
 }
-

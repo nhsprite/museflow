@@ -109,13 +109,11 @@ describe('rewrite command retry feedback', () => {
     const conflictError = Object.assign(new Error('blocking conflict'), {
       isBlockingConflict: true,
     })
-    runOneChapterMock
-      .mockRejectedValueOnce(conflictError)
-      .mockResolvedValueOnce({
-        ...initialState,
-        rewriteRequested: true,
-        pendingIssues: [],
-      })
+    runOneChapterMock.mockRejectedValueOnce(conflictError).mockResolvedValueOnce({
+      ...initialState,
+      rewriteRequested: true,
+      pendingIssues: [],
+    })
     resolveBlockingConflictsMock.mockResolvedValueOnce({ preserveTargetOutline: true })
 
     await rewrite('story-1', { storyId: 'story-1', chapter: '6' })

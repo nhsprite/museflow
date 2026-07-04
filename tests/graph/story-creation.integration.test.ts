@@ -115,56 +115,65 @@ describe('story creation integration', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('runs worldbuilding, characters, and outline generation end-to-end', { timeout: 30000 }, async () => {
-    const totalChapters = 3
+  it(
+    'runs worldbuilding, characters, and outline generation end-to-end',
+    { timeout: 30000 },
+    async () => {
+      const totalChapters = 3
 
-    const story = {
-      id: 'story_test_creation',
-      title: '测试故事',
-      outputDir: tmpDir,
-      genre: 'default',
-      totalChapters,
-      idea: '一个测试故事',
-      provider: 'openai' as const,
-      status: 'init' as const,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      const story = {
+        id: 'story_test_creation',
+        title: '测试故事',
+        outputDir: tmpDir,
+        genre: 'default',
+        totalChapters,
+        idea: '一个测试故事',
+        provider: 'openai' as const,
+        status: 'init' as const,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+
+      const result = await runStory(
+        {
+          storyId: story.id,
+          idea: story.idea,
+          genre: story.genre,
+          totalChapters,
+          story,
+        },
+        createMockContext()
+      )
+
+      expect(result.world).not.toBeNull()
+      expect(result.world?.content).toBe('这是一个测试世界观。')
+      expect(result.characters.length).toBeGreaterThanOrEqual(1)
+      expect(result.characters[0].name).toBe('主角')
+      expect(result.outline).toHaveLength(totalChapters)
+      expect(result.outline[0].title).toBe('')
+      expect(result.outline[0].description).toBe('')
+      expect(result.storyArc).toBeDefined()
+      expect(result.storyArc?.acts).toHaveLength(1)
+      expect(result.storyArc?.totalChapters).toBe(totalChapters)
+
+      const checkpointsDir = join(tmpDir, 'checkpoints')
+      expect(existsSync(checkpointsDir)).toBe(true)
+      expect(existsSync(join(checkpointsDir, 'latest.json'))).toBe(true)
+      expect(
+        readdirSync(checkpointsDir).some((f) => f.endsWith('.json') && f !== 'pending_writes.json')
+      ).toBe(true)
+
+      await exportMetaFromCheckpoint(tmpDir)
+
+      const metaPath = join(tmpDir, 'meta.json')
+      expect(existsSync(metaPath)).toBe(true)
+      const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+      expect(meta.story.id).toBe(story.id)
+      expect(meta.world).not.toBeNull()
+      expect(meta.characters.length).toBeGreaterThanOrEqual(1)
+      expect(meta.outline).toHaveLength(totalChapters)
     }
-
-    const result = await runStory({
-      storyId: story.id,
-      idea: story.idea,
-      genre: story.genre,
-      totalChapters,
-      story,
-    }, createMockContext())
-
-    expect(result.world).not.toBeNull()
-    expect(result.world?.content).toBe('这是一个测试世界观。')
-    expect(result.characters.length).toBeGreaterThanOrEqual(1)
-    expect(result.characters[0].name).toBe('主角')
-    expect(result.outline).toHaveLength(totalChapters)
-    expect(result.outline[0].title).toBe('')
-    expect(result.outline[0].description).toBe('')
-    expect(result.storyArc).toBeDefined()
-    expect(result.storyArc?.acts).toHaveLength(1)
-    expect(result.storyArc?.totalChapters).toBe(totalChapters)
-
-    const checkpointsDir = join(tmpDir, 'checkpoints')
-    expect(existsSync(checkpointsDir)).toBe(true)
-    expect(existsSync(join(checkpointsDir, 'latest.json'))).toBe(true)
-    expect(readdirSync(checkpointsDir).some(f => f.endsWith('.json') && f !== 'pending_writes.json')).toBe(true)
-
-    await exportMetaFromCheckpoint(tmpDir)
-
-    const metaPath = join(tmpDir, 'meta.json')
-    expect(existsSync(metaPath)).toBe(true)
-    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    expect(meta.story.id).toBe(story.id)
-    expect(meta.world).not.toBeNull()
-    expect(meta.characters.length).toBeGreaterThanOrEqual(1)
-    expect(meta.outline).toHaveLength(totalChapters)
-  })
+  )
 
   it('uses AI-generated title when story title is empty', { timeout: 30000 }, async () => {
     const totalChapters = 2
@@ -182,13 +191,16 @@ describe('story creation integration', () => {
       updatedAt: Date.now(),
     }
 
-    const result = await runStory({
-      storyId: story.id,
-      idea: story.idea,
-      genre: story.genre,
-      totalChapters,
-      story,
-    }, createMockContext())
+    const result = await runStory(
+      {
+        storyId: story.id,
+        idea: story.idea,
+        genre: story.genre,
+        totalChapters,
+        story,
+      },
+      createMockContext()
+    )
 
     expect(result.story.title).toBe('测试故事')
   })

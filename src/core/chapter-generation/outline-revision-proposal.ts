@@ -31,7 +31,7 @@ function buildPrompt(
   outline: ChapterOutline[],
   chapterIndex: number,
   conflicts: Conflict[],
-  storyState: StoryState,
+  storyState: StoryState
 ): string {
   const chapterOutline = outline[chapterIndex]
   const currentDescription = chapterOutline?.description ?? ''
@@ -39,7 +39,7 @@ function buildPrompt(
   const chapterNumber = chapterIndex + 1
 
   const conflictLines = conflicts
-    .filter(c => c.severity === 'blocking')
+    .filter((c) => c.severity === 'blocking')
     .map((c, idx) => {
       return `${idx + 1}. [${c.type}] ${c.subject} / ${c.attribute}\n   Canonical: ${c.oldValue}\n   Outline implies: ${c.newValue}\n   Reason: ${c.description}`
     })
@@ -129,9 +129,9 @@ export async function generateOutlineRevisionProposal(
   chapterIndex: number,
   conflicts: Conflict[],
   storyState: StoryState,
-  provider: ModelProvider,
+  provider: ModelProvider
 ): Promise<OutlineRevisionProposal | null> {
-  const blockingConflicts = conflicts.filter(c => c.severity === 'blocking')
+  const blockingConflicts = conflicts.filter((c) => c.severity === 'blocking')
   if (blockingConflicts.length === 0) return null
 
   const chapterOutline = outline[chapterIndex]
@@ -146,7 +146,9 @@ export async function generateOutlineRevisionProposal(
     const response = await provider.chat(messages, 0.3)
     return parseProposal(response)
   } catch (err) {
-    logger.debug(`[OutlineRevision] Failed to generate proposal: ${err instanceof Error ? err.message : String(err)}`)
+    logger.debug(
+      `[OutlineRevision] Failed to generate proposal: ${err instanceof Error ? err.message : String(err)}`
+    )
     return null
   }
 }

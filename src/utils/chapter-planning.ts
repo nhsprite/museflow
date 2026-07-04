@@ -65,11 +65,18 @@ export async function validateChapterPlanBudget(
   plan: ChapterPlan,
   config: ChapterPlanningConfig,
   outlineDescription?: string,
-  judgeCoreSections?: CoreSectionJudge,
+  judgeCoreSections?: CoreSectionJudge
 ): Promise<ChapterPlanBudgetValidation> {
   const sections = plan.sections
   if (!sections || sections.length === 0) {
-    return { valid: true, reason: undefined, totalWordCount: 0, coreWordCount: 0, coreRatio: 0, maxNonCoreWordCount: 0 }
+    return {
+      valid: true,
+      reason: undefined,
+      totalWordCount: 0,
+      coreWordCount: 0,
+      coreRatio: 0,
+      maxNonCoreWordCount: 0,
+    }
   }
 
   // 优先使用注入的语义判断函数（如模型调用）。
@@ -80,10 +87,10 @@ export async function validateChapterPlanBudget(
   } else {
     const coreSectionTitles = new Set(
       (plan.outlineCheck ?? [])
-        .filter(c => c.fulfilled && c.section)
-        .map(c => c.section!.trim())
+        .filter((c) => c.fulfilled && c.section)
+        .map((c) => c.section!.trim())
     )
-    coreFlags = sections.map(s => coreSectionTitles.has(s.title?.trim() ?? ''))
+    coreFlags = sections.map((s) => coreSectionTitles.has(s.title?.trim() ?? ''))
   }
 
   let totalWordCount = 0
@@ -104,18 +111,29 @@ export async function validateChapterPlanBudget(
   }
 
   if (totalWordCount === 0) {
-    return { valid: true, reason: undefined, totalWordCount: 0, coreWordCount: 0, coreRatio: 0, maxNonCoreWordCount: 0 }
+    return {
+      valid: true,
+      reason: undefined,
+      totalWordCount: 0,
+      coreWordCount: 0,
+      coreRatio: 0,
+      maxNonCoreWordCount: 0,
+    }
   }
 
   const coreRatio = coreWordCount / totalWordCount
   const reasons: string[] = []
 
   if (coreRatio < config.coreEventRatioTarget) {
-    reasons.push(`核心事件字数占比约 ${Math.round(coreRatio * 100)}%，低于 ${Math.round(config.coreEventRatioTarget * 100)}% 下限`)
+    reasons.push(
+      `核心事件字数占比约 ${Math.round(coreRatio * 100)}%，低于 ${Math.round(config.coreEventRatioTarget * 100)}% 下限`
+    )
   }
 
   if (maxNonCoreWordCount > config.maxNonCoreSectionWordCount) {
-    reasons.push(`最大非核心段落字数约 ${maxNonCoreWordCount}，超过 ${config.maxNonCoreSectionWordCount} 字上限`)
+    reasons.push(
+      `最大非核心段落字数约 ${maxNonCoreWordCount}，超过 ${config.maxNonCoreSectionWordCount} 字上限`
+    )
   }
 
   return {

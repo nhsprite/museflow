@@ -39,7 +39,9 @@ describe('validate_chapter', () => {
       severity: 'error',
       description: '已有问题',
     }
-    vi.mocked(readChapterContent).mockResolvedValueOnce('这是足够长的正文内容，字数应该超过最低要求。'.repeat(100))
+    vi.mocked(readChapterContent).mockResolvedValueOnce(
+      '这是足够长的正文内容，字数应该超过最低要求。'.repeat(100)
+    )
 
     const state = makeState({ pendingIssues: [oldIssue] })
     const result = await validate_chapter(context, state)
@@ -61,6 +63,6 @@ describe('validate_chapter', () => {
 
     expect(result.pendingIssues).toHaveLength(1)
     expect(result.pendingIssues![0]!.type).toBe('word_count')
-    expect(result.pendingIssues!.some(i => i.id === 'old-1')).toBe(false)
+    expect(result.pendingIssues!.some((i) => i.id === 'old-1')).toBe(false)
   })
 })

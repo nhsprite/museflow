@@ -3,7 +3,9 @@ import { FixAgent } from '../../src/agents/fix.js'
 import type { FixAgentInput } from '../../src/agents/types.ts'
 import type { ModelProvider } from '../../src/model/provider.ts'
 
-function createMockProvider(chat: (messages: unknown[]) => string | Promise<string>): ModelProvider {
+function createMockProvider(
+  chat: (messages: unknown[]) => string | Promise<string>
+): ModelProvider {
   return {
     chat: async (messages: unknown[]) => chat(messages),
     chatStructured: vi.fn().mockResolvedValue({}),
@@ -16,8 +18,9 @@ const createAgent = (chat: (messages: unknown[]) => string | Promise<string>) =>
 
 describe('FixAgent parse', () => {
   it('extracts content between FIXED_CHAPTER markers', async () => {
-    const agent = createAgent(() =>
-      'Some preamble\n=== FIXED_CHAPTER ===\n# 第四章 王府递帖\n\n正文。\n=== END_FIXED_CHAPTER ===\nTrailing text'
+    const agent = createAgent(
+      () =>
+        'Some preamble\n=== FIXED_CHAPTER ===\n# 第四章 王府递帖\n\n正文。\n=== END_FIXED_CHAPTER ===\nTrailing text'
     )
     const output = await agent.run({
       idea: 'test',
@@ -35,9 +38,7 @@ describe('FixAgent parse', () => {
   })
 
   it('falls back to content after FIXED_CHAPTER marker when no end marker', async () => {
-    const agent = createAgent(() =>
-      '=== FIXED_CHAPTER ===\n# 第四章 王府递帖\n\n正文。'
-    )
+    const agent = createAgent(() => '=== FIXED_CHAPTER ===\n# 第四章 王府递帖\n\n正文。')
     const output = await agent.run({
       idea: 'test',
       genre: 'default',
@@ -54,8 +55,9 @@ describe('FixAgent parse', () => {
   })
 
   it('still recognizes sentence fix format', async () => {
-    const agent = createAgent(() =>
-      '=== FIXED_CHAPTER ===\n【段落 1 · 第 1 句】\n修改后的第一句。\n=== END_FIXED_CHAPTER ==='
+    const agent = createAgent(
+      () =>
+        '=== FIXED_CHAPTER ===\n【段落 1 · 第 1 句】\n修改后的第一句。\n=== END_FIXED_CHAPTER ==='
     )
     const output = await agent.run({
       idea: 'test',

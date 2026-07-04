@@ -151,7 +151,9 @@ export type ChapterAgentInput = AgentInput &
   }
 
 export type ChapterPlannerAgentInput = AgentInput &
-  Required<Pick<AgentInput, 'chapterIndex' | 'outline' | 'previousChapters' | 'world' | 'characters'>> & {
+  Required<
+    Pick<AgentInput, 'chapterIndex' | 'outline' | 'previousChapters' | 'world' | 'characters'>
+  > & {
     charactersList?: Character[]
     outlineCharacters?: Character[]
     establishedCharacters?: Character[]
@@ -170,7 +172,10 @@ export type ForeshadowingAgentInput = AgentInput &
 
 export type ConsistencyAgentInput = AgentInput &
   Required<
-    Pick<AgentInput, 'chapterIndex' | 'chapterContent' | 'world' | 'characters' | 'outline' | 'storyState'>
+    Pick<
+      AgentInput,
+      'chapterIndex' | 'chapterContent' | 'world' | 'characters' | 'outline' | 'storyState'
+    >
   > & {
     chapterTimeAnchor?: string
     supersededFacts?: string
@@ -193,7 +198,12 @@ export type SummaryAgentInput = AgentInput &
   }
 
 export type FixAgentInput = AgentInput &
-  Required<Pick<AgentInput, 'chapterIndex' | 'chapterContent' | 'issues' | 'previousChapters' | 'timelineSnapshot'>> & {
+  Required<
+    Pick<
+      AgentInput,
+      'chapterIndex' | 'chapterContent' | 'issues' | 'previousChapters' | 'timelineSnapshot'
+    >
+  > & {
     storyState?: string
     charactersList?: Character[]
     outlineCharacters?: Character[]

@@ -39,7 +39,10 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     return this.buildLegacyPrompt(state, displayChapterNumber)
   }
 
-  private buildSentencePrompt(state: FixAgentInput, displayChapterNumber: string): import('../model/provider.js').Message[] {
+  private buildSentencePrompt(
+    state: FixAgentInput,
+    displayChapterNumber: string
+  ): import('../model/provider.js').Message[] {
     const { sentences, context } = state.sentenceFix!
     const targetSection = buildSentenceTargetSection(sentences)
     const sections = buildFixPromptSections(state, targetSection)
@@ -49,7 +52,10 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     return [this.systemMessage(buildFixSystemPrompt('sentence')), this.userMessage(userContent)]
   }
 
-  private buildParagraphPrompt(state: FixAgentInput, displayChapterNumber: string): import('../model/provider.js').Message[] {
+  private buildParagraphPrompt(
+    state: FixAgentInput,
+    displayChapterNumber: string
+  ): import('../model/provider.js').Message[] {
     const { paragraphs, context } = state.paragraphFix!
     const issueIndexMap = new Map(state.issues?.map((issue, idx) => [issue, idx + 1]) ?? [])
     const targetSection = buildParagraphTargetSection(paragraphs, issueIndexMap)
@@ -60,7 +66,10 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     return [this.systemMessage(buildFixSystemPrompt('paragraph')), this.userMessage(userContent)]
   }
 
-  private buildLegacyPrompt(state: FixAgentInput, displayChapterNumber: string): import('../model/provider.js').Message[] {
+  private buildLegacyPrompt(
+    state: FixAgentInput,
+    displayChapterNumber: string
+  ): import('../model/provider.js').Message[] {
     const sections = buildFixPromptSections(state, '')
     const userContent = buildLegacyUserPrompt(sections, { displayChapterNumber })
 
@@ -81,8 +90,13 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       extractedContent = content.trim()
     }
 
-    const sentencePattern = /【段落\s*(\d+)\s*·\s*第\s*(\d+)\s*句】\s*([\s\S]*?)(?=\s*【段落\s*\d+\s*·\s*第\s*\d+\s*句】|$)/g
-    const modifiedSentences: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> = []
+    const sentencePattern =
+      /【段落\s*(\d+)\s*·\s*第\s*(\d+)\s*句】\s*([\s\S]*?)(?=\s*【段落\s*\d+\s*·\s*第\s*\d+\s*句】|$)/g
+    const modifiedSentences: Array<{
+      paragraphIndex: number
+      sentenceIndex: number
+      content: string
+    }> = []
 
     let sentenceMatch
     while ((sentenceMatch = sentencePattern.exec(extractedContent)) !== null) {
@@ -146,15 +160,36 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     paragraphs: string[],
     affectedIndices: number[]
   ): string {
-    if (output.data && (output.data as { modifiedSentences?: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences) {
-      const modifiedSentences = (output.data as { modifiedSentences: Array<{ paragraphIndex: number; sentenceIndex: number; content: string }> }).modifiedSentences
+    if (
+      output.data &&
+      (
+        output.data as {
+          modifiedSentences?: Array<{
+            paragraphIndex: number
+            sentenceIndex: number
+            content: string
+          }>
+        }
+      ).modifiedSentences
+    ) {
+      const modifiedSentences = (
+        output.data as {
+          modifiedSentences: Array<{
+            paragraphIndex: number
+            sentenceIndex: number
+            content: string
+          }>
+        }
+      ).modifiedSentences
       const modifiedParagraphs = new Map<number, Array<{ index: number; content: string }>>()
 
       for (const s of modifiedSentences) {
         if (!modifiedParagraphs.has(s.paragraphIndex)) {
           modifiedParagraphs.set(s.paragraphIndex, [])
         }
-        modifiedParagraphs.get(s.paragraphIndex)!.push({ index: s.sentenceIndex, content: s.content })
+        modifiedParagraphs
+          .get(s.paragraphIndex)!
+          .push({ index: s.sentenceIndex, content: s.content })
       }
 
       const resultParagraphs = [...paragraphs]
@@ -167,8 +202,14 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       return resultParagraphs.join('\n\n')
     }
 
-    if (output.data && (output.data as { modifiedParagraphs?: Array<{ index: number; content: string }> }).modifiedParagraphs) {
-      const modifiedParagraphs = (output.data as { modifiedParagraphs: Array<{ index: number; content: string }> }).modifiedParagraphs
+    if (
+      output.data &&
+      (output.data as { modifiedParagraphs?: Array<{ index: number; content: string }> })
+        .modifiedParagraphs
+    ) {
+      const modifiedParagraphs = (
+        output.data as { modifiedParagraphs: Array<{ index: number; content: string }> }
+      ).modifiedParagraphs
       return mergeParagraphFixes(paragraphs, modifiedParagraphs, affectedIndices)
     }
 

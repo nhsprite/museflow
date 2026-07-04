@@ -8,9 +8,10 @@ import { extractJsonBlock, repairMalformedJson } from '../utils/json.js'
 export function createProvider(config?: AppConfig): ModelProvider {
   const resolved = config ?? loadConfig()
 
-  const base = resolved.model.provider === 'anthropic'
-    ? new AnthropicCompatibleProvider(resolved.model)
-    : new OpenAICompatibleProvider(resolved.model)
+  const base =
+    resolved.model.provider === 'anthropic'
+      ? new AnthropicCompatibleProvider(resolved.model)
+      : new OpenAICompatibleProvider(resolved.model)
 
   const provider = withStructuredFallback(base)
 
@@ -33,7 +34,13 @@ function withStructuredFallback(provider: ModelProvider): ModelProvider {
   }
 }
 
-type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string; temperature?: number; maxTokens?: number }
+type ProviderConfig = {
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+  temperature?: number
+  maxTokens?: number
+}
 
 const DEFAULT_FETCH_TIMEOUT_MS = 900000
 
@@ -69,13 +76,17 @@ async function fetchWithRetry(url: string, init: RequestInit, retries = 3): Prom
       if (!isRecoverable || attempt === retries - 1) {
         logger.error(`API request failed after ${attempt + 1} attempt(s) to ${url}: ${message}`)
         if (cause) {
-          logger.error(`Underlying cause: ${cause instanceof Error ? cause.stack ?? cause.message : String(cause)}`)
+          logger.error(
+            `Underlying cause: ${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}`
+          )
         }
         throw lastError
       }
       const delay = 1000 * 2 ** attempt
-      logger.debug(`API fetch failed (attempt ${attempt + 1}/${retries}): ${message}. Retrying in ${delay}ms`)
-      await new Promise(resolve => setTimeout(resolve, delay))
+      logger.debug(
+        `API fetch failed (attempt ${attempt + 1}/${retries}): ${message}. Retrying in ${delay}ms`
+      )
+      await new Promise((resolve) => setTimeout(resolve, delay))
     }
   }
   throw lastError ?? new Error('Unknown fetch error')
@@ -91,15 +102,24 @@ class OpenAICompatibleProvider implements ModelProvider {
     const res = await fetchWithRetry(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, temperature: temperature ?? this.cfg.temperature ?? 0.7, max_tokens: this.cfg.maxTokens ?? 32768 }),
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: temperature ?? this.cfg.temperature ?? 0.7,
+        max_tokens: this.cfg.maxTokens ?? 32768,
+      }),
       signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`API error: ${res.status}`)
-    const json = await res.json() as { choices: { message: { content: string } }[] }
+    const json = (await res.json()) as { choices: { message: { content: string } }[] }
     return json.choices[0]?.message?.content ?? ''
   }
 
-  async chatStructured<T>(messages: Message[], schema: JsonSchema, temperature?: number): Promise<T> {
+  async chatStructured<T>(
+    messages: Message[],
+    schema: JsonSchema,
+    temperature?: number
+  ): Promise<T> {
     const apiKey = this.cfg.apiKey ?? process.env.OPENAI_API_KEY ?? ''
     const baseUrl = this.cfg.baseUrl ?? 'https://api.openai.com/v1'
     const model = this.cfg.model ?? 'gpt-4o'
@@ -123,7 +143,7 @@ class OpenAICompatibleProvider implements ModelProvider {
       signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`API error: ${res.status}`)
-    const json = await res.json() as { choices: { message: { content: string } }[] }
+    const json = (await res.json()) as { choices: { message: { content: string } }[] }
     const content = json.choices[0]?.message?.content ?? ''
     return JSON.parse(content) as T
   }
@@ -150,7 +170,7 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
@@ -158,12 +178,18 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`)
-    const json = await res.json() as { content: Array<{ type?: string; text?: string }> }
-    const textContent = json.content?.find(c => typeof c.text === 'string' && (!c.type || c.type === 'text'))
+    const json = (await res.json()) as { content: Array<{ type?: string; text?: string }> }
+    const textContent = json.content?.find(
+      (c) => typeof c.text === 'string' && (!c.type || c.type === 'text')
+    )
     return textContent?.text ?? ''
   }
 
-  async chatStructured<T>(messages: Message[], schema: JsonSchema, temperature?: number): Promise<T> {
+  async chatStructured<T>(
+    messages: Message[],
+    schema: JsonSchema,
+    temperature?: number
+  ): Promise<T> {
     const apiKey = this.cfg.apiKey ?? process.env.ANTHROPIC_API_KEY ?? ''
     const baseUrl = this.cfg.baseUrl ?? 'https://api.anthropic.com'
     const model = this.cfg.model ?? 'claude-3-sonnet-20240229'
@@ -174,11 +200,13 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       messages: getNonSystemMessages(messages),
       max_tokens: this.cfg.maxTokens ?? 8192,
       temperature: temperature ?? this.cfg.temperature ?? 0.7,
-      tools: [{
-        name: toolName,
-        description: 'Return structured data according to the required schema',
-        input_schema: schema,
-      }],
+      tools: [
+        {
+          name: toolName,
+          description: 'Return structured data according to the required schema',
+          input_schema: schema,
+        },
+      ],
       tool_choice: { type: 'tool', name: toolName },
     }
     const system = getSystemMessage(messages)
@@ -190,7 +218,7 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
@@ -198,17 +226,19 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`)
-    const json = await res.json() as {
+    const json = (await res.json()) as {
       content: Array<{ type?: string; name?: string; input?: T; text?: string }>
     }
-    const toolUse = json.content?.find(c => c.type === 'tool_use' && c.name === toolName)
+    const toolUse = json.content?.find((c) => c.type === 'tool_use' && c.name === toolName)
     if (toolUse?.input) {
       return toolUse.input
     }
 
     // Fallback: some Anthropic-compatible endpoints (e.g., Minimax) return the
     // structured JSON inside a plain text content block instead of a tool_use block.
-    const textContent = json.content?.find(c => typeof c.text === 'string' && (!c.type || c.type === 'text'))?.text
+    const textContent = json.content?.find(
+      (c) => typeof c.text === 'string' && (!c.type || c.type === 'text')
+    )?.text
     if (textContent) {
       const jsonText = extractJsonBlock(textContent)
       try {
@@ -223,7 +253,9 @@ export class AnthropicCompatibleProvider implements ModelProvider {
     }
 
     const responsePreview = JSON.stringify(json).slice(0, 500)
-    throw new Error(`Anthropic API did not return structured output. Response preview: ${responsePreview}`)
+    throw new Error(
+      `Anthropic API did not return structured output. Response preview: ${responsePreview}`
+    )
   }
 }
 
@@ -266,7 +298,11 @@ class DebugModelProvider implements ModelProvider {
     }
   }
 
-  async chatStructured<T>(messages: Message[], schema: JsonSchema, temperature?: number): Promise<T> {
+  async chatStructured<T>(
+    messages: Message[],
+    schema: JsonSchema,
+    temperature?: number
+  ): Promise<T> {
     const start = Date.now()
     if (!this.provider.chatStructured) {
       throw new Error('Provider does not support structured output')
@@ -298,7 +334,9 @@ class DebugModelProvider implements ModelProvider {
   }
 
   private log(session: DebugSession): void {
-    logger.debug(`[LLM] messages=${session.messages.length} temp=${session.temperature} duration=${session.duration_ms}ms`)
+    logger.debug(
+      `[LLM] messages=${session.messages.length} temp=${session.temperature} duration=${session.duration_ms}ms`
+    )
 
     for (const msg of session.messages) {
       const preview = msg.content.slice(0, 100).replace(/\n/g, ' ')

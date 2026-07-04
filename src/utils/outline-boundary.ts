@@ -4,16 +4,19 @@ import { filterRelevantPendingTasks } from './pending-tasks.js'
 import type { ChapterPlanningConfig } from '../types/genre.js'
 import type { ModelProvider } from '../model/provider.js'
 
-function getActForChapter(storyArc: StoryArc | null | undefined, chapterIndex: number): ActArc | undefined {
+function getActForChapter(
+  storyArc: StoryArc | null | undefined,
+  chapterIndex: number
+): ActArc | undefined {
   if (!storyArc) return undefined
   const chapterNumber = chapterIndex + 1
-  return storyArc.acts.find(a => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
+  return storyArc.acts.find((a) => chapterNumber >= a.startChapter && chapterNumber <= a.endChapter)
 }
 
 export function buildNextChapterBoundaryHint(
   outline: ChapterOutline[],
   chapterIndex: number,
-  storyArc?: StoryArc | null,
+  storyArc?: StoryArc | null
 ): string {
   const nextChapterIndex = chapterIndex + 1
   const nextOutlineItem = outline[nextChapterIndex]
@@ -65,7 +68,7 @@ export async function reconcileOutlineWithState(
   state: ReducedGraphState,
   chapterIndex: number,
   config: ChapterPlanningConfig,
-  provider?: ModelProvider,
+  provider?: ModelProvider
 ): Promise<string> {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) return ''
@@ -75,21 +78,21 @@ export async function reconcileOutlineWithState(
     pendingTasks,
     chapterIndex,
     outlineItem.description,
-    provider,
+    provider
   )
   if (relevantTasks.length === 0) return ''
 
   const nextItem = state.outline[chapterIndex + 1]
-  const nextTitle = nextItem?.title
-    ? `第${nextItem.number}章「${nextItem.title}」`
-    : '后续章节'
+  const nextTitle = nextItem?.title ? `第${nextItem.number}章「${nextItem.title}」` : '后续章节'
 
   return `<pending_tasks>
 <important>【前章遗留差事 - 本章规划必须处理或说明】</important>
-${relevantTasks.map(t => {
+${relevantTasks
+  .map((t) => {
     const due = t.dueTime ?? (t.dueChapter ? `第${t.dueChapter}章前` : '未指定')
     return `- ${t.assignee}：${t.description}（截止：${due}）`
-  }).join('\n')}
+  })
+  .join('\n')}
 
 <mandatory>【强制要求】
 1. 以上差事来自前章角色领受的任务，本章计划必须对每条差事给出明确处理：

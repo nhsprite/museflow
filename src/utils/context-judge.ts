@@ -39,7 +39,7 @@ function buildIndexedResultsSchema(schema: JsonSchema): JsonSchema {
 }
 
 function mapResult<T>(raw: unknown, transform?: (raw: unknown) => T): T {
-  return transform ? transform(raw) : raw as T
+  return transform ? transform(raw) : (raw as T)
 }
 
 function parseBatchResults<T>(
@@ -50,7 +50,7 @@ function parseBatchResults<T>(
   if (!Array.isArray(rawResults)) return undefined
 
   const hasIndexedResult = rawResults.some(
-    result => isRecord(result) && typeof result['id'] === 'string' && 'value' in result
+    (result) => isRecord(result) && typeof result['id'] === 'string' && 'value' in result
   )
 
   if (hasIndexedResult) {
@@ -69,16 +69,16 @@ function parseBatchResults<T>(
       }
       byId.set(id, result['value'])
     }
-    if (!expectedIds.every(id => byId.has(id))) {
+    if (!expectedIds.every((id) => byId.has(id))) {
       return undefined
     }
-    return expectedIds.map(id => mapResult(byId.get(id), transform))
+    return expectedIds.map((id) => mapResult(byId.get(id), transform))
   }
 
   if (rawResults.length !== expectedIds.length) {
     return undefined
   }
-  return rawResults.map(result => mapResult(result, transform))
+  return rawResults.map((result) => mapResult(result, transform))
 }
 
 function describeResults(rawResults: unknown): string {
@@ -112,7 +112,11 @@ async function tryBatchJudge<T>(
   let rawResponse: unknown
   try {
     if (provider.chatStructured) {
-      const response = await provider.chatStructured<{ results: unknown[] }>(messages, buildIndexedResultsSchema(schema), 0.1)
+      const response = await provider.chatStructured<{ results: unknown[] }>(
+        messages,
+        buildIndexedResultsSchema(schema),
+        0.1
+      )
       rawResponse = response
       const results = response.results
       const parsed = parseBatchResults(results, ids, transform)
@@ -121,7 +125,9 @@ async function tryBatchJudge<T>(
       }
       const actualDesc = describeResults(results)
       const preview = JSON.stringify(rawResponse).slice(0, 400)
-      logger.warn(`[MuseFlow] chatStructured 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${preview}`)
+      logger.warn(
+        `[MuseFlow] chatStructured 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${preview}`
+      )
       return undefined
     }
 
@@ -135,18 +141,18 @@ async function tryBatchJudge<T>(
       return parsed
     }
     const actualDesc = describeResults(results)
-    logger.warn(`[MuseFlow] chat 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${rawResponse?.toString().slice(0, 400)}`)
+    logger.warn(
+      `[MuseFlow] chat 返回的 results 不匹配：期望 ${items.length} 个，实际 ${actualDesc}。响应预览：${rawResponse?.toString().slice(0, 400)}`
+    )
     return undefined
   } catch (err) {
-    const preview = typeof rawResponse === 'string'
-      ? rawResponse.slice(0, 200)
-      : rawResponse !== undefined
-        ? JSON.stringify(rawResponse).slice(0, 200)
-        : '（无响应）'
-    logger.warn(
-      `[MuseFlow] 批量语境判断失败（条目数 ${items.length}）。响应预览：${preview}`,
-      err
-    )
+    const preview =
+      typeof rawResponse === 'string'
+        ? rawResponse.slice(0, 200)
+        : rawResponse !== undefined
+          ? JSON.stringify(rawResponse).slice(0, 200)
+          : '（无响应）'
+    logger.warn(`[MuseFlow] 批量语境判断失败（条目数 ${items.length}）。响应预览：${preview}`, err)
     return undefined
   }
 }
@@ -162,11 +168,15 @@ async function batchJudge<T>(
   if (items.length === 0) return []
 
   if (items.length > MAX_BATCH_JUDGE_ITEMS) {
-    logger.debug(`[MuseFlow] 批量判断条目较多，按 ${MAX_BATCH_JUDGE_ITEMS} 条分块处理（条目数 ${items.length}）`)
+    logger.debug(
+      `[MuseFlow] 批量判断条目较多，按 ${MAX_BATCH_JUDGE_ITEMS} 条分块处理（条目数 ${items.length}）`
+    )
     const results: T[] = []
     for (let start = 0; start < items.length; start += MAX_BATCH_JUDGE_ITEMS) {
       const chunk = items.slice(start, start + MAX_BATCH_JUDGE_ITEMS)
-      results.push(...await batchJudge(provider, systemPrompt, chunk, schema, fallback, transform))
+      results.push(
+        ...(await batchJudge(provider, systemPrompt, chunk, schema, fallback, transform))
+      )
     }
     return results
   }
@@ -298,7 +308,8 @@ export async function batchClassifyIssues(
   }
 
   const items = issues.map(
-    issue => `type=${issue.type}, severity=${issue.severity}, description=${issue.description}${issue.location ? `, location=${issue.location}` : ''}`
+    (issue) =>
+      `type=${issue.type}, severity=${issue.severity}, description=${issue.description}${issue.location ? `, location=${issue.location}` : ''}`
   )
 
   return batchJudge(
@@ -336,7 +347,8 @@ export async function batchGenerateIssueFingerprints(
   }
 
   const items = issues.map(
-    issue => `type=${issue.type}, description=${issue.description}${issue.location ? `, location=${issue.location}` : ''}`
+    (issue) =>
+      `type=${issue.type}, description=${issue.description}${issue.location ? `, location=${issue.location}` : ''}`
   )
 
   return batchJudge(
@@ -366,7 +378,9 @@ export async function batchJudgeTaskRelevance(
 1. 如果差事的核心动作、关键角色或核心目标在本章大纲描述中有明确体现，返回 true。
 2. 如果差事只是 deadline 落在本章、铺垫、过渡、支线、背景介绍，返回 false。
 3. 只输出 JSON {"results": [true/false, ...]}，顺序与输入一致，不要解释。`,
-    items.map(i => `【本章大纲描述】\n${i.outlineDescription}\n\n【前章遗留差事】\n${i.taskDescription}`),
+    items.map(
+      (i) => `【本章大纲描述】\n${i.outlineDescription}\n\n【前章遗留差事】\n${i.taskDescription}`
+    ),
     schema,
     false
   )
@@ -424,7 +438,12 @@ export async function batchExtractEntityChanges(
     required: ['results'],
   }
 
-  const defaultResult: EntityChangeResult = { skip: true, location: null, state: null, changeKind: 'not_present' }
+  const defaultResult: EntityChangeResult = {
+    skip: true,
+    location: null,
+    state: null,
+    changeKind: 'not_present',
+  }
 
   return batchJudge(
     provider,
@@ -439,10 +458,10 @@ export async function batchExtractEntityChanges(
 - 若 attribute 为"状态"，提取 subject 的明确状态作为 state。
 - 不得把章节场景地点、人物地点、或持有者所在场景自动当成 subject 的位置。
 - 只输出 JSON {"results": [{"skip": bool, "location": "..."|null, "state": "..."|null, "changeKind": "explicit_change"|"scene_context"|"ambiguous"|"not_present"}, ...]}，顺序与输入一致。`,
-    items.map(i => `attribute=${i.attribute}, subject=${i.subject}, text=${i.text}`),
+    items.map((i) => `attribute=${i.attribute}, subject=${i.subject}, text=${i.text}`),
     schema,
     defaultResult,
-    raw => {
+    (raw) => {
       if (typeof raw !== 'object' || raw === null) return defaultResult
       const r = raw as Record<string, unknown>
       return {
@@ -538,7 +557,7 @@ export async function batchValidateFixedContent(
 - looksLikeRevisionPlan: 是否更像修改计划、问题分析、修复建议，而不是正式章节正文（如包含"问题分析"、"修复建议"、"应该"、"可以"、"需要"等大量建议性表达，或列表式修改点）。
 - containsChecklistArtifacts: 是否包含预写对齐检查表、自检清单、Markdown 表格检查项、待办方框等残留。
 只输出 JSON {"results": [{"looksLikeRevisionPlan": bool, "containsChecklistArtifacts": bool}, ...]}，顺序与输入一致。`,
-    texts.map(t => t.slice(0, 2000)),
+    texts.map((t) => t.slice(0, 2000)),
     schema,
     defaultResult
   )
@@ -578,7 +597,7 @@ export async function batchValidateTimeAnchors(
 2. 如果 anchor 声称上一章某个事件已经完成、落地、收束或解决，但该事件的核心内容未出现在 previousContent 中，返回 valid=false 并在 reason 中说明。
 3. 否则返回 valid=true。
 只输出 JSON {"results": [{"valid": bool, "reason": "..."|null}, ...]}，顺序与输入一致。`,
-    anchors.map(a => `anchor=${a.anchor}\npreviousContent=${a.previousContent.slice(0, 1200)}`),
+    anchors.map((a) => `anchor=${a.anchor}\npreviousContent=${a.previousContent.slice(0, 1200)}`),
     schema,
     { valid: true }
   )

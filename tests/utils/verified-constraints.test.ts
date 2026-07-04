@@ -10,8 +10,24 @@ import type { StoryArc } from '../../src/types/outline.js'
 const storyArc: StoryArc = {
   totalChapters: 3,
   acts: [
-    { index: 1, startChapter: 1, endChapter: 1, title: 'Act One', theme: 'Setup', function: 'Close setup', mandatoryBeats: [] },
-    { index: 2, startChapter: 2, endChapter: 3, title: 'Act Two', theme: 'Escalation', function: 'Escalate conflict', mandatoryBeats: [] },
+    {
+      index: 1,
+      startChapter: 1,
+      endChapter: 1,
+      title: 'Act One',
+      theme: 'Setup',
+      function: 'Close setup',
+      mandatoryBeats: [],
+    },
+    {
+      index: 2,
+      startChapter: 2,
+      endChapter: 3,
+      title: 'Act Two',
+      theme: 'Escalation',
+      function: 'Escalate conflict',
+      mandatoryBeats: [],
+    },
   ],
   keyBeats: [],
 }
@@ -21,7 +37,9 @@ describe('verified constraints', () => {
     const genericTextThatLooksLikeActPressure = createGenericVerifiedConstraint(
       '【幕级节拍压力】第 1 幕 text that should remain generic because its kind is generic.'
     )
-    const durableBoundary = createGenericVerifiedConstraint('Keep the next-chapter boundary unresolved.')
+    const durableBoundary = createGenericVerifiedConstraint(
+      'Keep the next-chapter boundary unresolved.'
+    )
     const staleActPressure = createActPressureConstraint(
       1,
       'Act one has unresolved beats and should no longer constrain act two.'
@@ -30,10 +48,7 @@ describe('verified constraints', () => {
       2,
       'Older act two pressure that should be replaced by the latest act two pressure.'
     )
-    const latestCurrentActPressure = createActPressureConstraint(
-      2,
-      'Latest act two pressure.'
-    )
+    const latestCurrentActPressure = createActPressureConstraint(2, 'Latest act two pressure.')
 
     const filtered = filterVerifiedConstraintsForChapter(
       [

@@ -7,9 +7,16 @@ import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
-import { buildCanonicalFactsSection, buildCharacterWhitelistSection, FACT_CONSISTENCY_RULES } from './prompts/fragments/index.js'
+import {
+  buildCanonicalFactsSection,
+  buildCharacterWhitelistSection,
+  FACT_CONSISTENCY_RULES,
+} from './prompts/fragments/index.js'
 import { buildChapterSystemPrompt, buildChapterUserPrompt } from './prompts/chapter-prompt.js'
-import { CHAPTER_HEADING_PATTERN, CHAPTER_TITLE_ONLY_PATTERN } from '../utils/chapter-content-validation.js'
+import {
+  CHAPTER_HEADING_PATTERN,
+  CHAPTER_TITLE_ONLY_PATTERN,
+} from '../utils/chapter-content-validation.js'
 
 export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   constructor(provider: ModelProvider) {
@@ -67,41 +74,57 @@ ${state.chapterContract}
 - 如果大纲中出现"后续章节边界提示"或"跨章节边界冲突"，必须严格遵守其中的强制要求：不要把后续章节的核心事件提前解决、不要重复处理前章已解决的事件
 </outline_compliance>`
 
-    const issuesSection = state.issues && state.issues.length > 0
-      ? `<issues>
+    const issuesSection =
+      state.issues && state.issues.length > 0
+        ? `<issues>
 <important>【重要】本章需要修复的问题：</important>
 ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}${issue.location ? `\n   位置: ${issue.location}` : ''}${issue.suggestion ? `\n   建议: ${issue.suggestion}` : ''}`).join('\n')}
 
 <important>【重要】请务必按照上述问题描述修复本章内容，严格遵循大纲设定。</important>
 </issues>`
-      : ''
+        : ''
 
     const currentChapterIndex = (state.chapterIndex ?? 0) + 1
-    const activeForeshadows = state.foreshadowStack?.filter(f => !f.fulfilledChapter) ?? []
-    
+    const activeForeshadows = state.foreshadowStack?.filter((f) => !f.fulfilledChapter) ?? []
+
     const overdueForeshadows = activeForeshadows.filter(
-      f => currentChapterIndex > f.expectedFulfillChapter + 1
+      (f) => currentChapterIndex > f.expectedFulfillChapter + 1
     )
     const urgentForeshadows = activeForeshadows.filter(
-      f => currentChapterIndex >= f.expectedFulfillChapter - 1 && currentChapterIndex <= f.expectedFulfillChapter + 1
+      (f) =>
+        currentChapterIndex >= f.expectedFulfillChapter - 1 &&
+        currentChapterIndex <= f.expectedFulfillChapter + 1
     )
     const normalForeshadows = activeForeshadows.filter(
-      f => currentChapterIndex < f.expectedFulfillChapter - 1
+      (f) => currentChapterIndex < f.expectedFulfillChapter - 1
     )
 
-    const foreshadowSection = activeForeshadows.length > 0
-      ? `<foreshadow_reminder>
+    const foreshadowSection =
+      activeForeshadows.length > 0
+        ? `<foreshadow_reminder>
 <title>【伏笔回收提醒】</title>
-${overdueForeshadows.length > 0 ? `<overdue>⚠️ 已逾期伏笔（必须在本章回收）：
+${
+  overdueForeshadows.length > 0
+    ? `<overdue>⚠️ 已逾期伏笔（必须在本章回收）：
 ${overdueForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章，已逾期${currentChapterIndex - f.expectedFulfillChapter}章）`).join('\n')}
 
-<mandatory>【强制要求】以上逾期伏笔已严重超期，必须在本章明确回收。如果本章无法自然回收，请通过角色回忆、对话揭示或场景呼应的方式处理，绝不可继续拖延。</mandatory></overdue>\n\n` : ''}${urgentForeshadows.length > 0 ? `<urgent>🔔 即将到期伏笔（建议在本章回收）：
+<mandatory>【强制要求】以上逾期伏笔已严重超期，必须在本章明确回收。如果本章无法自然回收，请通过角色回忆、对话揭示或场景呼应的方式处理，绝不可继续拖延。</mandatory></overdue>\n\n`
+    : ''
+}${
+            urgentForeshadows.length > 0
+              ? `<urgent>🔔 即将到期伏笔（建议在本章回收）：
 ${urgentForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}
-</urgent>\n\n` : ''}${normalForeshadows.length > 0 ? `<normal>⏳ 正常伏笔（后续章节回收）：
+</urgent>\n\n`
+              : ''
+          }${
+            normalForeshadows.length > 0
+              ? `<normal>⏳ 正常伏笔（后续章节回收）：
 ${normalForeshadows.map((f, i) => `  ${i + 1}. "${f.text}"（预期第${f.expectedFulfillChapter}章）`).join('\n')}
-</normal>\n\n` : ''}请注意在写作时自然地呼应或揭示需要回收的伏笔。
+</normal>\n\n`
+              : ''
+          }请注意在写作时自然地呼应或揭示需要回收的伏笔。
 </foreshadow_reminder>`
-      : ''
+        : ''
 
     const existingChapterSection = state.chapterContent
       ? `<existing_chapter>
@@ -136,8 +159,9 @@ ${JSON.stringify(state.chapterPlan, null, 2)}
       : ''
 
     const taskResolutions = state.chapterPlan?.taskResolutions
-    const taskResolutionSection = taskResolutions && taskResolutions.length > 0
-      ? `<task_resolutions>
+    const taskResolutionSection =
+      taskResolutions && taskResolutions.length > 0
+        ? `<task_resolutions>
 <instruction>【前章遗留差事处理 - 必须遵循】</instruction>
 ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t.description}\n   原因：${t.reason}${t.section ? `\n   对应段落：${t.section}` : ''}`).join('\n')}
 
@@ -147,37 +171,38 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 - 标记为 superseded 的差事：本章不得提及，已被后续大纲覆盖
 - 标记为 background 的差事：本章只能用一句话带过，不得超过 {MAX_BACKGROUND_TASK_WORD_COUNT} 字，不得写成独立场景
 </task_resolutions>`
-      : ''
+        : ''
 
     const outlineKeyPoints = this.extractOutlineKeyPoints(chapterInfo.description)
     const planSections = state.chapterPlan?.sections ?? []
 
     const remainingChapters = state.totalChapters - chapterIndex - 1
-    const closingReminder = remainingChapters === 0
-      ? `<closing_phase>
+    const closingReminder =
+      remainingChapters === 0
+        ? `<closing_phase>
 <title>【完结期提示】</title>
 <content>这是最后一章，必须完成以下任务：
 - 回收所有主要伏笔，不得遗留未解决的悬念
 - 给出明确的结局（人物命运、冲突结果、世界状态）
 - 避免仓促收尾，给读者完整的收束感</content>
 </closing_phase>`
-      : remainingChapters === 1
-        ? `<closing_phase>
+        : remainingChapters === 1
+          ? `<closing_phase>
 <title>【冲突期提示】</title>
 <content>还有最后一章就完结了，本章必须：
 - 推进最终对决/高潮冲突到临界点
 - 回收至少 {CLOSING_FORESHADOW_RECOVERY_PERCENT}% 的主要伏笔
 - 为结局做好所有铺垫，不要在最后一章引入新线索</content>
 </closing_phase>`
-        : remainingChapters <= 3
-          ? `<closing_phase>
+          : remainingChapters <= 3
+            ? `<closing_phase>
 <title>【铺垫期提示】</title>
 <content>还有 ${remainingChapters + 1} 章完结，请注意：
 - 开始加速主线节奏，减少无关支线
 - 为主要冲突的最终爆发积蓄张力
 - 有选择地回收部分伏笔，保留核心悬念到结局</content>
 </closing_phase>`
-          : ''
+            : ''
 
     const factVerificationSection = this.buildFactVerificationSection(state)
     const absoluteConstraintsSection = this.buildAbsoluteConstraints(state)
@@ -203,13 +228,13 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         outlineKeyPointsRows: outlineKeyPoints
           .map(
             (point, i) =>
-              `| 大纲情节点${i + 1} | 大纲 | ${point} | （请填写：本章如何呈现该情节点） | （请填写：第几段） |`,
+              `| 大纲情节点${i + 1} | 大纲 | ${point} | （请填写：本章如何呈现该情节点） | （请填写：第几段） |`
           )
           .join('\n'),
         planSectionsRows: planSections
           .map(
             (section, i) =>
-              `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`,
+              `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`
           )
           .join('\n'),
         stateConflictsRow: state.stateConflicts
@@ -226,8 +251,10 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         CHAPTER_WORD_COUNT_MIN: genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN,
         CHAPTER_WORD_COUNT_MAX: genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX,
         MAX_BACKGROUND_TASK_WORD_COUNT: planningConfig.maxBackgroundTaskWordCount,
-        CLOSING_FORESHADOW_RECOVERY_PERCENT: Math.round(planningConfig.closingForeshadowRecoveryRatio * 100),
-      },
+        CLOSING_FORESHADOW_RECOVERY_PERCENT: Math.round(
+          planningConfig.closingForeshadowRecoveryRatio * 100
+        ),
+      }
     )
 
     return [this.systemMessage(buildChapterSystemPrompt()), this.userMessage(userContent)]
@@ -262,7 +289,9 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 
     const facts: string[] = []
     if (canonicalFacts) {
-      facts.push(`【权威事实】\n${this.sortCanonicalFactsByOutlineRelevance(canonicalFacts, state.outline ?? '')}`)
+      facts.push(
+        `【权威事实】\n${this.sortCanonicalFactsByOutlineRelevance(canonicalFacts, state.outline ?? '')}`
+      )
     }
     if (characterLocations) {
       facts.push(`【角色位置】\n${characterLocations}`)
@@ -271,7 +300,9 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
       facts.push(`【角色状态】\n${characterStatuses}`)
     }
     if (keyItems) {
-      facts.push(`【关键物品】\n${keyItems}\n${keyItemStates ? `【关键物品状态】\n${keyItemStates}\n` : ''}`)
+      facts.push(
+        `【关键物品】\n${keyItems}\n${keyItemStates ? `【关键物品状态】\n${keyItemStates}\n` : ''}`
+      )
     }
     if (revealedSecrets) {
       facts.push(`【已揭示的秘密】\n${revealedSecrets}`)
@@ -283,8 +314,11 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     return buildCanonicalFactsSection(facts)
   }
 
-  private sortCanonicalFactsByOutlineRelevance(canonicalFactsText: string, _outline: string): string {
-    const lines = canonicalFactsText.split('\n').filter(line => line.trim().length > 0)
+  private sortCanonicalFactsByOutlineRelevance(
+    canonicalFactsText: string,
+    _outline: string
+  ): string {
+    const lines = canonicalFactsText.split('\n').filter((line) => line.trim().length > 0)
     if (lines.length === 0) return ''
     return lines.join('\n')
   }
@@ -299,15 +333,20 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     ]
 
     if (state.nextChapterBoundary) {
-      constraints.push('本章必须遵守【后续章节边界提示】：只能推进到合适的中转状态，不得替代下一章完成其核心行动或最终揭示。')
+      constraints.push(
+        '本章必须遵守【后续章节边界提示】：只能推进到合适的中转状态，不得替代下一章完成其核心行动或最终揭示。'
+      )
     }
 
-    return `<absolute_constraints>\n<mandatory>【绝对约束 - 优先级最高】</mandatory>\n${constraints.map(c => `- ${c}`).join('\n')}\n</absolute_constraints>`
+    return `<absolute_constraints>\n<mandatory>【绝对约束 - 优先级最高】</mandatory>\n${constraints.map((c) => `- ${c}`).join('\n')}\n</absolute_constraints>`
   }
 
   protected parse(content: string): AgentOutput {
-    const standardPreWriteMatch = content.match(/===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*CHAPTER_CONTENT\s*===|$)/i)
-    const standardPreWriteCheck = standardPreWriteMatch && standardPreWriteMatch[1] ? standardPreWriteMatch[1].trim() : ''
+    const standardPreWriteMatch = content.match(
+      /===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*CHAPTER_CONTENT\s*===|$)/i
+    )
+    const standardPreWriteCheck =
+      standardPreWriteMatch && standardPreWriteMatch[1] ? standardPreWriteMatch[1].trim() : ''
 
     const standardContentMatch = content.match(/===\s*CHAPTER_CONTENT\s*===([\s\S]*)/i)
     let extractedContent: string
@@ -347,7 +386,12 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
   }
 
   private extractContentWithoutMarkers(rawContent: string): string {
-    const contentAfterPreWriteRemoval = rawContent.replace(/===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i, '').trim()
+    const contentAfterPreWriteRemoval = rawContent
+      .replace(
+        /===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i,
+        ''
+      )
+      .trim()
 
     if (this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)) {
       const headingMatch = contentAfterPreWriteRemoval.match(CHAPTER_TITLE_ONLY_PATTERN)
@@ -356,7 +400,10 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
       }
     }
 
-    if (!contentAfterPreWriteRemoval || this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)) {
+    if (
+      !contentAfterPreWriteRemoval ||
+      this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)
+    ) {
       const rawHeadingMatch = rawContent.match(CHAPTER_TITLE_ONLY_PATTERN)
       if (rawHeadingMatch && rawHeadingMatch.index !== undefined) {
         return rawContent.slice(rawHeadingMatch.index).trim()
@@ -369,10 +416,8 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
   }
 
   private hasPreWriteCheckArtifacts(text: string): boolean {
-    const artifactPatterns = [
-      /===\s*PRE_WRITE_CHECK\s*===/,
-    ]
-    return artifactPatterns.some(pattern => pattern.test(text))
+    const artifactPatterns = [/===\s*PRE_WRITE_CHECK\s*===/]
+    return artifactPatterns.some((pattern) => pattern.test(text))
   }
 
   private truncateToChapterHeading(text: string): string {
@@ -398,5 +443,4 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
       updatedAt: now,
     }
   }
-
 }

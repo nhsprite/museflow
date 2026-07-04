@@ -80,6 +80,7 @@ museflow start --idea "一个少年获得修真能力后崛起为最强者的故
 ```
 
 此命令会：
+
 1. 生成书名和世界观方向选项（`--yes` 会自动选择第一个）
 2. 构建世界观
 3. 生成人物设定
@@ -141,70 +142,70 @@ write → 准备章节 → 决策 → 即时大纲 → 章节规划 → 草稿/�
 
 全局选项：`museflow --debug <command>` 会输出 LLM 会话调试信息。
 
-| 命令 | 说明 |
-|------|------|
+| 命令                                                          | 说明                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `start --idea <text> --chapters <n> [--genre <name>] [--yes]` | 创建新故事规划：书名/世界方向、世界观、人物、故事弧线和空章节脚手架 |
-| `write <id>` | 撰写当前章节，每次只写一章 |
-| `continue <id> [-y|-n]` | 从最新 checkpoint 恢复，并可自动接受/拒绝待确认的 rewrite 请求 |
-| `rewrite <id> [--chapter <n>]` | 彻底重写当前或指定章节；下游章节文件由代码截断 |
-| `status <id>` | 查看进度、待处理问题、世界观状态和伏笔状态 |
-| `info <id>` | 查看故事元数据、题材信息、状态预览和存储路径 |
-| `list` / `ls` | 列出 `books/` 下的所有本地书籍 |
-| `delete <id> --force` | 删除本地书籍目录；需要显式 `--force` |
-| `adjust-act <id> --act <n> --end-chapter <n>` | mandatory beats 空间不足时手动调整幕边界 |
-| `export <id>` | 导出已写章节为 `output/` 下的 `.txt` 文件，并启动临时二维码下载服务 |
-| `config [show|set|get]` | 管理模型和运行配置 |
-| `genres [list|install|uninstall|info]` | 查看、安装、卸载或检查题材 Skill |
+| `write <id>`                                                  | 撰写当前章节，每次只写一章                                          |
+| `continue <id> [-y                                            | -n]`                                                                | 从最新 checkpoint 恢复，并可自动接受/拒绝待确认的 rewrite 请求 |
+| `rewrite <id> [--chapter <n>]`                                | 彻底重写当前或指定章节；下游章节文件由代码截断                      |
+| `status <id>`                                                 | 查看进度、待处理问题、世界观状态和伏笔状态                          |
+| `info <id>`                                                   | 查看故事元数据、题材信息、状态预览和存储路径                        |
+| `list` / `ls`                                                 | 列出 `books/` 下的所有本地书籍                                      |
+| `delete <id> --force`                                         | 删除本地书籍目录；需要显式 `--force`                                |
+| `adjust-act <id> --act <n> --end-chapter <n>`                 | mandatory beats 空间不足时手动调整幕边界                            |
+| `export <id>`                                                 | 导出已写章节为 `output/` 下的 `.txt` 文件，并启动临时二维码下载服务 |
+| `config [show                                                 | set                                                                 | get]`                                                          | 管理模型和运行配置 |
+| `genres [list                                                 | install                                                             | uninstall                                                      | info]`             | 查看、安装、卸载或检查题材 Skill |
 
 ## 题材
 
 内置以下题材，可通过 `--genre` 指定：
 
-| 题材 | 参数值 | 说明 |
-|------|--------|------|
-| 西方奇幻 | `fantasy` | 魔法、史诗、冒险 |
-| 玄幻 | `xianxia` | 修真、仙侠、武侠 |
-| 科幻 | `scifi` | 未来科技、太空冒险 |
-| 恐怖 | `horror` | 惊悚、灵异 |
-| 悬疑 | `mystery` | 推理、侦探、解谜 |
-| 都市 | `urban` | 现代都市、职场 |
-| 浪漫 | `romance` | 言情、爱情 |
-| 默认 | `default` | 通用题材 |
+| 题材     | 参数值    | 说明               |
+| -------- | --------- | ------------------ |
+| 西方奇幻 | `fantasy` | 魔法、史诗、冒险   |
+| 玄幻     | `xianxia` | 修真、仙侠、武侠   |
+| 科幻     | `scifi`   | 未来科技、太空冒险 |
+| 恐怖     | `horror`  | 惊悚、灵异         |
+| 悬疑     | `mystery` | 推理、侦探、解谜   |
+| 都市     | `urban`   | 现代都市、职场     |
+| 浪漫     | `romance` | 言情、爱情         |
+| 默认     | `default` | 通用题材           |
 
 ## Agent 系统
 
 MuseFlow 使用 10 类专业 Agent 协同工作：
 
-| Agent | 职责 |
-|-------|------|
-| **WorldBuilder** | 构建世界观、历史背景、社会结构 |
-| **Character** | 生成人物设定、性格、关系网 |
-| **StoryArc** | 生成幕结构、mandatory beats 和全局关键情节点 |
-| **ChapterOutline** | 在每章动笔前即时生成具体章节大纲 |
+| Agent              | 职责                                         |
+| ------------------ | -------------------------------------------- |
+| **WorldBuilder**   | 构建世界观、历史背景、社会结构               |
+| **Character**      | 生成人物设定、性格、关系网                   |
+| **StoryArc**       | 生成幕结构、mandatory beats 和全局关键情节点 |
+| **ChapterOutline** | 在每章动笔前即时生成具体章节大纲             |
 | **ChapterPlanner** | 生成章节段落规划、时间锚点和前章差事处理方案 |
-| **Chapter** | 撰写章节正文，保持风格和状态一致 |
-| **Foreshadowing** | 从正文中检测伏笔创建与回收 |
-| **Consistency** | 检查跨章节逻辑、设定和大纲遵循问题 |
-| **Fix** | 对可修复问题进行句子级、段落级或整章修复 |
-| **Summary** | 生成章节摘要并提取权威事实、任务和状态更新 |
+| **Chapter**        | 撰写章节正文，保持风格和状态一致             |
+| **Foreshadowing**  | 从正文中检测伏笔创建与回收                   |
+| **Consistency**    | 检查跨章节逻辑、设定和大纲遵循问题           |
+| **Fix**            | 对可修复问题进行句子级、段落级或整章修复     |
+| **Summary**        | 生成章节摘要并提取权威事实、任务和状态更新   |
 
 ## 数据存储
 
 故事数据保存在本地 `./books/` 目录下。具体故事目录由书名和 ID 后缀组成，例如 `books/my-title-abc123def456/`。
 
-| 路径 | 内容 |
-|------|------|
-| `./.museflow/config.json` | `museflow config set` 写入的项目级配置 |
-| `~/.museflow/config.json` | 可选的全局兜底配置 |
-| `./books/{story-dir}/checkpoints/latest.json` | 指向最新 LangGraph checkpoint |
-| `./books/{story-dir}/checkpoints/*.json` | LangGraph checkpoint JSON 文件；运行时真相源 |
-| `./books/{story-dir}/meta.json` | 从最新 checkpoint 导出的 CLI 展示/检查投影 |
-| `./books/{story-dir}/outline.md` | 故事弧线和即时生成章节大纲的人类可读投影 |
-| `./books/{story-dir}/story_bible.md` | 初始世界观、人物和章节脚手架参考 |
-| `./books/{story-dir}/chapters/chapter_{n}.md` | 各章正文 `.md` 文件 |
-| `./books/{story-dir}/reports/chapter_{n}.report.json` | 每章生成报告 |
-| `./books/{story-dir}/reports/blocking_*.json` | 重写收敛失败时的人工处理报告 |
-| `./output/*.txt` | `museflow export` 生成的导出稿 |
+| 路径                                                  | 内容                                         |
+| ----------------------------------------------------- | -------------------------------------------- |
+| `./.museflow/config.json`                             | `museflow config set` 写入的项目级配置       |
+| `~/.museflow/config.json`                             | 可选的全局兜底配置                           |
+| `./books/{story-dir}/checkpoints/latest.json`         | 指向最新 LangGraph checkpoint                |
+| `./books/{story-dir}/checkpoints/*.json`              | LangGraph checkpoint JSON 文件；运行时真相源 |
+| `./books/{story-dir}/meta.json`                       | 从最新 checkpoint 导出的 CLI 展示/检查投影   |
+| `./books/{story-dir}/outline.md`                      | 故事弧线和即时生成章节大纲的人类可读投影     |
+| `./books/{story-dir}/story_bible.md`                  | 初始世界观、人物和章节脚手架参考             |
+| `./books/{story-dir}/chapters/chapter_{n}.md`         | 各章正文 `.md` 文件                          |
+| `./books/{story-dir}/reports/chapter_{n}.report.json` | 每章生成报告                                 |
+| `./books/{story-dir}/reports/blocking_*.json`         | 重写收敛失败时的人工处理报告                 |
+| `./output/*.txt`                                      | `museflow export` 生成的导出稿               |
 
 > **注意**：MuseFlow 使用 JSON + 文件系统存储，不依赖 SQLite。
 > Checkpoint 是权威状态；`meta.json`、`outline.md`、报告和导出文件都是由代码生成的投影/产物。
@@ -259,18 +260,23 @@ npm run lint
 ## 常见问题
 
 ### `write` 没有反应
+
 确保传入了 story-id：`museflow write <story-id>`
 
 ### API 调用报错
+
 检查 config 中 api key 和 base url 是否正确，用 `museflow config show` 确认。
 
 ### 写完一章后提示"需要处理问题"
+
 运行 `rewrite` 命令重写当前章节：
+
 ```bash
 museflow rewrite <story-id>  # 彻底重写
 ```
 
 ### 故事文件在哪里？
+
 运行 `museflow info <story-id>` 查看“存储路径”。故事目录使用所选书名加 ID 后缀命名，不是裸 story id。
 
 ## 架构说明

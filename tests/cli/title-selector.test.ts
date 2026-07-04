@@ -12,7 +12,11 @@ vi.mock('inquirer', () => ({
   },
 }))
 
-import { generateTitleOptions, selectTitleOption, type TitleOption } from '../../src/cli/commands/title-selector.ts'
+import {
+  generateTitleOptions,
+  selectTitleOption,
+  type TitleOption,
+} from '../../src/cli/commands/title-selector.ts'
 
 function createMockProvider(): ModelProvider {
   return {
@@ -100,19 +104,37 @@ describe('title-selector', () => {
         10
       )
 
-      const firstOption = options.find(o => o.title.includes('逆天改命'))
+      const firstOption = options.find((o) => o.title.includes('逆天改命'))
       expect(firstOption).toBeDefined()
       expect(firstOption!.worldDirection.powerSystem).toContain('凡境')
     })
 
     it('retries when AI returns fewer than 3 options', async () => {
       mockChatStructured
-        .mockResolvedValueOnce({ options: [{ title: '单选项', worldDirection: { coreConflict: '单一冲突', worldFeatures: ['元素一'] } }] })
-        .mockResolvedValueOnce({ options: [
-          { title: '《选项一》', worldDirection: { coreConflict: '冲突一', worldFeatures: ['元素一'] } },
-          { title: '《选项二》', worldDirection: { coreConflict: '冲突二', worldFeatures: ['元素二'] } },
-          { title: '《选项三》', worldDirection: { coreConflict: '冲突三', worldFeatures: ['元素三'] } },
-        ]})
+        .mockResolvedValueOnce({
+          options: [
+            {
+              title: '单选项',
+              worldDirection: { coreConflict: '单一冲突', worldFeatures: ['元素一'] },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          options: [
+            {
+              title: '《选项一》',
+              worldDirection: { coreConflict: '冲突一', worldFeatures: ['元素一'] },
+            },
+            {
+              title: '《选项二》',
+              worldDirection: { coreConflict: '冲突二', worldFeatures: ['元素二'] },
+            },
+            {
+              title: '《选项三》',
+              worldDirection: { coreConflict: '冲突三', worldFeatures: ['元素三'] },
+            },
+          ],
+        })
 
       const options = await generateTitleOptions(
         createMockProvider(),
@@ -126,9 +148,18 @@ describe('title-selector', () => {
     })
 
     it('throws after exhausting retries', async () => {
-      mockChatStructured.mockResolvedValue({ options: [{ title: '单选项', worldDirection: { coreConflict: '单一冲突', worldFeatures: ['元素一'] } }] })
+      mockChatStructured.mockResolvedValue({
+        options: [
+          {
+            title: '单选项',
+            worldDirection: { coreConflict: '单一冲突', worldFeatures: ['元素一'] },
+          },
+        ],
+      })
 
-      await expect(generateTitleOptions(createMockProvider(), 'idea', 'default', 10)).rejects.toThrow('标题选项数量不足')
+      await expect(
+        generateTitleOptions(createMockProvider(), 'idea', 'default', 10)
+      ).rejects.toThrow('标题选项数量不足')
     })
   })
 
@@ -138,7 +169,10 @@ describe('title-selector', () => {
     beforeEach(async () => {
       inquirer = await import('inquirer')
       vi.mocked(inquirer.default.prompt).mockResolvedValue({ selectedIndex: 0 })
-      vi.mocked(inquirer.default.Separator).mockImplementation(() => ({ type: 'separator', separator: true }))
+      vi.mocked(inquirer.default.Separator).mockImplementation(() => ({
+        type: 'separator',
+        separator: true,
+      }))
     })
 
     afterEach(() => {

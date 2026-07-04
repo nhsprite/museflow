@@ -1,7 +1,8 @@
 import { renderTemplate } from '../../utils/template.js'
 import { computePromptHash } from './version.js'
 
-const WORLDBUILDER_SYSTEM_PROMPT = '<role>你是一位资深的世界架构师，擅长构建细腻、真实且富有深度的世界观。</role>'
+const WORLDBUILDER_SYSTEM_PROMPT =
+  '<role>你是一位资深的世界架构师，擅长构建细腻、真实且富有深度的世界观。</role>'
 
 export function buildWorldbuilderSystemPrompt(): string {
   return WORLDBUILDER_SYSTEM_PROMPT
@@ -26,7 +27,7 @@ const DEFAULT_WORLDBUILDER_USER_PROMPT_TEMPLATE = `<task>
 
 export function buildWorldbuilderUserPrompt(
   state: import('../types.js').WorldbuilderAgentInput,
-  genreWorldbuildingPrompt?: string,
+  genreWorldbuildingPrompt?: string
 ): string {
   const template = genreWorldbuildingPrompt ?? DEFAULT_WORLDBUILDER_USER_PROMPT_TEMPLATE
 
@@ -36,4 +37,7 @@ export function buildWorldbuilderUserPrompt(
   })
 }
 
-export const PROMPT_VERSION = computePromptHash(WORLDBUILDER_SYSTEM_PROMPT, DEFAULT_WORLDBUILDER_USER_PROMPT_TEMPLATE)
+export const PROMPT_VERSION = computePromptHash(
+  WORLDBUILDER_SYSTEM_PROMPT,
+  DEFAULT_WORLDBUILDER_USER_PROMPT_TEMPLATE
+)

@@ -4,13 +4,18 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { listChapterFiles, readChapterContent, writeChapterContent, writeOutlineContent } from '../../../src/storage/filesystem/writer.ts'
+import {
+  listChapterFiles,
+  readChapterContent,
+  writeChapterContent,
+  writeOutlineContent,
+} from '../../../src/storage/filesystem/writer.ts'
 
 describe('filesystem writer', () => {
   const createdDirs: string[] = []
 
   afterEach(async () => {
-    await Promise.all(createdDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+    await Promise.all(createdDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
   })
 
   it('writes, reads, and lists chapters inside the provided output directory', async () => {

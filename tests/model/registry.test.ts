@@ -52,74 +52,64 @@ describe('AnthropicCompatibleProvider.chatStructured', () => {
 
     const result = await provider.chatStructured<{ results: boolean[] }>(
       [{ role: 'user', content: 'test' }],
-      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } },
+      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } }
     )
 
     expect(result).toEqual({ results: [true, false] })
   })
 
   it('falls back to parsing JSON from text content when tool_use is missing', async () => {
-    mockFetchResponse([
-      { type: 'text', text: '{"results": [true, false]}' },
-    ])
+    mockFetchResponse([{ type: 'text', text: '{"results": [true, false]}' }])
 
     const result = await provider.chatStructured<{ results: boolean[] }>(
       [{ role: 'user', content: 'test' }],
-      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } },
+      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } }
     )
 
     expect(result).toEqual({ results: [true, false] })
   })
 
   it('falls back to parsing JSON inside markdown code block', async () => {
-    mockFetchResponse([
-      { type: 'text', text: '```json\n{"results": [true]}\n```' },
-    ])
+    mockFetchResponse([{ type: 'text', text: '```json\n{"results": [true]}\n```' }])
 
     const result = await provider.chatStructured<{ results: boolean[] }>(
       [{ role: 'user', content: 'test' }],
-      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } },
+      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } }
     )
 
     expect(result).toEqual({ results: [true] })
   })
 
   it('parses JSON from Anthropic-compatible text content without a type field', async () => {
-    mockFetchResponse([
-      { text: '```json\n{"results": [true, false]}\n```' },
-    ])
+    mockFetchResponse([{ text: '```json\n{"results": [true, false]}\n```' }])
 
     const result = await provider.chatStructured<{ results: boolean[] }>(
       [{ role: 'user', content: 'test' }],
-      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } },
+      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } }
     )
 
     expect(result).toEqual({ results: [true, false] })
   })
 
   it('repairs malformed JSON in text content', async () => {
-    mockFetchResponse([
-      { type: 'text', text: "{results: [true, false],}" },
-    ])
+    mockFetchResponse([{ type: 'text', text: '{results: [true, false],}' }])
 
     const result = await provider.chatStructured<{ results: boolean[] }>(
       [{ role: 'user', content: 'test' }],
-      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } },
+      { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } }
     )
 
     expect(result).toEqual({ results: [true, false] })
   })
 
   it('throws an error with response preview when no usable output is found', async () => {
-    mockFetchResponse([
-      { type: 'text', text: 'not valid json' },
-    ])
+    mockFetchResponse([{ type: 'text', text: 'not valid json' }])
 
     await expect(
-      provider.chatStructured<{ results: boolean[] }>(
-        [{ role: 'user', content: 'test' }],
-        { type: 'object', properties: { results: { type: 'array', items: { type: 'boolean' } } } },
-      ),
+      provider.chatStructured<{ results: boolean[] }>([{ role: 'user', content: 'test' }], {
+        type: 'object',
+        properties: { results: { type: 'array', items: { type: 'boolean' } } },
+      })
     ).rejects.toThrow('Anthropic API did not return structured output')
   })
 })
@@ -176,7 +166,7 @@ describe('createProvider / OpenAICompatibleProvider', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ Authorization: 'Bearer test-key' }),
-      }),
+      })
     )
   })
 
@@ -222,7 +212,7 @@ describe('createProvider / OpenAICompatibleProvider', () => {
       expect.any(String),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer env-key' }),
-      }),
+      })
     )
   })
 
@@ -235,10 +225,10 @@ describe('createProvider / OpenAICompatibleProvider', () => {
     } as Response)
 
     const provider = createProvider()
-    const result = await provider.chatStructured(
-      [{ role: 'user', content: 'hi' }],
-      { type: 'object', properties: { ok: { type: 'boolean' } } },
-    )
+    const result = await provider.chatStructured([{ role: 'user', content: 'hi' }], {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+    })
 
     expect(result).toEqual({ ok: true })
   })
@@ -253,10 +243,10 @@ describe('createProvider / OpenAICompatibleProvider', () => {
     } as Response)
 
     const provider = createProvider()
-    await provider.chatStructured(
-      [{ role: 'user', content: 'hi' }],
-      { type: 'object', properties: { ok: { type: 'boolean' } } },
-    )
+    await provider.chatStructured([{ role: 'user', content: 'hi' }], {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+    })
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
     expect(body.response_format).toEqual({
@@ -273,7 +263,12 @@ describe('createProvider / OpenAICompatibleProvider', () => {
     setConfig()
     const fetchMock = vi.mocked(globalThis.fetch)
     fetchMock
-      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}), text: async () => '' } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({}),
+        text: async () => '',
+      } as Response)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -290,7 +285,12 @@ describe('createProvider / OpenAICompatibleProvider', () => {
   it('does not retry on 4xx errors', async () => {
     setConfig()
     const fetchMock = vi.mocked(globalThis.fetch)
-    fetchMock.mockResolvedValue({ ok: false, status: 400, json: async () => ({}), text: async () => '' } as Response)
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({}),
+      text: async () => '',
+    } as Response)
 
     const provider = createProvider()
     await expect(provider.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow('API error: 400')
@@ -300,13 +300,11 @@ describe('createProvider / OpenAICompatibleProvider', () => {
   it('retries on network errors and succeeds', async () => {
     setConfig()
     const fetchMock = vi.mocked(globalThis.fetch)
-    fetchMock
-      .mockRejectedValueOnce(new TypeError('fetch failed'))
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
-      } as Response)
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed')).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+    } as Response)
 
     const provider = createProvider()
     const result = await provider.chat([{ role: 'user', content: 'hi' }])
@@ -372,7 +370,7 @@ describe('createProvider provider selection', () => {
           'x-api-key': 'test-key',
           'anthropic-version': '2023-06-01',
         }),
-      }),
+      })
     )
   })
 
@@ -401,10 +399,10 @@ describe('createProvider provider selection', () => {
     } as Response)
 
     const provider = createProvider()
-    const result = await provider.chatStructured(
-      [{ role: 'user', content: 'hi' }],
-      { type: 'object', properties: { ok: { type: 'boolean' } } },
-    )
+    const result = await provider.chatStructured([{ role: 'user', content: 'hi' }], {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+    })
 
     expect(result).toEqual({ ok: true })
   })
@@ -452,7 +450,7 @@ describe('DebugModelProvider', () => {
       expect.objectContaining({
         messages: [{ role: 'user', content: 'hi' }],
         response: 'logged hello',
-      }),
+      })
     )
   })
 
@@ -466,7 +464,7 @@ describe('DebugModelProvider', () => {
     expect(loggerModule.logDebugToFile).toHaveBeenCalledWith(
       expect.objectContaining({
         error: true,
-      }),
+      })
     )
   })
 })

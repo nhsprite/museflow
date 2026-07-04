@@ -27,9 +27,8 @@ export interface PreparedStoryState {
 export async function prepareStoryStateForChapter(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider: ModelProvider,
+  provider: ModelProvider
 ): Promise<PreparedStoryState> {
-
   const outlineItem = state.outline[chapterIndex]
   let reconciledState: StoryState = state.storyState ?? createEmptyStoryState()
   let stateConflicts = ''
@@ -69,9 +68,11 @@ export async function prepareStoryStateForChapter(
     )
 
     const undecidedBlockingConflicts = [
-      ...reconciliationReport.requiresAuthorDecision.filter(c => !conflictIsDecided(c, state.authorDecisions)),
+      ...reconciliationReport.requiresAuthorDecision.filter(
+        (c) => !conflictIsDecided(c, state.authorDecisions)
+      ),
       ...outlineStateCheck.conflicts.filter(
-        c => c.severity === 'blocking' && !conflictIsDecided(c, state.authorDecisions)
+        (c) => c.severity === 'blocking' && !conflictIsDecided(c, state.authorDecisions)
       ),
     ]
     if (undecidedBlockingConflicts.length > 0) {
@@ -82,7 +83,11 @@ export async function prepareStoryStateForChapter(
         reconciledState,
         provider
       )
-      throw new BlockingConflictError(undecidedBlockingConflicts, chapterIndex, proposal ?? undefined)
+      throw new BlockingConflictError(
+        undecidedBlockingConflicts,
+        chapterIndex,
+        proposal ?? undefined
+      )
     }
 
     const outlineAuthorizedFacts = await authorizeOutlineFacts(
@@ -95,7 +100,8 @@ export async function prepareStoryStateForChapter(
       const mergedFacts = [...(reconciledState.canonicalFacts ?? [])]
       for (const fact of outlineAuthorizedFacts) {
         const existingIndex = mergedFacts.findIndex(
-          f => f.subject === fact.subject && f.attribute === fact.attribute && f.value === fact.value
+          (f) =>
+            f.subject === fact.subject && f.attribute === fact.attribute && f.value === fact.value
         )
         if (existingIndex < 0) {
           mergedFacts.push(fact)
@@ -122,17 +128,27 @@ export async function prepareStoryStateForChapter(
     }
 
     const conflictNotes = reconciliationReport.conflicts
-      .map(c => `[${c.severity}] ${c.description}`)
+      .map((c) => `[${c.severity}] ${c.description}`)
       .join('\n')
-    const outlineConflictNotes = outlineStateCheck.conflicts.length > 0
-      ? outlineStateCheck.conflicts.map(c => `[${c.severity}] ${c.description}`).join('\n')
-      : ''
-    const outlineConstraintNotes = outlineStateCheck.constraints.length > 0
-      ? `【大纲-状态约束提醒】\n${outlineStateCheck.constraints.map(c => `- ${c}`).join('\n')}`
-      : ''
+    const outlineConflictNotes =
+      outlineStateCheck.conflicts.length > 0
+        ? outlineStateCheck.conflicts.map((c) => `[${c.severity}] ${c.description}`).join('\n')
+        : ''
+    const outlineConstraintNotes =
+      outlineStateCheck.constraints.length > 0
+        ? `【大纲-状态约束提醒】\n${outlineStateCheck.constraints.map((c) => `- ${c}`).join('\n')}`
+        : ''
     const sanitizationNotes = formatStateConflicts(sanitizationReport)
     const pendingTasksNotes = buildPendingTasksConstraints(reconciledState.pendingTasks ?? [])
-    stateConflicts = [conflictNotes, outlineConflictNotes, outlineConstraintNotes, sanitizationNotes, pendingTasksNotes].filter(Boolean).join('\n\n')
+    stateConflicts = [
+      conflictNotes,
+      outlineConflictNotes,
+      outlineConstraintNotes,
+      sanitizationNotes,
+      pendingTasksNotes,
+    ]
+      .filter(Boolean)
+      .join('\n\n')
     reconciledState = sanitizationReport.state
   }
 

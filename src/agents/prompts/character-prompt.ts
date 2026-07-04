@@ -1,7 +1,8 @@
 import { renderTemplate } from '../../utils/template.js'
 import { computePromptHash } from './version.js'
 
-const CHARACTER_SYSTEM_PROMPT = '<role>你是一位擅长人物塑造的作家，擅长创造立体、真实、有记忆点的人物角色。</role>\n<requirement>请严格按照要求的 JSON 数组格式输出，不要添加任何额外的解释文字。</requirement>'
+const CHARACTER_SYSTEM_PROMPT =
+  '<role>你是一位擅长人物塑造的作家，擅长创造立体、真实、有记忆点的人物角色。</role>\n<requirement>请严格按照要求的 JSON 数组格式输出，不要添加任何额外的解释文字。</requirement>'
 
 const CHARACTER_USER_PROMPT_TEMPLATE = `<task>
   根据以下故事设定，创建主要人物角色。
@@ -30,10 +31,12 @@ export function buildCharacterUserPrompt(
   mainCharacterCountMin: number,
   mainCharacterCountMax: number,
   worldDirSection: string,
-  formatReminder?: string,
+  formatReminder?: string
 ): string {
   const titleSection = state.title ? `<title>${state.title}</title>` : ''
-  const worldDirectionSection = worldDirSection ? `<world_direction>\n${worldDirSection}\n</world_direction>` : ''
+  const worldDirectionSection = worldDirSection
+    ? `<world_direction>\n${worldDirSection}\n</world_direction>`
+    : ''
   const worldSettingSection = state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''
 
   return renderTemplate(CHARACTER_USER_PROMPT_TEMPLATE, {
@@ -47,4 +50,7 @@ export function buildCharacterUserPrompt(
   })
 }
 
-export const PROMPT_VERSION = computePromptHash(CHARACTER_SYSTEM_PROMPT, CHARACTER_USER_PROMPT_TEMPLATE)
+export const PROMPT_VERSION = computePromptHash(
+  CHARACTER_SYSTEM_PROMPT,
+  CHARACTER_USER_PROMPT_TEMPLATE
+)

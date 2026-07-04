@@ -21,7 +21,7 @@ export async function buildVerifiedConstraints(
     if (await isInterpretiveIssue(prev)) continue
     const prevFingerprint = ruleBasedFingerprint(prev)
     const stillPresent = currentIssues.some(
-      curr => ruleBasedFingerprint(curr) === prevFingerprint
+      (curr) => ruleBasedFingerprint(curr) === prevFingerprint
     )
     if (!stillPresent) {
       resolvedIssues.push(prev)
@@ -33,10 +33,7 @@ export async function buildVerifiedConstraints(
   if (newConstraints.length > 0) {
     log?.('info', `[MuseFlow] 本轮已解决 ${resolvedIssues.length} 个问题，已记录为后续规划约束`)
     for (const constraint of newConstraints) {
-      log?.(
-        'info',
-        `  ✓ ${constraint.substring(0, 120)}${constraint.length > 120 ? '...' : ''}`
-      )
+      log?.('info', `  ✓ ${constraint.substring(0, 120)}${constraint.length > 120 ? '...' : ''}`)
     }
   }
 
@@ -54,8 +51,8 @@ export async function applyRewritePolicy(
   deps: RewritePolicyDeps
 ): Promise<RewritePolicyResult> {
   const config = deps.planningConfig
-  const currentErrors = pendingIssues.filter(i => i.severity === 'error')
-  const previousErrors = session.previousIssues.filter(i => i.severity === 'error')
+  const currentErrors = pendingIssues.filter((i) => i.severity === 'error')
+  const previousErrors = session.previousIssues.filter((i) => i.severity === 'error')
 
   const similarity = await deps.calculateIssueSetSimilarity(previousErrors, currentErrors)
   const errorCountIncreased = currentErrors.length > session.previousRawErrorCount
@@ -63,8 +60,8 @@ export async function applyRewritePolicy(
     similarity >= config.issueSetSimilarityThreshold && currentErrors.length > 0
 
   const hasStateCorruptionError = await Promise.all(
-    currentErrors.map(i => deps.isStateCorruptionIssue(i))
-  ).then(results => results.some(Boolean))
+    currentErrors.map((i) => deps.isStateCorruptionIssue(i))
+  ).then((results) => results.some(Boolean))
 
   let forceStructuralRewrite = session.forceStructuralRewrite
 
@@ -88,7 +85,7 @@ export async function applyRewritePolicy(
 
   const onlyInterpretiveErrors =
     currentErrors.length > 0 &&
-    (await Promise.all(currentErrors.map(i => deps.isInterpretiveIssue(i))).then(results =>
+    (await Promise.all(currentErrors.map((i) => deps.isInterpretiveIssue(i))).then((results) =>
       results.every(Boolean)
     ))
 
@@ -102,7 +99,7 @@ export async function applyRewritePolicy(
       'info',
       `[MuseFlow] 剩余 ${currentErrors.length} 个问题均为解释性一致性问题，自动降级为 warning 以完成本章...`
     )
-    finalIssues = pendingIssues.map(issue => {
+    finalIssues = pendingIssues.map((issue) => {
       if (issue.severity === 'error' && currentErrors.includes(issue)) {
         return { ...issue, severity: 'warning' as const }
       }

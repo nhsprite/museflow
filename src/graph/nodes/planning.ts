@@ -21,7 +21,9 @@ async function runPlanChapter(
   const agentState: ChapterPlannerAgentInput = mergeAgentState(baseContext, {
     outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
     chapterSummaries: state.chapterSummaries,
-    ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
+    ...(state.pendingIssues && state.pendingIssues.length > 0
+      ? { issues: state.pendingIssues }
+      : {}),
     ...(verifiedConstraints.length > 0 ? { verifiedConstraints } : {}),
   }) as ChapterPlannerAgentInput
 
@@ -46,14 +48,23 @@ export async function plan_chapter_with_override(
   return runPlanChapter(provider, state, outlineOverride)
 }
 
-export function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIndex: number, extraHints: string[] = []): string {
+export function formatChapterOutlineForAgent(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  extraHints: string[] = []
+): string {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
     return state.outline.map((o, i) => `第${toDisplayChapterNumber(i)}章：${o.title}`).join('\n')
   }
   const nextChapterBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
-  return [`第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`, outlineItem.description, nextChapterBoundaryHint, ...extraHints]
-    .filter(part => part.trim().length > 0)
+  return [
+    `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`,
+    outlineItem.description,
+    nextChapterBoundaryHint,
+    ...extraHints,
+  ]
+    .filter((part) => part.trim().length > 0)
     .join('\n')
 }
 
@@ -62,7 +73,10 @@ export function formatChapterOutlineForAgent(state: ReducedGraphState, chapterIn
  * 一致性检查只能看到当前章节及之前章节的完整内容，以及下一章标题作为边界提示。
  * 绝不能暴露后续章节的具体剧情，否则 agent 会把当前章节的正常推进误判为"提前剧透"。
  */
-export function buildConsistencyOutlineContext(state: ReducedGraphState, chapterIndex: number): string {
+export function buildConsistencyOutlineContext(
+  state: ReducedGraphState,
+  chapterIndex: number
+): string {
   const lines: string[] = []
 
   for (let i = 0; i < state.outline.length; i++) {

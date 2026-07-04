@@ -17,7 +17,7 @@ const instances = new WeakMap<ModelProvider, Map<string, unknown>>()
 function getAgentInstance<T>(
   provider: ModelProvider,
   key: string,
-  ctor: new (provider: ModelProvider) => T,
+  ctor: new (provider: ModelProvider) => T
 ): T {
   let providerInstances = instances.get(provider)
   if (!providerInstances) {

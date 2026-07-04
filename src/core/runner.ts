@@ -40,7 +40,9 @@ export function getOutputDirFromStoryId(storyId: string): string | undefined {
       }
     }
   } catch (err) {
-    logger.error(`[MuseFlow] 查找故事目录时出错: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(
+      `[MuseFlow] 查找故事目录时出错: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
   return undefined
 }
@@ -157,10 +159,10 @@ function cleanStoryStateForRewrite(storyState: StoryState, targetChapterIndex: n
   const supersededFacts = storyState.supersededFacts ?? []
 
   const cleanedCanonicalFacts = canonicalFacts.filter(
-    fact => fact.source === 'author_override' || fact.establishedIn < targetChapterIndex
+    (fact) => fact.source === 'author_override' || fact.establishedIn < targetChapterIndex
   )
   const cleanedSupersededFacts = supersededFacts.filter(
-    fact => fact.chapterIndex < targetChapterIndex
+    (fact) => fact.chapterIndex < targetChapterIndex
   )
 
   if (
@@ -212,7 +214,9 @@ export async function runOneChapter(
 
   const targetIndex = options.targetChapterIndex ?? checkpointState.currentChapterIndex
 
-  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(null) as ReducedGraphState['chapters']
+  const rewrittenChapters = new Array(checkpointState.totalChapters).fill(
+    null
+  ) as ReducedGraphState['chapters']
   for (let i = 0; i < targetIndex; i++) {
     rewrittenChapters[i] = checkpointState.chapters[i] ?? null
   }
@@ -220,7 +224,7 @@ export async function runOneChapter(
   const basePendingIssues = options.retryIssues?.length
     ? options.retryIssues
     : checkpointState.pendingIssues
-  const cleanedPendingIssues = basePendingIssues.filter(issue => issue.type !== 'draft_failure')
+  const cleanedPendingIssues = basePendingIssues.filter((issue) => issue.type !== 'draft_failure')
 
   const workingState: ReducedGraphState = {
     ...checkpointState,
@@ -252,7 +256,7 @@ export async function runOneChapter(
   if (options.mode === 'rewrite') {
     workingState.chapterSummaries = checkpointState.chapterSummaries.slice(0, targetIndex)
     workingState.foreshadowStack = checkpointState.foreshadowStack.filter(
-      f => f.createdAtChapter < targetIndex + 1
+      (f) => f.createdAtChapter < targetIndex + 1
     )
     if (checkpointState.storyState) {
       workingState.storyState = cleanStoryStateForRewrite(checkpointState.storyState, targetIndex)
@@ -291,11 +295,15 @@ export async function continueStory(
   _options: { isRewrite?: boolean } = {},
   context: RuntimeContext = createRuntimeContext()
 ): Promise<ReducedGraphState> {
-  return runOneChapter(storyId, {
-    mode: 'continue',
-    targetChapterIndex: currentChapterIndex,
-    userResponse,
-  }, context)
+  return runOneChapter(
+    storyId,
+    {
+      mode: 'continue',
+      targetChapterIndex: currentChapterIndex,
+      userResponse,
+    },
+    context
+  )
 }
 
 export async function applyStateOverrides(
@@ -377,7 +385,7 @@ export async function applyOutlineRevision(
   await writeOutlineContent(
     outputDir,
     state.story.title,
-    outline.map(ch => ({
+    outline.map((ch) => ({
       number: ch.number,
       title: ch.title,
       description: ch.description,
@@ -385,7 +393,9 @@ export async function applyOutlineRevision(
   )
 
   if (revisedTitle) {
-    logger.info(`[MuseFlow] 已更新第 ${chapterIndex + 1} 章大纲标题为「${revisedTitle}」并同步到 outline.md`)
+    logger.info(
+      `[MuseFlow] 已更新第 ${chapterIndex + 1} 章大纲标题为「${revisedTitle}」并同步到 outline.md`
+    )
   } else {
     logger.info(`[MuseFlow] 已更新第 ${chapterIndex + 1} 章大纲并同步到 outline.md`)
   }
@@ -409,11 +419,15 @@ export async function getState(
 
     // Checkpoint 是运行时唯一真相源。不再从 meta.json 覆盖任何字段。
     // 清除过时的 draft_failure 问题，避免阻断后续生成。
-    graphState.pendingIssues = graphState.pendingIssues.filter(issue => issue.type !== 'draft_failure')
+    graphState.pendingIssues = graphState.pendingIssues.filter(
+      (issue) => issue.type !== 'draft_failure'
+    )
 
     return graphState
   } catch (err) {
-    logger.error(`[MuseFlow] 获取故事状态时出错: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(
+      `[MuseFlow] 获取故事状态时出错: ${err instanceof Error ? err.message : String(err)}`
+    )
     return null
   }
 }

@@ -17,7 +17,7 @@ export class BlockingConflictError extends Error {
   constructor(
     conflicts: Conflict[],
     chapterIndex: number,
-    proposal: OutlineRevisionProposal | undefined = undefined,
+    proposal: OutlineRevisionProposal | undefined = undefined
   ) {
     super(
       `第 ${chapterIndex + 1} 章大纲与权威事实存在 ${conflicts.length} 个阻断性冲突，需要作者裁决`

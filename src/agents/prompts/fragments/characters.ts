@@ -16,12 +16,13 @@ export interface CharacterWhitelistInput {
 }
 
 export function buildCharacterWhitelistSection(state: CharacterWhitelistInput): string {
-  const establishedCharactersSection = state.establishedCharacters && state.establishedCharacters.length > 0
-    ? `<established_characters>
+  const establishedCharactersSection =
+    state.establishedCharacters && state.establishedCharacters.length > 0
+      ? `<established_characters>
 <mandatory>【前文已建立角色】以下角色已在前面章节的摘要或故事状态中出现，允许在本章继续使用：</mandatory>
-${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+${state.establishedCharacters.map((c) => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
 </established_characters>`
-    : ''
+      : ''
 
   if (!state.charactersList || state.charactersList.length === 0) {
     return establishedCharactersSection
@@ -29,10 +30,14 @@ ${state.establishedCharacters.map(c => `- ${c.name}${c.description ? `：${c.des
 
   return `<official_characters>
 <mandatory>【必须】以下为本故事官方角色。正文中出场的所有有名有姓、有亲属关系、有身份地位的角色必须来自此列表、【大纲登场角色】列表或【前文已建立角色】列表；任何不在这些列表中的人名不得获得 POV、台词、亲属称呼或持久身份：</mandatory>
-${state.charactersList.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</official_characters>${state.outlineCharacters && state.outlineCharacters.length > 0 ? `
+${state.charactersList.map((c) => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</official_characters>${
+    state.outlineCharacters && state.outlineCharacters.length > 0
+      ? `
 <outline_characters>
 <mandatory>【大纲登场角色】以下角色由大纲明确命名并将在本章或之前章节登场，允许在本章出现：</mandatory>
-${state.outlineCharacters.map(c => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
-</outline_characters>` : ''}${establishedCharactersSection}`
+${state.outlineCharacters.map((c) => `- ${c.name}${c.description ? `：${c.description}` : ''}`).join('\n')}
+</outline_characters>`
+      : ''
+  }${establishedCharactersSection}`
 }

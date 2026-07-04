@@ -5,7 +5,10 @@ import type { ChapterPlannerAgentInput, ChapterPlan } from './types.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { parseJsonFromLLM } from '../utils/json.js'
-import { DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN, DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX } from '../types/genre.js'
+import {
+  DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN,
+  DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX,
+} from '../types/genre.js'
 import {
   buildChapterPlannerSystemPrompt,
   buildChapterPlannerUserPrompt,
@@ -23,18 +26,22 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
     const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
     const genreSkill = this.getGenre(state.genre)
     const planningConfig = getChapterPlanningConfig(state.genre)
-    const chapterWordCountMin = genreSkill?.chapterWordCountMin ?? DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN
-    const chapterWordCountMax = genreSkill?.chapterWordCountMax ?? DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX
+    const chapterWordCountMin =
+      genreSkill?.chapterWordCountMin ?? DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN
+    const chapterWordCountMax =
+      genreSkill?.chapterWordCountMax ?? DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX
 
     return [
       this.systemMessage(buildChapterPlannerSystemPrompt()),
-      this.userMessage(buildChapterPlannerUserPrompt(
-        state,
-        planningConfig,
-        chapterWordCountMin,
-        chapterWordCountMax,
-        displayChapterNumber,
-      )),
+      this.userMessage(
+        buildChapterPlannerUserPrompt(
+          state,
+          planningConfig,
+          chapterWordCountMin,
+          chapterWordCountMax,
+          displayChapterNumber
+        )
+      ),
     ]
   }
 
@@ -58,7 +65,7 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
     if (!data.outlineCheck || !Array.isArray(data.outlineCheck)) {
       data.outlineCheck = []
     }
-    const unfulfilled = data.outlineCheck.filter(c => !c.fulfilled)
+    const unfulfilled = data.outlineCheck.filter((c) => !c.fulfilled)
     if (unfulfilled.length > 0) {
       logger.warn(`[MuseFlow] 规划警告：${unfulfilled.length} 项大纲要求未在规划中明确落实`)
       for (const u of unfulfilled) {

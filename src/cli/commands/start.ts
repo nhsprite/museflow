@@ -31,10 +31,10 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
   console.log(`  题材: ${genre}`)
 
   const registry = getGenreRegistry()
-  const genreExists = registry.some(e => e.skill.name === genre)
+  const genreExists = registry.some((e) => e.skill.name === genre)
   if (!genreExists) {
     console.error(`[MuseFlow] 错误: 题材 "${genre}" 不存在`)
-    console.log('[MuseFlow] 可用题材:', registry.map(e => e.skill.name).join(', '))
+    console.log('[MuseFlow] 可用题材:', registry.map((e) => e.skill.name).join(', '))
     process.exit(1)
   }
 
@@ -65,7 +65,9 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     } catch (err) {
       if (err instanceof Error && err.message === 'REGENERATE') {
         regenerateAttempts++
-        console.log(`\n[MuseFlow] 重新生成选项... (${regenerateAttempts}/${MAX_REGENERATE_ATTEMPTS})\n`)
+        console.log(
+          `\n[MuseFlow] 重新生成选项... (${regenerateAttempts}/${MAX_REGENERATE_ATTEMPTS})\n`
+        )
         continue
       }
       throw err
@@ -81,7 +83,9 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
   console.log(`\n[MuseFlow] 已选择：${selectedOption.title}\n`)
 
   const resolvedProvider: ModelConfig['provider'] =
-    provider === 'minimax' || provider === 'local' ? 'openai' : (provider as ModelConfig['provider'] | undefined) ?? 'openai'
+    provider === 'minimax' || provider === 'local'
+      ? 'openai'
+      : ((provider as ModelConfig['provider'] | undefined) ?? 'openai')
 
   const story = createStory({
     idea,
@@ -103,13 +107,16 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     updateStatus('worldbuilding')
 
     const result = await withSpinner('正在构建世界观和角色设定...', () =>
-      runStory({
-        storyId: story.id,
-        idea,
-        genre,
-        totalChapters: chapters,
-        story,
-      }, runtimeContext)
+      runStory(
+        {
+          storyId: story.id,
+          idea,
+          genre,
+          totalChapters: chapters,
+          story,
+        },
+        runtimeContext
+      )
     )
 
     if (result.world) {
@@ -126,7 +133,9 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
 
     if (result.storyArc) {
       const actCount = result.storyArc.acts.length
-      console.log(`[MuseFlow] 故事弧线已生成，共 ${actCount} 幕，${result.storyArc.totalChapters} 章\n`)
+      console.log(
+        `[MuseFlow] 故事弧线已生成，共 ${actCount} 幕，${result.storyArc.totalChapters} 章\n`
+      )
     }
 
     await exportMetaFromCheckpoint(result.story.outputDir)
@@ -136,7 +145,6 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     console.log('[MuseFlow] 规划阶段完成！\n')
     console.log(`[MuseFlow] 故事ID: ${story.id}`)
     console.log('[MuseFlow] 使用 "museflow write" 开始撰写正文')
-
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
     updateStoryStatus(story.id, 'error')

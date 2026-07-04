@@ -29,7 +29,8 @@ program
     }
   })
 
-program.command('start')
+program
+  .command('start')
   .description('开始一个新的故事（仅规划和创建）')
   .requiredOption('-i, --idea <text>', '故事简介')
   .requiredOption('-c, --chapters <number>', '章节数量', parseInt)
@@ -39,43 +40,50 @@ program.command('start')
   .option('-y, --yes', '自动选择第一个标题选项（非交互模式）')
   .action(start)
 
-program.command('write')
+program
+  .command('write')
   .description('撰写故事正文（写完当前章后停止）')
   .argument('<story-id>', '故事ID')
   .action(write)
 
-program.command('rewrite')
+program
+  .command('rewrite')
   .description('重写当前有问题的章节（彻底重写）')
   .argument('<story-id>', '故事ID')
   .option('-c, --chapter <number>', '指定要重写的章节编号')
   .allowExcessArguments(false)
   .action(rewrite)
 
-program.command('continue')
+program
+  .command('continue')
   .description('继续一个未完成的故事')
   .argument('<story-id>', '故事ID')
   .option('-y, --yes', '自动确认重写请求')
   .option('-n, --no', '自动拒绝重写请求')
   .action(cont)
 
-program.command('status')
+program
+  .command('status')
   .description('查看故事进度')
   .argument('[story-id]', '故事ID')
   .action(status)
 
-program.command('adjust-act')
+program
+  .command('adjust-act')
   .description('手动调整幕边界')
   .argument('<story-id>', '故事ID')
   .requiredOption('--act <number>', '要调整的幕序号')
   .requiredOption('--end-chapter <number>', '新的结束章节')
   .action(adjustAct)
 
-program.command('info')
+program
+  .command('info')
   .description('查看故事详细信息')
   .argument('<story-id>', '故事ID（可选，当前故事）')
   .action(info)
 
-program.command('config')
+program
+  .command('config')
   .description('配置管理')
   .argument('[action]', '操作 (show|set|get)', 'show')
   .option('--provider <name>', '设置模型协议 (openai|anthropic)')
@@ -85,24 +93,24 @@ program.command('config')
   .option('--auto-adjust-act-boundaries <boolean>', '自动调整幕边界 (true|false)')
   .action(config)
 
-program.command('genres')
+program
+  .command('genres')
   .description('题材管理')
   .argument('[action]', '操作 (list|install|uninstall)', 'list')
   .argument('[name]', '题材名称')
   .option('--file <path>', '安装题材的文件路径')
   .action(genres)
 
-program.command('export')
+program
+  .command('export')
   .description('导出故事为 txt 文件')
   .argument('<story-id>', '故事ID')
   .action(exportStory)
 
-program.command('list')
-  .description('列出所有书籍')
-  .alias('ls')
-  .action(list)
+program.command('list').description('列出所有书籍').alias('ls').action(list)
 
-program.command('delete')
+program
+  .command('delete')
   .description('删除指定书籍')
   .argument('<story-id>', '故事ID')
   .option('-f, --force', '强制删除，不提示确认')

@@ -6,7 +6,7 @@ export function agePendingTasks(
   tasks: PendingTask[],
   currentDisplayChapter: number
 ): PendingTask[] {
-  return tasks.map(task => {
+  return tasks.map((task) => {
     if (task.status !== 'pending') return task
     if (task.dueChapter !== undefined && task.dueChapter <= currentDisplayChapter) {
       return { ...task, status: 'expired' as const }
@@ -23,14 +23,14 @@ export async function filterRelevantPendingTasks(
 ): Promise<PendingTask[]> {
   const currentDisplayChapter = currentChapterIndex + 1
   const candidateTasks = tasks.filter(
-    task => task.status === 'pending' && task.dueChapter === undefined
+    (task) => task.status === 'pending' && task.dueChapter === undefined
   )
 
   let relevanceResults: boolean[] = []
   if (provider && candidateTasks.length > 0) {
     relevanceResults = await batchJudgeTaskRelevance(
       provider,
-      candidateTasks.map(task => ({
+      candidateTasks.map((task) => ({
         taskDescription: task.description,
         outlineDescription,
       }))

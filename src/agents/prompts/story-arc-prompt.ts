@@ -1,7 +1,8 @@
 import { renderTemplate } from '../../utils/template.js'
 import { computePromptHash } from './version.js'
 
-const STORY_ARC_SYSTEM_PROMPT = '你是一位擅长长篇结构的小说策划。你的任务是为小说生成高层次的幕结构故事弧线，只规定每幕的叙事功能和必须完成的抽象情节点类型，绝不指定未来章节的具体内容。'
+const STORY_ARC_SYSTEM_PROMPT =
+  '你是一位擅长长篇结构的小说策划。你的任务是为小说生成高层次的幕结构故事弧线，只规定每幕的叙事功能和必须完成的抽象情节点类型，绝不指定未来章节的具体内容。'
 
 const STORY_ARC_USER_PROMPT_TEMPLATE = `请为一部 {TOTAL_CHAPTERS} 章的长篇小说生成故事弧线（Story Arc）。
 
@@ -51,14 +52,14 @@ export function buildStoryArcSystemPrompt(): string {
 }
 
 export function buildStoryArcUserPrompt(state: import('../types.js').StoryArcAgentInput): string {
-  const titleSection = state.title
-    ? `<title>\n书名：${state.title}\n</title>`
-    : ''
+  const titleSection = state.title ? `<title>\n书名：${state.title}\n</title>` : ''
   const worldDirectionSection = state.worldDirection
     ? `<world_direction>\n核心冲突：${state.worldDirection.coreConflict}\n世界观特征：${state.worldDirection.worldFeatures?.join('、') || ''}\n</world_direction>`
     : ''
   const worldSettingSection = state.world ? `<world_setting>\n${state.world}\n</world_setting>` : ''
-  const charactersSection = state.characters ? `<characters>\n${state.characters}\n</characters>` : ''
+  const charactersSection = state.characters
+    ? `<characters>\n${state.characters}\n</characters>`
+    : ''
 
   return renderTemplate(STORY_ARC_USER_PROMPT_TEMPLATE, {
     TOTAL_CHAPTERS: state.totalChapters,
@@ -71,4 +72,7 @@ export function buildStoryArcUserPrompt(state: import('../types.js').StoryArcAge
   })
 }
 
-export const PROMPT_VERSION = computePromptHash(STORY_ARC_SYSTEM_PROMPT, STORY_ARC_USER_PROMPT_TEMPLATE)
+export const PROMPT_VERSION = computePromptHash(
+  STORY_ARC_SYSTEM_PROMPT,
+  STORY_ARC_USER_PROMPT_TEMPLATE
+)

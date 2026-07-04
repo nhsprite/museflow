@@ -200,7 +200,7 @@ export interface ChapterPromptVariables {
 
 export function buildChapterUserPrompt(
   sections: ChapterPromptSections,
-  vars: ChapterPromptVariables,
+  vars: ChapterPromptVariables
 ): string {
   return renderTemplate(CHAPTER_USER_PROMPT_TEMPLATE, {
     ...sections,

@@ -53,42 +53,32 @@ describe('findAffectedParagraphs', () => {
   ]
 
   it('finds paragraphs by structured locationRef', () => {
-    const issues = [
-      { description: '"红衣女子"应该改为"红菱"', locationRef: { paragraphIndex: 2 } },
-    ]
+    const issues = [{ description: '"红衣女子"应该改为"红菱"', locationRef: { paragraphIndex: 2 } }]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toContain(2)
     expect(affected).not.toContain(3)
   })
 
   it('ignores natural-language location text', () => {
-    const issues = [
-      { description: '"红衣女子"应该改为"红菱"', location: '第三段' },
-    ]
+    const issues = [{ description: '"红衣女子"应该改为"红菱"', location: '第三段' }]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toEqual([])
   })
 
   it('does not guess paragraphs from issue prose when no explicit location is given', () => {
-    const issues = [
-      { description: '"红衣女子"应该改为"红菱"' },
-    ]
+    const issues = [{ description: '"红衣女子"应该改为"红菱"' }]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toEqual([])
   })
 
   it('does not use prose-only full-text locations as paragraph targets', () => {
-    const issues = [
-      { description: '沈惊鸿的名字写错了', location: '全文' },
-    ]
+    const issues = [{ description: '沈惊鸿的名字写错了', location: '全文' }]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toEqual([])
   })
 
   it('returns empty array when no matches', () => {
-    const issues = [
-      { description: '"不存在的句子"有问题', location: '某段' },
-    ]
+    const issues = [{ description: '"不存在的句子"有问题', location: '某段' }]
     const affected = findAffectedParagraphs(paragraphs, issues)
     expect(affected).toHaveLength(0)
   })
@@ -103,9 +93,7 @@ describe('findAffectedParagraphs', () => {
   })
 
   it('does not parse compound Chinese numeral paragraph locations', () => {
-    const issues = [
-      { description: '第十二段语气生硬', location: '第十二段' },
-    ]
+    const issues = [{ description: '第十二段语气生硬', location: '第十二段' }]
 
     const manyParagraphs = Array.from({ length: 25 }, (_, i) => `第${i + 1}段内容。`)
     const affected = findAffectedParagraphs(manyParagraphs, issues)
@@ -115,10 +103,16 @@ describe('findAffectedParagraphs', () => {
 
 describe('extractLocationInfo', () => {
   it('reads structured locationRef only', () => {
-    const paragraphLoc = extractLocationInfo({ description: '第十二段语气生硬', locationRef: { paragraphIndex: 11 } })
+    const paragraphLoc = extractLocationInfo({
+      description: '第十二段语气生硬',
+      locationRef: { paragraphIndex: 11 },
+    })
     expect(paragraphLoc).toContainEqual({ paragraphIndex: 11 })
 
-    const sentenceLoc = extractLocationInfo({ description: '第二十三句重复', locationRef: { sentenceIndex: 22 } })
+    const sentenceLoc = extractLocationInfo({
+      description: '第二十三句重复',
+      locationRef: { sentenceIndex: 22 },
+    })
     expect(sentenceLoc).toContainEqual({ sentenceIndex: 22 })
   })
 
@@ -129,17 +123,10 @@ describe('extractLocationInfo', () => {
 })
 
 describe('mergeParagraphFixes', () => {
-  const originalParagraphs = [
-    '第一段原文。',
-    '第二段原文。',
-    '第三段原文。',
-    '第四段原文。',
-  ]
+  const originalParagraphs = ['第一段原文。', '第二段原文。', '第三段原文。', '第四段原文。']
 
   it('replaces only affected paragraphs', () => {
-    const modifiedParagraphs = [
-      { index: 1, content: '第二段已修改。' },
-    ]
+    const modifiedParagraphs = [{ index: 1, content: '第二段已修改。' }]
     const affectedIndices = [1]
     const result = mergeParagraphFixes(originalParagraphs, modifiedParagraphs, affectedIndices)
 
@@ -211,7 +198,6 @@ describe('applyParagraphDiffProtection', () => {
   })
 })
 
-
 describe('FixAgent paragraph parsing', () => {
   it('parses paragraph format correctly', async () => {
     class TestableFixAgent extends (await import('../../src/agents/fix.ts')).FixAgent {
@@ -231,7 +217,9 @@ describe('FixAgent paragraph parsing', () => {
     expect(result.success).toBe(true)
     expect(result.data).toBeDefined()
 
-    const modifiedParagraphs = (result.data as { modifiedParagraphs: Array<{ index: number; content: string }> }).modifiedParagraphs
+    const modifiedParagraphs = (
+      result.data as { modifiedParagraphs: Array<{ index: number; content: string }> }
+    ).modifiedParagraphs
     expect(modifiedParagraphs).toHaveLength(2)
     expect(modifiedParagraphs[0]).toEqual({ index: 1, content: '这是修改后的第一段。' })
     expect(modifiedParagraphs[1]).toEqual({ index: 3, content: '这是修改后的第三段。' })

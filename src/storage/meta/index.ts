@@ -85,4 +85,3 @@ export function writeMetaJsonSync(storyId: string, meta: StoryMeta): void {
   writeFileAtomic(path, JSON.stringify(meta, null, 2))
   logger.debug(`Saved meta.json for story ${storyId} at ${path}`)
 }
-

@@ -37,14 +37,16 @@ function readExistingMeta(outputDir: string): StoryMeta | null {
   try {
     return JSON.parse(readFileSync(path, 'utf-8')) as StoryMeta
   } catch (err) {
-    logger.warn(`[MuseFlow] 读取现有 meta.json 失败: ${err instanceof Error ? err.message : String(err)}`)
+    logger.warn(
+      `[MuseFlow] 读取现有 meta.json 失败: ${err instanceof Error ? err.message : String(err)}`
+    )
     return null
   }
 }
 
 async function loadLatestCheckpointState(
   outputDir: string,
-  checkpointer?: BaseCheckpointSaver<string>,
+  checkpointer?: BaseCheckpointSaver<string>
 ): Promise<CheckpointState | undefined> {
   const resolved = checkpointer ?? getCheckpointer()
   const checkpoint = await resolved.getTuple({ configurable: { thread_id: '', outputDir } })
@@ -72,7 +74,9 @@ async function loadLatestCheckpointState(
     }
     return record.checkpoint?.channel_values as CheckpointState | undefined
   } catch (err) {
-    logger.warn(`[MuseFlow] 读取 checkpoint 失败: ${err instanceof Error ? err.message : String(err)}`)
+    logger.warn(
+      `[MuseFlow] 读取 checkpoint 失败: ${err instanceof Error ? err.message : String(err)}`
+    )
     return undefined
   }
 }
@@ -86,7 +90,7 @@ async function loadLatestCheckpointState(
  */
 export async function exportMetaFromCheckpoint(
   outputDir: string,
-  checkpointer?: BaseCheckpointSaver<string>,
+  checkpointer?: BaseCheckpointSaver<string>
 ): Promise<void> {
   const state = await loadLatestCheckpointState(outputDir, checkpointer)
 

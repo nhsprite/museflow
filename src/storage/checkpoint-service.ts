@@ -20,7 +20,7 @@ export class StoryCheckpointService {
 
   constructor(
     private outputDir: string,
-    checkpointer?: BaseCheckpointSaver<string>,
+    checkpointer?: BaseCheckpointSaver<string>
   ) {
     this.checkpointer = checkpointer ?? getCheckpointer()
   }
@@ -57,10 +57,7 @@ export class StoryCheckpointService {
     writeFileAtomic(this.getMarkersPath(), JSON.stringify(markers, null, 2))
   }
 
-  async saveChapterMarker(
-    chapterNumber: number,
-    checkpointId: string
-  ): Promise<void> {
+  async saveChapterMarker(chapterNumber: number, checkpointId: string): Promise<void> {
     const markers = await this.loadMarkers()
     markers[chapterNumber] = checkpointId
     await this.saveMarkers(markers)
@@ -90,10 +87,10 @@ export class StoryCheckpointService {
     const preservedIds = new Set(Object.values(markers))
 
     const files = readdirSync(dir).filter(
-      f => f.endsWith('.json') && f !== 'pending_writes.json' && f !== 'chapter_markers.json'
+      (f) => f.endsWith('.json') && f !== 'pending_writes.json' && f !== 'chapter_markers.json'
     )
 
-    const toDelete = files.filter(f => !preservedIds.has(f.slice(0, -5)))
+    const toDelete = files.filter((f) => !preservedIds.has(f.slice(0, -5)))
     for (const file of toDelete) {
       unlinkSync(join(dir, file))
       logger.debug(`Pruned intermediate checkpoint: ${file}`)
@@ -151,7 +148,9 @@ export class StoryCheckpointService {
     }
   }
 
-  async getTuple(config: RunnableConfig): Promise<ReturnType<BaseCheckpointSaver<string>['getTuple']>> {
+  async getTuple(
+    config: RunnableConfig
+  ): Promise<ReturnType<BaseCheckpointSaver<string>['getTuple']>> {
     return this.checkpointer.getTuple(config)
   }
 
@@ -166,7 +165,7 @@ export class StoryCheckpointService {
     const dir = this.getReportsDir()
     if (!existsSync(dir)) return []
 
-    const files = readdirSync(dir).filter(f => f.startsWith('blocking_') && f.endsWith('.json'))
+    const files = readdirSync(dir).filter((f) => f.startsWith('blocking_') && f.endsWith('.json'))
     const reports: BlockingReport[] = []
     for (const file of files) {
       try {
@@ -187,7 +186,7 @@ export class StoryCheckpointService {
 
 export function createCheckpointService(
   outputDir: string,
-  checkpointer?: BaseCheckpointSaver<string>,
+  checkpointer?: BaseCheckpointSaver<string>
 ): StoryCheckpointService {
   return new StoryCheckpointService(outputDir, checkpointer)
 }

@@ -23,7 +23,9 @@ function createProvider(): ModelProvider {
   return { chat: vi.fn() }
 }
 
-function baseClassification(overrides: Partial<contextJudge.IssueClassification> = {}): contextJudge.IssueClassification {
+function baseClassification(
+  overrides: Partial<contextJudge.IssueClassification> = {}
+): contextJudge.IssueClassification {
   return {
     isStructural: false,
     isCrossChapter: false,
@@ -38,7 +40,12 @@ function baseClassification(overrides: Partial<contextJudge.IssueClassification>
   }
 }
 
-function makeIssue(type: Issue['type'], severity: Issue['severity'], description: string, location?: string): Issue {
+function makeIssue(
+  type: Issue['type'],
+  severity: Issue['severity'],
+  description: string,
+  location?: string
+): Issue {
   return { id: '1', type, severity, description, ...(location ? { location } : {}) }
 }
 
@@ -207,7 +214,9 @@ describe('issue classifiers support optional LLM复核', () => {
     const issue = makeIssue('consistency', 'error', '段落重复')
     issue.dimension = 'quality'
     const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([baseClassification({ isLocal: true })])
+    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([
+      baseClassification({ isLocal: true }),
+    ])
     const result = await isLocalIssue(provider, issue, true)
     expect(result).toBe(true)
     expect(contextJudge.batchClassifyIssues).toHaveBeenCalledWith(provider, [issue])

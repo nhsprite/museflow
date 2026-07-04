@@ -4,17 +4,17 @@ import type { CharacterAgentInput } from './types.js'
 import type { Character } from '../types/character.js'
 import { generateId } from '../utils/id.js'
 import { parseJsonFromLLM } from '../utils/json.js'
-import {
-  buildCharacterSystemPrompt,
-  buildCharacterUserPrompt,
-} from './prompts/character-prompt.js'
+import { buildCharacterSystemPrompt, buildCharacterUserPrompt } from './prompts/character-prompt.js'
 
 export class CharacterAgent extends BaseAgent<CharacterAgentInput> {
   constructor(provider: ModelProvider) {
     super(provider, 0.7)
   }
 
-  protected buildPrompt(state: CharacterAgentInput, formatReminder?: string): import('../model/provider.js').Message[] {
+  protected buildPrompt(
+    state: CharacterAgentInput,
+    formatReminder?: string
+  ): import('../model/provider.js').Message[] {
     const wd = state.worldDirection
     const worldDirSection = wd
       ? `世界观方向：
@@ -29,13 +29,15 @@ ${wd.powerSystem ? `- 力量/规则体系：${wd.powerSystem}` : ''}
 
     const messages: import('../model/provider.js').Message[] = [
       this.systemMessage(buildCharacterSystemPrompt()),
-      this.userMessage(buildCharacterUserPrompt(
-        state,
-        mainCharacterCountMin,
-        mainCharacterCountMax,
-        worldDirSection,
-        formatReminder,
-      )),
+      this.userMessage(
+        buildCharacterUserPrompt(
+          state,
+          mainCharacterCountMin,
+          mainCharacterCountMax,
+          worldDirSection,
+          formatReminder
+        )
+      ),
     ]
     return messages
   }
@@ -48,7 +50,11 @@ ${wd.powerSystem ? `- 力量/规则体系：${wd.powerSystem}` : ''}
       return { success: true, data: parsed.data }
     }
 
-    return { success: false, error: parsed.error ?? '无法解析角色数据：JSON 格式错误', content: trimmed }
+    return {
+      success: false,
+      error: parsed.error ?? '无法解析角色数据：JSON 格式错误',
+      content: trimmed,
+    }
   }
 
   processOutput(output: AgentOutput, storyId: string): Character[] {

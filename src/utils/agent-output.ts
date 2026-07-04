@@ -2,10 +2,7 @@ import type { Issue, IssueLocationRef, IssueSeverity, IssueType } from '../types
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ModelProvider } from '../model/provider.js'
 import { generateId } from './id.js'
-import {
-  batchJudgeWithdrawnIssues,
-  batchJudgePositiveFeedback,
-} from './context-judge.js'
+import { batchJudgeWithdrawnIssues, batchJudgePositiveFeedback } from './context-judge.js'
 
 export interface RawIssue {
   type?: string
@@ -34,13 +31,11 @@ export async function normalizeIssues(
   rawIssues: RawIssue[] | undefined,
   type: IssueType,
   provider: ModelProvider | undefined,
-  options: NormalizeIssuesOptions = {},
+  options: NormalizeIssuesOptions = {}
 ): Promise<Issue[]> {
   if (!rawIssues) return []
 
-  const afterFilter = options.filter
-    ? rawIssues.filter(options.filter)
-    : rawIssues
+  const afterFilter = options.filter ? rawIssues.filter(options.filter) : rawIssues
 
   if (afterFilter.length === 0) return []
 
@@ -48,7 +43,7 @@ export async function normalizeIssues(
   let positive: boolean[] = []
 
   if (provider) {
-    const descriptions = afterFilter.map(i => i.description || '')
+    const descriptions = afterFilter.map((i) => i.description || '')
     ;[withdrawn, positive] = await Promise.all([
       batchJudgeWithdrawnIssues(provider, descriptions),
       batchJudgePositiveFeedback(provider, descriptions),
@@ -57,7 +52,7 @@ export async function normalizeIssues(
 
   return afterFilter
     .filter((_issue, index) => !withdrawn[index] && !positive[index])
-    .map(issue => {
+    .map((issue) => {
       const mappedType = options.mapType ? options.mapType(issue) : type
       const severity = (issue.severity as IssueSeverity) || options.defaultSeverity || 'warning'
       const result: Issue = {
@@ -125,7 +120,7 @@ function readNumber(value: unknown): number | undefined {
 export function createChapterMeta(
   storyId: string,
   number: number,
-  overrides?: Partial<ChapterMeta>,
+  overrides?: Partial<ChapterMeta>
 ): ChapterMeta {
   const now = Date.now()
   return {
