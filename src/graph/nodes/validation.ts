@@ -42,11 +42,35 @@ function normalizeContinuitySeverity(severity: string | undefined): Issue['sever
   return 'error'
 }
 
+function buildContinuityContext(state: ReducedGraphState): string {
+  const sections: string[] = []
+  const characters = charactersToString(state.characters).trim()
+  if (characters.length > 0) {
+    sections.push(`<characters>
+【人物设定】
+${characters}
+</characters>`)
+  }
+
+  const canonicalFacts = (state.storyState?.canonicalFacts ?? [])
+    .filter(fact => fact.retiredIn === undefined)
+    .slice(-20)
+  if (canonicalFacts.length > 0) {
+    sections.push(`<canonical_facts>
+【权威事实摘要】
+${canonicalFacts.map(fact => `- [${fact.subject}] ${fact.attribute}: ${fact.value}`).join('\n')}
+</canonical_facts>`)
+  }
+
+  return sections.join('\n\n')
+}
+
 async function judgeChapterOpeningContinuity(
   provider: ModelProvider,
   previousEnding: string,
   currentOpening: string,
-  chapterNumber: number
+  chapterNumber: number,
+  continuityContext = ''
 ): Promise<Issue[]> {
   if (!previousEnding || !currentOpening) return []
 
@@ -59,11 +83,12 @@ async function judgeChapterOpeningContinuity(
 1. 如果当前章开头与上一章结尾在人物位置、关键物品持有者、刚发生的动作结果、对话承诺上直接矛盾，返回 isContinuous=false。
 2. 如果当前章开头通过时间跳转、回忆、转场、旁白解释或新的场景说明完成过渡，返回 isContinuous=true。
 3. 只报告会导致读者困惑的明确断裂，不要把正常省略、合理转场或不同措辞判为错误。
-4. 只输出 JSON。`,
+4. 人物可能同时拥有本名、化名、度牒名、职衔或对外身份；如果人物设定或权威事实说明这些称呼指向同一人，不要把合法称呼切换判为人物断裂。
+5. 只输出 JSON。`,
     },
     {
       role: 'user',
-      content: `【上一章结尾片段】\n${previousEnding}\n\n【第 ${chapterNumber} 章开头片段】\n${currentOpening}`,
+      content: `${continuityContext ? `【连续性背景】\n${continuityContext}\n\n` : ''}【上一章结尾片段】\n${previousEnding}\n\n【第 ${chapterNumber} 章开头片段】\n${currentOpening}`,
     },
   ]
 
@@ -268,7 +293,8 @@ export async function detect_continuity(
     context.provider,
     previousEnding,
     currentOpening,
-    chapterIndex + 1
+    chapterIndex + 1,
+    buildContinuityContext(state)
   )
 
   const taggedIssues = issues.map(issue =>

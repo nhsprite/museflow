@@ -11,7 +11,10 @@ const testTempDir = join(tmpdir(), `museflow-consistency-context-${randomUUID().
 function createMockProvider(): ModelProvider {
   return {
     chat: vi.fn().mockResolvedValue(''),
-    chatStructured: vi.fn().mockImplementation(async () => continuityCheckResponse),
+    chatStructured: vi.fn().mockImplementation(async (messages: Array<{ content?: string }>) => {
+      capturedContinuityPrompt = messages.map(m => m.content ?? '').join('\n')
+      return continuityCheckResponse
+    }),
   }
 }
 
@@ -31,6 +34,7 @@ let capturedStoryState = ''
 let capturedOutline = ''
 let capturedTimelineSnapshot = ''
 let capturedPreviousChapters = ''
+let capturedContinuityPrompt = ''
 let capturedIssues: unknown[] = []
 let consistencyOutput = { success: true, data: { is_consistent: true, issues: [] } }
 let continuityCheckResponse: unknown = { isContinuous: true }
@@ -157,6 +161,7 @@ describe('detect_consistency validation context', () => {
     capturedOutline = ''
     capturedTimelineSnapshot = ''
     capturedPreviousChapters = ''
+    capturedContinuityPrompt = ''
     capturedIssues = []
     consistencyOutput = { success: true, data: { is_consistent: true, issues: [] } }
     continuityCheckResponse = { isContinuous: true }
@@ -418,5 +423,38 @@ describe('detect_consistency validation context', () => {
         expect.objectContaining({ type: 'continuity' }),
       ])
     )
+  })
+
+  it('passes character aliases to the chapter opening continuity check', async () => {
+    const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+
+    const state = buildBaseState()
+    state.characters = [
+      {
+        id: 'character-1',
+        storyId: 'story-1',
+        name: '沈砚秋',
+        description: '沈砚秋隐姓埋名寄养于江南姑苏舅家，改名徐砚秋，以落魄书生身份重回京城。',
+        dialogueStyle: null,
+        createdAt: 0,
+      },
+    ]
+    state.currentChapterIndex = 1
+    state.chapters = [
+      { id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: '第一章摘要', foreshadows: null, status: 'done', createdAt: 0, updatedAt: 0 },
+      { id: 'chapter-2', storyId: 'story-1', number: 2, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
+      null,
+    ]
+    readChapterContentMock.mockImplementation(async (_outputDir: string, chapterNumber: number) => {
+      if (chapterNumber === 1) {
+        return '# 第一章\n\n沈砚秋和衣躺下闭眼，听窗外更声远。'
+      }
+      return '# 第二章\n\n沈砚秋闭着眼不去看窗纸，窗纸那边的事不是徐砚秋该管的。'
+    })
+
+    await detect_continuity(createMockContext(), state)
+
+    expect(capturedContinuityPrompt).toContain('人物设定')
+    expect(capturedContinuityPrompt).toContain('改名徐砚秋')
   })
 })

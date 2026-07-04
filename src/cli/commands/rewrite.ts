@@ -95,7 +95,7 @@ async function handleRewrite(
   const totalChapters = state ? state.totalChapters : 0
 
   try {
-    async function runWithConflictResolution() {
+    async function runWithConflictResolution(preserveTargetOutline = false) {
       try {
         return await withSpinner(
           `正在重写第 ${chapterNum}/${totalChapters} 章...`,
@@ -104,14 +104,15 @@ async function handleRewrite(
             targetChapterIndex,
             userResponse,
             retryIssues,
+            ...(preserveTargetOutline ? { preserveTargetOutline: true } : {}),
           }),
           `✅ 第 ${chapterNum} 章重写完成`,
           (result) => !result.rewriteRequested
         )
       } catch (err) {
         if (isBlockingConflictError(err)) {
-          await resolveBlockingConflicts(storyId, err)
-          return runWithConflictResolution()
+          const resolution = await resolveBlockingConflicts(storyId, err)
+          return runWithConflictResolution(resolution.preserveTargetOutline)
         }
         throw err
       }

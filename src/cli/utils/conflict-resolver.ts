@@ -6,6 +6,10 @@ import type { StateOverride } from '../../types/story-state.js'
 
 export { isBlockingConflictError }
 
+export interface ConflictResolutionResult {
+  preserveTargetOutline: boolean
+}
+
 /**
  * 对 blocking 级别的大纲-权威事实冲突进行交互式作者裁决。
  *
@@ -15,7 +19,7 @@ export { isBlockingConflictError }
 export async function resolveBlockingConflicts(
   storyId: string,
   error: BlockingConflictError
-): Promise<void> {
+): Promise<ConflictResolutionResult> {
   if (!process.stdin.isTTY) {
     console.error('[MuseFlow] 检测到阻断性冲突，但当前不是交互式终端，无法请求裁决。')
     console.error('冲突列表：')
@@ -62,7 +66,7 @@ export async function resolveBlockingConflicts(
         error.proposal.revisedTitle
       )
       console.log('[MuseFlow] 已采纳系统修订大纲，将重新尝试撰写本章。')
-      return
+      return { preserveTargetOutline: true }
     }
   }
 
@@ -111,4 +115,5 @@ export async function resolveBlockingConflicts(
 
   await applyStateOverrides(storyId, overrides, constraints, authorDecisions)
   console.log('[MuseFlow] 作者裁决已保存，将重新尝试撰写本章。')
+  return { preserveTargetOutline: false }
 }

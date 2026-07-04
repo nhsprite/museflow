@@ -9,6 +9,7 @@ const testOutputsDir = join(tmpdir(), `museflow-runner-revalidation-outputs-${ra
 
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('chapter content')
+const deleteChapterContent = vi.fn().mockResolvedValue(undefined)
 const saveChapterMarker = vi.fn().mockResolvedValue(undefined)
 const getChapterMarker = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
@@ -92,6 +93,7 @@ vi.mock(import('node:fs'), async (importOriginal) => {
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeChapterContent,
   readChapterContent,
+  deleteChapterContent,
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),
 }))
@@ -307,5 +309,40 @@ describe('runner revalidation', () => {
     await continueStory('story-1', undefined, undefined, {}, createMockContext())
 
     expect(saveChapterMarker).not.toHaveBeenCalled()
+  })
+
+  it('keeps the target chapter outline when preserving an adopted outline revision', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    await runOneChapter('story-1', {
+      mode: 'rewrite',
+      targetChapterIndex: 1,
+      userResponse: true,
+      preserveTargetOutline: true,
+    }, createMockContext())
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<typeof createBaseGraphState>
+    expect(invokedState.outline[1]).toEqual({
+      number: 2,
+      title: 'Chapter 2',
+      description: 'Desc 2',
+    })
+  })
+
+  it('keeps an existing target chapter outline during targeted rewrite by default', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    await runOneChapter('story-1', {
+      mode: 'rewrite',
+      targetChapterIndex: 1,
+      userResponse: true,
+    }, createMockContext())
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<typeof createBaseGraphState>
+    expect(invokedState.outline[1]).toEqual({
+      number: 2,
+      title: 'Chapter 2',
+      description: 'Desc 2',
+    })
   })
 })

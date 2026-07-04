@@ -162,6 +162,7 @@ export interface RunOneChapterOptions {
   targetChapterIndex?: number | undefined
   userResponse?: boolean | undefined
   retryIssues?: Issue[] | undefined
+  preserveTargetOutline?: boolean | undefined
 }
 
 export async function runOneChapter(
@@ -247,14 +248,18 @@ export async function runOneChapter(
   }
 
   if (options.mode === 'rewrite' && options.targetChapterIndex !== undefined) {
-    // 彻底重写目标章节时，清空该章的即时大纲，使其重新生成
-    const clearedOutline = [...workingState.outline]
-    clearedOutline[targetIndex] = {
-      number: targetIndex + 1,
-      title: '',
-      description: '',
+    const targetOutline = workingState.outline[targetIndex]
+    const hasExistingTargetOutline = Boolean(targetOutline?.description?.trim())
+    if (!options.preserveTargetOutline && !hasExistingTargetOutline) {
+      // 目标章没有可执行大纲时才保持空大纲，让后续流程即时生成。
+      const clearedOutline = [...workingState.outline]
+      clearedOutline[targetIndex] = {
+        number: targetIndex + 1,
+        title: '',
+        description: '',
+      }
+      workingState.outline = clearedOutline
     }
-    workingState.outline = clearedOutline
 
     for (let ch = targetIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)

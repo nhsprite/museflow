@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 const runOneChapterMock = vi.fn()
+const resolveBlockingConflictsMock = vi.fn()
+const isBlockingConflictErrorMock = vi.fn()
 const testTempDir = join(tmpdir(), `museflow-rewrite-feedback-${randomUUID().slice(0, 8)}`)
 
 const initialState = {
@@ -58,6 +60,11 @@ vi.mock('../../src/core/runner.js', () => ({
   runOneChapter: runOneChapterMock,
 }))
 
+vi.mock('../../src/cli/utils/conflict-resolver.js', () => ({
+  resolveBlockingConflicts: resolveBlockingConflictsMock,
+  isBlockingConflictError: isBlockingConflictErrorMock,
+}))
+
 vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg, fn) => fn()),
   stopStepProgress: vi.fn(),
@@ -71,6 +78,10 @@ vi.mock('../../src/utils/chapter-display.js', () => ({
 describe('rewrite command retry feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    isBlockingConflictErrorMock.mockImplementation((err: unknown) =>
+      Boolean((err as { isBlockingConflict?: boolean }).isBlockingConflict)
+    )
+    resolveBlockingConflictsMock.mockResolvedValue({ preserveTargetOutline: false })
     runOneChapterMock.mockImplementation(async (_storyId, options) => ({
       ...initialState,
       rewriteRequested: true,
@@ -90,5 +101,33 @@ describe('rewrite command retry feedback', () => {
     expect(options?.retryIssues).toEqual(initialState.pendingIssues)
     expect(options?.userResponse).toBe(true)
     expect(options?.mode).toBe('rewrite')
+  })
+
+  it('preserves adopted outline revision on the retry after blocking conflict resolution', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+
+    const conflictError = Object.assign(new Error('blocking conflict'), {
+      isBlockingConflict: true,
+    })
+    runOneChapterMock
+      .mockRejectedValueOnce(conflictError)
+      .mockResolvedValueOnce({
+        ...initialState,
+        rewriteRequested: true,
+        pendingIssues: [],
+      })
+    resolveBlockingConflictsMock.mockResolvedValueOnce({ preserveTargetOutline: true })
+
+    await rewrite('story-1', { storyId: 'story-1', chapter: '6' })
+
+    expect(resolveBlockingConflictsMock).toHaveBeenCalledWith('story-1', conflictError)
+    expect(runOneChapterMock).toHaveBeenCalledTimes(2)
+    expect(runOneChapterMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        mode: 'rewrite',
+        targetChapterIndex: 5,
+        preserveTargetOutline: true,
+      })
+    )
   })
 })
