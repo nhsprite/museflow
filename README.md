@@ -255,7 +255,15 @@ npm test
 
 # Linting
 npm run lint
+
+# Format all files in the repository
+npm run format
+
+# Check formatting without modifying files
+npm run format:check
 ```
+
+> **Note**: `git commit` automatically formats staged files via `lint-staged` and the husky `pre-commit` hook.
 
 ## FAQ
 

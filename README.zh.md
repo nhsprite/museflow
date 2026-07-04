@@ -255,7 +255,15 @@ npm test
 
 # 代码检查
 npm run lint
+
+# 格式化整个仓库
+npm run format
+
+# 检查格式，不修改文件
+npm run format:check
 ```
+
+> **说明**：`git commit` 会通过 husky 的 `pre-commit` 钩子自动格式化本次暂存（staged）的文件。
 
 ## 常见问题
 
