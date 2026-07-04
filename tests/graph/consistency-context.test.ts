@@ -9,7 +9,10 @@ import type { RuntimeContext } from '../../src/core/context.js'
 const testTempDir = join(tmpdir(), `museflow-consistency-context-${randomUUID().slice(0, 8)}`)
 
 function createMockProvider(): ModelProvider {
-  return { chat: vi.fn().mockResolvedValue(''), chatStructured: vi.fn().mockResolvedValue({}) }
+  return {
+    chat: vi.fn().mockResolvedValue(''),
+    chatStructured: vi.fn().mockImplementation(async () => continuityCheckResponse),
+  }
 }
 
 function createMockContext(): RuntimeContext {
@@ -27,6 +30,14 @@ function createMockContext(): RuntimeContext {
 let capturedStoryState = ''
 let capturedOutline = ''
 let capturedTimelineSnapshot = ''
+let capturedPreviousChapters = ''
+let capturedIssues: unknown[] = []
+let consistencyOutput = { success: true, data: { is_consistent: true, issues: [] } }
+let continuityCheckResponse: unknown = { isContinuous: true }
+
+const { readChapterContentMock } = vi.hoisted(() => ({
+  readChapterContentMock: vi.fn(),
+}))
 
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
@@ -34,17 +45,27 @@ vi.mock('../../src/agents/index.js', () => ({
   OutlineAgent: class {},
   ChapterAgent: class {},
   ChapterPlannerAgent: class {},
-  ForeshadowingAgent: class {},
+  ForeshadowingAgent: class {
+    async run() {
+      return { success: true, data: { new_foreshadows: [], fulfilled_foreshadows: [], overdue_foreshadows: [] } }
+    }
+
+    processOutput(_output: unknown, _chapterIndex: number, existingStack: unknown[]) {
+      return existingStack
+    }
+  },
   ConsistencyAgent: class {
-    async run(state: { storyState?: string; outline?: string; timelineSnapshot?: string }) {
+    async run(state: { storyState?: string; outline?: string; timelineSnapshot?: string; previousChapters?: string; issues?: unknown[] }) {
       capturedStoryState = state.storyState ?? ''
       capturedOutline = state.outline ?? ''
       capturedTimelineSnapshot = state.timelineSnapshot ?? ''
-      return { success: true, data: { is_consistent: true, issues: [] } }
+      capturedPreviousChapters = state.previousChapters ?? ''
+      capturedIssues = state.issues ?? []
+      return consistencyOutput
     }
 
-    processOutput() {
-      return []
+    processOutput(output: { data?: { issues?: unknown[] } }) {
+      return output.data?.issues ?? []
     }
   },
   FixAgent: class {},
@@ -53,7 +74,7 @@ vi.mock('../../src/agents/index.js', () => ({
 }))
 
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
-  readChapterContent: vi.fn().mockResolvedValue('正文内容'),
+  readChapterContent: readChapterContentMock,
   writeChapterContent: vi.fn().mockResolvedValue(undefined),
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),
@@ -135,7 +156,12 @@ describe('detect_consistency validation context', () => {
     capturedStoryState = ''
     capturedOutline = ''
     capturedTimelineSnapshot = ''
+    capturedPreviousChapters = ''
+    capturedIssues = []
+    consistencyOutput = { success: true, data: { is_consistent: true, issues: [] } }
+    continuityCheckResponse = { isContinuous: true }
     vi.clearAllMocks()
+    readChapterContentMock.mockResolvedValue('正文内容')
   })
 
   it('passes canonical facts to consistency agent', async () => {
@@ -321,5 +347,76 @@ describe('detect_consistency validation context', () => {
     expect(capturedOutline).toContain('后续章节内容已隐藏')
     expect(capturedOutline).not.toContain('未来转折')
     expect(capturedOutline).not.toContain('结局')
+  })
+
+  it('passes the previous chapter ending as continuity context', async () => {
+    const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
+
+    const state = buildBaseState()
+    state.currentChapterIndex = 1
+    state.chapters = [
+      { id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: '第一章摘要', foreshadows: null, status: 'done', createdAt: 0, updatedAt: 0 },
+      { id: 'chapter-2', storyId: 'story-1', number: 2, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
+      null,
+    ]
+    state.chapterSummaries = ['第一章摘要']
+    readChapterContentMock.mockImplementation(async (_outputDir: string, chapterNumber: number) => {
+      if (chapterNumber === 1) {
+        return [
+          '# 第一章',
+          '',
+          '前文。',
+          '',
+          '他把青铜钥匙交给阿洛，低声说：“天亮前守住北门。”',
+        ].join('\n')
+      }
+      return '# 第二章\n\n阿洛握紧钥匙，守在北门外。'
+    })
+
+    await detect_consistency(createMockContext(), state)
+
+    expect(capturedPreviousChapters).toContain('上一章结尾片段')
+    expect(capturedPreviousChapters).toContain('他把青铜钥匙交给阿洛')
+  })
+
+  it('adds a continuity error when the current opening contradicts the previous ending', async () => {
+    const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
+
+    const state = buildBaseState()
+    state.currentChapterIndex = 1
+    state.chapters = [
+      { id: 'chapter-1', storyId: 'story-1', number: 1, title: null, outline: null, summary: '第一章摘要', foreshadows: null, status: 'done', createdAt: 0, updatedAt: 0 },
+      { id: 'chapter-2', storyId: 'story-1', number: 2, title: null, outline: null, summary: null, foreshadows: null, status: 'drafting', createdAt: 0, updatedAt: 0 },
+      null,
+    ]
+    readChapterContentMock.mockImplementation(async (_outputDir: string, chapterNumber: number) => {
+      if (chapterNumber === 1) {
+        return '# 第一章\n\n他把青铜钥匙交给阿洛，低声说：“天亮前守住北门。”'
+      }
+      return '# 第二章\n\n与此同时，青铜钥匙仍在主角怀中，他独自穿过南门。'
+    })
+    continuityCheckResponse = {
+      isContinuous: false,
+      severity: 'error',
+      reason: '上一章结尾明确交出青铜钥匙，当前章开头又写青铜钥匙仍在主角怀中。',
+      suggestion: '让当前章从阿洛持有钥匙并守住北门的状态承接。',
+    }
+
+    const result = await validate_chapter_comprehensive(createMockContext(), state)
+
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'continuity',
+          severity: 'error',
+          source: 'consistency',
+        }),
+      ])
+    )
+    expect(capturedIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'continuity' }),
+      ])
+    )
   })
 })

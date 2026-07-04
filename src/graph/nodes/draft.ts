@@ -20,8 +20,25 @@ export async function draft_chapter(
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
 
-  const { chapterPlan, boundaryHints, pendingIssues: outlinePendingIssues, outline: updatedOutline } = await expandOutlineForChapter(state, chapterIndex, context.provider)
-  state = { ...state, chapterPlan, outline: updatedOutline ?? state.outline }
+  const {
+    chapterPlan,
+    boundaryHints,
+    pendingIssues: outlinePendingIssues,
+    outline: updatedOutline,
+    story: updatedStory,
+    totalChapters: updatedTotalChapters,
+    storyArc: updatedStoryArc,
+    chapters: updatedChapters,
+  } = await expandOutlineForChapter(state, chapterIndex, context)
+  state = {
+    ...state,
+    chapterPlan,
+    story: updatedStory ?? state.story,
+    totalChapters: updatedTotalChapters ?? state.totalChapters,
+    storyArc: updatedStoryArc ?? state.storyArc,
+    outline: updatedOutline ?? state.outline,
+    chapters: updatedChapters ?? state.chapters,
+  }
 
   const mergedIssues = [
     ...(outlinePendingIssues ?? []),
@@ -32,7 +49,7 @@ export async function draft_chapter(
     ? await readChapterContent(state.story.outputDir, chapterIndex + 1)
     : null
 
-  const baseContext = await buildChapterAgentContext(state, chapterIndex, context.provider)
+  const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
   const agentState: ChapterAgentInput = mergeAgentState(baseContext, {
     outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
@@ -119,6 +136,10 @@ export async function draft_chapter(
   newChapters[chapterIndex] = newChapter
 
   return {
+    story: state.story,
+    totalChapters: state.totalChapters,
+    storyArc: state.storyArc,
+    outline: state.outline,
     chapters: newChapters,
   }
 }

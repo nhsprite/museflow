@@ -35,7 +35,7 @@ vi.mock('../../src/graph/nodes/planning.js', () => ({
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getChapterOutlineAgent: () => ({
-    run: vi.fn(async (state: { chapterIndex?: number }) => chapterOutlineRunMock(state.chapterIndex ?? 0)),
+    run: vi.fn(async (state: { chapterIndex?: number }) => chapterOutlineRunMock(state)),
   }),
 }))
 
@@ -136,6 +136,48 @@ describe('expandOutlineForChapter', () => {
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
     expect(result.outline?.[1]?.title).toBe('即时标题')
     expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
+  })
+
+  it('extends an overloaded current act before generating a JIT outline', async () => {
+    const overloadedState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 6,
+      story: { ...baseState.story, totalChapters: 6 },
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 6,
+        acts: [
+          { index: 1, startChapter: 1, endChapter: 1, title: '第一幕', theme: '建立', function: '开篇', mandatoryBeats: ['开篇'] },
+          { index: 2, startChapter: 2, endChapter: 2, title: '第二幕', theme: '对抗', function: '升级冲突', mandatoryBeats: ['beat1', 'beat2', 'beat3', 'beat4'] },
+          { index: 3, startChapter: 3, endChapter: 6, title: '第三幕', theme: '收束', function: '解决', mandatoryBeats: ['beat5'] },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        { number: 1, title: '启程', description: '开篇。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '', description: '' },
+        { number: 4, title: '', description: '' },
+        { number: 5, title: '', description: '' },
+        { number: 6, title: '', description: '' },
+      ],
+      actProgress: {
+        2: { consumed: [], pending: ['beat1', 'beat2', 'beat3', 'beat4'] },
+      },
+      chapters: [null, null, null, null, null, null],
+    }
+
+    const result = await expandOutlineForChapter(overloadedState, 1, createMockProvider())
+
+    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as { storyArc: typeof overloadedState.storyArc; totalChapters: number }
+    expect(agentInput.storyArc.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+      [1, 1],
+      [2, 4],
+      [5, 8],
+    ])
+    expect(agentInput.totalChapters).toBe(8)
+    expect(result.storyArc?.totalChapters).toBe(8)
+    expect(result.outline).toHaveLength(8)
   })
 
   it('includes next-act boundary hint when next chapter enters new act', async () => {

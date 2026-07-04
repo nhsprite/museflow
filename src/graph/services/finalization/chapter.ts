@@ -34,6 +34,28 @@ import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import { loadConfig } from '../../../config/store.js'
 import { writeOutlineContent } from '../../../storage/filesystem/writer.js'
 
+function ensureOutlineLength(
+  outline: ReducedGraphState['outline'],
+  totalChapters: number
+): ReducedGraphState['outline'] {
+  const next = [...outline]
+  for (let i = next.length; i < totalChapters; i++) {
+    next.push({ number: i + 1, title: '', description: '' })
+  }
+  return next
+}
+
+function ensureChaptersLength(
+  chapters: ReducedGraphState['chapters'],
+  totalChapters: number
+): ReducedGraphState['chapters'] {
+  const next = [...chapters]
+  while (next.length < totalChapters) {
+    next.push(null)
+  }
+  return next
+}
+
 export async function finalizeChapter(
   state: ReducedGraphState,
   provider: import('../../../model/provider.js').ModelProvider
@@ -149,7 +171,21 @@ export async function finalizeChapter(
       }
 
       if (!summarySuccess) {
-        logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，将在无摘要状态下标记本章完成。后续一致性检查可能受影响。`)
+        logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，已阻止 finalize，避免未沉淀内容进入后续章节。`)
+        return {
+          pendingIssues: [
+            ...state.pendingIssues,
+            {
+              id: generateId(),
+              type: 'state_corruption',
+              severity: 'error',
+              description: `第 ${chapterIndex + 1} 章摘要与权威事实提取失败，无法安全进入下一章。`,
+              suggestion: '请重试当前章节 finalize；如果模型持续失败，请检查模型输出或运行 rewrite 重新生成本章。',
+              source: 'state_reconciliation',
+              retryStrategy: 'manual',
+            },
+          ],
+        }
       }
     }
 
@@ -210,36 +246,46 @@ export async function finalizeChapter(
     updatedVerifiedConstraints = [...updatedVerifiedConstraints, closingPhaseConstraint]
   }
 
-  const updatedPendingIssues = beatVerificationIssues && beatVerificationIssues.length > 0
+  let updatedPendingIssues = beatVerificationIssues && beatVerificationIssues.length > 0
     ? [...state.pendingIssues, ...beatVerificationIssues]
     : state.pendingIssues
 
   const nextIndex = state.currentChapterIndex + 1
 
-  const chapterReport = buildChapterReport(
-    state,
-    chapter ?? null,
-    chapterContent,
-    updatedStoryState,
-    updatedPendingIssues
-  )
-
   let updatedStoryArc: StoryArc | null | undefined = state.storyArc
+  let boundaryProposals: ReturnType<typeof proposeActBoundaryAdjustments> = []
+  let updatedTotalChapters = state.totalChapters
+  let updatedStory = state.story
+  let updatedOutline = state.outline
+  let updatedChapters = state.chapters
 
   if (state.storyArc) {
-    const boundaryProposals = proposeActBoundaryAdjustments(state.storyArc, updatedActProgress, chapterIndex)
+    boundaryProposals = proposeActBoundaryAdjustments(state.storyArc, updatedActProgress, chapterIndex)
     if (boundaryProposals.length > 0) {
-      chapterReport.actBoundaryProposals = boundaryProposals
       const config = loadConfig()
 
       if (config.autoAdjustActBoundaries) {
         for (const proposal of boundaryProposals) {
-          const result = applyActBoundaryAdjustment(state.storyArc, proposal, chapterIndex)
+          const result = applyActBoundaryAdjustment(updatedStoryArc ?? state.storyArc, proposal, chapterIndex)
           if (result.applied) {
             updatedStoryArc = result.storyArc
             logger.info(`[MuseFlow] ${result.reason}`)
           } else {
             logger.warn(`[MuseFlow] 自动调整第 ${proposal.actIndex} 幕边界失败：${result.reason}`)
+            if (result.requiresManualResolution) {
+              updatedPendingIssues = [
+                ...updatedPendingIssues,
+                {
+                  id: generateId(),
+                  type: 'outline_coverage',
+                  severity: 'error',
+                  description: `第 ${proposal.actIndex} 幕自动延长已达到上限，仍有 mandatory beats 未消费。`,
+                  suggestion: result.reason ?? '请重写当前章节消费 pending beats，或人工调整大纲/幕边界。',
+                  source: 'outline_compliance',
+                  retryStrategy: 'manual',
+                },
+              ]
+            }
           }
         }
       } else {
@@ -252,11 +298,33 @@ export async function finalizeChapter(
     }
   }
 
+  if (updatedStoryArc && updatedStoryArc.totalChapters > updatedTotalChapters) {
+    updatedTotalChapters = updatedStoryArc.totalChapters
+    updatedStory = {
+      ...updatedStory,
+      totalChapters: updatedTotalChapters,
+      updatedAt: Date.now(),
+    }
+    updatedOutline = ensureOutlineLength(updatedOutline, updatedTotalChapters)
+    updatedChapters = ensureChaptersLength(updatedChapters, updatedTotalChapters)
+  }
+
+  const chapterReport = buildChapterReport(
+    state,
+    chapter ?? null,
+    chapterContent,
+    updatedStoryState,
+    updatedPendingIssues
+  )
+  if (boundaryProposals.length > 0) {
+    chapterReport.actBoundaryProposals = boundaryProposals
+  }
+
   if (updatedStoryArc && updatedStoryArc !== state.storyArc) {
     await writeOutlineContent(
       state.story.outputDir,
       state.story.title,
-      state.outline,
+      updatedOutline,
       updatedStoryArc
     )
   }
@@ -268,7 +336,10 @@ export async function finalizeChapter(
   await checkpointService.clearPendingWrites().catch(() => {})
 
   return {
+    story: updatedStory,
+    totalChapters: updatedTotalChapters,
     currentChapterIndex: nextIndex,
+    chapters: updatedChapters,
     chapterSummaries: state.chapterSummaries,
     storyState: updatedStoryState,
     verifiedConstraints: updatedVerifiedConstraints,
@@ -276,7 +347,7 @@ export async function finalizeChapter(
     chapterReport,
     timeline: updatedTimeline,
     pendingIssues: updatedPendingIssues,
-    outline: state.outline,
+    outline: updatedOutline,
     storyArc: updatedStoryArc,
   }
 }

@@ -80,6 +80,12 @@ vi.mock('../../src/agents/index.js', () => ({
     }
   },
   ConsistencyAgent: class {},
+  SummaryAgent: class {
+    async run() {
+      return { success: false, error: 'summary failed' }
+    }
+  },
+  processSummaryOutput: vi.fn(),
 }))
 
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
@@ -288,6 +294,41 @@ describe('finalize_chapter guard against empty file', () => {
       ...baseState,
       currentChapterIndex: 0,
     } as never)).rejects.toThrow('第 1 章文件为空或不存在，无法标记为完成')
+  })
+})
+
+describe('finalize_chapter summary failure guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    readChapterContent.mockResolvedValue('chapter content')
+  })
+
+  it('does not advance the chapter when summary extraction fails', async () => {
+    const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
+
+    const result = await finalize_chapter(createMockContext(), {
+      ...baseState,
+      currentChapterIndex: 0,
+      chapters: [{
+        id: 'chapter-1',
+        storyId: 'story-1',
+        number: 1,
+        title: 'Chapter 1',
+        outline: 'Desc 1',
+        summary: null,
+        foreshadows: null,
+        status: 'drafting',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+    } as never)
+
+    expect(result.currentChapterIndex).toBeUndefined()
+    expect(result.pendingIssues?.[0]).toMatchObject({
+      severity: 'error',
+      type: 'state_corruption',
+    })
+    expect(result.pendingIssues?.[0]?.description).toContain('摘要')
   })
 })
 

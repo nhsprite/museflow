@@ -15,17 +15,34 @@ import { batchValidateTimeAnchors } from '../utils/context-judge.js'
 import { getChapterOutlineAgent } from '../graph/agent-factory.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
 import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/reconciler/index.js'
+import { prepareStoryStateForChapterCached } from '../graph/utils/chapter-context.js'
+import type { RuntimeContext } from './context.js'
 import { charactersToString } from '../graph/utils/characters.js'
 import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.js'
 import { generateOutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 import type { Conflict } from '../types/story-state.js'
+import { applyActBoundaryAdjustment, proposeActBoundaryAdjustments } from '../utils/story-arc.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
   boundaryHints: string[]
   pendingIssues?: Issue[]
   outline?: ReducedGraphState['outline']
+  story?: ReducedGraphState['story']
+  totalChapters?: ReducedGraphState['totalChapters']
+  storyArc?: ReducedGraphState['storyArc']
+  chapters?: ReducedGraphState['chapters']
+}
+
+type ChapterContextSource = ModelProvider | RuntimeContext
+
+function isRuntimeContext(source: ChapterContextSource): source is RuntimeContext {
+  return 'provider' in source
+}
+
+function getProvider(source: ChapterContextSource): ModelProvider {
+  return isRuntimeContext(source) ? source.provider : source
 }
 
 const CORE_SECTION_JUDGE_SCHEMA: JsonSchema = {
@@ -37,6 +54,85 @@ const CORE_SECTION_JUDGE_SCHEMA: JsonSchema = {
     },
   },
   required: ['results'],
+}
+
+function ensureOutlineLength(
+  outline: ReducedGraphState['outline'],
+  totalChapters: number
+): ReducedGraphState['outline'] {
+  const next = [...outline]
+  for (let i = next.length; i < totalChapters; i++) {
+    next.push({ number: i + 1, title: '', description: '' })
+  }
+  return next
+}
+
+function ensureChaptersLength(
+  chapters: ReducedGraphState['chapters'],
+  totalChapters: number
+): ReducedGraphState['chapters'] {
+  const next = [...chapters]
+  while (next.length < totalChapters) {
+    next.push(null)
+  }
+  return next
+}
+
+async function autoExtendCurrentActBeforeOutline(
+  state: ReducedGraphState,
+  chapterIndex: number
+): Promise<ReducedGraphState> {
+  if (!state.storyArc) return state
+
+  const currentChapterNumber = chapterIndex + 1
+  const currentAct = state.storyArc.acts.find(
+    act => currentChapterNumber >= act.startChapter && currentChapterNumber <= act.endChapter
+  )
+  if (!currentAct) return state
+
+  const extensionProposals = proposeActBoundaryAdjustments(
+    state.storyArc,
+    state.actProgress,
+    chapterIndex
+  ).filter(proposal => proposal.actIndex === currentAct.index && proposal.proposedEndChapter > currentAct.endChapter)
+
+  if (extensionProposals.length === 0) return state
+
+  let updatedStoryArc = state.storyArc
+  for (const proposal of extensionProposals) {
+    const result = applyActBoundaryAdjustment(updatedStoryArc, proposal, chapterIndex)
+    if (!result.applied) {
+      logger.warn(`[MuseFlow] 写前自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
+      continue
+    }
+    updatedStoryArc = result.storyArc
+    logger.info(`[MuseFlow] 写前${result.reason}`)
+  }
+
+  if (updatedStoryArc === state.storyArc) return state
+
+  const updatedTotalChapters = Math.max(state.totalChapters, updatedStoryArc.totalChapters)
+  const updatedOutline = ensureOutlineLength(state.outline, updatedTotalChapters)
+  const updatedChapters = ensureChaptersLength(state.chapters, updatedTotalChapters)
+  const updatedStory = updatedTotalChapters === state.story.totalChapters
+    ? state.story
+    : { ...state.story, totalChapters: updatedTotalChapters, updatedAt: Date.now() }
+
+  await writeOutlineContent(
+    state.story.outputDir,
+    state.story.title,
+    updatedOutline,
+    updatedStoryArc
+  )
+
+  return {
+    ...state,
+    story: updatedStory,
+    totalChapters: updatedTotalChapters,
+    storyArc: updatedStoryArc,
+    outline: updatedOutline,
+    chapters: updatedChapters,
+  }
 }
 
 async function judgeCoreSectionsWithModel(
@@ -215,14 +311,19 @@ function conflictsEqual(a: readonly Conflict[], b: readonly Conflict[]): boolean
 async function autoResolveBlockingOutlineConflicts(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider: ModelProvider
+  source: ChapterContextSource
 ): Promise<ReducedGraphState> {
+  const provider = getProvider(source)
   let currentState = state
   let lastError: BlockingConflictError | undefined
 
   for (let attempt = 0; attempt < MAX_AUTO_REVISION_ATTEMPTS; attempt++) {
     try {
-      await prepareStoryStateForChapter(currentState, chapterIndex, provider)
+      if (isRuntimeContext(source)) {
+        await prepareStoryStateForChapterCached(currentState, chapterIndex, source)
+      } else {
+        await prepareStoryStateForChapter(currentState, chapterIndex, provider)
+      }
       if (attempt > 0) {
         logger.info(`[MuseFlow] 大纲自动修订成功，第 ${chapterIndex + 1} 章冲突已解决`)
       }
@@ -302,10 +403,12 @@ async function autoResolveBlockingOutlineConflicts(
 export async function expandOutlineForChapter(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider: ModelProvider
+  source: ChapterContextSource
 ): Promise<ExpandedOutline> {
+  const provider = getProvider(source)
+  state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
   state = await generateChapterOutlineIfNeeded(state, chapterIndex, provider)
-  state = await autoResolveBlockingOutlineConflicts(state, chapterIndex, provider)
+  state = await autoResolveBlockingOutlineConflicts(state, chapterIndex, source)
 
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
@@ -463,6 +566,10 @@ export async function expandOutlineForChapter(
     boundaryHints,
     pendingIssues,
     outline: state.outline,
+    story: state.story,
+    totalChapters: state.totalChapters,
+    storyArc: state.storyArc,
+    chapters: state.chapters,
   }
 }
 

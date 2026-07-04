@@ -107,4 +107,26 @@ describe('adjust-act command', () => {
     expect(writeOutlineContentMock).toHaveBeenCalledTimes(1)
     logSpy.mockRestore()
   })
+
+  it('extends an act by shifting all following acts instead of compressing the next act', async () => {
+    const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await adjustAct('story-1', { act: '1', endChapter: '7' })
+
+    const updatedState = updateLatestStateMock.mock.calls[0]![0] as {
+      storyArc: { totalChapters: number; acts: Array<{ startChapter: number; endChapter: number }> }
+      totalChapters: number
+      story: { totalChapters: number }
+    }
+    expect(updatedState.storyArc.totalChapters).toBe(22)
+    expect(updatedState.totalChapters).toBe(22)
+    expect(updatedState.story.totalChapters).toBe(22)
+    expect(updatedState.storyArc.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+      [1, 7],
+      [8, 12],
+      [13, 22],
+    ])
+    logSpy.mockRestore()
+  })
 })

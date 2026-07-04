@@ -114,7 +114,8 @@ describe('story-arc utilities', () => {
 
     expect(validateActBoundaryAdjustment(storyArc, 1, 6, 3).valid).toBe(true)
     expect(validateActBoundaryAdjustment(storyArc, 1, 2, 3).valid).toBe(false)
-    expect(validateActBoundaryAdjustment(storyArc, 1, 12, 3).valid).toBe(false)
+    expect(validateActBoundaryAdjustment(storyArc, 1, 12, 3).valid).toBe(true)
+    expect(validateActBoundaryAdjustment(storyArc, 2, 4, 3).valid).toBe(false)
     expect(validateActBoundaryAdjustment(storyArc, 99, 6, 3).valid).toBe(false)
   })
 
@@ -207,6 +208,21 @@ describe('story-arc utilities', () => {
       expect(result.storyArc.acts[1]?.startChapter).toBe(8)
     })
 
+    it('extends an act by shifting all following acts and increasing total chapters', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 1, proposedEndChapter: 7, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
+
+      expect(result.applied).toBe(true)
+      expect(result.storyArc.totalChapters).toBe(22)
+      expect(result.storyArc.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+        [1, 7],
+        [8, 12],
+        [13, 17],
+        [18, 22],
+      ])
+    })
+
     it('applies shortening proposals and shifts next act start earlier', () => {
       const storyArc = makeStoryArc()
       const proposal = { actIndex: 1, proposedEndChapter: 4, reason: 'test' }
@@ -226,14 +242,43 @@ describe('story-arc utilities', () => {
       expect(result.storyArc.acts[0]?.endChapter).toBe(8)
     })
 
-    it('does not cross into next act', () => {
+    it('caps automatic extension while preserving following act lengths', () => {
       const storyArc = makeStoryArc()
       const proposal = { actIndex: 1, proposedEndChapter: 10, reason: 'test' }
       const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
 
-      expect(result.storyArc.acts[0]?.endChapter).toBeLessThanOrEqual(
-        (storyArc.acts[1]?.endChapter ?? 0) - 1
+      expect(result.storyArc.acts.map(act => act.endChapter - act.startChapter + 1)).toEqual([8, 5, 5, 5])
+    })
+
+    it('blocks repeated automatic extension beyond the cumulative act budget', () => {
+      const storyArc: StoryArc = {
+        totalChapters: 30,
+        acts: [
+          { index: 1, startChapter: 1, endChapter: 5, title: '入局', theme: '卷入', function: '建立', mandatoryBeats: ['beat1', 'beat2'] },
+          { index: 2, startChapter: 6, endChapter: 20, title: '对抗', theme: '升级', function: '对抗', mandatoryBeats: ['beat3'] },
+          { index: 3, startChapter: 21, endChapter: 30, title: '收束', theme: '完结', function: '解决', mandatoryBeats: ['beat4'] },
+        ],
+        keyBeats: [],
+      }
+
+      const first = applyActBoundaryAdjustment(
+        storyArc,
+        { actIndex: 1, proposedEndChapter: 8, reason: 'first extension' },
+        3
       )
+      expect(first.applied).toBe(true)
+      expect(first.storyArc.acts[0]?.endChapter).toBe(8)
+
+      const second = applyActBoundaryAdjustment(
+        first.storyArc,
+        { actIndex: 1, proposedEndChapter: 11, reason: 'second extension' },
+        6
+      )
+
+      expect(second.applied).toBe(false)
+      expect(second.requiresManualResolution).toBe(true)
+      expect(second.storyArc.acts[0]?.endChapter).toBe(8)
+      expect(second.reason).toContain('累计自动延长上限')
     })
   })
 })

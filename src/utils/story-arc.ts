@@ -143,15 +143,11 @@ export function proposeActBoundaryAdjustments(
   if (progress.pending.length >= 2) {
     const extension = Math.min(2, progress.pending.length)
     const proposedEnd = currentAct.endChapter + extension
-    const nextAct = storyArc.acts.find(a => a.index === currentAct.index + 1)
-    const maxEnd = nextAct ? nextAct.endChapter - 1 : storyArc.totalChapters
-    if (proposedEnd <= maxEnd) {
-      proposals.push({
-        actIndex: currentAct.index,
-        proposedEndChapter: proposedEnd,
-        reason: `第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${progress.pending.length} 个 mandatory beats 未消费，建议延长 ${extension} 章。`,
-      })
-    }
+    proposals.push({
+      actIndex: currentAct.index,
+      proposedEndChapter: proposedEnd,
+      reason: `第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${progress.pending.length} 个 mandatory beats 未消费，建议延长 ${extension} 章。`,
+    })
   } else if (progress.pending.length === 0 && chaptersRemaining > 0) {
     const reduction = Math.min(chaptersRemaining, 2)
     const proposedEnd = currentAct.endChapter - reduction
@@ -195,9 +191,12 @@ export function validateActBoundaryAdjustment(
     return { valid: false, reason: '不能与前幕重叠' }
   }
 
-  const maxEnd = nextAct ? nextAct.endChapter - 1 : storyArc.totalChapters
-  if (proposedEndChapter > maxEnd) {
-    return { valid: false, reason: '不能超出全书总章节数或后幕范围' }
+  const isExtension = proposedEndChapter > act.endChapter
+  if (!isExtension) {
+    const maxEnd = nextAct ? nextAct.endChapter - 1 : storyArc.totalChapters
+    if (proposedEndChapter > maxEnd) {
+      return { valid: false, reason: '不能超出全书总章节数或后幕范围' }
+    }
   }
 
   return { valid: true }
@@ -205,11 +204,65 @@ export function validateActBoundaryAdjustment(
 
 /** 单次自动调整的安全上限（章）。 */
 const AUTO_ADJUST_MAX_EXTENSION = 3
+/** 单幕累计自动延长上限（章）。超过后必须人工处理或重写消费 pending beats。 */
+const AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION = 3
 
 export interface ApplyActBoundaryAdjustmentResult {
   storyArc: StoryArc
   applied: boolean
   reason?: string
+  requiresManualResolution?: boolean
+}
+
+function shiftActRange(act: ActArc, delta: number): ActArc {
+  if (delta === 0) return act
+
+  const shifted: ActArc = {
+    ...act,
+    startChapter: act.startChapter + delta,
+    endChapter: act.endChapter + delta,
+  }
+
+  if (act.autoBoundaryAdjustment) {
+    shifted.autoBoundaryAdjustment = {
+      ...act.autoBoundaryAdjustment,
+      originalEndChapter: act.autoBoundaryAdjustment.originalEndChapter + delta,
+    }
+  }
+
+  return shifted
+}
+
+export function applyActBoundaryShift(
+  storyArc: StoryArc,
+  actIndex: number,
+  proposedEndChapter: number
+): StoryArc {
+  const currentAct = storyArc.acts.find(a => a.index === actIndex)
+  if (!currentAct) return storyArc
+
+  const delta = proposedEndChapter - currentAct.endChapter
+  if (delta === 0) return storyArc
+
+  const nextAct = storyArc.acts.find(a => a.index === actIndex + 1)
+  const newActs = storyArc.acts.map(act => {
+    if (act.index === actIndex) {
+      return { ...act, endChapter: proposedEndChapter }
+    }
+    if (delta > 0 && act.index > actIndex) {
+      return shiftActRange(act, delta)
+    }
+    if (delta < 0 && nextAct && act.index === actIndex + 1) {
+      return { ...act, startChapter: proposedEndChapter + 1 }
+    }
+    return act
+  })
+
+  return {
+    ...storyArc,
+    totalChapters: delta > 0 ? storyArc.totalChapters + delta : storyArc.totalChapters,
+    acts: newActs,
+  }
 }
 
 /**
@@ -235,7 +288,26 @@ export function applyActBoundaryAdjustment(
 
   const isExtension = proposal.proposedEndChapter > currentAct.endChapter
   const rawDelta = Math.abs(proposal.proposedEndChapter - currentAct.endChapter)
-  const cappedDelta = Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
+  const originalEndChapter = currentAct.autoBoundaryAdjustment?.originalEndChapter ?? currentAct.endChapter
+  const alreadyExtendedBy = Math.max(
+    currentAct.autoBoundaryAdjustment?.totalExtendedChapters ?? 0,
+    currentAct.autoBoundaryAdjustment ? currentAct.endChapter - originalEndChapter : 0,
+    0
+  )
+  const remainingCumulativeExtension = AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION - alreadyExtendedBy
+
+  if (isExtension && remainingCumulativeExtension <= 0) {
+    return {
+      storyArc,
+      applied: false,
+      requiresManualResolution: true,
+      reason: `第 ${proposal.actIndex} 幕已达到累计自动延长上限（${AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION} 章），需要重写当前章节消费 pending beats，或人工调整大纲/幕边界。`,
+    }
+  }
+
+  const cappedDelta = isExtension
+    ? Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION, remainingCumulativeExtension)
+    : Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
   const cappedProposedEnd = isExtension
     ? currentAct.endChapter + cappedDelta
     : currentAct.endChapter - cappedDelta
@@ -250,20 +322,27 @@ export function applyActBoundaryAdjustment(
     return { storyArc, applied: false, ...(validation.reason ? { reason: validation.reason } : {}) }
   }
 
-  const nextAct = storyArc.acts.find(a => a.index === proposal.actIndex + 1)
+  const shiftedStoryArc = applyActBoundaryShift(storyArc, proposal.actIndex, cappedProposedEnd)
+  const newActs = shiftedStoryArc.acts.map(act => {
+    if (act.index !== proposal.actIndex) return act
 
-  const newActs = storyArc.acts.map(act => {
-    if (act.index === proposal.actIndex) {
-      return { ...act, endChapter: cappedProposedEnd }
+    const totalExtendedChapters = Math.max(0, cappedProposedEnd - originalEndChapter)
+    if (totalExtendedChapters > 0) {
+      return {
+        ...act,
+        autoBoundaryAdjustment: {
+          originalEndChapter,
+          totalExtendedChapters,
+        },
+      }
     }
-    if (nextAct && act.index === proposal.actIndex + 1) {
-      return { ...act, startChapter: cappedProposedEnd + 1 }
-    }
-    return act
+
+    const { autoBoundaryAdjustment: _autoBoundaryAdjustment, ...actWithoutAdjustment } = act
+    return actWithoutAdjustment
   })
 
   return {
-    storyArc: { ...storyArc, acts: newActs },
+    storyArc: { ...shiftedStoryArc, acts: newActs },
     applied: true,
     reason: `已自动将第 ${proposal.actIndex} 幕结束章节从 ${currentAct.endChapter} 调整到 ${cappedProposedEnd}`,
   }

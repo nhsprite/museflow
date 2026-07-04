@@ -4,13 +4,65 @@ import type { Character } from '../../types/character.js'
 import type { ForeshadowItem } from '../../types/foreshadow.js'
 import type { CanonicalFact } from '../../types/story-state.js'
 import type { ModelProvider } from '../../model/provider.js'
+import type { RuntimeContext } from '../../core/context.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import {
   buildCharacterFactTimeline,
   formatStoryState,
   prepareStoryStateForChapter,
+  type PreparedStoryState,
 } from './reconciler/index.js'
 import { buildEffectiveCharactersList, charactersToString } from './characters.js'
+import { buildPreviousChapterEndingContext } from './chapter-window.js'
+
+type ChapterContextSource = ModelProvider | RuntimeContext
+
+const preparedStoryStateCache = new WeakMap<RuntimeContext, Map<string, PreparedStoryState>>()
+
+function isRuntimeContext(source: ChapterContextSource): source is RuntimeContext {
+  return 'provider' in source
+}
+
+function buildPreparedStoryStateCacheKey(
+  state: ReducedGraphState,
+  chapterIndex: number
+): string {
+  const outlineItem = state.outline[chapterIndex]
+  return JSON.stringify({
+    storyId: state.story.id,
+    chapterIndex,
+    outlineItem,
+    characters: state.characters,
+    storyState: state.storyState,
+    authorDecisions: state.authorDecisions,
+  })
+}
+
+export async function prepareStoryStateForChapterCached(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  source: ChapterContextSource,
+): Promise<PreparedStoryState> {
+  if (!isRuntimeContext(source)) {
+    return prepareStoryStateForChapter(state, chapterIndex, source)
+  }
+
+  const key = buildPreparedStoryStateCacheKey(state, chapterIndex)
+  let cache = preparedStoryStateCache.get(source)
+  if (!cache) {
+    cache = new Map<string, PreparedStoryState>()
+    preparedStoryStateCache.set(source, cache)
+  }
+
+  const cached = cache.get(key)
+  if (cached) {
+    return cached
+  }
+
+  const prepared = await prepareStoryStateForChapter(state, chapterIndex, source.provider)
+  cache.set(key, prepared)
+  return prepared
+}
 
 /**
  * 章节级 Agent 共享上下文。
@@ -41,13 +93,20 @@ export interface ChapterAgentContext {
 export async function buildChapterAgentContext(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider: ModelProvider,
+  source: ChapterContextSource,
 ): Promise<ChapterAgentContext> {
   const worldContent = state.world?.content
-  const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
 
-  const { reconciledState, stateConflicts } = await prepareStoryStateForChapter(state, chapterIndex, provider)
+  const [previousChapterEnding, preparedState] = await Promise.all([
+    buildPreviousChapterEndingContext(state, chapterIndex),
+    prepareStoryStateForChapterCached(state, chapterIndex, source),
+  ])
+  const previousChapters = [
+    buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+    previousChapterEnding,
+  ].filter(Boolean).join('\n\n')
+  const { reconciledState, stateConflicts } = preparedState
   const storyStateStr = formatStoryState(reconciledState)
 
   const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } =

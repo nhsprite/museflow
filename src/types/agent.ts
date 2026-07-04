@@ -2,6 +2,7 @@ export type IssueSeverity = 'error' | 'warning' | 'info'
 
 export type IssueType =
   | 'consistency'
+  | 'continuity'
   | 'word_count'
   | 'outline_violation'
   | 'outline_deviation'
@@ -38,4 +39,3 @@ export interface Issue {
   source?: IssueSource
   retryStrategy?: RetryStrategy
 }
-

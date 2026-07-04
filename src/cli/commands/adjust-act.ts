@@ -4,8 +4,31 @@ import { writeOutlineContent } from '../../storage/filesystem/writer.js'
 import {
   validateActBoundaryAdjustment,
   getActForChapter,
+  applyActBoundaryShift,
 } from '../../utils/story-arc.js'
 import type { ReducedGraphState } from '../../graph/state.js'
+
+function ensureOutlineLength(
+  outline: ReducedGraphState['outline'],
+  totalChapters: number
+): ReducedGraphState['outline'] {
+  const next = [...outline]
+  for (let i = next.length; i < totalChapters; i++) {
+    next.push({ number: i + 1, title: '', description: '' })
+  }
+  return next
+}
+
+function ensureChaptersLength(
+  chapters: ReducedGraphState['chapters'],
+  totalChapters: number
+): ReducedGraphState['chapters'] {
+  const next = [...chapters]
+  while (next.length < totalChapters) {
+    next.push(null)
+  }
+  return next
+}
 
 export async function adjustAct(
   storyId: string,
@@ -55,37 +78,39 @@ export async function adjustAct(
     process.exit(1)
   }
 
-  const currentAct = storyArc.acts.find(a => a.index === actIndex)
-  if (!currentAct) {
+  if (!storyArc.acts.some(a => a.index === actIndex)) {
     console.error('[MuseFlow] 错误: 幕不存在')
     process.exit(1)
   }
 
-  const newActs = storyArc.acts.map(act => {
-    if (act.index === actIndex) {
-      return { ...act, endChapter: proposedEndChapter }
-    }
-    if (act.index === actIndex + 1) {
-      return { ...act, startChapter: proposedEndChapter + 1 }
-    }
-    return act
-  })
-
-  const newStoryArc = { ...storyArc, acts: newActs }
+  const newStoryArc = applyActBoundaryShift(storyArc, actIndex, proposedEndChapter)
   const currentActAfter = getActForChapter(newStoryArc, state.currentChapterIndex)
+  const newTotalChapters = newStoryArc.totalChapters
+  const newOutline = ensureOutlineLength(state.outline, newTotalChapters)
+  const newChapters = ensureChaptersLength(state.chapters, newTotalChapters)
+  const newStory = newTotalChapters === state.story.totalChapters
+    ? state.story
+    : { ...state.story, totalChapters: newTotalChapters, updatedAt: Date.now() }
 
   await checkpointService.updateLatestState({
+    story: newStory,
+    totalChapters: newTotalChapters,
     storyArc: newStoryArc,
+    outline: newOutline,
+    chapters: newChapters,
   })
 
   await writeOutlineContent(
     story.outputDir,
     state.story.title,
-    state.outline,
+    newOutline,
     newStoryArc
   )
 
   console.log(`[MuseFlow] 已调整第 ${actIndex} 幕边界：结束于第 ${proposedEndChapter} 章`)
+  if (newTotalChapters !== state.totalChapters) {
+    console.log(`  目标总章节数：${state.totalChapters} → ${newTotalChapters}`)
+  }
   if (currentActAfter) {
     console.log(`  当前章（第 ${state.currentChapterIndex + 1} 章）位于第 ${currentActAfter.index} 幕「${currentActAfter.title}」`)
   }

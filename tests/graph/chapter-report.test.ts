@@ -10,6 +10,17 @@ import { processSummaryOutput } from '../../src/agents/index.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 import type { RuntimeContext } from '../../src/core/context.js'
 
+const { loadConfigMock } = vi.hoisted(() => ({
+  loadConfigMock: vi.fn(() => ({
+    model: { provider: 'openai' as const, model: 'gpt-4o' },
+    autoAdjustActBoundaries: false,
+  })),
+}))
+
+vi.mock('../../src/config/store.js', () => ({
+  loadConfig: loadConfigMock,
+}))
+
 vi.mock('../../src/graph/agent-factory.js', () => ({
   getSummaryAgent: vi.fn().mockReturnValue({
     run: vi.fn().mockResolvedValue({
@@ -132,6 +143,11 @@ describe('chapter report generation', () => {
   let tmpDir: string
 
   beforeEach(async () => {
+    loadConfigMock.mockReturnValue({
+      model: { provider: 'openai' as const, model: 'gpt-4o' },
+      autoAdjustActBoundaries: false,
+    })
+
     tmpDir = path.join(process.cwd(), 'tests', 'tmp', `chapter-report-${Date.now()}`)
     await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
     await fs.writeFile(
@@ -268,5 +284,77 @@ describe('chapter report generation', () => {
     expect(warning).toBeDefined()
     expect(warning?.description).toContain('主角离开家乡')
     expect(result.chapterReport?.issues.some(i => i.type === 'outline_coverage')).toBe(true)
+  })
+
+  it('syncs total chapters and empty slots when auto act extension shifts following acts', async () => {
+    loadConfigMock.mockReturnValue({
+      model: { provider: 'openai' as const, model: 'gpt-4o' },
+      autoAdjustActBoundaries: true,
+    })
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_2.md'),
+      '# 第二章 遇敌\n\n主角继续赶路，远处的马蹄声逼近。',
+      'utf-8'
+    )
+    const state = buildState(tmpDir, {
+      story: { id: 'test-story', title: 'Test', outputDir: tmpDir, genre: 'default', totalChapters: 6 },
+      totalChapters: 6,
+      currentChapterIndex: 1,
+      chapters: [
+        {
+          id: 'ch-1',
+          storyId: 'test-story',
+          number: 1,
+          title: '启程',
+          outline: '主角离开家乡。',
+          summary: '主角离开家乡。',
+          foreshadows: null,
+          status: 'completed',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        {
+          id: 'ch-2',
+          storyId: 'test-story',
+          number: 2,
+          title: '遇敌',
+          outline: '主角遭遇敌人。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+        { number: 4, title: '反击', description: '' },
+        { number: 5, title: '追查', description: '' },
+        { number: 6, title: '转折', description: '' },
+      ],
+      storyArc: {
+        totalChapters: 6,
+        acts: [
+          { index: 1, startChapter: 1, endChapter: 3, title: '启程', theme: '出发', function: '建立动机', mandatoryBeats: ['主角离开家乡', '反派首次施压'] },
+          { index: 2, startChapter: 4, endChapter: 6, title: '反击', theme: '对抗', function: '升级冲突', mandatoryBeats: ['主角反击'] },
+        ],
+        keyBeats: [],
+      },
+      actProgress: { 1: { consumed: [], pending: ['主角离开家乡', '反派首次施压'] } },
+    })
+
+    const result = await finalize_chapter(createMockContext(), state)
+
+    expect(result.storyArc?.totalChapters).toBe(8)
+    expect(result.totalChapters).toBe(8)
+    expect(result.story?.totalChapters).toBe(8)
+    expect(result.outline).toHaveLength(8)
+    expect(result.chapters).toHaveLength(8)
+    expect(result.storyArc?.acts.map(act => [act.startChapter, act.endChapter])).toEqual([
+      [1, 5],
+      [6, 8],
+    ])
   })
 })

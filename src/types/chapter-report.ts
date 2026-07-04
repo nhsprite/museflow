@@ -104,6 +104,7 @@ export function createEmptyIssueSummary(): ChapterIssueSummary {
     infos: 0,
     byType: {
       consistency: 0,
+      continuity: 0,
       word_count: 0,
       outline_violation: 0,
       outline_deviation: 0,

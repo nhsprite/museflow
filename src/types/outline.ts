@@ -2,6 +2,10 @@ export interface ActArc {
   index: number
   startChapter: number      // 1-based，目标起始章节
   endChapter: number        // 1-based，目标结束章节（软约束）
+  autoBoundaryAdjustment?: {
+    originalEndChapter: number
+    totalExtendedChapters: number
+  }
   title: string
   theme: string             // 幕主题
   function: string          // 叙事功能

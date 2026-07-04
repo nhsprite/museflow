@@ -15,7 +15,84 @@ import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 import { charactersToString } from '../utils/characters.js'
 import type { RuntimeContext } from '../../core/context.js'
+import { chatStructuredFallback, type JsonSchema, type Message, type ModelProvider } from '../../model/provider.js'
 import type { Issue, IssueSource, RetryStrategy } from '../../types/agent.js'
+import { extractChapterEndingSnippet, extractChapterOpeningSnippet } from '../utils/chapter-window.js'
+
+const CONTINUITY_CHECK_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    isContinuous: { type: 'boolean' },
+    severity: { type: 'string', enum: ['error', 'warning', 'info'] },
+    reason: { type: 'string' },
+    suggestion: { type: 'string' },
+  },
+  required: ['isContinuous'],
+}
+
+interface ContinuityCheckResult {
+  isContinuous?: boolean
+  severity?: string
+  reason?: string
+  suggestion?: string
+}
+
+function normalizeContinuitySeverity(severity: string | undefined): Issue['severity'] {
+  if (severity === 'warning' || severity === 'info') return severity
+  return 'error'
+}
+
+async function judgeChapterOpeningContinuity(
+  provider: ModelProvider,
+  previousEnding: string,
+  currentOpening: string,
+  chapterNumber: number
+): Promise<Issue[]> {
+  if (!previousEnding || !currentOpening) return []
+
+  const messages: Message[] = [
+    {
+      role: 'system',
+      content: `你是小说连续性校验助手。只判断当前章开头是否自然承接上一章结尾。
+
+判定标准：
+1. 如果当前章开头与上一章结尾在人物位置、关键物品持有者、刚发生的动作结果、对话承诺上直接矛盾，返回 isContinuous=false。
+2. 如果当前章开头通过时间跳转、回忆、转场、旁白解释或新的场景说明完成过渡，返回 isContinuous=true。
+3. 只报告会导致读者困惑的明确断裂，不要把正常省略、合理转场或不同措辞判为错误。
+4. 只输出 JSON。`,
+    },
+    {
+      role: 'user',
+      content: `【上一章结尾片段】\n${previousEnding}\n\n【第 ${chapterNumber} 章开头片段】\n${currentOpening}`,
+    },
+  ]
+
+  try {
+    const result = provider.chatStructured
+      ? await provider.chatStructured<ContinuityCheckResult>(messages, CONTINUITY_CHECK_SCHEMA, 0.1)
+      : await chatStructuredFallback<ContinuityCheckResult>(provider, messages, CONTINUITY_CHECK_SCHEMA, 0.1)
+
+    if (result.isContinuous !== false) return []
+
+    const reason = typeof result.reason === 'string' && result.reason.trim().length > 0
+      ? result.reason.trim()
+      : '当前章开头未自然承接上一章结尾，存在跨章节连续性断裂。'
+
+    const issue: Issue = {
+      id: generateId(),
+      type: 'continuity',
+      severity: normalizeContinuitySeverity(result.severity),
+      description: `第 ${chapterNumber} 章开头承接上一章结尾失败：${reason}`,
+    }
+    if (typeof result.suggestion === 'string' && result.suggestion.trim().length > 0) {
+      issue.suggestion = result.suggestion.trim()
+    }
+    return [issue]
+  } catch (err) {
+    logger.warn(`[MuseFlow] 第 ${chapterNumber} 章开头承接校验失败，跳过该专项检查:`, err)
+    return []
+  }
+}
 
 export function tagIssueSource(
   issue: Issue,
@@ -170,6 +247,36 @@ export async function detect_foreshadowing(
   return { foreshadowStack }
 }
 
+export async function detect_continuity(
+  context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  const chapterIndex = state.currentChapterIndex
+  const chapter = state.chapters[chapterIndex]
+
+  if (!chapter || chapterIndex <= 0) return {}
+
+  const [previousContent, currentContent] = await Promise.all([
+    readChapterContent(state.story.outputDir, chapterIndex),
+    readChapterContent(state.story.outputDir, chapterIndex + 1),
+  ])
+  if (!previousContent || !currentContent) return {}
+
+  const previousEnding = extractChapterEndingSnippet(previousContent)
+  const currentOpening = extractChapterOpeningSnippet(currentContent)
+  const issues = await judgeChapterOpeningContinuity(
+    context.provider,
+    previousEnding,
+    currentOpening,
+    chapterIndex + 1
+  )
+
+  const taggedIssues = issues.map(issue =>
+    tagIssueSource(issue, 'consistency', inferRetryStrategy(issue))
+  )
+  return taggedIssues.length > 0 ? { pendingIssues: taggedIssues } : {}
+}
+
 export async function detect_consistency(
   context: RuntimeContext,
   state: ReducedGraphState
@@ -181,7 +288,7 @@ export async function detect_consistency(
   if (!chapter) return {}
 
   const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
-  const baseContext = await buildChapterAgentContext(state, chapterIndex, context.provider)
+  const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
   const supersededFacts = state.storyState?.supersededFacts ?? []
   const supersededFactsStr = supersededFacts.length > 0
@@ -194,6 +301,7 @@ export async function detect_consistency(
     chapterSummaries: state.chapterSummaries,
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
     supersededFacts: supersededFactsStr,
+    ...(state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
   }) as ConsistencyAgentInput
 
   const output = await agent.run(agentState)
@@ -234,6 +342,9 @@ export async function validate_chapter_comprehensive(
 
   const wordCountUpdates = await validate_chapter(context, workingState)
   mergePendingIssues(wordCountUpdates)
+
+  const continuityUpdates = await detect_continuity(context, workingState)
+  mergePendingIssues(continuityUpdates)
 
   const foreshadowUpdates = await detect_foreshadowing(context, workingState)
   if (foreshadowUpdates.foreshadowStack) {
