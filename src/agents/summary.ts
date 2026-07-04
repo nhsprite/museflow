@@ -206,9 +206,11 @@ export function processSummaryOutput(
     const evidenceRaw = item['evidence']
     const evidence = evidenceRaw && typeof evidenceRaw === 'object'
       ? {
-          chapterIndex: typeof (evidenceRaw as Record<string, unknown>)['chapterIndex'] === 'number'
-            ? (evidenceRaw as Record<string, unknown>)['chapterIndex'] as number
-            : (chapterIndex ?? -1),
+          chapterIndex: chapterIndex ?? (
+            typeof (evidenceRaw as Record<string, unknown>)['chapterIndex'] === 'number'
+              ? (evidenceRaw as Record<string, unknown>)['chapterIndex'] as number
+              : -1
+          ),
           quote: typeof (evidenceRaw as Record<string, unknown>)['quote'] === 'string'
             ? disambiguateValue((evidenceRaw as Record<string, unknown>)['quote'] as string, subject)
             : '',
@@ -222,7 +224,7 @@ export function processSummaryOutput(
       subject,
       attribute,
       value: disambiguateValue(value, subject),
-      establishedIn: typeof item['establishedIn'] === 'number' ? item['establishedIn'] : (chapterIndex ?? -1),
+      establishedIn: chapterIndex ?? (typeof item['establishedIn'] === 'number' ? item['establishedIn'] : -1),
       confidence: toConfidence(item['confidence']),
       source: toCanonicalFactSource(item['source']) ?? defaultSource,
       ...(evidence && evidence.quote.length > 0 ? { evidence } : {}),

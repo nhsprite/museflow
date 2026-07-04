@@ -47,7 +47,7 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
       subject,
       attribute,
       value: newValue,
-      establishedIn: chapterIndex + 1,
+      establishedIn: chapterIndex,
       confidence: 'high',
       source: 'author_override',
       supersedes:
@@ -59,11 +59,11 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
                 oldValue: canonicalFacts[existingIndex]!.value,
               },
             ]
-          : [{ chapter: Math.max(1, chapterIndex), oldValue: override.oldValue }],
+          : [{ chapter: Math.max(0, chapterIndex - 1), oldValue: override.oldValue }],
     }
     if (existingIndex >= 0) {
       const existing = canonicalFacts[existingIndex]!
-      canonicalFacts[existingIndex] = { ...existing, retiredIn: chapterIndex + 1 }
+      canonicalFacts[existingIndex] = { ...existing, retiredIn: chapterIndex }
     }
     canonicalFacts.push(fact)
   }

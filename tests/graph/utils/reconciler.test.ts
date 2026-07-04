@@ -389,11 +389,11 @@ describe('reconcileStoryState', () => {
     const activeFact = report.state.canonicalFacts?.find(f => f.subject === '密信' && f.retiredIn === undefined)
     expect(activeFact).toBeDefined()
     expect(activeFact?.value).toBe('官府仓库')
-    expect(activeFact?.establishedIn).toBe(10)
+    expect(activeFact?.establishedIn).toBe(9)
     expect(activeFact?.supersedes?.length).toBeGreaterThan(0)
     expect(activeFact?.supersedes?.[0].chapter).toBe(8)
 
-    const retiredFact = report.state.canonicalFacts?.find(f => f.subject === '密信' && f.retiredIn === 10)
+    const retiredFact = report.state.canonicalFacts?.find(f => f.subject === '密信' && f.retiredIn === 9)
     expect(retiredFact).toBeDefined()
     expect(retiredFact?.value).toBe('书桌抽屉')
   })
@@ -786,7 +786,7 @@ describe('prepareStoryStateForChapter', () => {
       f => f.subject === '密信' && f.attribute === '来源' && f.value === '旧友暗中递送' && f.source === 'outline_inference'
     )).toBe(true)
     expect(result.reconciledState.canonicalFacts?.some(
-      f => f.subject === '暗桩' && f.attribute === '关系' && f.value === '主角旧部' && f.establishedIn === 1
+      f => f.subject === '暗桩' && f.attribute === '关系' && f.value === '主角旧部' && f.establishedIn === 0
     )).toBe(true)
   })
 
@@ -840,8 +840,8 @@ describe('authorizeOutlineFacts', () => {
 
     const result = await authorizeOutlineFacts(state, '主角秘密抵达废弃仓库，与旧部暗桩接头。', 4, provider)
     expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline_inference' })
-    expect(result[1]).toMatchObject({ subject: '暗桩', attribute: '关系', value: '主角旧部', establishedIn: 5, source: 'outline_inference' })
+    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 4, source: 'outline_inference' })
+    expect(result[1]).toMatchObject({ subject: '暗桩', attribute: '关系', value: '主角旧部', establishedIn: 4, source: 'outline_inference' })
   })
 
   it('skips facts already present in canonical facts', async () => {
@@ -901,7 +901,7 @@ describe('authorizeOutlineFacts', () => {
     const result = await authorizeOutlineFacts(state, '主角秘密抵达废弃仓库。', 4, provider)
 
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 5, source: 'outline_inference' })
+    expect(result[0]).toMatchObject({ subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 4, source: 'outline_inference' })
     expect(provider.chat).toHaveBeenCalledTimes(1)
   })
 })

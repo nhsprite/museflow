@@ -345,4 +345,46 @@ describe('runner revalidation', () => {
       description: 'Desc 2',
     })
   })
+
+  it('cleans target and future chapter facts from rewrite base state', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          currentScene: '上一章结尾',
+          storyTime: '上一章时间',
+          canonicalFacts: [
+            { id: 'prev', subject: '前章事实', attribute: '状态', value: '保留', establishedIn: 0, source: 'chapter_text' },
+            { id: 'target', subject: '目标章事实', attribute: '状态', value: '删除', establishedIn: 1, source: 'chapter_text' },
+            { id: 'future', subject: '未来章事实', attribute: '状态', value: '删除', establishedIn: 2, source: 'chapter_text' },
+            { id: 'author', subject: '作者裁决', attribute: '状态', value: '保留', establishedIn: 2, source: 'author_override' },
+          ],
+          supersededFacts: [
+            { subject: '前章事实', oldFact: '旧值', reason: '保留', chapterIndex: 0 },
+            { subject: '目标章事实', oldFact: '旧值', reason: '删除', chapterIndex: 1 },
+            { subject: '未来章事实', oldFact: '旧值', reason: '删除', chapterIndex: 2 },
+          ],
+        },
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter('story-1', {
+      mode: 'rewrite',
+      targetChapterIndex: 1,
+      userResponse: true,
+    }, createMockContext())
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<typeof createBaseGraphState>
+    expect(invokedState.storyState?.canonicalFacts?.map(f => f.id)).toEqual(['prev', 'author'])
+    expect(invokedState.storyState?.supersededFacts?.map(f => f.subject)).toEqual(['前章事实'])
+  })
 })

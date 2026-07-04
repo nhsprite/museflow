@@ -490,18 +490,17 @@ function generateCanonicalFact(
   const existing = existingFacts.find(
     f => f.subject === conflict.subject && f.attribute === conflict.attribute
   )
-  const chapterNumber = chapterIndex + 1
   return {
     id: existing?.id ?? generateId('fact'),
     subject: conflict.subject,
     attribute: conflict.attribute,
     value: conflict.newValue,
-    establishedIn: chapterNumber,
+    establishedIn: chapterIndex,
     confidence: 'medium',
     source: 'reconciliation',
     supersedes: existing
       ? [...(existing.supersedes ?? []), { chapter: existing.establishedIn, oldValue: existing.value }]
-      : [{ chapter: Math.max(1, chapterNumber - 1), oldValue: conflict.oldValue }],
+      : [{ chapter: Math.max(0, chapterIndex - 1), oldValue: conflict.oldValue }],
   }
 }
 
@@ -577,7 +576,7 @@ export function autoReconcile(
       )
       if (existingIndex >= 0) {
         const existing = canonicalFacts[existingIndex]!
-        canonicalFacts[existingIndex] = { ...existing, retiredIn: chapterIndex + 1 }
+        canonicalFacts[existingIndex] = { ...existing, retiredIn: chapterIndex }
       }
       canonicalFacts.push(fact)
       supersededFacts.push(generateSupersededFact(conflict, chapterIndex))

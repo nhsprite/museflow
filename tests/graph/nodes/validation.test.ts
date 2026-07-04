@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterIssuesAgainstCanonicalFacts } from '../../../src/utils/agent-output.js'
+import { filterIssuesAgainstCanonicalFacts, normalizeIssues } from '../../../src/utils/agent-output.js'
 import type { Issue } from '../../../src/types/agent.js'
 import type { CanonicalFact } from '../../../src/types/story-state.js'
 
@@ -131,5 +131,23 @@ describe('filterIssuesAgainstCanonicalFacts', () => {
 
     const filtered = filterIssuesAgainstCanonicalFacts(issues, canonicalFacts)
     expect(filtered).toHaveLength(0)
+  })
+})
+
+describe('normalizeIssues', () => {
+  it('drops self-withdrawn consistency issues without requiring a model judge', async () => {
+    const issues = await normalizeIssues(
+      [
+        {
+          type: 'consistency',
+          severity: 'error',
+          description: '本章采用第9章细化版本，与第18章的简化表述不完全一致，但属于合理细化，不构成严重矛盾。',
+        },
+      ],
+      'consistency',
+      undefined
+    )
+
+    expect(issues).toHaveLength(0)
   })
 })

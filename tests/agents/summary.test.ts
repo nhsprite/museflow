@@ -342,6 +342,47 @@ describe('SummaryAgent prompt', () => {
     expect(result?.storyState?.canonicalFacts?.[0].id).toBe('custom-id')
   })
 
+  it('normalizes extracted canonical facts to the current zero-based chapter index', async () => {
+    const { processSummaryOutput } = await import('../../src/agents/summary.ts')
+    const output = {
+      success: true as const,
+      data: {
+        characters: [],
+        characterFacts: [],
+        keyEvents: [],
+        locations: [],
+        keyItems: [],
+        activePlots: [],
+        mood: '',
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          canonicalFacts: [
+            {
+              subject: '目标章关键事件',
+              attribute: '关键事件',
+              value: '主角已完成关键事件',
+              establishedIn: 26,
+              evidence: { chapterIndex: 26, quote: '主角已完成关键事件' },
+            },
+          ],
+          currentScene: '',
+          storyTime: '',
+        },
+      },
+    }
+
+    const result = processSummaryOutput(output, 25, undefined, undefined, '主角已完成关键事件。')
+    const fact = result?.storyState?.canonicalFacts?.[0]
+    expect(fact?.establishedIn).toBe(25)
+    expect(fact?.evidence?.chapterIndex).toBe(25)
+  })
+
   it('disambiguates ambiguous pronouns in canonical fact values', async () => {
     const { processSummaryOutput } = await import('../../src/agents/summary.ts')
     const output = {

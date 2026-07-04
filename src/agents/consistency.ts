@@ -13,7 +13,8 @@ export class ConsistencyAgent extends BaseAgent<ConsistencyAgentInput> {
     super(provider, 0.3)
   }
   protected buildPrompt(state: ConsistencyAgentInput): import('../model/provider.js').Message[] {
-    const chapterIndex = (state.chapterIndex ?? 0) + 1
+    const zeroBasedChapterIndex = state.chapterIndex ?? 0
+    const chapterIndex = zeroBasedChapterIndex + 1
     const existingForeshadows = state.foreshadowStack || []
     const activeForeshadows = existingForeshadows.filter(f => !f.fulfilledChapter)
     const overdueForeshadows = activeForeshadows.filter(
@@ -30,7 +31,7 @@ export class ConsistencyAgent extends BaseAgent<ConsistencyAgentInput> {
     })
 
     const outlineAuthorizedFacts = (state.canonicalFacts ?? []).filter(
-      f => f.establishedIn === chapterIndex && f.source === 'outline_inference'
+      f => f.establishedIn === zeroBasedChapterIndex && f.source === 'outline_inference'
     )
     const outlineAuthorizedFactsSection = outlineAuthorizedFacts.length > 0
       ? `<outline_authorized_facts>

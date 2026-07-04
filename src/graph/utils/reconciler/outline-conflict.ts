@@ -143,7 +143,7 @@ export async function authorizeOutlineFacts(
         subject,
         attribute,
         value,
-        establishedIn: chapterIndex + 1,
+        establishedIn: chapterIndex,
         confidence: 'medium',
         source: 'outline_inference',
       })

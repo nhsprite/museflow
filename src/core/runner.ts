@@ -12,7 +12,7 @@ import { deleteChapterContent, writeOutlineContent } from '../storage/filesystem
 import { createCheckpointService } from '../storage/checkpoint-service.js'
 import { migrateLegacyCheckpoints } from '../storage/migration.js'
 import type { Issue } from '../types/agent.js'
-import type { StateOverride } from '../types/story-state.js'
+import type { StateOverride, StoryState } from '../types/story-state.js'
 import { createRuntimeContext, type RuntimeContext } from './context.js'
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
@@ -165,6 +165,31 @@ export interface RunOneChapterOptions {
   preserveTargetOutline?: boolean | undefined
 }
 
+function cleanStoryStateForRewrite(storyState: StoryState, targetChapterIndex: number): StoryState {
+  const canonicalFacts = storyState.canonicalFacts ?? []
+  const supersededFacts = storyState.supersededFacts ?? []
+
+  const cleanedCanonicalFacts = canonicalFacts.filter(
+    fact => fact.source === 'author_override' || fact.establishedIn < targetChapterIndex
+  )
+  const cleanedSupersededFacts = supersededFacts.filter(
+    fact => fact.chapterIndex < targetChapterIndex
+  )
+
+  if (
+    cleanedCanonicalFacts.length === canonicalFacts.length &&
+    cleanedSupersededFacts.length === supersededFacts.length
+  ) {
+    return storyState
+  }
+
+  return {
+    ...storyState,
+    canonicalFacts: cleanedCanonicalFacts,
+    supersededFacts: cleanedSupersededFacts,
+  }
+}
+
 export async function runOneChapter(
   storyId: string,
   options: RunOneChapterOptions,
@@ -242,6 +267,9 @@ export async function runOneChapter(
     workingState.foreshadowStack = checkpointState.foreshadowStack.filter(
       f => f.createdAtChapter < targetIndex + 1 && !isForeshadowLikelyPolluted(f)
     )
+    if (checkpointState.storyState) {
+      workingState.storyState = cleanStoryStateForRewrite(checkpointState.storyState, targetIndex)
+    }
     if (options.targetChapterIndex !== undefined) {
       workingState.chapterPlan = null
     }

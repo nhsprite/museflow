@@ -125,7 +125,7 @@ function buildBlockingReport(
 }
 
 /**
- * 当 structural rewrite 未收敛时，清理当前章节由大纲解析自动写入的
+ * 当 structural rewrite 未收敛时，清理当前章节及后续章节由大纲解析自动写入的
  * canonicalFacts / supersededFacts。当前章节尚未 finalize，其权威事实
  * 应主要来自前章正文；大纲解析结果只应作为提示，不应持续污染状态。
  * 作者通过 CLI 做出的裁决（source='author'）属于外部权威输入，不应被清理。
@@ -134,17 +134,16 @@ export function cleanCurrentChapterInferredFacts(state: ReducedGraphState): Stor
   const storyState = state.storyState
   if (!storyState) return undefined
 
-  const currentDisplayChapter = state.currentChapterIndex + 1
   const currentChapterIndex = state.currentChapterIndex
 
   const canonicalFacts = storyState.canonicalFacts ?? []
   const supersededFacts = storyState.supersededFacts ?? []
 
   const cleanedCanonicalFacts = canonicalFacts.filter(
-    f => f.establishedIn !== currentDisplayChapter || f.source === 'author_override'
+    f => f.source === 'author_override' || f.establishedIn < currentChapterIndex
   )
   const cleanedSupersededFacts = supersededFacts.filter(
-    f => f.chapterIndex !== currentChapterIndex
+    f => f.chapterIndex < currentChapterIndex
   )
 
   const hasChanges =

@@ -27,6 +27,18 @@ export interface NormalizeIssuesOptions {
   canonicalFacts?: CanonicalFact[] | undefined
 }
 
+function isSelfWithdrawnIssue(issue: RawIssue): boolean {
+  const text = `${issue.description ?? ''} ${issue.suggestion ?? ''}`.replace(/\s+/g, '')
+  if (text.length === 0) return false
+
+  return (
+    /不构成(?:严重|硬性|明确)?(?:矛盾|冲突|问题|错误)/.test(text) ||
+    /不属于(?:严重|硬性|明确)?(?:矛盾|冲突|问题|错误)/.test(text) ||
+    /(?:本身|自身|这本身|此处|该处)?并?不(?:矛盾|冲突)/.test(text) ||
+    /无(?:明显|直接|硬性|严重)?(?:矛盾|冲突|问题)/.test(text)
+  )
+}
+
 export async function normalizeIssues(
   rawIssues: RawIssue[] | undefined,
   type: IssueType,
@@ -39,20 +51,22 @@ export async function normalizeIssues(
     ? rawIssues.filter(options.filter)
     : rawIssues
 
-  if (afterFilter.length === 0) return []
+  const deterministicFiltered = afterFilter.filter(issue => !isSelfWithdrawnIssue(issue))
+
+  if (deterministicFiltered.length === 0) return []
 
   let withdrawn: boolean[] = []
   let positive: boolean[] = []
 
   if (provider) {
-    const descriptions = afterFilter.map(i => i.description || '')
+    const descriptions = deterministicFiltered.map(i => i.description || '')
     ;[withdrawn, positive] = await Promise.all([
       batchJudgeWithdrawnIssues(provider, descriptions),
       batchJudgePositiveFeedback(provider, descriptions),
     ])
   }
 
-  const issues = afterFilter
+  const issues = deterministicFiltered
     .filter((_issue, index) => !withdrawn[index] && !positive[index])
     .map(issue => {
       const mappedType = options.mapType ? options.mapType(issue) : type
