@@ -6,6 +6,7 @@ const RED = '\x1b[31m'
 const GREEN = '\x1b[32m'
 const YELLOW = '\x1b[33m'
 const RESET = '\x1b[0m'
+const PUBLISH_COMMAND = 'npm publish --access public'
 
 function log(message) {
   console.log(`[release] ${message}`)
@@ -28,7 +29,25 @@ function run(command, options = {}) {
   return execSync(command, { stdio: 'inherit', ...options })
 }
 
+function parseArgs(argv) {
+  const args = new Set(argv)
+  return {
+    yes: args.has('--yes') || args.has('-y'),
+    provenance: args.has('--provenance'),
+  }
+}
+
+function buildPublishCommand(options) {
+  const args = [PUBLISH_COMMAND]
+  if (options.provenance) {
+    args.push('--provenance')
+  }
+  return args.join(' ')
+}
+
 async function main() {
+  const options = parseArgs(process.argv.slice(2))
+
   console.log('\n🚀 MuseFlow Release Script\n')
 
   const nodeVersion = process.version
@@ -114,26 +133,30 @@ async function main() {
   log('Ready to publish. prepublishOnly will auto-build before upload.')
   console.log('')
 
-  const readline = await import('node:readline')
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  })
+  if (!options.yes) {
+    const readline = await import('node:readline')
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    })
 
-  const answer = await new Promise((resolve) => {
-    rl.question('Proceed with npm publish? [y/N] ', resolve)
-  })
-  rl.close()
+    const answer = await new Promise((resolve) => {
+      rl.question('Proceed with npm publish? [y/N] ', resolve)
+    })
+    rl.close()
 
-  if (String(answer).toLowerCase().trim() !== 'y') {
-    log('Publish cancelled')
-    process.exit(0)
+    if (String(answer).toLowerCase().trim() !== 'y') {
+      log('Publish cancelled')
+      process.exit(0)
+    }
+  } else {
+    log('Non-interactive publish confirmed by --yes')
   }
 
   console.log('')
   log('Publishing to npm...')
   try {
-    run('npm publish')
+    run(buildPublishCommand(options))
     console.log('')
     success('🎉 Publish successful!')
     console.log('')
