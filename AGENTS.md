@@ -29,10 +29,10 @@ AI Native 长篇小说生成 CLI 工具。LangGraph 编排多 Agent 协作，本
 src/
   cli/          Commander CLI entry (index.ts wires all commands)
   graph/        LangGraph state graph (novel.graph.ts), nodes, edges, checkpointer
-  agents/       8 agent implementations (worldbuilder, character, outline, chapter, quality, foreshadowing, hallucination, consistency)
-  core/         Runner (runStory, continueStory, getState)
+  agents/       10 agent implementations (worldbuilder, character, story-arc, chapter-outline, chapter-planner, chapter, foreshadowing, consistency, fix, summary)
+  core/         Runner, chapter commit boundary, JIT outline expansion, chapter-generation routing
   genres/       Built-in genre skill system + registry
-  storage/      JSON metadata (database/index.ts) + filesystem writer
+  storage/      JSON metadata (meta/index.ts), checkpoint service, filesystem writer
   model/        ModelProvider abstraction + registry
   types/        Shared TS interfaces
   utils/        Helpers (paths, id gen, logger, chapter display)
@@ -56,13 +56,22 @@ Do not add SQLite migrations or SQL queries.
 
 ## CLI Command Flow
 
-1. `start` — creates story, runs worldbuilding → characters → outline. Stops before writing.
-2. `write <story-id>` — runs the full graph: draft → validate → quality → foreshadowing → hallucination → consistency → outline compliance → auto-fix → finalize. Stops after one chapter.
-3. `continue <story-id>` — resumes from last checkpoint.
-4. `rewrite <story-id>` — rewrites the current chapter from scratch.
-5. `fix <story-id>` — targeted fix of current chapter issues (not full rewrite).
+1. `start` — creates story, runs worldbuilding → characters → story arc. It writes an empty per-chapter outline scaffold and stops before body text.
+2. `write <story-id>` — writes one chapter. It runs prepare → converge/decide → JIT chapter outline/plan → draft or fix → comprehensive validation → converge/decide → finalize.
+3. `continue <story-id>` — resumes from the latest checkpoint and applies the same one-chapter write loop.
+4. `rewrite <story-id>` — rewrites the current or specified chapter from a chapter marker checkpoint, truncating downstream chapter content through code.
+5. `adjust-act <story-id>` — manually adjusts act boundaries when mandatory beats need more chapters.
 
-The graph supports **breakpoint recovery**: if validation agents flag errors, the graph pauses and the user must run `rewrite` or `fix`.
+The graph supports **breakpoint recovery**. If validation cannot converge, it writes a blocking report and the user must run `rewrite` or resolve the prompted outline-vs-canonical conflict.
+
+## Runtime Architecture
+
+- **Checkpoint is the source of truth**: `books/{storyId}/checkpoints/latest.json` points to the latest LangGraph state. `meta.json` is a projection for CLI display and external inspection.
+- **Chapter commit boundary**: after `graph.invoke()` returns, `src/core/chapter-commit.ts` saves the finalized chapter marker from the persisted checkpoint and exports the `meta.json` projection. Do not duplicate that marker/export sequence in command code.
+- **JIT outline expansion**: `src/core/outline-expander.ts` generates a chapter outline and `ChapterPlan` immediately before drafting, using story arc progress, prior summaries, story state, pending tasks, and next-chapter boundary hints.
+- **Validation loop**: `validate_chapter_comprehensive` aggregates word-count, continuity, foreshadowing, and consistency checks. `core/chapter-generation/routing` decides whether to draft, fix, finalize, or stop for manual rewrite.
+- **Finalization**: `src/graph/services/finalization/chapter.ts` extracts summary/state/canonical facts, verifies mandatory beats, updates act progress, writes chapter reports, and returns state updates without mutating the input graph state.
+- **Verified constraints**: runtime `verifiedConstraints` are structured objects. Render them to strings only at agent prompt boundaries; do not classify constraints by parsing natural-language prompt text.
 
 ## Testing Conventions
 
@@ -105,7 +114,7 @@ All agent prompts must follow these principles:
 ## Adding a New Agent
 
 1. Create class in `src/agents/{name}.ts` extending the base agent pattern.
-2. Add node function in `src/graph/nodes.ts` that instantiates and calls the agent.
+2. Add a thin node function under `src/graph/nodes/` or a focused service under `src/graph/services/` that instantiates and calls the agent through `src/graph/agent-factory.ts`.
 3. Wire the node into `src/graph/novel.graph.ts`.
 4. Add tests in `tests/agents/{name}.test.ts` mocking the model registry.
 5. Ensure the agent returns partial state updates that merge into `GraphState`.

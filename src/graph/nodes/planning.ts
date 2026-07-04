@@ -5,6 +5,7 @@ import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 import type { ModelProvider } from '../../model/provider.js'
+import { renderVerifiedConstraints } from '../../utils/verified-constraints.js'
 
 async function runPlanChapter(
   provider: ModelProvider,
@@ -15,12 +16,13 @@ async function runPlanChapter(
   const chapterIndex = state.currentChapterIndex
 
   const baseContext = await buildChapterAgentContext(state, chapterIndex, provider)
+  const verifiedConstraints = renderVerifiedConstraints(state.verifiedConstraints)
 
   const agentState: ChapterPlannerAgentInput = mergeAgentState(baseContext, {
     outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
     chapterSummaries: state.chapterSummaries,
     ...(state.pendingIssues && state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
-    ...(state.verifiedConstraints && state.verifiedConstraints.length > 0 ? { verifiedConstraints: state.verifiedConstraints } : {}),
+    ...(verifiedConstraints.length > 0 ? { verifiedConstraints } : {}),
   }) as ChapterPlannerAgentInput
 
   const output = await agent.run(agentState)

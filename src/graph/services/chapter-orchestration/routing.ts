@@ -27,6 +27,10 @@ import {
 import type { RoutingDecision, RewriteRoutingConfig } from './types.js'
 import { DEFAULT_REWRITE_ROUTING_CONFIG } from './types.js'
 import type { RuntimeContext } from '../../../core/context.js'
+import {
+  createGenericVerifiedConstraint,
+  normalizeVerifiedConstraints,
+} from '../../../utils/verified-constraints.js'
 
 export { DEFAULT_REWRITE_ROUTING_CONFIG }
 
@@ -245,14 +249,15 @@ export async function convergeAndDecide(
 
   update.pendingIssues = processedIssues
 
-  const currentVerifiedConstraints = state.verifiedConstraints ?? []
+  const currentVerifiedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints)
+  const nextVerifiedConstraints = [
+    ...currentVerifiedConstraints,
+    ...newConstraints.map(createGenericVerifiedConstraint),
+  ]
   const trimmedConstraints =
-    currentVerifiedConstraints.length + newConstraints.length >
-    getChapterPlanningConfig(state.genre).maxVerifiedConstraints
-      ? [...currentVerifiedConstraints, ...newConstraints].slice(
-          -getChapterPlanningConfig(state.genre).maxVerifiedConstraints
-        )
-      : [...currentVerifiedConstraints, ...newConstraints]
+    nextVerifiedConstraints.length > getChapterPlanningConfig(state.genre).maxVerifiedConstraints
+      ? nextVerifiedConstraints.slice(-getChapterPlanningConfig(state.genre).maxVerifiedConstraints)
+      : nextVerifiedConstraints
   update.verifiedConstraints = trimmedConstraints
 
   // Handle temporary replan on outline boundary conflicts

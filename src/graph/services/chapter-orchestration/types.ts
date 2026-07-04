@@ -1,3 +1,5 @@
+import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
+
 export type RoutingDecision =
   | 'draft_chapter'
   | 'fix_chapter'
@@ -27,7 +29,7 @@ export interface RewriteConvergenceResult {
   decision: RoutingDecision
   rewriteApproved: boolean
   pendingIssues: import('../../../types/agent.js').Issue[]
-  verifiedConstraints: string[]
+  verifiedConstraints: VerifiedConstraint[]
   forceStructuralRewrite: boolean
   autoFixAttempts: number
 }

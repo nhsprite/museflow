@@ -72,13 +72,13 @@ Configuration is saved in `.museflow/config.json` in the project directory (proj
 
 ```bash
 # Start a new story (planning and creation only, no body text)
-museflow start --idea "A young man gains cultivation powers and rises to become the strongest" --chapters 30 --genre xianxia
+museflow start --idea "A city archivist uncovers a hidden conspiracy across three generations" --chapters 30 --genre default
 ```
 
 This command will:
 1. Build the world setting
 2. Generate character profiles
-3. Generate the chapter outline
+3. Generate the story arc and an empty per-chapter outline scaffold
 4. Save to `./books/{story_id}/`
 
 ### 3. Write Chapters
@@ -115,17 +115,17 @@ museflow info <story-id>
 ## Workflow
 
 ```
-start → World → Characters → Outline
-                       ↓
-write → Chapter Outline → Chapter Plan → Draft → Foreshadowing/Consistency Validation → Fix or Rewrite
-                       ↓
-                 ┌─────┴─────┐
-                 ↓           ↓
-             Pass         Issues Found
-                 ↓           ↓
-             Next Chapter   rewrite
-                              ↓
-                          Re-check
+start → World → Characters → Story Arc
+                         ↓
+write → Prepare → Decide → Chapter Outline → Chapter Plan → Draft/Fix
+                         ↓
+           Comprehensive Validation → Decide
+                         ↓
+                 ┌───────┴────────┐
+                 ↓                ↓
+             Finalize        Rewrite/Blocking Report
+                 ↓
+           Chapter Commit → Next Chapter
 ```
 
 ## Command Reference
@@ -180,11 +180,24 @@ Story data is saved locally in the `./books/` directory:
 | Path | Content |
 |------|---------|
 | `./.museflow/config.json` | Project-level config (API key, provider, etc.) |
-| `./books/{story_id}/meta.json` | Story metadata (world, characters, outline) |
-| `./books/{story_id}/checkpoints/` | LangGraph checkpoint JSON files |
+| `./books/{story_id}/meta.json` | Exported projection of the latest checkpoint for CLI display and inspection |
+| `./books/{story_id}/checkpoints/` | LangGraph checkpoint JSON files; runtime source of truth |
 | `./books/{story_id}/chapters/chapter_{n}.md` | Chapter body text `.md` files |
+| `./books/{story_id}/reports/chapter_{n}.report.json` | Per-chapter generation report |
+| `./books/{story_id}/outline.md` | Human-readable projection of story arc and generated chapter outlines |
 
 > **Note**: MuseFlow uses JSON + filesystem storage; it does not depend on SQLite.
+
+## Runtime Architecture
+
+- `src/graph/novel.graph.ts` owns the coarse LangGraph state machine.
+- `src/core/runner.ts` builds initial/working graph state and invokes the graph.
+- `src/core/chapter-commit.ts` is the post-graph chapter commit boundary: it saves the chapter marker after LangGraph has persisted the final checkpoint, then exports `meta.json`.
+- `src/core/outline-expander.ts` generates chapter outlines and detailed chapter plans just before drafting, using story arc progress, prior summaries, story state, and next-chapter boundary hints.
+- `src/core/chapter-generation/routing/` decides whether a chapter should draft, patch-fix, finalize, or stop for manual rewrite.
+- `src/graph/services/finalization/` extracts summary/state/canonical facts, verifies mandatory beats, updates act progress, and writes reports.
+- `verifiedConstraints` are structured runtime state and are rendered to plain text only when passed into agent prompts.
+- `meta.json`, `outline.md`, and reports are projections/artifacts; checkpoint state remains the authoritative runtime record.
 
 ## Project Structure
 
@@ -236,7 +249,7 @@ museflow rewrite <story-id>  # Full rewrite
 
 ## Architecture
 
-See the [Design Document](./docs/specs/2025-04-17-museflow-design.md) and [Implementation Plan](./docs/specs/2025-04-17-museflow-implementation-plan.md) for details.
+See the [Current Runtime Architecture](./docs/specs/2026-07-04-current-runtime-architecture.md) for the implementation that matches this codebase. The 2025 design documents are historical references and still describe earlier SQLite and linear-agent plans.
 
 ## License
 

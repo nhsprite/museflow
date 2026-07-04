@@ -8,6 +8,10 @@ import {
   validateChapterTimeAnchor,
 } from '../../src/core/outline-expander.js'
 import { validateChapterPlanBudget } from '../../src/utils/chapter-planning.js'
+import {
+  createActPressureConstraint,
+  createGenericVerifiedConstraint,
+} from '../../src/utils/verified-constraints.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
 import type { ModelProvider } from '../../src/model/provider.js'
@@ -136,6 +140,44 @@ describe('expandOutlineForChapter', () => {
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
     expect(result.outline?.[1]?.title).toBe('即时标题')
     expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
+  })
+
+  it('filters stale act-pressure constraints before generating a JIT outline', async () => {
+    const staleActPressure = createActPressureConstraint(
+      1,
+      '第 1 幕「旧幕」还剩 1 章结束，必须优先消费以下 mandatory beats：旧幕节拍。'
+    )
+    const currentActPressure = createActPressureConstraint(
+      2,
+      '第 2 幕「新幕」还剩 2 章结束，必须优先消费以下 mandatory beats：新幕节拍。'
+    )
+    const durableConstraint = createGenericVerifiedConstraint('【伏笔边界】不要提前揭示尚未到期的伏笔。')
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          { index: 1, startChapter: 1, endChapter: 1, title: '旧幕', theme: '收束', function: '收束旧目标', mandatoryBeats: ['旧幕节拍'] },
+          { index: 2, startChapter: 2, endChapter: 3, title: '新幕', theme: '转折', function: '推进新目标', mandatoryBeats: ['新幕节拍'] },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        { number: 1, title: '旧幕收束', description: '旧幕节拍已完成。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '新幕继续', description: '新幕继续推进。' },
+      ],
+      actProgress: {
+        1: { consumed: ['旧幕节拍'], pending: [] },
+        2: { consumed: [], pending: ['新幕节拍'] },
+      },
+      verifiedConstraints: [staleActPressure, durableConstraint, currentActPressure],
+    }
+
+    await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as { verifiedConstraints?: string[] }
+    expect(agentInput.verifiedConstraints).toEqual([durableConstraint.text, currentActPressure.text])
   })
 
   it('regenerates JIT outline when claimed beats are not supported by the description', async () => {

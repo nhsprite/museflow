@@ -32,6 +32,11 @@ import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import { loadConfig } from '../../../config/store.js'
 import { writeOutlineContent } from '../../../storage/filesystem/writer.js'
 import {
+  createGenericVerifiedConstraint,
+  filterVerifiedConstraintsForChapter,
+  normalizeVerifiedConstraints,
+} from '../../../utils/verified-constraints.js'
+import {
   getActForChapter,
   getPendingMandatoryBeats,
   normalizeVerifiedBeats,
@@ -65,7 +70,11 @@ export async function finalizeChapter(
   provider: import('../../../model/provider.js').ModelProvider
 ): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
-  const chapter = state.chapters[chapterIndex]
+  const existingChapter = state.chapters[chapterIndex]
+  let updatedChapter = existingChapter ? { ...existingChapter } : null
+  let updatedOutline = [...state.outline]
+  let updatedChapters = [...state.chapters]
+  let updatedChapterSummaries = [...state.chapterSummaries]
 
   const chapterContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
   if (chapterContent === null || chapterContent.trim().length === 0) {
@@ -84,13 +93,13 @@ export async function finalizeChapter(
 
   let updatedStoryState = state.storyState
 
-  if (chapter) {
-    let summary = chapter.summary || ''
+  if (updatedChapter) {
+    let summary = updatedChapter.summary || ''
     const needsSummary = !summary && chapterContent
     if (needsSummary) {
       const summaryAgent = getSummaryAgent(provider)
       const { merged: effectiveCharacters, outline: outlineCharacters, established: establishedCharacters } = buildEffectiveCharactersList(state, chapterIndex)
-      const currentOutline = state.outline[chapterIndex]
+      const currentOutline = updatedOutline[chapterIndex]
       const beatsToVerify = currentOutline?.claimedBeats && currentOutline.claimedBeats.length > 0
         ? currentOutline.claimedBeats
         : getPendingMandatoryBeats(state, chapterIndex)
@@ -125,33 +134,35 @@ export async function finalizeChapter(
             continue
           }
           summary = processed.summary
-          chapter.summary = summary
+          updatedChapter = { ...updatedChapter, summary }
+          updatedChapters[chapterIndex] = updatedChapter
           summarySuccess = true
 
           if ((processed.verifiedBeats || processed.verifiedBeatEvidence) && currentOutline) {
-            const newOutline = [...state.outline]
+            const newOutline = [...updatedOutline]
             newOutline[chapterIndex] = {
               ...currentOutline,
               ...(processed.verifiedBeats ? { verifiedBeats: processed.verifiedBeats } : {}),
               ...(processed.verifiedBeatEvidence ? { verifiedBeatEvidence: processed.verifiedBeatEvidence } : {}),
             }
-            state.outline = newOutline
+            updatedOutline = newOutline
           }
 
           // 如果 SummaryAgent 返回的 verifiedBeats 没有覆盖当前幕全部 mandatory beats，
           // 再用正文内容做一次覆盖判定，避免 narrative 摘要导致 beats 被漏记。
           const actForCoverage = getActForChapter(state.storyArc, chapterIndex)
-          if (actForCoverage && currentOutline && chapterContent) {
+          const latestCurrentOutline = updatedOutline[chapterIndex] ?? currentOutline
+          if (actForCoverage && latestCurrentOutline && chapterContent) {
             const summaryVerified = normalizeVerifiedBeats(processed.verifiedBeats ?? [], actForCoverage.mandatoryBeats)
             const missingAfterSummary = actForCoverage.mandatoryBeats.filter(beat => !summaryVerified.includes(beat))
             if (missingAfterSummary.length > 0) {
               const contentVerified = await judgeMandatoryBeatCoverage(provider, chapterContent, actForCoverage.mandatoryBeats)
               const merged = Array.from(new Set([...summaryVerified, ...contentVerified]))
               if (merged.length > summaryVerified.length) {
-                const newOutline = [...state.outline]
-                const latestOutline = newOutline[chapterIndex] ?? currentOutline
+                const newOutline = [...updatedOutline]
+                const latestOutline = newOutline[chapterIndex] ?? latestCurrentOutline
                 newOutline[chapterIndex] = { ...latestOutline, verifiedBeats: merged }
-                state.outline = newOutline
+                updatedOutline = newOutline
                 logger.debug(`[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - summaryVerified.length} 个 beats`)
               }
             }
@@ -173,8 +184,9 @@ export async function finalizeChapter(
         )
         if (newlyEstablishedFacts.length > 0) {
           summary = patchChapterSummaryWithFacts(summary, newlyEstablishedFacts, chapterIndex)
-          if (chapter) {
-            chapter.summary = summary
+          if (updatedChapter) {
+            updatedChapter = { ...updatedChapter, summary }
+            updatedChapters[chapterIndex] = updatedChapter
           }
         }
       }
@@ -198,8 +210,8 @@ export async function finalizeChapter(
       }
     }
 
-    if (summary && !state.chapterSummaries.includes(summary)) {
-      state.chapterSummaries.push(summary)
+    if (summary && !updatedChapterSummaries.includes(summary)) {
+      updatedChapterSummaries = [...updatedChapterSummaries, summary]
     }
   }
 
@@ -221,8 +233,8 @@ export async function finalizeChapter(
     chapterNumber: chapterIndex + 1,
     snapshotType: 'chapter_complete',
     currentChapterIndex: chapterIndex,
-    chapterTitle: state.outline[chapterIndex]?.title ?? null,
-    chapterSummary: chapter?.summary ?? null,
+    chapterTitle: updatedOutline[chapterIndex]?.title ?? null,
+    chapterSummary: updatedChapter?.summary ?? null,
     wordCount: null,
     stateSummary: null,
     issuesResolved: state.pendingIssues.filter(i => i.severity !== 'error').length,
@@ -233,11 +245,23 @@ export async function finalizeChapter(
   const updatedTimeline = [...(state.timeline ?? []), snapshot]
 
   const newForeshadowConstraints = generateForeshadowConstraints(state.foreshadowStack, chapterIndex + 1)
-  let updatedVerifiedConstraints = newForeshadowConstraints.length > 0
-    ? [...(state.verifiedConstraints ?? []), ...newForeshadowConstraints]
-    : (state.verifiedConstraints ?? [])
+  let updatedVerifiedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints)
+  if (newForeshadowConstraints.length > 0) {
+    updatedVerifiedConstraints = [
+      ...updatedVerifiedConstraints,
+      ...newForeshadowConstraints.map(createGenericVerifiedConstraint),
+    ]
+  }
 
-  const { actProgress: updatedActProgress, beatPressureConstraint, beatVerificationIssues } = await updateActProgress(state, chapterIndex, provider)
+  const stateForActProgress: ReducedGraphState = {
+    ...state,
+    outline: updatedOutline,
+    chapters: updatedChapters,
+    chapterSummaries: updatedChapterSummaries,
+    storyState: updatedStoryState,
+  }
+
+  const { actProgress: updatedActProgress, beatPressureConstraint, beatVerificationIssues } = await updateActProgress(stateForActProgress, chapterIndex, provider)
   if (beatPressureConstraint) {
     updatedVerifiedConstraints = [...updatedVerifiedConstraints, beatPressureConstraint]
   }
@@ -252,7 +276,10 @@ export async function finalizeChapter(
       )
     : undefined
   if (closingPhaseConstraint) {
-    updatedVerifiedConstraints = [...updatedVerifiedConstraints, closingPhaseConstraint]
+    updatedVerifiedConstraints = [
+      ...updatedVerifiedConstraints,
+      createGenericVerifiedConstraint(closingPhaseConstraint),
+    ]
   }
 
   let updatedPendingIssues = beatVerificationIssues && beatVerificationIssues.length > 0
@@ -265,8 +292,6 @@ export async function finalizeChapter(
   let boundaryProposals: ReturnType<typeof proposeActBoundaryAdjustments> = []
   let updatedTotalChapters = state.totalChapters
   let updatedStory = state.story
-  let updatedOutline = state.outline
-  let updatedChapters = state.chapters
 
   if (state.storyArc) {
     boundaryProposals = proposeActBoundaryAdjustments(state.storyArc, updatedActProgress, chapterIndex)
@@ -318,9 +343,29 @@ export async function finalizeChapter(
     updatedChapters = ensureChaptersLength(updatedChapters, updatedTotalChapters)
   }
 
+  updatedVerifiedConstraints = filterVerifiedConstraintsForChapter(
+    updatedVerifiedConstraints,
+    updatedStoryArc,
+    nextIndex
+  )
+
+  const reportState: ReducedGraphState = {
+    ...stateForActProgress,
+    story: updatedStory,
+    totalChapters: updatedTotalChapters,
+    outline: updatedOutline,
+    chapters: updatedChapters,
+    chapterSummaries: updatedChapterSummaries,
+    storyState: updatedStoryState,
+    verifiedConstraints: updatedVerifiedConstraints,
+    actProgress: updatedActProgress,
+    storyArc: updatedStoryArc ?? null,
+    pendingIssues: updatedPendingIssues,
+  }
+
   const chapterReport = buildChapterReport(
-    state,
-    chapter ?? null,
+    reportState,
+    updatedChapter,
     chapterContent,
     updatedStoryState,
     updatedPendingIssues
@@ -349,7 +394,7 @@ export async function finalizeChapter(
     totalChapters: updatedTotalChapters,
     currentChapterIndex: nextIndex,
     chapters: updatedChapters,
-    chapterSummaries: state.chapterSummaries,
+    chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
     verifiedConstraints: updatedVerifiedConstraints,
     actProgress: updatedActProgress,

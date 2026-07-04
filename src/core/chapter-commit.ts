@@ -1,0 +1,50 @@
+import type { RunnableConfig } from '@langchain/core/runnables'
+import type { ReducedGraphState } from '../graph/state.js'
+import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
+
+export interface ChapterCommitGraph {
+  getState(config: RunnableConfig): Promise<{
+    config?: RunnableConfig
+  }>
+}
+
+export interface ChapterCommitCheckpointService {
+  saveChapterMarker(chapterNumber: number, checkpointId: string): Promise<void>
+}
+
+export interface ChapterCommitInput {
+  result: ReducedGraphState
+  graph: ChapterCommitGraph
+  config: RunnableConfig
+  checkpointService: ChapterCommitCheckpointService
+  outputDir: string
+}
+
+function shouldSaveChapterMarker(result: ReducedGraphState): boolean {
+  return !result.rewriteRequested && result.isWriting && result.currentChapterIndex > 0
+}
+
+/**
+ * Commit boundary for a completed chapter graph run.
+ *
+ * LangGraph persists the final node state after the node returns, so chapter
+ * marker and meta projection writes must happen after graph.invoke completes.
+ * This keeps that post-graph commit sequence in one explicit place.
+ */
+export async function commitChapterRun({
+  result,
+  graph,
+  config,
+  checkpointService,
+  outputDir,
+}: ChapterCommitInput): Promise<void> {
+  if (shouldSaveChapterMarker(result)) {
+    const stateAfter = await graph.getState(config)
+    const checkpointId = stateAfter.config?.configurable?.checkpoint_id as string | undefined
+    if (checkpointId) {
+      await checkpointService.saveChapterMarker(result.currentChapterIndex, checkpointId)
+    }
+  }
+
+  await exportMetaFromCheckpoint(outputDir)
+}

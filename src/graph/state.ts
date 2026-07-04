@@ -12,6 +12,7 @@ import type { ChapterOutline, StoryArc } from '../types/outline.js'
 import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { StateSnapshot } from '../types/timeline.js'
 import type { ChapterSession } from '../core/chapter-generation/routing/types.js'
+import type { VerifiedConstraint } from '../types/verified-constraint.js'
 
 export const GraphState = Annotation.Root({
   story: Annotation<Story>,
@@ -39,7 +40,7 @@ export const GraphState = Annotation.Root({
   storyState: Annotation<StoryState>,
   chapterTimeAnchor: Annotation<string | undefined>,
   autoFixAttempts: Annotation<number>,
-  verifiedConstraints: Annotation<string[]>,
+  verifiedConstraints: Annotation<VerifiedConstraint[]>,
 
   chapterReport: Annotation<ChapterReport | null>,
 

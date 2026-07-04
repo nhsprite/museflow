@@ -25,6 +25,11 @@ import type { Conflict } from '../types/story-state.js'
 import { applyActBoundaryAdjustment, proposeActBoundaryAdjustments } from '../utils/story-arc.js'
 import { extractChineseKeywords } from '../utils/text.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
+import {
+  createGenericVerifiedConstraint,
+  filterVerifiedConstraintsForChapter,
+  renderVerifiedConstraints,
+} from '../utils/verified-constraints.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -331,14 +336,21 @@ async function generateChapterOutlineIfNeeded(
 
   const worldContent = state.world?.content
   const agent = getChapterOutlineAgent(provider)
-  const baseVerifiedConstraints = state.verifiedConstraints ?? []
+  const baseVerifiedConstraints = filterVerifiedConstraintsForChapter(
+    state.verifiedConstraints,
+    state.storyArc,
+    chapterIndex
+  )
   let correctionConstraints: string[] = []
   let result: ChapterOutlineResult | null = null
   let unsupportedBeats: string[] = []
   let recoverableConflictReason = ''
 
   for (let attempt = 0; attempt < MAX_JIT_OUTLINE_ATTEMPTS; attempt++) {
-    const verifiedConstraints = [...baseVerifiedConstraints, ...correctionConstraints]
+    const verifiedConstraints = [
+      ...renderVerifiedConstraints(baseVerifiedConstraints),
+      ...correctionConstraints,
+    ]
     const agentState: ChapterOutlineAgentInput = {
       idea: state.idea,
       genre: state.genre,
@@ -590,7 +602,11 @@ export async function expandOutlineForChapter(
   ].filter(part => part.length > 0).join('\n')
 
   let chapterPlan: ChapterPlan | null = state.chapterPlan
-  let currentConstraints = [...(state.verifiedConstraints ?? [])]
+  let currentConstraints = filterVerifiedConstraintsForChapter(
+    state.verifiedConstraints,
+    state.storyArc,
+    chapterIndex
+  )
   let pendingIssues: Issue[] = []
 
   // 首次生成规划
@@ -620,7 +636,7 @@ export async function expandOutlineForChapter(
     logger.warn('[MuseFlow] 章节规划重心偏离大纲核心事件，将使用约束重新规划...')
 
     const focusConstraint = buildFocusConstraint(budgetValidation, planningConfig)
-    currentConstraints = [...currentConstraints, focusConstraint]
+    currentConstraints = [...currentConstraints, createGenericVerifiedConstraint(focusConstraint)]
 
     const planState: ReducedGraphState = {
       ...state,

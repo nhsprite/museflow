@@ -263,6 +263,33 @@ describe('chapter report generation', () => {
     expect(result.outline?.[0]?.verifiedBeats).toEqual(['主角离开家乡'])
   })
 
+  it('returns finalized state without mutating the input graph state', async () => {
+    const state = buildState(tmpDir, {
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+    })
+    const originalOutline = structuredClone(state.outline)
+    const originalChapterSummaries = [...state.chapterSummaries]
+    const originalChapter = structuredClone(state.chapters[0])
+
+    vi.mocked(processSummaryOutput).mockReturnValueOnce({
+      summary: '主角离开家乡。',
+      storyState: createEmptyStoryState(),
+      verifiedBeats: ['主角离开家乡'],
+    })
+
+    const result = await finalize_chapter(createMockContext(), state)
+
+    expect(result.outline?.[0]?.verifiedBeats).toEqual(['主角离开家乡'])
+    expect(result.chapterSummaries).toEqual(['主角离开家乡。'])
+    expect(state.outline).toEqual(originalOutline)
+    expect(state.chapterSummaries).toEqual(originalChapterSummaries)
+    expect(state.chapters[0]).toEqual(originalChapter)
+  })
+
   it('stores evidence for verified mandatory beats', async () => {
     const state = buildState(tmpDir, {
       outline: [

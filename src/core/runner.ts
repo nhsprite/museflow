@@ -7,13 +7,17 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 
-import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 import { deleteChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
 import { createCheckpointService } from '../storage/checkpoint-service.js'
 import { migrateLegacyCheckpoints } from '../storage/migration.js'
 import type { Issue } from '../types/agent.js'
 import type { StateOverride, StoryState } from '../types/story-state.js'
 import { createRuntimeContext, type RuntimeContext } from './context.js'
+import { commitChapterRun } from './chapter-commit.js'
+import {
+  createGenericVerifiedConstraint,
+  normalizeVerifiedConstraints,
+} from '../utils/verified-constraints.js'
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -124,19 +128,13 @@ async function runChapterGraph(
   try {
     const result = await graph.invoke(workingState, config)
 
-    // 章节完成后再保存 chapter marker。在 finalize_chapter 节点内部调用时，
-    // LangGraph 尚未持久化该节点返回的状态更新，会导致 checkpoint 中的
-    // currentChapterIndex 落后一章，进而让下一次 write 重复撰写同一章。
-    if (!result.rewriteRequested && result.isWriting && result.currentChapterIndex > 0) {
-      const stateAfter = await graph.getState(config)
-      const checkpointId = stateAfter.config?.configurable?.checkpoint_id as string | undefined
-      if (checkpointId) {
-        await checkpointService.saveChapterMarker(result.currentChapterIndex, checkpointId)
-      }
-    }
-
-    // 将 checkpoint 同步为 meta.json 导出视图，保持 CLI 命令可读。
-    await exportMetaFromCheckpoint(outputDir)
+    await commitChapterRun({
+      result: result as ReducedGraphState,
+      graph,
+      config,
+      checkpointService,
+      outputDir,
+    })
 
     return result as ReducedGraphState
   } catch (err) {
@@ -329,14 +327,17 @@ export async function applyStateOverrides(
 
   const storyState = state.storyState ?? createEmptyStoryState()
   const existingOverrides = storyState.overrides ?? []
-  const existingConstraints = state.verifiedConstraints ?? []
+  const existingConstraints = normalizeVerifiedConstraints(state.verifiedConstraints)
   const existingDecisions = state.authorDecisions ?? {}
 
   const updatedStoryState = {
     ...storyState,
     overrides: [...existingOverrides, ...overrides],
   }
-  const updatedConstraints = [...existingConstraints, ...constraints]
+  const updatedConstraints = [
+    ...existingConstraints,
+    ...constraints.map(createGenericVerifiedConstraint),
+  ]
   const updatedDecisions = { ...existingDecisions, ...authorDecisions }
 
   const checkpointService = createCheckpointService(outputDir)

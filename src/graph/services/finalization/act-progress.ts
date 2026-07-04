@@ -9,10 +9,12 @@ import {
   judgeMandatoryBeatCoverageAcrossAct,
   matchMandatoryBeat,
 } from '../../../utils/story-arc.js'
+import { createActPressureConstraint } from '../../../utils/verified-constraints.js'
+import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
 
 export interface ActProgressUpdate {
   actProgress: ReducedGraphState['actProgress']
-  beatPressureConstraint?: string
+  beatPressureConstraint?: VerifiedConstraint
   beatVerificationIssues?: Issue[]
 }
 
@@ -136,7 +138,10 @@ export async function updateActProgress(
     )
     return {
       actProgress: updatedActProgress,
-      beatPressureConstraint: `【幕级节拍压力】第 ${act.index} 幕「${act.title}」还剩 ${chaptersRemaining} 章结束，必须优先消费以下 mandatory beats：${pending.join('、')}。本章及后续章节必须将推进这些节拍作为最高优先级，不得再扩展无关支线。`,
+      beatPressureConstraint: createActPressureConstraint(
+        act.index,
+        `第 ${act.index} 幕「${act.title}」还剩 ${chaptersRemaining} 章结束，必须优先消费以下 mandatory beats：${pending.join('、')}。本章及后续章节必须将推进这些节拍作为最高优先级，不得再扩展无关支线。`
+      ),
       beatVerificationIssues,
     }
   }
