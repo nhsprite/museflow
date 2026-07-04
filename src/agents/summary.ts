@@ -78,6 +78,74 @@ function longestCommonSubstringLength(a: string, b: string): number {
 }
 
 const FUZZY_MATCH_THRESHOLD = 0.7
+const MAX_CANONICAL_FACT_SUBJECT_LENGTH = 30
+
+const ALLOWED_CANONICAL_FACT_ATTRIBUTES = new Set([
+  '所在位置',
+  '位置',
+  '身份',
+  '状态',
+  '持有者',
+  '来源',
+  '制造者',
+  '赠予者',
+  '材质',
+  '归属',
+  '承诺',
+  '约定',
+  '条件',
+  '已知信息',
+  '计划',
+  '策略',
+  '决定',
+  '态度',
+  '关键事件',
+  '事件',
+  '关系',
+  'location',
+  'status',
+  'identity',
+  'holder',
+  'source',
+  'creator',
+  'donor',
+  'material',
+  'ownership',
+  'promise',
+  'agreement',
+  'condition',
+  'knowledge',
+  'plan',
+  'strategy',
+  'decision',
+  'attitude',
+  'event',
+  'relationship',
+])
+
+const NOMINALIZED_FACT_LABELS = [
+  '所在位置',
+  '位置',
+  '身份',
+  '状态',
+  '持有者',
+  '来源',
+  '制造者',
+  '赠予者',
+  '材质',
+  '归属',
+  '承诺',
+  '约定',
+  '条件',
+  '已知信息',
+  '计划',
+  '策略',
+  '决定',
+  '态度',
+  '关键事件',
+  '事件',
+  '关系',
+]
 
 type EvidenceMatchResult = 'exact' | 'fuzzy' | false
 
@@ -106,28 +174,99 @@ function validateCanonicalFactEvidence(
   chapterContent: string | undefined,
 ): CanonicalFact[] {
   if (!chapterContent) return facts
-  return facts.map(fact => {
+  let fuzzyAcceptedCount = 0
+  let missingEvidenceCount = 0
+  const validated = facts.map(fact => {
     if (!fact.evidence || fact.evidence.quote.length === 0) return fact
     const match = evidenceQuoteIsValid(fact.evidence.quote, chapterContent)
     if (match === 'exact') return fact
     if (match === 'fuzzy') {
-      logger.info(
-        `[MuseFlow] canonicalFact evidence 引用与正文存在偏差，使用模糊匹配并接受: [${fact.subject}] ${fact.attribute}`
-      )
+      fuzzyAcceptedCount++
       return {
         ...fact,
         confidence: clampConfidence(fact.confidence, 'medium'),
       }
     }
-    logger.warn(
-      `[MuseFlow] canonicalFact evidence 引用未在正文中找到，降级 confidence: [${fact.subject}] ${fact.attribute}`
-    )
+    missingEvidenceCount++
     return {
       ...fact,
-      confidence: 'low',
+      confidence: 'low' as const,
       evidence: undefined,
     }
   })
+
+  if (fuzzyAcceptedCount > 0) {
+    logger.info(`[MuseFlow] canonicalFact evidence 校验：${fuzzyAcceptedCount} 条引用与正文存在偏差，已模糊接受`)
+  }
+  if (missingEvidenceCount > 0) {
+    logger.warn(`[MuseFlow] canonicalFact evidence 校验：${missingEvidenceCount} 条引用未在正文中找到，已降级为 low 并移除 evidence`)
+  }
+
+  return validated
+}
+
+function isAllowedCanonicalFactAttribute(attribute: string): boolean {
+  return ALLOWED_CANONICAL_FACT_ATTRIBUTES.has(attribute.trim())
+}
+
+function subjectEmbedsFactPayload(subject: string, attribute: string, value: string): boolean {
+  const trimmedSubject = subject.trim()
+  const trimmedAttribute = attribute.trim()
+  const trimmedValue = value.trim()
+  if (trimmedAttribute.length === 0 || trimmedValue.length <= 1) return false
+
+  return trimmedSubject.includes(trimmedAttribute) && trimmedSubject.includes(trimmedValue)
+}
+
+function isStructurallyValidCanonicalFactSubject(subject: string, attribute: string, value: string): boolean {
+  const trimmed = subject.trim()
+  if (trimmed.length === 0) return false
+  if (trimmed.length > MAX_CANONICAL_FACT_SUBJECT_LENGTH) return false
+  if (/[\n\r\t，。；：！？,.!?;:]/.test(trimmed)) return false
+  if (attribute && trimmed.endsWith(`的${attribute}`)) return false
+  if (subjectEmbedsFactPayload(trimmed, attribute, value)) return false
+  return !NOMINALIZED_FACT_LABELS.some(label => trimmed.endsWith(`的${label}`))
+}
+
+function filterHardCanonicalFacts(
+  facts: CanonicalFact[],
+  chapterContent: string | undefined,
+): CanonicalFact[] {
+  if (!chapterContent) return facts
+
+  let unsupportedChapterTextFacts = 0
+  let structurallyInvalidFacts = 0
+  const kept: CanonicalFact[] = []
+
+  for (const fact of facts) {
+    if (fact.source !== 'chapter_text') {
+      kept.push(fact)
+      continue
+    }
+
+    const structureValid =
+      isAllowedCanonicalFactAttribute(fact.attribute) &&
+      isStructurallyValidCanonicalFactSubject(fact.subject, fact.attribute, fact.value)
+    if (!structureValid) {
+      structurallyInvalidFacts++
+      continue
+    }
+
+    if (fact.confidence === 'low' || !fact.evidence?.quote) {
+      unsupportedChapterTextFacts++
+      continue
+    }
+
+    kept.push(fact)
+  }
+
+  if (unsupportedChapterTextFacts > 0 || structurallyInvalidFacts > 0) {
+    logger.warn(
+      `[MuseFlow] SummaryAgent 权威事实晋升过滤：${unsupportedChapterTextFacts} 条缺少可靠正文证据，${structurallyInvalidFacts} 条结构不合格，已从硬 canonicalFacts 移除`
+    )
+  }
+
+  return kept
 }
 
 export function processSummaryOutput(
@@ -472,6 +611,7 @@ export function processSummaryOutput(
   if (storyState) {
     if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {
       storyState.canonicalFacts = validateCanonicalFactEvidence(storyState.canonicalFacts, chapterContent)
+      storyState.canonicalFacts = filterHardCanonicalFacts(storyState.canonicalFacts, chapterContent)
     }
 
     const extractedSupersededFacts = extractSupersededFacts() ?? []
