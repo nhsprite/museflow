@@ -17,6 +17,16 @@ export class StoryArcAgent extends BaseAgent<StoryArcAgentInput> {
     ]
   }
 
+  private assignStableIds(arc: StoryArc): void {
+    arc.keyBeats.forEach((beat, index) => {
+      const deadlineAct = beat.deadlineAct || 1
+      beat.deadlineAct = deadlineAct
+      beat.beat = beat.beat || ''
+      beat.id = beat.id || `A${deadlineAct}-B${index + 1}`
+      beat.required = beat.required ?? true
+    })
+  }
+
   protected parse(content: string): AgentOutput {
     const trimmed = content.trim()
     const baseError = (message: string, error?: unknown): AgentOutput => ({
@@ -41,16 +51,7 @@ export class StoryArcAgent extends BaseAgent<StoryArcAgentInput> {
       data.keyBeats = []
     }
 
-    data.keyBeats = data.keyBeats.map((beat, i) => {
-      const deadlineAct = beat.deadlineAct || 1
-      return {
-        ...beat,
-        beat: beat.beat || '',
-        deadlineAct,
-        id: beat.id || `A${deadlineAct}-B${i + 1}`,
-        required: beat.required ?? true,
-      }
-    })
+    this.assignStableIds(data)
 
     const normalizedActs = data.acts.map((act, i) => ({
       index: act.index ?? i + 1,

@@ -11,6 +11,7 @@ import { writeOutlineContent, writeStoryBible } from '../../storage/filesystem/w
 import { updateStoryTitle, renameStoryOutputDir } from '../../storage/meta/stores/story.js'
 import { getStoryOutputDirWithTitle } from '../../utils/paths.js'
 import { charactersToString } from '../utils/characters.js'
+import { createEmptyStoryMemory } from '../../story-memory/index.js'
 import type { RuntimeContext } from '../../core/context.js'
 
 export async function build_world(
@@ -149,6 +150,7 @@ export async function create_outline(
         storyArc,
         outline: emptyOutline,
         actProgress: initialActProgress,
+        storyMemory: createEmptyStoryMemory(),
       }
     }
 
