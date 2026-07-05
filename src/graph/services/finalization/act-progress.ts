@@ -5,6 +5,7 @@ import type { ActArc, StoryArc } from '../../../types/outline.js'
 import type { Issue } from '../../../types/agent.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import {
+  getVerifiedBeatsFromMemory,
   judgeMandatoryBeatCoverage,
   judgeMandatoryBeatCoverageAcrossAct,
 } from '../../../utils/story-arc.js'
@@ -116,16 +117,18 @@ function updateActProgressFromMemory(
 ): ActProgressUpdate {
   const memory = state.storyMemory!
   const actProgress: ReducedGraphState['actProgress'] = {}
+  const verifiedBeatIds = new Set(getVerifiedBeatsFromMemory(memory))
 
   for (const beat of Object.values(memory.beats)) {
+    if (beat.actIndex === 0) continue
     let progress = actProgress[beat.actIndex]
     if (!progress) {
       progress = { consumed: [], pending: [] }
       actProgress[beat.actIndex] = progress
     }
-    if (beat.provenByEventIds.length > 0) {
-      progress.consumed.push(beat.id)
-    } else if (beat.required) {
+    if (verifiedBeatIds.has(beat.id)) {
+      if (!progress.consumed.includes(beat.id)) progress.consumed.push(beat.id)
+    } else if (beat.required && !progress.pending.includes(beat.id)) {
       progress.pending.push(beat.id)
     }
   }

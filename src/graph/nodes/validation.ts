@@ -135,6 +135,12 @@ async function judgeChapterOpeningContinuity(
   }
 }
 
+/**
+ * 通过对比相邻章节的 StoryMemory 快照，生成连续性变化的描述。
+ *
+ * 当前仅跟踪以下维度：角色位置、物品持有者、物品位置、新引入/兑现的伏笔、
+ * 新建/解决的任务。未来可扩展状态（status/state）和节拍（beat）等维度。
+ */
 export function checkContinuityWithMemory(
   previousMemory: StoryMemory,
   currentMemory: StoryMemory
@@ -146,6 +152,21 @@ export function checkContinuityWithMemory(
   }
   for (const change of diff.itemHolders) {
     issues.push(`物品 ${change.id} 持有者从 ${change.before} 变为 ${change.after}`)
+  }
+  for (const change of diff.itemLocations) {
+    issues.push(`物品 ${change.id} 位置从 ${change.before} 变为 ${change.after}`)
+  }
+  for (const id of diff.newForeshadows) {
+    issues.push(`新引入伏笔 ${id}`)
+  }
+  for (const id of diff.fulfilledForeshadows) {
+    issues.push(`兑现伏笔 ${id}`)
+  }
+  for (const id of diff.newTasks) {
+    issues.push(`新创建任务 ${id}`)
+  }
+  for (const id of diff.resolvedTasks) {
+    issues.push(`解决任务 ${id}`)
   }
   return issues
 }

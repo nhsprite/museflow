@@ -9,8 +9,6 @@ import type {
   SupersededFact,
 } from '../../../types/story-state.js'
 import type { ModelProvider } from '../../../model/provider.js'
-import type { ReducedGraphState } from '../../state.js'
-import type { StoryMemory, StoryEvent } from '../../../types/story-memory.js'
 import {
   batchExtractEntityChanges,
   batchDetectTimeJumps,
@@ -141,111 +139,6 @@ export async function detectCharacterStatusConflicts(
   provider: ModelProvider
 ): Promise<Conflict[]> {
   return detectEntityConflictsWithLLM(state.characterStatus, outline, '状态', 'warning', provider)
-}
-
-export async function detectEntityConflicts(
-  state: ReducedGraphState,
-  outlineEvents: StoryEvent[]
-): Promise<Conflict[]> {
-  if (state.storyMemory) {
-    return detectEntityConflictsFromMemory(state.storyMemory, outlineEvents)
-  }
-  // 保留旧 LLM 路径作为 fallback：无 StoryMemory 时无法结构化比较，返回空
-  return []
-}
-
-export function detectEntityConflictsFromMemory(
-  memory: StoryMemory,
-  outlineEvents: StoryEvent[]
-): Conflict[] {
-  const conflicts: Conflict[] = []
-  for (const event of outlineEvents) {
-    if (event.type === 'character-location') {
-      const current = memory.entities.characters[event.characterId]?.locationId
-      if (current !== undefined && current !== event.locationId) {
-        conflicts.push({
-          id: generateId(),
-          type: 'contradiction',
-          subject: event.characterId,
-          attribute: 'location',
-          oldValue: String(current),
-          newValue: String(event.locationId),
-          outlineReference: '',
-          severity: 'warning',
-          description: `Character ${event.characterId} location conflict: ${String(current)} -> ${String(event.locationId)}`,
-        })
-      }
-    } else if (event.type === 'item-location') {
-      const item = memory.entities.items[event.itemId]
-      if (item) {
-        if (
-          event.holderId !== undefined &&
-          item.holderId !== undefined &&
-          item.holderId !== event.holderId
-        ) {
-          conflicts.push({
-            id: generateId(),
-            type: 'contradiction',
-            subject: event.itemId,
-            attribute: 'holder',
-            oldValue: String(item.holderId),
-            newValue: String(event.holderId),
-            outlineReference: '',
-            severity: 'warning',
-            description: `Item ${event.itemId} holder conflict: ${String(item.holderId)} -> ${String(event.holderId)}`,
-          })
-        }
-        if (
-          event.locationId !== undefined &&
-          item.locationId !== undefined &&
-          item.locationId !== event.locationId
-        ) {
-          conflicts.push({
-            id: generateId(),
-            type: 'contradiction',
-            subject: event.itemId,
-            attribute: 'location',
-            oldValue: String(item.locationId),
-            newValue: String(event.locationId),
-            outlineReference: '',
-            severity: 'warning',
-            description: `Item ${event.itemId} location conflict: ${String(item.locationId)} -> ${String(event.locationId)}`,
-          })
-        }
-      }
-    } else if (event.type === 'character-status') {
-      const current = memory.entities.characters[event.characterId]?.status[event.attribute]
-      if (current !== undefined && JSON.stringify(current) !== JSON.stringify(event.value)) {
-        conflicts.push({
-          id: generateId(),
-          type: 'contradiction',
-          subject: event.characterId,
-          attribute: event.attribute,
-          oldValue: String(current),
-          newValue: String(event.value),
-          outlineReference: '',
-          severity: 'warning',
-          description: `Character ${event.characterId} status ${event.attribute} conflict: ${String(current)} -> ${String(event.value)}`,
-        })
-      }
-    } else if (event.type === 'item-state') {
-      const current = memory.entities.items[event.itemId]?.state[event.attribute]
-      if (current !== undefined && JSON.stringify(current) !== JSON.stringify(event.value)) {
-        conflicts.push({
-          id: generateId(),
-          type: 'contradiction',
-          subject: event.itemId,
-          attribute: event.attribute,
-          oldValue: String(current),
-          newValue: String(event.value),
-          outlineReference: '',
-          severity: 'warning',
-          description: `Item ${event.itemId} state ${event.attribute} conflict: ${String(current)} -> ${String(event.value)}`,
-        })
-      }
-    }
-  }
-  return conflicts
 }
 
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {

@@ -6,10 +6,9 @@ import type {
   CanonicalFact,
 } from '../../../types/story-state.js'
 import type { ModelProvider, Message, JsonSchema } from '../../../model/provider.js'
-import type { StoryMemory, StoryEvent } from '../../../types/story-memory.js'
+import type { StoryMemory } from '../../../types/story-memory.js'
 import type { StoryArc } from '../../../types/outline.js'
 import { generateId } from '../../../utils/id.js'
-import { detectEntityConflictsFromMemory } from './conflict.js'
 
 interface OutlineAuthorizedFact {
   subject: string
@@ -240,15 +239,35 @@ function formatCanonicalFacts(state: StoryState): string {
     .join('\n')
 }
 
-export function extractOutlineEvents(outline: StoryArc): StoryEvent[] {
-  return outline.keyBeats.map((beat) => ({
-    id: `outline-beat-${beat.id}`,
-    type: 'plot-advance' as const,
-    plotId: 'outline',
-    beatId: beat.id,
-    chapterIndex: 0,
-    source: 'outline' as const,
-  }))
+function detectUnprovenBeatConflicts(
+  outline: StoryArc,
+  memory: StoryMemory,
+  chapterIndex: number
+): Conflict[] {
+  const currentChapter = chapterIndex + 1
+  const currentAct =
+    outline.acts.find(
+      (act) => currentChapter >= act.startChapter && currentChapter <= act.endChapter
+    )?.index ?? Math.max(...outline.acts.map((act) => act.index), 0)
+
+  const conflicts: Conflict[] = []
+  for (const beat of outline.keyBeats) {
+    const proven = memory.beats[beat.id]?.provenByEventIds.length ?? 0
+    if (beat.required && beat.deadlineAct <= currentAct && proven === 0) {
+      conflicts.push({
+        id: generateId(),
+        type: 'incomplete',
+        subject: beat.id,
+        attribute: 'beat',
+        oldValue: 'unproven',
+        newValue: 'required',
+        outlineReference: '',
+        severity: 'warning',
+        description: `Required beat ${beat.id} (${beat.beat}) is not yet proven in StoryMemory`,
+      })
+    }
+  }
+  return conflicts
 }
 
 export async function detectOutlineStateConflicts(
@@ -263,8 +282,7 @@ export async function detectOutlineStateConflicts(
   }
 
   if (state.storyMemory && storyArc) {
-    const outlineEvents = extractOutlineEvents(storyArc)
-    const conflicts = detectEntityConflictsFromMemory(state.storyMemory, outlineEvents)
+    const conflicts = detectUnprovenBeatConflicts(storyArc, state.storyMemory, chapterIndex)
     return { conflicts, constraints: [] }
   }
 

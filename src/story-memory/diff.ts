@@ -79,6 +79,7 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
 export interface StateSnapshotDiff {
   characterLocations: Array<{ id: EntityId; before: string | null; after: string | null }>
   itemHolders: Array<{ id: EntityId; before: string | null; after: string | null }>
+  itemLocations: Array<{ id: EntityId; before: string | null; after: string | null }>
   newForeshadows: string[]
   fulfilledForeshadows: string[]
   newTasks: string[]
@@ -110,6 +111,18 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
     }
   }
 
+  const itemLocations: StateSnapshotDiff['itemLocations'] = []
+  for (const id of new Set([
+    ...Object.keys(before.entities.items),
+    ...Object.keys(after.entities.items),
+  ])) {
+    const beforeLocation = before.entities.items[id]?.locationId ?? null
+    const afterLocation = after.entities.items[id]?.locationId ?? null
+    if (beforeLocation !== afterLocation) {
+      itemLocations.push({ id, before: beforeLocation, after: afterLocation })
+    }
+  }
+
   const newForeshadows = Object.values(after.foreshadows)
     .filter((f) => !before.foreshadows[f.id])
     .map((f) => f.id)
@@ -129,6 +142,7 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
   return {
     characterLocations,
     itemHolders,
+    itemLocations,
     newForeshadows,
     fulfilledForeshadows,
     newTasks,
