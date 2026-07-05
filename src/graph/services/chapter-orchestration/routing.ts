@@ -236,6 +236,7 @@ export async function convergeAndDecide(
     pendingIssues: state.pendingIssues,
     genre: state.genre,
     chapterFileExists,
+    structuredValidationResult: state.structuredValidationResult,
   }
 
   const { step, sessionUpdate, processedIssues, newConstraints } = await decideNextStep(

@@ -103,7 +103,7 @@ export async function runStory(
     authorDecisions: {},
     storyMemory: null,
     draftChapterEvents: undefined,
-    structuredValidationResult: null,
+    structuredValidationResult: undefined,
   }
 
   const config: RunnableConfig = {

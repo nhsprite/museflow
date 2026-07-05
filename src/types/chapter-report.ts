@@ -112,6 +112,9 @@ export function createEmptyIssueSummary(): ChapterIssueSummary {
       outline_coverage: 0,
       outline_empty_beats: 0,
       outline_invalid_deadline: 0,
+      state_conflict: 0,
+      beat_unproven: 0,
+      foreshadow_false_fulfillment: 0,
     },
   }
 }

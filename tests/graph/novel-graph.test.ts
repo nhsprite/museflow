@@ -22,6 +22,7 @@ describe('novel graph', () => {
       'converge_and_decide',
       'draft_chapter',
       'fix_chapter',
+      'validate_chapter_structured',
       'validate_chapter_comprehensive',
       'request_rewrite',
       'finalize_chapter',
@@ -48,8 +49,9 @@ describe('novel graph', () => {
     const edges = Array.from(graph.builder.edges).map(([from, to]) => `${from} -> ${to}`)
 
     expect(edges).toContain('prepare_chapter -> converge_and_decide')
-    expect(edges).toContain('draft_chapter -> validate_chapter_comprehensive')
-    expect(edges).toContain('fix_chapter -> validate_chapter_comprehensive')
+    expect(edges).toContain('draft_chapter -> validate_chapter_structured')
+    expect(edges).toContain('validate_chapter_structured -> validate_chapter_comprehensive')
+    expect(edges).toContain('fix_chapter -> validate_chapter_structured')
     expect(edges).toContain('request_rewrite -> __end__')
     expect(edges).toContain('finalize_story -> __end__')
   })

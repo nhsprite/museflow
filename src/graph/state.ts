@@ -62,7 +62,7 @@ export const GraphState = Annotation.Root({
   draftChapterEvents: Annotation<StoryEvent[] | undefined>,
 
   // structured validation result for the current chapter (populated by the story memory validator)
-  structuredValidationResult: Annotation<StructuredValidationResult | null>,
+  structuredValidationResult: Annotation<StructuredValidationResult | undefined>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

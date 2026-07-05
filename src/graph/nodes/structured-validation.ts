@@ -1,0 +1,34 @@
+import type { ReducedGraphState } from '../state.js'
+import type { RuntimeContext } from '../../core/context.js'
+import { validateChapterEvents } from '../../story-memory/validator.js'
+import { createEmptyStoryMemory } from '../../story-memory/projector.js'
+
+export async function validateChapterStructured(
+  _context: RuntimeContext,
+  state: ReducedGraphState
+): Promise<Partial<ReducedGraphState>> {
+  const chapterIndex = state.currentChapterIndex ?? 0
+  const plan = state.chapterPlan
+  const actualEvents = state.draftChapterEvents ?? []
+  const memory = state.storyMemory ?? createEmptyStoryMemory()
+
+  if (!plan) {
+    return {
+      structuredValidationResult: {
+        expectedEvents: [],
+        actualEvents,
+        missingEvents: [],
+        unexpectedEvents: [],
+        unfulfilledRequiredForeshadows: [],
+        overdueForeshadows: [],
+        falseFulfillments: [],
+        unclaimedMandatoryBeats: [],
+        claimedButUnprovenBeats: [],
+        stateConflicts: [],
+      },
+    }
+  }
+
+  const result = validateChapterEvents(memory, chapterIndex, plan, actualEvents)
+  return { structuredValidationResult: result }
+}
