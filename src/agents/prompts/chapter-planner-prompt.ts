@@ -131,6 +131,13 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
      - 所有 section 的 wordCount 之和应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间
      - 单个非核心过渡 section 的 wordCount 不得超过 {MAX_NON_CORE_SECTION_WORD_COUNT} 字
      - 核心事件 section 的 wordCount 不得低于 {MIN_CORE_SECTION_WORD_COUNT} 字
+  13. 【结构化事件与声明 - 必须输出】
+     - 输出 expectedEvents 数组，记录本章计划产生的、会影响故事记忆的状态变化事件。
+     - 每个事件必须包含 id、type、chapterIndex，以及对应类型所需的字段（如 characterId、locationId、itemId、beatId、foreshadowId、taskId 等）。
+     - 事件类型包括：character-location、character-status、item-location、item-state、plot-advance、foreshadow-fulfill、task-resolve、task-create。
+     - 每个事件的 source 固定为 "chapter"。
+     - 如果本章没有某类事件，对应字段的数组为空。
+     - 同时输出 claimedBeatIds、fulfilledForeshadowIds、introducedForeshadowIds、resolvedTaskIds、createdTaskIds 五个结构化声明数组；无对应内容时输出空数组。
 
 ${OFFICIAL_CHARACTER_RULES}
 ${FORESHADOW_DISCIPLINE_RULES}
@@ -173,7 +180,22 @@ ${FORESHADOW_DISCIPLINE_RULES}
       "section": "对应段落标题（如适用）"
     }
   ],
-  "chapterTimeAnchor": "本章叙事起点时间"
+  "chapterTimeAnchor": "本章叙事起点时间",
+  "expectedEvents": [
+    {
+      "id": "evt-1",
+      "type": "character-location",
+      "characterId": "c-1",
+      "locationId": "l-1",
+      "chapterIndex": 1,
+      "source": "chapter"
+    }
+  ],
+  "claimedBeatIds": [],
+  "fulfilledForeshadowIds": [],
+  "introducedForeshadowIds": [],
+  "resolvedTaskIds": [],
+  "createdTaskIds": []
 }
 </output_format>
 

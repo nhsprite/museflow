@@ -521,11 +521,26 @@ export async function expandOutlineForChapter(
       ? `\n【后续章节边界】第${nextItem.number}章「${nextItem.title}」大纲：${nextItem.description}`
       : nextBoundaryHint
 
+  const declarations = [
+    { label: '【本章认领节拍】', ids: outlineItem.claimedBeatIds },
+    { label: '【本章兑现伏笔】', ids: outlineItem.fulfilledForeshadowIds },
+    { label: '【本章引入伏笔】', ids: outlineItem.introducedForeshadowIds },
+    { label: '【本章出场角色】', ids: outlineItem.touchedCharacterIds },
+    { label: '【本章涉及物品】', ids: outlineItem.touchedItemIds },
+    { label: '【本章涉及地点】', ids: outlineItem.touchedLocationIds },
+    { label: '【本章解决任务】', ids: outlineItem.resolvedTaskIds },
+    { label: '【本章创建任务】', ids: outlineItem.createdTaskIds },
+  ]
+  const structuredDeclarations = declarations
+    .filter((d) => d.ids && d.ids.length > 0)
+    .map((d) => `${d.label}${d.ids!.join(', ')}`)
+
   const formattedOutline = [
     `第${toDisplayChapterNumber(chapterIndex)}章：${outlineItem.title}`,
     outlineItem.description,
     nextBoundaryForPlanner,
     pendingTasksHint,
+    structuredDeclarations.join('\n'),
   ]
     .filter((part) => part.length > 0)
     .join('\n')
@@ -547,6 +562,9 @@ export async function expandOutlineForChapter(
     }
     const planResult = await plan_chapter_with_override(provider, planState, formattedOutline)
     chapterPlan = planResult.chapterPlan ?? null
+    if (chapterPlan) {
+      state = { ...state, chapterPlan }
+    }
   }
 
   if (!chapterPlan) {
@@ -582,6 +600,7 @@ export async function expandOutlineForChapter(
     if (!replanned) break
 
     chapterPlan = replanned
+    state = { ...state, chapterPlan: replanned }
     budgetValidation = await validateChapterPlanBudget(
       chapterPlan,
       planningConfig,
