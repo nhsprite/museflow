@@ -25,6 +25,9 @@ import {
   extractChapterEndingSnippet,
   extractChapterOpeningSnippet,
 } from '../utils/chapter-window.js'
+import { diffMemorySnapshots } from '../../story-memory/diff.js'
+import { applyEvents } from '../../story-memory/projector.js'
+import type { StoryMemory } from '../../types/story-memory.js'
 
 const CONTINUITY_CHECK_SCHEMA: JsonSchema = {
   type: 'object',
@@ -130,6 +133,21 @@ async function judgeChapterOpeningContinuity(
     logger.warn(`[MuseFlow] 第 ${chapterNumber} 章开头承接校验失败，跳过该专项检查:`, err)
     return []
   }
+}
+
+export function checkContinuityWithMemory(
+  previousMemory: StoryMemory,
+  currentMemory: StoryMemory
+): string[] {
+  const diff = diffMemorySnapshots(previousMemory, currentMemory)
+  const issues: string[] = []
+  for (const change of diff.characterLocations) {
+    issues.push(`角色 ${change.id} 位置从 ${change.before} 变为 ${change.after}`)
+  }
+  for (const change of diff.itemHolders) {
+    issues.push(`物品 ${change.id} 持有者从 ${change.before} 变为 ${change.after}`)
+  }
+  return issues
 }
 
 export function tagIssueSource(
@@ -383,6 +401,33 @@ export async function validate_chapter_comprehensive(
 
   const continuityUpdates = await detect_continuity(context, workingState)
   mergePendingIssues(continuityUpdates)
+
+  if (
+    workingState.storyMemory &&
+    workingState.draftChapterEvents &&
+    workingState.draftChapterEvents.length > 0
+  ) {
+    const currentMemory = applyEvents(workingState.storyMemory, workingState.draftChapterEvents)
+    const memoryContinuityDescriptions = checkContinuityWithMemory(
+      workingState.storyMemory,
+      currentMemory
+    )
+    if (memoryContinuityDescriptions.length > 0) {
+      const memoryContinuityIssues = memoryContinuityDescriptions.map((description) =>
+        tagIssueSource(
+          {
+            id: generateId(),
+            type: 'continuity',
+            severity: 'warning',
+            description,
+          },
+          'consistency',
+          'draft'
+        )
+      )
+      mergePendingIssues({ pendingIssues: memoryContinuityIssues })
+    }
+  }
 
   const foreshadowUpdates = await detect_foreshadowing(context, workingState)
   if (foreshadowUpdates.foreshadowStack) {

@@ -6,7 +6,10 @@ import type {
   CanonicalFact,
 } from '../../../types/story-state.js'
 import type { ModelProvider, Message, JsonSchema } from '../../../model/provider.js'
+import type { StoryMemory, StoryEvent } from '../../../types/story-memory.js'
+import type { StoryArc } from '../../../types/outline.js'
 import { generateId } from '../../../utils/id.js'
+import { detectEntityConflictsFromMemory } from './conflict.js'
 
 interface OutlineAuthorizedFact {
   subject: string
@@ -237,13 +240,35 @@ function formatCanonicalFacts(state: StoryState): string {
     .join('\n')
 }
 
+export function extractOutlineEvents(outline: StoryArc): StoryEvent[] {
+  return outline.keyBeats.map((beat) => ({
+    id: `outline-beat-${beat.id}`,
+    type: 'plot-advance' as const,
+    plotId: 'outline',
+    beatId: beat.id,
+    chapterIndex: 0,
+    source: 'outline' as const,
+  }))
+}
+
 export async function detectOutlineStateConflicts(
-  state: StoryState,
+  state: StoryState & { storyMemory?: StoryMemory | null },
   outline: string,
   chapterIndex: number,
-  provider?: ModelProvider
+  provider?: ModelProvider,
+  storyArc?: StoryArc
 ): Promise<{ conflicts: Conflict[]; constraints: string[] }> {
-  if (!provider || !outline || outline.trim().length === 0) {
+  if (!outline || outline.trim().length === 0) {
+    return { conflicts: [], constraints: [] }
+  }
+
+  if (state.storyMemory && storyArc) {
+    const outlineEvents = extractOutlineEvents(storyArc)
+    const conflicts = detectEntityConflictsFromMemory(state.storyMemory, outlineEvents)
+    return { conflicts, constraints: [] }
+  }
+
+  if (!provider) {
     return { conflicts: [], constraints: [] }
   }
 

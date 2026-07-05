@@ -41,6 +41,7 @@ export interface Issue {
   type: IssueType
   severity: IssueSeverity
   description: string
+  subject?: string
   location?: string
   locationRef?: IssueLocationRef
   suggestion?: string

@@ -4,6 +4,7 @@ import {
   issueFingerprint,
   ruleBasedFingerprint,
 } from '../../src/utils/issue-deduplication.js'
+import { generateIssueFingerprint } from '../../src/utils/context-judge.js'
 import type { Issue } from '../../src/types/agent.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 
@@ -101,7 +102,7 @@ describe('ruleBasedFingerprint', () => {
 })
 
 describe('issueFingerprint with provider', () => {
-  it('uses LLM fingerprint when provider returns a result', async () => {
+  it('prefers generateIssueFingerprint over LLM result', async () => {
     const issue: Issue = {
       id: '1',
       type: 'hallucination',
@@ -110,10 +111,22 @@ describe('issueFingerprint with provider', () => {
     }
     const provider = createMockProvider('llm-fingerprint')
     const fp = await issueFingerprint(provider, issue)
+    expect(fp).toBe(generateIssueFingerprint(issue))
+  })
+
+  it('falls back to LLM fingerprint when rule fingerprint is generic', async () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'hallucination',
+      severity: 'error',
+      description: '',
+    }
+    const provider = createMockProvider('llm-fingerprint')
+    const fp = await issueFingerprint(provider, issue)
     expect(fp).toBe('hallucination:llm-fingerprint')
   })
 
-  it('falls back to rule-based fingerprint when provider is undefined', async () => {
+  it('falls back to generateIssueFingerprint when provider is undefined', async () => {
     const issue: Issue = {
       id: '1',
       type: 'hallucination',
@@ -121,12 +134,12 @@ describe('issueFingerprint with provider', () => {
       description: '角色甲不在官方列表',
     }
     const fp = await issueFingerprint(undefined, issue)
-    expect(fp).toBe(ruleBasedFingerprint(issue))
+    expect(fp).toBe(generateIssueFingerprint(issue))
   })
 })
 
 describe('deduplicateIssuesSemantically', () => {
-  it('deduplicates by structured fields using rule-based fallback without provider', async () => {
+  it('deduplicates by generateIssueFingerprint without provider', async () => {
     const issues: Issue[] = [
       {
         id: '1',
@@ -134,6 +147,8 @@ describe('deduplicateIssuesSemantically', () => {
         severity: 'error',
         description: '角色乙不在官方角色列表',
         locationRef: { paragraphIndex: 0 },
+        dimension: 'character',
+        subject: 'unofficial-character',
       },
       {
         id: '2',
@@ -141,6 +156,8 @@ describe('deduplicateIssuesSemantically', () => {
         severity: 'error',
         description: '角色乙不在官方角色列表中',
         locationRef: { paragraphIndex: 0 },
+        dimension: 'character',
+        subject: 'unofficial-character',
       },
       {
         id: '3',
@@ -148,6 +165,8 @@ describe('deduplicateIssuesSemantically', () => {
         severity: 'error',
         description: '角色丙不在官方角色列表',
         locationRef: { paragraphIndex: 1 },
+        dimension: 'character',
+        subject: 'unofficial-character-c',
       },
     ]
     const deduped = await deduplicateIssuesSemantically(undefined, issues)
