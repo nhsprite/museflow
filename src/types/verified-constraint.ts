@@ -1,5 +1,3 @@
-export type VerifiedConstraintKind = 'generic' | 'act_pressure'
-
 export interface GenericVerifiedConstraint {
   kind: 'generic'
   text: string

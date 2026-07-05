@@ -169,11 +169,6 @@ vi.mock('../../src/utils/id.js', () => ({
 
 vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg, fn) => fn()),
-  startSpinner: vi.fn(),
-  stopSpinner: vi.fn(),
-  stopSpinnerQuiet: vi.fn(),
-  stopStepProgress: vi.fn(),
-  stopStepProgressQuiet: vi.fn(),
 }))
 
 describe('rewrite command state consistency', () => {

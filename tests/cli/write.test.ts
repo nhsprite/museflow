@@ -76,11 +76,6 @@ vi.mock('../../src/graph/checkpointer.js', () => ({
 
 vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg: string, fn: () => Promise<unknown>) => fn()),
-  startSpinner: vi.fn(),
-  stopSpinner: vi.fn(),
-  stopSpinnerQuiet: vi.fn(),
-  stopStepProgress: vi.fn(),
-  stopStepProgressQuiet: vi.fn(),
 }))
 
 vi.mock('../../src/cli/utils/chapter-display.js', () => ({

@@ -1,5 +1,4 @@
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 import {
   AI_PHRASE_PROHIBITIONS,
   FIX_OUTPUT_RULES,
@@ -288,12 +287,3 @@ export function buildLegacyUserPrompt(
 ): string {
   return renderTemplate(LEGACY_USER_PROMPT_TEMPLATE, { ...sections, ...vars })
 }
-
-export const PROMPT_VERSION = computePromptHash(
-  FIX_SENTENCE_SYSTEM_PROMPT,
-  FIX_PARAGRAPH_SYSTEM_PROMPT,
-  FIX_LEGACY_SYSTEM_PROMPT,
-  SENTENCE_USER_PROMPT_TEMPLATE,
-  PARAGRAPH_USER_PROMPT_TEMPLATE,
-  LEGACY_USER_PROMPT_TEMPLATE
-)

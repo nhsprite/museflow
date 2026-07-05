@@ -1,5 +1,4 @@
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 import {
   OFFICIAL_CHARACTER_RULES,
   STATE_AUTHORITY_RULES,
@@ -113,5 +112,3 @@ export function buildSummaryUserPrompt(
 }
 
 export { buildCharacterWhitelistSection }
-
-export const PROMPT_VERSION = computePromptHash(SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_PROMPT_TEMPLATE)

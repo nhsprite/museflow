@@ -1,5 +1,4 @@
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 
 const WORLDBUILDER_SYSTEM_PROMPT =
   '<role>你是一位资深的世界架构师，擅长构建细腻、真实且富有深度的世界观。</role>'
@@ -36,8 +35,3 @@ export function buildWorldbuilderUserPrompt(
     totalChapters: state.totalChapters,
   })
 }
-
-export const PROMPT_VERSION = computePromptHash(
-  WORLDBUILDER_SYSTEM_PROMPT,
-  DEFAULT_WORLDBUILDER_USER_PROMPT_TEMPLATE
-)

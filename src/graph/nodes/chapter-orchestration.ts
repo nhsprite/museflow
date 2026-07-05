@@ -1,5 +1,4 @@
 import type { ReducedGraphState } from '../state.js'
-import type { Issue } from '../../types/agent.js'
 import type { RuntimeContext } from '../../core/context.js'
 import {
   convergeAndDecide,
@@ -9,31 +8,7 @@ import {
   routeMode,
   prepareChapter,
   requestRewrite,
-  downgradeInterpretiveErrors as downgradeInterpretiveErrorsImpl,
-  capNonErrorIssuesByType,
 } from '../services/chapter-orchestration/index.js'
-
-export type {
-  RoutingDecision,
-  RewriteRoutingConfig,
-  RewriteConvergenceResult,
-  InterpretiveDowngradeResult,
-} from '../services/chapter-orchestration/types.js'
-export { DEFAULT_REWRITE_ROUTING_CONFIG } from '../services/chapter-orchestration/types.js'
-
-export { capNonErrorIssuesByType }
-
-export {
-  calculateIssueSetSimilarity,
-  buildVerifiedConstraints,
-} from '../services/chapter-orchestration/routing.js'
-
-export async function downgradeInterpretiveErrors(
-  issues: Issue[],
-  isInterpretiveIssue: (issue: Issue) => Promise<boolean>
-): Promise<{ issues: Issue[]; downgraded: boolean }> {
-  return downgradeInterpretiveErrorsImpl(issues, isInterpretiveIssue)
-}
 
 export async function prepare_chapter(
   _context: RuntimeContext,

@@ -1,5 +1,4 @@
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 
 const FORESHADOWING_SYSTEM_PROMPT =
   '<role>你是一位擅长埋伏笔和制造悬念的作家，擅长在叙述中埋下不引人注意但回味无穷的线索。</role>'
@@ -168,8 +167,3 @@ export function buildForeshadowingUserPrompt(
     FORESHADOW_MAX_FULFILL_DISTANCE: planningConfig.foreshadowMaxFulfillDistance,
   })
 }
-
-export const PROMPT_VERSION = computePromptHash(
-  FORESHADOWING_SYSTEM_PROMPT,
-  FORESHADOWING_USER_PROMPT_TEMPLATE
-)

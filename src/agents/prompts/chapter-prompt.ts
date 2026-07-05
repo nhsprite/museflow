@@ -1,5 +1,4 @@
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 import {
   AI_PHRASE_PROHIBITIONS,
   TIMELINE_RULES,
@@ -231,5 +230,3 @@ export function buildChapterUserPrompt(
     ...vars,
   })
 }
-
-export const PROMPT_VERSION = computePromptHash(CHAPTER_SYSTEM_PROMPT, CHAPTER_USER_PROMPT_TEMPLATE)

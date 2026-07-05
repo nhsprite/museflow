@@ -5,7 +5,6 @@ import {
   buildCharacterWhitelistSection,
 } from './fragments/index.js'
 import { isClosingPhase } from '../../utils/story-arc.js'
-import { computePromptHash } from './version.js'
 
 const CHAPTER_PLANNER_SYSTEM_PROMPT =
   '你是一位严谨的小说结构规划师。你的任务是在写作前生成详细的章节规划，确保每个大纲要求都被精确落实。你对时间线和情节顺序的准确性有零容忍态度。'
@@ -378,8 +377,3 @@ export function buildChapterPlannerUserPrompt(
     ...vars,
   })
 }
-
-export const PROMPT_VERSION = computePromptHash(
-  CHAPTER_PLANNER_SYSTEM_PROMPT,
-  CHAPTER_PLANNER_USER_PROMPT_TEMPLATE
-)

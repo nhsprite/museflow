@@ -115,13 +115,6 @@ export interface AgentInput {
   chapterPlan?: ChapterPlan
 }
 
-/**
- * @deprecated Use the per-agent input types (e.g. CharacterAgentInput) instead.
- * This monolithic interface is kept for backwards compatibility during the
- * migration of call sites.
- */
-export interface AgentState extends AgentInput {}
-
 export type WorldbuilderAgentInput = AgentInput
 
 export type CharacterAgentInput = AgentInput

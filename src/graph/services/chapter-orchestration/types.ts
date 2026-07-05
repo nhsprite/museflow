@@ -1,5 +1,3 @@
-import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
-
 export type RoutingDecision =
   'draft_chapter' | 'fix_chapter' | 'finalize_chapter' | 'request_rewrite' | 'decide_strategy'
 
@@ -19,18 +17,4 @@ export const DEFAULT_REWRITE_ROUTING_CONFIG: Required<RewriteRoutingConfig> = {
   issueSetSimilarityThreshold: 0.5,
   downgradeInterpretiveErrors: true,
   useLLMForIssueClassification: false,
-}
-
-export interface RewriteConvergenceResult {
-  decision: RoutingDecision
-  rewriteApproved: boolean
-  pendingIssues: import('../../../types/agent.js').Issue[]
-  verifiedConstraints: VerifiedConstraint[]
-  forceStructuralRewrite: boolean
-  autoFixAttempts: number
-}
-
-export interface InterpretiveDowngradeResult {
-  issues: import('../../../types/agent.js').Issue[]
-  downgraded: boolean
 }

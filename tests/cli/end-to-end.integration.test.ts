@@ -98,11 +98,6 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
 
 vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn(async (_msg: string, fn: () => Promise<unknown>) => fn()),
-  startSpinner: vi.fn(),
-  stopSpinner: vi.fn(),
-  stopSpinnerQuiet: vi.fn(),
-  stopStepProgress: vi.fn(),
-  stopStepProgressQuiet: vi.fn(),
 }))
 
 describe('CLI end-to-end integration', () => {

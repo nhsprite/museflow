@@ -1,6 +1,5 @@
 export { BaseAgent, type AgentOutput } from './base.js'
 export {
-  type AgentState,
   type AgentInput,
   type WorldbuilderAgentInput,
   type CharacterAgentInput,

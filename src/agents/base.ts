@@ -55,8 +55,3 @@ export abstract class BaseAgent<TInput extends AgentInput> {
 }
 
 export type { AgentOutput, ParagraphFix, SentenceFix, ChapterPlan } from './types.js'
-
-/**
- * @deprecated Use the per-agent input types exported from `./types.js` instead.
- */
-export type AgentState = import('./types.js').AgentState

@@ -67,8 +67,6 @@ vi.mock('../../src/cli/utils/conflict-resolver.js', () => ({
 
 vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg, fn) => fn()),
-  stopStepProgress: vi.fn(),
-  stopStepProgressQuiet: vi.fn(),
 }))
 
 vi.mock('../../src/utils/chapter-display.js', () => ({

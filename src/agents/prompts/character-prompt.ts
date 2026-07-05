@@ -1,5 +1,4 @@
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 
 const CHARACTER_SYSTEM_PROMPT =
   '<role>你是一位擅长人物塑造的作家，擅长创造立体、真实、有记忆点的人物角色。</role>\n<requirement>请严格按照要求的 JSON 数组格式输出，不要添加任何额外的解释文字。</requirement>'
@@ -49,8 +48,3 @@ export function buildCharacterUserPrompt(
     FORMAT_REMINDER: formatReminder ?? '',
   })
 }
-
-export const PROMPT_VERSION = computePromptHash(
-  CHARACTER_SYSTEM_PROMPT,
-  CHARACTER_USER_PROMPT_TEMPLATE
-)

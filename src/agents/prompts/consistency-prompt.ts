@@ -1,5 +1,4 @@
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 import {
   FACT_CONSISTENCY_RULES,
   FORESHADOW_BOUNDARY_RULES,
@@ -303,8 +302,3 @@ export function buildConsistencyUserPrompt(
     ...vars,
   })
 }
-
-export const PROMPT_VERSION = computePromptHash(
-  CONSISTENCY_SYSTEM_PROMPT,
-  CONSISTENCY_USER_PROMPT_TEMPLATE
-)

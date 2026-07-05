@@ -338,14 +338,6 @@ export function routeMode(state: ReducedGraphState): string {
   return state.isWriting ? 'prepare_chapter' : 'build_world'
 }
 
-export async function downgradeInterpretiveErrors(
-  issues: Issue[],
-  _isInterpretiveIssue: (issue: Issue) => Promise<boolean>
-): Promise<{ issues: Issue[]; downgraded: boolean }> {
-  // 降级逻辑已迁移到 routing/rewrite-policy.ts，此处保留导出以兼容旧调用方
-  return { issues, downgraded: false }
-}
-
 export { capNonErrorIssuesByType }
 export {
   calculateIssueSetSimilarity,

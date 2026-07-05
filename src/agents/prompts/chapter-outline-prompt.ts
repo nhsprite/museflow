@@ -1,6 +1,5 @@
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { renderTemplate } from '../../utils/template.js'
-import { computePromptHash } from './version.js'
 
 const CHAPTER_OUTLINE_SYSTEM_PROMPT =
   '你是一位严谨的小说章节策划。你的任务是在每章动笔前，根据当前幕结构、权威事实和叙事进度，即时生成该章的具体大纲。你绝不提前执行后续幕的内容，也绝不与已确立的权威事实冲突。'
@@ -113,8 +112,3 @@ export function buildChapterOutlineUserPrompt(
         : '',
   })
 }
-
-export const PROMPT_VERSION = computePromptHash(
-  CHAPTER_OUTLINE_SYSTEM_PROMPT,
-  CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE
-)
