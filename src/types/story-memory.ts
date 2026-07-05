@@ -144,7 +144,7 @@ export interface BeatMemory {
   deadlineAct: number
   required: boolean
   claimedIn: number | null
-  provenByEventIds: string[]
+  provenByEventIds: EventId[]
 }
 
 export interface TaskMemory {

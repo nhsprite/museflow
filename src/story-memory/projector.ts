@@ -31,6 +31,8 @@ export function projectEntities(events: StoryEvent[]): StoryMemory['entities'] {
   const locations: Record<string, LocationMemory> = {}
   const factions: Record<string, FactionMemory> = {}
 
+  // Plot, foreshadow, and task events are intentionally not handled in Task 2.
+  // They will be added in Task 3.
   for (const event of events) {
     switch (event.type) {
       case 'character-location':
@@ -63,11 +65,7 @@ export function projectMemory(memory: StoryMemory): StoryMemory {
   }
 }
 
-export function applyEvents(
-  memory: StoryMemory,
-  events: StoryEvent[],
-  options: { override?: boolean } = {}
-): StoryMemory {
+export function applyEvents(memory: StoryMemory, events: StoryEvent[]): StoryMemory {
   const nextEvents = [...memory.events, ...events]
   const nextMemory: StoryMemory = {
     ...memory,
