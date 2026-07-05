@@ -1,6 +1,7 @@
 import type { Issue } from '../../../types/agent.js'
 import type { BlockingReason } from '../../../types/blocking-report.js'
 import type { ChapterPlanningConfig } from '../../../types/genre.js'
+import type { StructuredValidationResult } from '../../../story-memory/validator.js'
 
 export type RoutingDecision =
   'draft_chapter' | 'fix_chapter' | 'finalize_chapter' | 'request_rewrite' | 'decide_strategy'
@@ -29,6 +30,7 @@ export interface RoutingContext {
   pendingIssues: Issue[]
   genre: string
   chapterFileExists: boolean
+  structuredValidationResult: StructuredValidationResult | undefined
 }
 
 export interface IssuePolicyDeps {

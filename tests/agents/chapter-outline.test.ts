@@ -35,7 +35,7 @@ describe('ChapterOutlineAgent', () => {
         mandatoryBeats: ['主角找到盟友'],
       },
     ],
-    keyBeats: [{ beat: '核心秘密被主角获悉', deadlineAct: 1 }],
+    keyBeats: [{ id: 'A1-B1', beat: '核心秘密被主角获悉', deadlineAct: 1, required: true }],
   }
 
   it('parses chapter outline with claimed beats', async () => {
@@ -59,9 +59,19 @@ describe('ChapterOutlineAgent', () => {
     } as ChapterOutlineAgentInput)
 
     expect(output.success).toBe(true)
-    const result = output.data as { title: string; description: string; claimedBeats: string[] }
+    const result = output.data as {
+      title: string
+      description: string
+      claimedBeats: string[]
+      claimedBeatIds: string[]
+      fulfilledForeshadowIds: string[]
+      touchedCharacterIds: string[]
+    }
     expect(result.title).toBe('风雨欲来')
     expect(result.claimedBeats).toContain('主角失去庇护')
+    expect(result.claimedBeatIds).toEqual([])
+    expect(result.fulfilledForeshadowIds).toEqual([])
+    expect(result.touchedCharacterIds).toEqual([])
   })
 
   it('returns error when output is invalid', async () => {
@@ -154,6 +164,46 @@ describe('ChapterOutlineAgent', () => {
     const prompt = messages.map((message) => message.content).join('\n')
     expect(prompt).toContain('conflict: true 只能用于')
     expect(prompt).toContain('不适合推进某个 mandatory beat')
+  })
+
+  it('fills empty structured declaration arrays when LLM omits them', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '风雨欲来',
+        description: '主角在旧宅中整理遗物，发现父亲留下的一枚玉佩。',
+        claimedBeats: ['主角失去庇护'],
+      })
+    )
+
+    const output = await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 0,
+      storyArc,
+      actProgress: { 1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] } },
+    } as ChapterOutlineAgentInput)
+
+    expect(output.success).toBe(true)
+    const result = output.data as {
+      claimedBeatIds: string[]
+      fulfilledForeshadowIds: string[]
+      introducedForeshadowIds: string[]
+      touchedCharacterIds: string[]
+      touchedItemIds: string[]
+      touchedLocationIds: string[]
+      resolvedTaskIds: string[]
+      createdTaskIds: string[]
+    }
+    expect(result.claimedBeatIds).toEqual([])
+    expect(result.fulfilledForeshadowIds).toEqual([])
+    expect(result.introducedForeshadowIds).toEqual([])
+    expect(result.touchedCharacterIds).toEqual([])
+    expect(result.touchedItemIds).toEqual([])
+    expect(result.touchedLocationIds).toEqual([])
+    expect(result.resolvedTaskIds).toEqual([])
+    expect(result.createdTaskIds).toEqual([])
   })
 
   it('propagates conflict flag and reason', async () => {

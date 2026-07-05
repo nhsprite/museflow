@@ -13,15 +13,28 @@ import {
   FACT_CONSISTENCY_RULES,
 } from './prompts/fragments/index.js'
 import { buildChapterSystemPrompt, buildChapterUserPrompt } from './prompts/chapter-prompt.js'
+import { parseStoryEventsBlock } from '../story-memory/parser.js'
 import {
   CHAPTER_HEADING_PATTERN,
   CHAPTER_TITLE_ONLY_PATTERN,
 } from '../utils/chapter-content-validation.js'
 
 export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
+  // Note: currentChapterIndex is stored as instance state because BaseAgent.parse
+  // only receives the raw content string. Future refactor should pass a context
+  // object (including chapterIndex) into parse.
+  private currentChapterIndex = 0
+
   constructor(provider: ModelProvider) {
     super(provider, 0.7)
   }
+
+  async run(state: ChapterAgentInput): Promise<AgentOutput> {
+    // Store chapterIndex for use during parse, since parse only sees content string.
+    this.currentChapterIndex = state.chapterIndex ?? 0
+    return super.run(state)
+  }
+
   protected buildPrompt(state: ChapterAgentInput): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const planningConfig = getChapterPlanningConfig(state.genre)
@@ -343,7 +356,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 
   protected parse(content: string): AgentOutput {
     const standardPreWriteMatch = content.match(
-      /===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*CHAPTER_CONTENT\s*===|$)/i
+      /===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*STORY_EVENTS\s*===|===\s*CHAPTER_CONTENT\s*===|$)/i
     )
     const standardPreWriteCheck =
       standardPreWriteMatch && standardPreWriteMatch[1] ? standardPreWriteMatch[1].trim() : ''
@@ -371,7 +384,10 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         return {
           success: true,
           content: extractedContent,
-          data: { preWriteCheck: detectedPreWrite },
+          data: {
+            preWriteCheck: detectedPreWrite,
+            storyEvents: parseStoryEventsBlock(content, this.currentChapterIndex),
+          },
         }
       }
     }
@@ -381,14 +397,17 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     return {
       success: true,
       content: cleaned || extractedContent || content,
-      data: { preWriteCheck: standardPreWriteCheck || undefined },
+      data: {
+        preWriteCheck: standardPreWriteCheck || undefined,
+        storyEvents: parseStoryEventsBlock(content, this.currentChapterIndex),
+      },
     }
   }
 
   private extractContentWithoutMarkers(rawContent: string): string {
     const contentAfterPreWriteRemoval = rawContent
       .replace(
-        /===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i,
+        /===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?===\s*STORY_EVENTS\s*===|===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i,
         ''
       )
       .trim()

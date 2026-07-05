@@ -5,6 +5,7 @@ import type { ActArc, StoryArc } from '../../../types/outline.js'
 import type { Issue } from '../../../types/agent.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import {
+  getVerifiedBeatsFromMemory,
   judgeMandatoryBeatCoverage,
   judgeMandatoryBeatCoverageAcrossAct,
 } from '../../../utils/story-arc.js'
@@ -98,6 +99,69 @@ export function pruneResolvedOutlineCoverageIssues(
 }
 
 export async function updateActProgress(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  provider?: ModelProvider
+): Promise<ActProgressUpdate> {
+  const hasUsableMemory =
+    state.storyMemory && Object.values(state.storyMemory.beats).some((beat) => beat.actIndex !== 0)
+  if (hasUsableMemory) {
+    return updateActProgressFromMemory(state, chapterIndex)
+  }
+  return updateActProgressFromOutline(state, chapterIndex, provider)
+}
+
+function updateActProgressFromMemory(
+  state: ReducedGraphState,
+  chapterIndex: number
+): ActProgressUpdate {
+  const memory = state.storyMemory!
+  const actProgress: ReducedGraphState['actProgress'] = {}
+  const verifiedBeatIds = new Set(getVerifiedBeatsFromMemory(memory))
+
+  for (const beat of Object.values(memory.beats)) {
+    if (beat.actIndex === 0) continue
+    let progress = actProgress[beat.actIndex]
+    if (!progress) {
+      progress = { consumed: [], pending: [] }
+      actProgress[beat.actIndex] = progress
+    }
+    if (verifiedBeatIds.has(beat.id)) {
+      if (!progress.consumed.includes(beat.id)) progress.consumed.push(beat.id)
+    } else if (beat.required && !progress.pending.includes(beat.id)) {
+      progress.pending.push(beat.id)
+    }
+  }
+
+  const storyArc = state.storyArc
+  const act = getActForChapter(storyArc, chapterIndex)
+  let beatPressureConstraint: VerifiedConstraint | undefined
+
+  if (act) {
+    const progress = actProgress[act.index] ?? { consumed: [], pending: [] }
+    const chaptersRemaining = act.endChapter - (chapterIndex + 1)
+    const totalActChapters = act.endChapter - act.startChapter + 1
+    const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
+
+    if (isInClosingPhase && progress.pending.length > 0) {
+      logger.warn(
+        `[MuseFlow] 第 ${act.index} 幕进入收尾阶段，仍有 ${progress.pending.length} 个 mandatory beats 未消费：${progress.pending.join('、')}`
+      )
+      beatPressureConstraint = createActPressureConstraint(
+        act.index,
+        `第 ${act.index} 幕「${act.title}」还剩 ${chaptersRemaining} 章结束，必须优先消费以下 mandatory beats：${progress.pending.join('、')}。本章及后续章节必须将推进这些节拍作为最高优先级，不得再扩展无关支线。`
+      )
+    }
+  }
+
+  const result: ActProgressUpdate = { actProgress }
+  if (beatPressureConstraint) {
+    result.beatPressureConstraint = beatPressureConstraint
+  }
+  return result
+}
+
+async function updateActProgressFromOutline(
   state: ReducedGraphState,
   chapterIndex: number,
   provider?: ModelProvider

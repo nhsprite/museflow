@@ -334,6 +334,12 @@ export async function batchClassifyIssues(
   )
 }
 
+export function generateIssueFingerprint(issue: Issue): string {
+  const dimension = issue.dimension ?? 'unknown'
+  const subject = issue.subject ?? issue.description?.slice(0, 40) ?? 'no-subject'
+  return `${dimension}:${subject}`
+}
+
 export async function batchGenerateIssueFingerprints(
   provider: ModelProvider,
   issues: Issue[]

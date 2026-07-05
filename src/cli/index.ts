@@ -12,6 +12,7 @@ import { exportStory } from './commands/export.js'
 import { list } from './commands/list.js'
 import { del } from './commands/delete.js'
 import { adjustAct } from './commands/adjust-act.js'
+import { registerMigrateMemoryCommand } from './commands/migrate-memory.js'
 import { setDebugEnabled } from '../utils/logger.js'
 
 const program = new Command()
@@ -115,5 +116,7 @@ program
   .argument('<story-id>', '故事ID')
   .option('-f, --force', '强制删除，不提示确认')
   .action(del)
+
+registerMigrateMemoryCommand(program)
 
 program.parse()

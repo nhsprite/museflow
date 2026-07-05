@@ -17,6 +17,7 @@ import {
   DEFAULT_CHAPTER_WORD_COUNT_MAX,
 } from '../../types/genre.js'
 import type { RuntimeContext } from '../../core/context.js'
+import type { StoryEvent } from '../../types/story-memory.js'
 
 export async function draft_chapter(
   context: RuntimeContext,
@@ -71,6 +72,8 @@ export async function draft_chapter(
   if (!output.success && output.error) {
     throw new Error(`第 ${chapterIndex + 1} 章 AI 生成失败：${output.error}`)
   }
+
+  const storyEvents = isStoryEventsData(output.data) ? (output.data.storyEvents ?? []) : []
 
   let content = output.content ?? ''
   if (!content || content.trim().length === 0) {
@@ -148,5 +151,10 @@ export async function draft_chapter(
     storyArc: state.storyArc,
     outline: state.outline,
     chapters: newChapters,
+    draftChapterEvents: storyEvents,
   }
+}
+
+function isStoryEventsData(data: unknown): data is { storyEvents?: StoryEvent[] } {
+  return typeof data === 'object' && data !== null && 'storyEvents' in data
 }

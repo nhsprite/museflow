@@ -114,7 +114,9 @@ export class StoryCheckpointService {
     }
 
     const channelValues = tuple.checkpoint.channel_values as ReducedGraphState
-    const mergedValues = { ...channelValues, ...partialState }
+    // storyMemory is part of ReducedGraphState, so it is preserved unless the
+    // caller explicitly provides a new value in partialState.
+    const mergedValues: ReducedGraphState = { ...channelValues, ...partialState }
     const newCheckpointId = randomUUID()
 
     const newCheckpoint: Checkpoint = {

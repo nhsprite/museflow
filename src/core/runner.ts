@@ -101,6 +101,9 @@ export async function runStory(
       issueFingerprintHistory: [],
     },
     authorDecisions: {},
+    storyMemory: null,
+    draftChapterEvents: undefined,
+    structuredValidationResult: undefined,
   }
 
   const config: RunnableConfig = {

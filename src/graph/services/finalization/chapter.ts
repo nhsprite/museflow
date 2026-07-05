@@ -2,15 +2,26 @@ import { logger } from '../../../utils/logger.js'
 import type { ReducedGraphState } from '../../state.js'
 import type { SummaryAgentInput } from '../../../agents/types.js'
 import { getSummaryAgent } from '../../agent-factory.js'
-import { processSummaryOutput } from '../../../agents/index.js'
+import { applyEvents, createEmptyStoryMemory } from '../../../story-memory/projector.js'
+import {
+  getActiveForeshadows,
+  getOpenTasks,
+  getUnprovenMandatoryBeats,
+} from '../../../story-memory/queries.js'
+import type {
+  StoryEvent,
+  StoryMemory,
+  ForeshadowId,
+  TaskId,
+  BeatId,
+} from '../../../types/story-memory.js'
+import type { ForeshadowItem } from '../../../types/foreshadow.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import { saveChapterReport } from '../../../storage/meta/stores/chapter-report.js'
 import { getForeshadowAlerts } from '../../../types/foreshadow.js'
 import { generateId } from '../../../utils/id.js'
 import { createCheckpointService } from '../../../storage/checkpoint-service.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
-import { mergeStoryState } from '../../utils/reconciler/index.js'
-import { patchChapterSummaryWithFacts } from '../../../utils/summary-patch.js'
 import { buildEffectiveCharactersList } from '../../utils/characters.js'
 import { generateForeshadowConstraints } from '../../../utils/foreshadow-constraints.js'
 import {
@@ -66,6 +77,58 @@ function ensureChaptersLength(
   return next
 }
 
+function isSummaryData(
+  data: unknown
+): data is { storyEvents?: StoryEvent[]; chapterSummary?: string } {
+  return (
+    typeof data === 'object' && data !== null && ('storyEvents' in data || 'chapterSummary' in data)
+  )
+}
+
+function buildVerifiedConstraints(
+  memory: StoryMemory,
+  activeForeshadows: ForeshadowId[],
+  openTasks: TaskId[],
+  unprovenBeats: BeatId[]
+): string[] {
+  const constraints: string[] = []
+  for (const id of activeForeshadows) {
+    const fs = memory.foreshadows[id]
+    if (fs) constraints.push(`未回收伏笔 [${id}]: ${fs.text}`)
+  }
+  for (const id of openTasks) {
+    const task = memory.tasks[id]
+    if (task) constraints.push(`未完成任务 [${id}]: ${task.description}`)
+  }
+  for (const id of unprovenBeats) {
+    const beat = memory.beats[id]
+    if (beat) constraints.push(`未推进节拍 [${id}]: ${beat.description}`)
+  }
+  return constraints
+}
+
+function foreshadowMemoryToItem(
+  memory: import('../../../types/story-memory.js').ForeshadowMemory
+): ForeshadowItem {
+  const item: ForeshadowItem = {
+    id: memory.id,
+    text: memory.text,
+    expectedFulfillChapter: memory.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER,
+    createdAt: 0,
+    createdAtChapter: memory.introducedIn,
+    status: memory.fulfilledIn ? 'recalled' : 'planted',
+    isExplicit: true,
+    required: memory.required,
+  }
+  if (memory.fulfilledIn) {
+    item.fulfilledChapter = memory.fulfilledIn
+  }
+  if (memory.beatId) {
+    item.beatId = memory.beatId
+  }
+  return item
+}
+
 export async function finalizeChapter(
   state: ReducedGraphState,
   provider: import('../../../model/provider.js').ModelProvider
@@ -91,6 +154,7 @@ export async function finalizeChapter(
   }
 
   let updatedStoryState = state.storyState
+  let updatedStoryMemory = state.storyMemory
 
   if (updatedChapter) {
     let summary = updatedChapter.summary || ''
@@ -136,31 +200,43 @@ export async function finalizeChapter(
             )
             continue
           }
-          const processed = processSummaryOutput(
-            summaryOutput,
-            chapterIndex,
-            effectiveCharacters,
-            state.storyState,
-            chapterContent,
-            beatsToVerify
-          )
-          if (!processed || !processed.summary) {
+          const summaryData = isSummaryData(summaryOutput.data) ? summaryOutput.data : undefined
+          if (!summaryData || !summaryData.chapterSummary) {
             logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
             continue
           }
-          summary = processed.summary
+          summary = summaryData.chapterSummary
           updatedChapter = { ...updatedChapter, summary }
           updatedChapters[chapterIndex] = updatedChapter
           summarySuccess = true
 
-          if ((processed.verifiedBeats || processed.verifiedBeatEvidence) && currentOutline) {
+          const actualEvents = summaryData.storyEvents ?? []
+          if (actualEvents.length > 0) {
+            updatedStoryMemory = applyEvents(
+              updatedStoryMemory ?? createEmptyStoryMemory(),
+              actualEvents
+            )
+            logger.info(
+              `[MuseFlow] 第 ${chapterIndex + 1} 章已应用 ${actualEvents.length} 个 storyEvents`
+            )
+          }
+
+          const plotAdvanceEvents = actualEvents.filter(
+            (e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance'
+          )
+          const beatIdToText = new Map(state.storyArc?.keyBeats.map((kb) => [kb.id, kb.beat]) ?? [])
+          const derivedVerifiedBeats = plotAdvanceEvents
+            .map((e) => beatIdToText.get(e.beatId))
+            .filter((b): b is string => !!b)
+
+          // verifiedBeatEvidence 不再由 SummaryAgent 维护；plot-advance 事件及其 id 已能证明
+          // mandatory beat 确实发生，因此 outline 中仅保留 verifiedBeats 列表即可。
+
+          if (derivedVerifiedBeats.length > 0 && currentOutline) {
             const newOutline = [...updatedOutline]
             newOutline[chapterIndex] = {
               ...currentOutline,
-              ...(processed.verifiedBeats ? { verifiedBeats: processed.verifiedBeats } : {}),
-              ...(processed.verifiedBeatEvidence
-                ? { verifiedBeatEvidence: processed.verifiedBeatEvidence }
-                : {}),
+              verifiedBeats: derivedVerifiedBeats,
             }
             updatedOutline = newOutline
           }
@@ -171,7 +247,7 @@ export async function finalizeChapter(
           const latestCurrentOutline = updatedOutline[chapterIndex] ?? currentOutline
           if (actForCoverage && latestCurrentOutline && chapterContent) {
             const summaryVerified = normalizeVerifiedBeats(
-              processed.verifiedBeats ?? [],
+              derivedVerifiedBeats,
               actForCoverage.mandatoryBeats
             )
             const missingAfterSummary = actForCoverage.mandatoryBeats.filter(
@@ -196,31 +272,12 @@ export async function finalizeChapter(
             }
           }
 
-          if (processed.storyState) {
-            updatedStoryState = mergeStoryState(state.storyState, processed.storyState)
-            logger.info(
-              `[MuseFlow] 第 ${chapterIndex + 1} 章状态已更新：${updatedStoryState.currentScene || '无场景'} | ${updatedStoryState.storyTime || '无时间标记'}`
-            )
-          }
           break
         } catch (err) {
           logger.warn(
             `[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`,
             err
           )
-        }
-      }
-
-      if (summarySuccess && summary && updatedStoryState) {
-        const newlyEstablishedFacts = (updatedStoryState.canonicalFacts ?? []).filter(
-          (f) => f.establishedIn === chapterIndex && f.supersedes && f.supersedes.length > 0
-        )
-        if (newlyEstablishedFacts.length > 0) {
-          summary = patchChapterSummaryWithFacts(summary, newlyEstablishedFacts, chapterIndex)
-          if (updatedChapter) {
-            updatedChapter = { ...updatedChapter, summary }
-            updatedChapters[chapterIndex] = updatedChapter
-          }
         }
       }
 
@@ -235,7 +292,7 @@ export async function finalizeChapter(
               id: generateId(),
               type: 'state_corruption',
               severity: 'error',
-              description: `第 ${chapterIndex + 1} 章摘要与权威事实提取失败，无法安全进入下一章。`,
+              description: `第 ${chapterIndex + 1} 章摘要与事件提取失败，无法安全进入下一章。`,
               suggestion:
                 '请重试当前章节 finalize；如果模型持续失败，请检查模型输出或运行 rewrite 重新生成本章。',
               source: 'state_reconciliation',
@@ -248,6 +305,30 @@ export async function finalizeChapter(
 
     if (summary && !updatedChapterSummaries.includes(summary)) {
       updatedChapterSummaries = [...updatedChapterSummaries, summary]
+    }
+  }
+
+  let updatedForeshadowStack = state.foreshadowStack
+  let memoryConstraintTexts: string[] = []
+  if (updatedStoryMemory) {
+    const memoryForeshadows = Object.values(updatedStoryMemory.foreshadows)
+    updatedForeshadowStack =
+      memoryForeshadows.length > 0
+        ? memoryForeshadows.map(foreshadowMemoryToItem)
+        : state.foreshadowStack
+    const activeForeshadows = getActiveForeshadows(updatedStoryMemory)
+    const openTasks = getOpenTasks(updatedStoryMemory)
+    const unprovenBeats = getUnprovenMandatoryBeats(updatedStoryMemory)
+    memoryConstraintTexts = buildVerifiedConstraints(
+      updatedStoryMemory,
+      activeForeshadows,
+      openTasks,
+      unprovenBeats
+    )
+    if (memoryConstraintTexts.length > 0) {
+      logger.info(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章生成 ${memoryConstraintTexts.length} 条 StoryMemory 约束`
+      )
     }
   }
 
@@ -281,10 +362,13 @@ export async function finalizeChapter(
   const updatedTimeline = [...(state.timeline ?? []), snapshot]
 
   const newForeshadowConstraints = generateForeshadowConstraints(
-    state.foreshadowStack,
+    updatedForeshadowStack,
     chapterIndex + 1
   )
-  let updatedVerifiedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints)
+  let updatedVerifiedConstraints =
+    memoryConstraintTexts.length > 0
+      ? memoryConstraintTexts.map(createGenericVerifiedConstraint)
+      : normalizeVerifiedConstraints(state.verifiedConstraints)
   if (newForeshadowConstraints.length > 0) {
     updatedVerifiedConstraints = [
       ...updatedVerifiedConstraints,
@@ -298,6 +382,8 @@ export async function finalizeChapter(
     chapters: updatedChapters,
     chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
+    storyMemory: updatedStoryMemory,
+    foreshadowStack: updatedForeshadowStack,
   }
 
   const {
@@ -420,6 +506,8 @@ export async function finalizeChapter(
     chapters: updatedChapters,
     chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
+    storyMemory: updatedStoryMemory,
+    foreshadowStack: updatedForeshadowStack,
     verifiedConstraints: updatedVerifiedConstraints,
     actProgress: updatedActProgress,
     storyArc: updatedStoryArc ?? null,
@@ -459,6 +547,8 @@ export async function finalizeChapter(
     chapters: updatedChapters,
     chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
+    storyMemory: updatedStoryMemory,
+    foreshadowStack: updatedForeshadowStack,
     verifiedConstraints: updatedVerifiedConstraints,
     actProgress: updatedActProgress,
     chapterReport,

@@ -56,6 +56,8 @@ describe('StoryArcAgent', () => {
     expect(storyArc.totalChapters).toBe(6)
     expect(storyArc.acts).toHaveLength(2)
     expect(storyArc.keyBeats).toHaveLength(2)
+    expect(storyArc.keyBeats[0]?.id).toBeDefined()
+    expect(storyArc.keyBeats[0]?.required).toBe(true)
   })
 
   it('returns empty acts when parse fails', async () => {

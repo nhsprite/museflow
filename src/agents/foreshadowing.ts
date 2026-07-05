@@ -104,6 +104,7 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
           status: (item.foreshadow_type === 'explicit' ? 'shown' : 'planted') as ForeshadowStatus,
           isExplicit: item.foreshadow_type === 'explicit',
           source: 'content' as const,
+          required: true,
         }
       })
 

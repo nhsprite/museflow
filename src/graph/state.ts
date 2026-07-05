@@ -13,6 +13,8 @@ import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { StateSnapshot } from '../types/timeline.js'
 import type { ChapterSession } from '../core/chapter-generation/routing/types.js'
 import type { VerifiedConstraint } from '../types/verified-constraint.js'
+import type { StoryMemory, StoryEvent } from '../types/story-memory.js'
+import type { StructuredValidationResult } from '../story-memory/validator.js'
 
 export const GraphState = Annotation.Root({
   story: Annotation<Story>,
@@ -52,6 +54,15 @@ export const GraphState = Annotation.Root({
 
   // author resolutions for blocking outline-vs-canonical conflicts in the current chapter
   authorDecisions: Annotation<Record<string, 'outline' | 'canonical'>>,
+
+  // structured story memory for the refactor (source of truth for entities, events, beats, tasks, foreshadows)
+  storyMemory: Annotation<StoryMemory | null>,
+
+  // events extracted from the current draft chapter before validation
+  draftChapterEvents: Annotation<StoryEvent[] | undefined>,
+
+  // structured validation result for the current chapter (populated by the story memory validator)
+  structuredValidationResult: Annotation<StructuredValidationResult | undefined>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

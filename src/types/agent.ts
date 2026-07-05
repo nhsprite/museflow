@@ -16,6 +16,9 @@ export type IssueType =
   | 'outline_coverage'
   | 'outline_empty_beats'
   | 'outline_invalid_deadline'
+  | 'state_conflict'
+  | 'beat_unproven'
+  | 'foreshadow_false_fulfillment'
 
 export type IssueSource =
   | 'word_count'
@@ -38,6 +41,7 @@ export interface Issue {
   type: IssueType
   severity: IssueSeverity
   description: string
+  subject?: string
   location?: string
   locationRef?: IssueLocationRef
   suggestion?: string

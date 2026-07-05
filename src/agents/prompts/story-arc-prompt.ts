@@ -42,9 +42,15 @@ const STORY_ARC_USER_PROMPT_TEMPLATE = `请为一部 {TOTAL_CHAPTERS} 章的长�
       }
     ],
     "keyBeats": [
-      { "beat": "关键情节点类型", "deadlineAct": 2 }
+      { "id": "A1-B1", "beat": "关键情节点类型", "deadlineAct": 2, "required": true }
     ]
   }
+
+  每个 keyBeat 必须包含：
+  - id: stable identifier in format "A{actIndex}-B{beatIndex}" (e.g. "A2-B3")
+  - beat: 关键情节点类型描述
+  - deadlineAct: number，必须在第几幕之前/之内完成
+  - required: boolean，默认 true
 </requirements>`
 
 export function buildStoryArcSystemPrompt(): string {

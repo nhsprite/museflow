@@ -46,7 +46,7 @@ function createConflict(
   }
 }
 
-async function detectEntityConflicts<T extends Record<string, string>>(
+async function detectEntityConflictsWithLLM<T extends Record<string, string>>(
   entities: T,
   outline: string,
   attribute: '所在位置' | '状态',
@@ -108,7 +108,7 @@ export async function detectItemLocationConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(state.keyItemsLocation, outline, '所在位置', 'auto', provider)
+  return detectEntityConflictsWithLLM(state.keyItemsLocation, outline, '所在位置', 'auto', provider)
 }
 
 export async function detectItemStateConflicts(
@@ -116,7 +116,7 @@ export async function detectItemStateConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(state.keyItemsState, outline, '状态', 'auto', provider)
+  return detectEntityConflictsWithLLM(state.keyItemsState, outline, '状态', 'auto', provider)
 }
 
 export async function detectCharacterLocationConflicts(
@@ -124,7 +124,13 @@ export async function detectCharacterLocationConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(state.characterLocations, outline, '所在位置', 'auto', provider)
+  return detectEntityConflictsWithLLM(
+    state.characterLocations,
+    outline,
+    '所在位置',
+    'auto',
+    provider
+  )
 }
 
 export async function detectCharacterStatusConflicts(
@@ -132,7 +138,7 @@ export async function detectCharacterStatusConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflicts(state.characterStatus, outline, '状态', 'warning', provider)
+  return detectEntityConflictsWithLLM(state.characterStatus, outline, '状态', 'warning', provider)
 }
 
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {

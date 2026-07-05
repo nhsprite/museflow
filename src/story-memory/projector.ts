@@ -1,0 +1,197 @@
+import type {
+  StoryMemory,
+  StoryEvent,
+  CharacterMemory,
+  ItemMemory,
+  LocationMemory,
+  FactionMemory,
+  ForeshadowMemory,
+  BeatMemory,
+  TaskMemory,
+} from '../types/story-memory.js'
+
+export function createEmptyStoryMemory(): StoryMemory {
+  return {
+    version: '1',
+    lastChapterIndex: 0,
+    entities: {
+      characters: {},
+      items: {},
+      locations: {},
+      factions: {},
+      plots: {},
+    },
+    events: [],
+    foreshadows: {},
+    beats: {},
+    tasks: {},
+  }
+}
+
+export function projectEntities(events: StoryEvent[]): StoryMemory['entities'] {
+  const characters: Record<string, CharacterMemory> = {}
+  const items: Record<string, ItemMemory> = {}
+  const locations: Record<string, LocationMemory> = {}
+  const factions: Record<string, FactionMemory> = {}
+
+  // projectMemory handles foreshadow, plot, and task events.
+  // projectEntities handles only entity state changes.
+  for (const event of events) {
+    switch (event.type) {
+      case 'character-location':
+        ensureCharacter(characters, event.characterId)
+        characters[event.characterId]!.locationId = event.locationId
+        break
+      case 'character-status':
+        ensureCharacter(characters, event.characterId)
+        characters[event.characterId]!.status[event.attribute] = event.value
+        break
+      case 'item-location':
+        ensureItem(items, event.itemId)
+        items[event.itemId]!.holderId = event.holderId
+        items[event.itemId]!.locationId = event.locationId
+        break
+      case 'item-state':
+        ensureItem(items, event.itemId)
+        items[event.itemId]!.state[event.attribute] = event.value
+        break
+    }
+  }
+
+  return { characters, items, locations, factions, plots: {} }
+}
+
+export function projectMemory(memory: StoryMemory): StoryMemory {
+  const entities = projectEntities(memory.events)
+  const foreshadows = projectForeshadows(memory.events)
+  const beats = projectBeats(memory.events)
+  const tasks = projectTasks(memory.events)
+  const lastChapterIndex = computeLastChapterIndex(memory.events, memory.lastChapterIndex)
+
+  return {
+    ...memory,
+    entities,
+    foreshadows,
+    beats,
+    tasks,
+    lastChapterIndex,
+  }
+}
+
+export function applyEvents(memory: StoryMemory, events: StoryEvent[]): StoryMemory {
+  const nextEvents = [...memory.events, ...events]
+  const nextMemory: StoryMemory = {
+    ...memory,
+    events: nextEvents,
+  }
+  return projectMemory(nextMemory)
+}
+
+function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemory> {
+  const foreshadows: Record<string, ForeshadowMemory> = {}
+
+  for (const event of events) {
+    if (event.type === 'foreshadow-introduce') {
+      const existing = foreshadows[event.foreshadowId]
+      foreshadows[event.foreshadowId] = {
+        ...existing,
+        id: event.foreshadowId,
+        introducedIn: event.chapterIndex,
+        expectedFulfillChapter: event.expectedFulfillChapter,
+        fulfilledIn: existing?.fulfilledIn ?? null,
+        required: existing?.required ?? true,
+        beatId: existing?.beatId ?? null,
+        text: existing?.text ?? event.foreshadowId,
+      }
+    } else if (event.type === 'foreshadow-fulfill') {
+      const existing = foreshadows[event.foreshadowId]
+      foreshadows[event.foreshadowId] = {
+        id: event.foreshadowId,
+        text: existing?.text ?? event.foreshadowId,
+        introducedIn: existing?.introducedIn ?? event.chapterIndex,
+        expectedFulfillChapter: existing?.expectedFulfillChapter ?? null,
+        fulfilledIn: event.chapterIndex,
+        required: existing?.required ?? true,
+        beatId: existing?.beatId ?? null,
+      }
+    }
+  }
+
+  return foreshadows
+}
+
+function projectBeats(events: StoryEvent[]): Record<string, BeatMemory> {
+  const beats: Record<string, BeatMemory> = {}
+
+  for (const event of events) {
+    if (event.type === 'plot-advance') {
+      const existing = beats[event.beatId]
+      beats[event.beatId] = {
+        id: event.beatId,
+        description: existing?.description ?? event.beatId,
+        actIndex: existing?.actIndex ?? 0,
+        deadlineAct: existing?.deadlineAct ?? 0,
+        required: existing?.required ?? true,
+        claimedIn: existing?.claimedIn ?? event.chapterIndex,
+        provenByEventIds: [...(existing?.provenByEventIds ?? []), event.id],
+      }
+    }
+  }
+
+  return beats
+}
+
+function projectTasks(events: StoryEvent[]): Record<string, TaskMemory> {
+  const tasks: Record<string, TaskMemory> = {}
+
+  for (const event of events) {
+    if (event.type === 'task-create') {
+      tasks[event.taskId] = {
+        id: event.taskId,
+        description: event.description,
+        createdIn: event.chapterIndex,
+        resolvedIn: tasks[event.taskId]?.resolvedIn ?? null,
+      }
+    } else if (event.type === 'task-resolve') {
+      const existing = tasks[event.taskId]
+      tasks[event.taskId] = {
+        id: event.taskId,
+        description: existing?.description ?? event.taskId,
+        createdIn: existing?.createdIn ?? event.chapterIndex,
+        resolvedIn: event.chapterIndex,
+      }
+    }
+  }
+
+  return tasks
+}
+
+export function computeLastChapterIndex(events: StoryEvent[], fallback: number): number {
+  if (events.length === 0) return fallback
+  return events.reduce((max, event) => Math.max(max, event.chapterIndex), fallback)
+}
+
+function ensureCharacter(characters: Record<string, CharacterMemory>, id: string) {
+  if (!characters[id]) {
+    characters[id] = {
+      id,
+      name: id,
+      locationId: null,
+      status: {},
+      introducedIn: 0,
+    }
+  }
+}
+
+function ensureItem(items: Record<string, ItemMemory>, id: string) {
+  if (!items[id]) {
+    items[id] = {
+      id,
+      name: id,
+      holderId: null,
+      locationId: null,
+      state: {},
+      introducedIn: 0,
+    }
+  }
+}

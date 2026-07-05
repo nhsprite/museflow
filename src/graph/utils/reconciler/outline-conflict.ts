@@ -6,6 +6,8 @@ import type {
   CanonicalFact,
 } from '../../../types/story-state.js'
 import type { ModelProvider, Message, JsonSchema } from '../../../model/provider.js'
+import type { StoryMemory } from '../../../types/story-memory.js'
+import type { StoryArc } from '../../../types/outline.js'
 import { generateId } from '../../../utils/id.js'
 
 interface OutlineAuthorizedFact {
@@ -237,13 +239,54 @@ function formatCanonicalFacts(state: StoryState): string {
     .join('\n')
 }
 
+function detectUnprovenBeatConflicts(
+  outline: StoryArc,
+  memory: StoryMemory,
+  chapterIndex: number
+): Conflict[] {
+  const currentChapter = chapterIndex + 1
+  const currentAct =
+    outline.acts.find(
+      (act) => currentChapter >= act.startChapter && currentChapter <= act.endChapter
+    )?.index ?? Math.max(...outline.acts.map((act) => act.index), 0)
+
+  const conflicts: Conflict[] = []
+  for (const beat of outline.keyBeats) {
+    const proven = memory.beats[beat.id]?.provenByEventIds.length ?? 0
+    if (beat.required && beat.deadlineAct <= currentAct && proven === 0) {
+      conflicts.push({
+        id: generateId(),
+        type: 'incomplete',
+        subject: beat.id,
+        attribute: 'beat',
+        oldValue: 'unproven',
+        newValue: 'required',
+        outlineReference: '',
+        severity: 'warning',
+        description: `Required beat ${beat.id} (${beat.beat}) is not yet proven in StoryMemory`,
+      })
+    }
+  }
+  return conflicts
+}
+
 export async function detectOutlineStateConflicts(
-  state: StoryState,
+  state: StoryState & { storyMemory?: StoryMemory | null },
   outline: string,
   chapterIndex: number,
-  provider?: ModelProvider
+  provider?: ModelProvider,
+  storyArc?: StoryArc
 ): Promise<{ conflicts: Conflict[]; constraints: string[] }> {
-  if (!provider || !outline || outline.trim().length === 0) {
+  if (!outline || outline.trim().length === 0) {
+    return { conflicts: [], constraints: [] }
+  }
+
+  if (state.storyMemory && storyArc) {
+    const conflicts = detectUnprovenBeatConflicts(storyArc, state.storyMemory, chapterIndex)
+    return { conflicts, constraints: [] }
+  }
+
+  if (!provider) {
     return { conflicts: [], constraints: [] }
   }
 

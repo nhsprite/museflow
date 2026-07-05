@@ -1,7 +1,9 @@
+import type { BeatId, ForeshadowId } from './story-memory.js'
+
 export type ForeshadowStatus = 'planted' | 'hinted' | 'shown' | 'recalled'
 
 export interface ForeshadowItem {
-  id: string
+  id: ForeshadowId
   text: string
   expectedFulfillChapter: number
   createdAt: number
@@ -10,6 +12,8 @@ export interface ForeshadowItem {
   status: ForeshadowStatus
   isExplicit: boolean
   source?: 'content' | 'outline' | 'manual'
+  required: boolean
+  beatId?: BeatId
 }
 
 export type ForeshadowAlertLevel = 'overdue' | 'urgent' | 'normal'

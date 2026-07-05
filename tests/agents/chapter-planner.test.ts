@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
-import type { ChapterPlannerAgentInput } from '../../src/agents/types.ts'
+import type { ChapterPlannerAgentInput, ChapterPlan } from '../../src/agents/types.ts'
 import type { Issue } from '../../src/types/agent.ts'
 import type { ChapterPlannerAgent } from '../../src/agents/chapter-planner.ts'
 
@@ -314,8 +314,67 @@ describe('ChapterPlannerAgent issues integration', () => {
     })
 
     expect(output.success).toBe(true)
-    const data = output.data as { chapterTimeAnchor?: string }
+    const data = output.data as ChapterPlan
     expect(data.chapterTimeAnchor).toBe('三日后（跨越三日）')
+    expect(data.expectedEvents).toBeDefined()
+    expect(data.claimedBeatIds).toBeDefined()
+  })
+
+  it('parses expectedEvents and structured declaration arrays from planner JSON output', async () => {
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: [
+          {
+            title: '开头',
+            summary: '主角醒来',
+            wordCount: 500,
+            events: ['主角醒来'],
+            characters: ['主角'],
+            timeMark: '三日后',
+          },
+        ],
+        timeline: [{ event: '主角醒来', time: '三日后', notes: '' }],
+        outlineCheck: [{ requirement: '主角醒来', fulfilled: true, section: '开头' }],
+        chapterTimeAnchor: '三日后（跨越三日）',
+        expectedEvents: [
+          {
+            id: 'evt-1',
+            type: 'character-location',
+            characterId: 'c-1',
+            locationId: 'l-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+        claimedBeatIds: ['beat-1'],
+        fulfilledForeshadowIds: ['f-1'],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: ['t-1'],
+        createdTaskIds: [],
+      })
+    )
+
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const output = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 1,
+      outline: '第1章：主角醒来',
+      previousChapters: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    expect(output.success).toBe(true)
+    const data = output.data as ChapterPlan
+    expect(data.expectedEvents).toHaveLength(1)
+    expect(data.expectedEvents[0]?.id).toBe('evt-1')
+    expect(data.claimedBeatIds).toEqual(['beat-1'])
+    expect(data.fulfilledForeshadowIds).toEqual(['f-1'])
+    expect(data.introducedForeshadowIds).toEqual([])
+    expect(data.resolvedTaskIds).toEqual(['t-1'])
+    expect(data.createdTaskIds).toEqual([])
   })
 })
 

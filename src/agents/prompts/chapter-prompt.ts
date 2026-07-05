@@ -86,10 +86,13 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 <output_format>
 <requirement>【输出格式要求 - 必须严格遵守】</requirement>
-你的输出必须分为两个部分，用以下标记分隔：
+你的输出必须分为以下部分，用以下标记分隔：
 
 === PRE_WRITE_CHECK ===
 （预写对齐检查表，见下方说明）
+
+=== STORY_EVENTS ===
+（本章关键事实变化清单，见下方说明）
 
 === CHAPTER_CONTENT ===
 （正文内容，从这里开始写小说正文）
@@ -124,6 +127,27 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 <important>【重要】PRE_WRITE_CHECK 完成后，才能开始写正文。PRE_WRITE_CHECK 中的计划必须与正文完全一致，正文必须严格遵循 PRE_WRITE_CHECK 中确认的执行计划。</important>
 </content>
 </pre_write_check_section>
+
+<story_events_section>
+<title>【STORY_EVENTS - 正文前的关键事实变化清单】</title>
+<content>在 PRE_WRITE_CHECK 之后、CHAPTER_CONTENT 之前，必须输出一个 === STORY_EVENTS === 区块，逐条列出本章明确引起的事实变化。
+
+如果本章没有任何事实变化，可以输出空区块（只保留标记），但不得省略该区块。
+
+每条事件使用以下格式之一，并严格使用大纲/规划中给定的精确 ID：
+- character-location: <characterId> -> <locationId>
+- character-status: <characterId> / <attribute> -> <value>
+- item-location: <itemId> -> <holderId>
+- item-state: <itemId> / <attribute> -> <value>
+- plot-advance: <plotId> / <beatId>
+- foreshadow-introduce: <foreshadowId> (expectedFulfillChapter)
+- foreshadow-fulfill: <foreshadowId>
+- task-resolve: <taskId>
+- task-create: <taskId> / <description>
+
+<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符。</important>
+</content>
+</story_events_section>
 
 <chapter_content_section>
 <title>【第二部分：CHAPTER_CONTENT - 正文写作要求】</title>

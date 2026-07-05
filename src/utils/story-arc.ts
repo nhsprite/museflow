@@ -1,5 +1,6 @@
 import type { ActArc, KeyBeat, StoryArc } from '../types/outline.js'
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
+import type { StoryMemory } from '../types/story-memory.js'
 import { logger } from './logger.js'
 
 export function getActForChapter(
@@ -17,6 +18,12 @@ export function isClosingPhase(
   ratio = 0.15
 ): boolean {
   return currentChapterIndex + 1 >= totalChapters * (1 - ratio)
+}
+
+export function getVerifiedBeatsFromMemory(memory: StoryMemory): string[] {
+  return Object.values(memory.beats)
+    .filter((b) => b.provenByEventIds.length > 0)
+    .map((b) => b.id)
 }
 
 export interface ArcStatus {

@@ -35,7 +35,19 @@ async function runPlanChapter(
     )
   }
 
-  const chapterPlan = output.data as import('../../agents/chapter-planner.js').ChapterPlan
+  const chapterPlan: import('../../agents/chapter-planner.js').ChapterPlan = {
+    expectedEvents: [],
+    claimedBeatIds: [],
+    fulfilledForeshadowIds: [],
+    introducedForeshadowIds: [],
+    resolvedTaskIds: [],
+    createdTaskIds: [],
+    sections: [],
+    timeline: [],
+    outlineCheck: [],
+    ...output.data,
+    chapterIndex: chapterIndex,
+  }
 
   return { chapterPlan }
 }

@@ -61,10 +61,11 @@ export async function prepareStoryStateForChapter(
     }
 
     const outlineStateCheck = await detectOutlineStateConflicts(
-      reconciledState,
+      { ...reconciledState, storyMemory: state.storyMemory },
       outlineItem.description,
       chapterIndex,
-      provider
+      provider,
+      state.storyArc ?? undefined
     )
 
     const undecidedBlockingConflicts = [

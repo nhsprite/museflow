@@ -2,6 +2,7 @@ import type { ModelProvider } from '../model/provider.js'
 import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentOutput } from './base.js'
 import type { ChapterPlannerAgentInput, ChapterPlan } from './types.js'
+import type { StoryEvent } from '../types/story-memory.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { parseJsonFromLLM } from '../utils/json.js'
@@ -15,6 +16,28 @@ import {
 } from './prompts/chapter-planner-prompt.js'
 
 export { type ChapterPlan } from './types.js'
+
+const STORY_EVENT_TYPES = [
+  'character-location',
+  'character-status',
+  'item-location',
+  'item-state',
+  'plot-advance',
+  'foreshadow-introduce',
+  'foreshadow-fulfill',
+  'task-create',
+  'task-resolve',
+] as const
+
+function isStoryEvent(e: unknown): e is StoryEvent {
+  if (!e || typeof e !== 'object') return false
+  const event = e as Record<string, unknown>
+  if (typeof event.id !== 'string') return false
+  if (typeof event.type !== 'string') return false
+  if (typeof event.chapterIndex !== 'number') return false
+  if ('source' in event && event.source !== 'chapter' && event.source !== 'outline') return false
+  return (STORY_EVENT_TYPES as readonly string[]).includes(event.type)
+}
 
 export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
   constructor(provider: ModelProvider) {
@@ -46,7 +69,7 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
   }
 
   protected parse(content: string): AgentOutput {
-    const parsed = parseJsonFromLLM<ChapterPlan>(content)
+    const parsed = parseJsonFromLLM<Partial<ChapterPlan>>(content)
     if (!parsed.success) {
       logger.error('[MuseFlow] 章节规划 JSON 解析失败')
       return { success: false, error: parsed.error ?? '无法解析规划数据：JSON 格式错误' }
@@ -72,6 +95,33 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
         logger.warn(`  - ${u.requirement}`)
       }
     }
-    return { success: true, data }
+    const expectedEvents = Array.isArray(data.expectedEvents)
+      ? data.expectedEvents.filter(isStoryEvent)
+      : []
+    if (data.expectedEvents && expectedEvents.length < data.expectedEvents.length) {
+      logger.warn(
+        `[MuseFlow] 过滤了 ${data.expectedEvents.length - expectedEvents.length} 个无效 expectedEvents`
+      )
+    }
+
+    const plan: ChapterPlan = {
+      chapterIndex: data.chapterIndex ?? 0,
+      sections: data.sections,
+      timeline: data.timeline,
+      outlineCheck: data.outlineCheck,
+      expectedEvents,
+      claimedBeatIds: data.claimedBeatIds ?? [],
+      fulfilledForeshadowIds: data.fulfilledForeshadowIds ?? [],
+      introducedForeshadowIds: data.introducedForeshadowIds ?? [],
+      resolvedTaskIds: data.resolvedTaskIds ?? [],
+      createdTaskIds: data.createdTaskIds ?? [],
+    }
+    if (data.taskResolutions !== undefined) {
+      plan.taskResolutions = data.taskResolutions
+    }
+    if (data.chapterTimeAnchor !== undefined) {
+      plan.chapterTimeAnchor = data.chapterTimeAnchor
+    }
+    return { success: true, data: plan }
   }
 }

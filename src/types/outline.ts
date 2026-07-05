@@ -1,3 +1,5 @@
+import type { EntityId, ForeshadowId, BeatId, TaskId } from './story-memory.js'
+
 export interface ActArc {
   index: number
   startChapter: number // 1-based，目标起始章节
@@ -13,8 +15,13 @@ export interface ActArc {
 }
 
 export interface KeyBeat {
+  id: BeatId
   beat: string // 事件类型/主题
   deadlineAct: number // 必须在该幕结束前完成
+  required: boolean
+  involvedCharacterIds?: EntityId[]
+  involvedItemIds?: EntityId[]
+  foreshadowId?: ForeshadowId
 }
 
 export interface StoryArc {
@@ -42,4 +49,14 @@ export interface ChapterOutline {
   claimedBeats?: string[] // ChapterOutlineAgent 声称本章要推进的 mandatory beats
   verifiedBeats?: string[] // SummaryAgent 从正文中验证确实发生的 mandatory beats
   verifiedBeatEvidence?: VerifiedBeatEvidence[] // verifiedBeats 的正文证据
+
+  // 新增结构化声明
+  touchedCharacterIds?: EntityId[]
+  touchedItemIds?: EntityId[]
+  touchedLocationIds?: EntityId[]
+  claimedBeatIds?: BeatId[]
+  fulfilledForeshadowIds?: ForeshadowId[]
+  introducedForeshadowIds?: ForeshadowId[]
+  resolvedTaskIds?: TaskId[]
+  createdTaskIds?: TaskId[]
 }
