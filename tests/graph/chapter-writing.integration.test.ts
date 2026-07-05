@@ -94,7 +94,11 @@ const mockConsistencyAgent = {
 }
 
 const mockSummaryAgent = {
-  run: vi.fn(async () => ({ success: true, content: '本章摘要', data: {} })),
+  run: vi.fn(async () => ({
+    success: true,
+    content: '本章摘要',
+    data: { chapterSummary: '本章摘要', storyEvents: [] },
+  })),
   processOutput: vi.fn(() => ({ summary: '本章摘要', storyState: undefined })),
 }
 

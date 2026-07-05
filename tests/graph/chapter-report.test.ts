@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { finalize_chapter } from '../../src/graph/nodes/finalization.js'
+import { getSummaryAgent } from '../../src/graph/agent-factory.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { Issue } from '../../src/types/agent.js'
 import type { ChapterSession } from '../../src/core/chapter-generation/routing/types.js'
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
-import { processSummaryOutput } from '../../src/agents/index.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 import type { RuntimeContext } from '../../src/core/context.js'
 
@@ -17,40 +17,34 @@ const { loadConfigMock } = vi.hoisted(() => ({
   })),
 }))
 
+function createBaseSummaryAgent() {
+  return {
+    run: vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        chapterSummary: '主角离开家乡，踏上旅途。',
+        storyEvents: [
+          {
+            id: 'evt-1',
+            type: 'plot-advance',
+            plotId: 'plot-1',
+            beatId: 'beat-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+      },
+    }),
+  }
+}
+
 vi.mock('../../src/config/store.js', () => ({
   loadConfig: loadConfigMock,
 }))
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
-  getSummaryAgent: vi.fn().mockReturnValue({
-    run: vi.fn().mockResolvedValue({
-      success: true,
-      data: {
-        summary: '主角离开家乡，踏上旅途。',
-        characterLocations: { 主角: '路上' },
-        keyItemsLocation: { 护身符: '主角身上' },
-      },
-    }),
-  }),
+  getSummaryAgent: vi.fn().mockReturnValue(createBaseSummaryAgent()),
 }))
-
-vi.mock('../../src/agents/index.js', async () => {
-  const actual = await vi.importActual<typeof import('../../src/agents/index.js')>(
-    '../../src/agents/index.js'
-  )
-  return {
-    ...actual,
-    processSummaryOutput: vi.fn().mockReturnValue({
-      summary: '主角离开家乡，踏上旅途。',
-      storyState: {
-        characterLocations: { 主角: '路上' },
-        keyItemsLocation: { 护身符: '主角身上' },
-        currentScene: '官道',
-        storyTime: '清晨',
-      },
-    }),
-  }
-})
 
 vi.mock('../../src/graph/checkpointer.js', () => ({
   getCheckpointer: vi.fn().mockReturnValue({
@@ -137,7 +131,7 @@ function buildState(
           mandatoryBeats: ['主角离开家乡'],
         },
       ],
-      keyBeats: [],
+      keyBeats: [{ id: 'beat-1', beat: '主角离开家乡', deadlineAct: 1, required: true }],
     },
     actProgress: { 1: { consumed: [], pending: ['主角离开家乡'] } },
     characters: [
@@ -168,6 +162,9 @@ describe('chapter report generation', () => {
       model: { provider: 'openai' as const, model: 'gpt-4o' },
       autoAdjustActBoundaries: false,
     })
+    vi.mocked(getSummaryAgent).mockReturnValue(
+      createBaseSummaryAgent() as unknown as ReturnType<typeof getSummaryAgent>
+    )
 
     tmpDir = path.join(process.cwd(), 'tests', 'tmp', `chapter-report-${Date.now()}`)
     await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
@@ -284,11 +281,6 @@ describe('chapter report generation', () => {
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
     })
-    vi.mocked(processSummaryOutput).mockReturnValueOnce({
-      summary: '主角离开家乡。',
-      storyState: createEmptyStoryState(),
-      verifiedBeats: ['主角离开家乡'],
-    })
 
     const result = await finalize_chapter(createMockContext(), state)
 
@@ -309,16 +301,10 @@ describe('chapter report generation', () => {
     const originalChapterSummaries = [...state.chapterSummaries]
     const originalChapter = structuredClone(state.chapters[0])
 
-    vi.mocked(processSummaryOutput).mockReturnValueOnce({
-      summary: '主角离开家乡。',
-      storyState: createEmptyStoryState(),
-      verifiedBeats: ['主角离开家乡'],
-    })
-
     const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.outline?.[0]?.verifiedBeats).toEqual(['主角离开家乡'])
-    expect(result.chapterSummaries).toEqual(['主角离开家乡。'])
+    expect(result.chapterSummaries).toEqual(['主角离开家乡，踏上旅途。'])
     expect(state.outline).toEqual(originalOutline)
     expect(state.chapterSummaries).toEqual(originalChapterSummaries)
     expect(state.chapters[0]).toEqual(originalChapter)
@@ -332,30 +318,10 @@ describe('chapter report generation', () => {
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
     })
-    vi.mocked(processSummaryOutput).mockReturnValueOnce({
-      summary: '主角离开家乡。',
-      storyState: createEmptyStoryState(),
-      verifiedBeats: ['主角离开家乡'],
-      verifiedBeatEvidence: [
-        {
-          beat: '主角离开家乡',
-          chapterIndex: 0,
-          quote: '主角推开柴门，沿着官道离开家乡',
-          confidence: 'high',
-        },
-      ],
-    })
 
     const result = await finalize_chapter(createMockContext(), state)
 
-    expect(result.outline?.[0]?.verifiedBeatEvidence).toEqual([
-      {
-        beat: '主角离开家乡',
-        chapterIndex: 0,
-        quote: '主角推开柴门，沿着官道离开家乡',
-        confidence: 'high',
-      },
-    ])
+    expect(result.outline?.[0]?.verifiedBeats).toEqual(['主角离开家乡'])
     expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
   })
 
@@ -367,11 +333,15 @@ describe('chapter report generation', () => {
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
     })
-    vi.mocked(processSummaryOutput).mockReturnValueOnce({
-      summary: '主角还在家里收拾行李。',
-      storyState: createEmptyStoryState(),
-      verifiedBeats: [],
-    })
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角还在家里收拾行李。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
 
     const result = await finalize_chapter(createMockContext(), state)
 
@@ -398,11 +368,6 @@ describe('chapter report generation', () => {
         { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
-    })
-    vi.mocked(processSummaryOutput).mockReturnValueOnce({
-      summary: '主角离开家乡。',
-      storyState: createEmptyStoryState(),
-      verifiedBeats: ['主角离开家乡'],
     })
 
     const result = await finalize_chapter(createMockContext(), state)
@@ -468,7 +433,7 @@ describe('chapter report generation', () => {
             mandatoryBeats: ['反派首次施压'],
           },
         ],
-        keyBeats: [],
+        keyBeats: [{ id: 'beat-2', beat: '反派首次施压', deadlineAct: 2, required: true }],
       },
       actProgress: {
         1: { consumed: [], pending: ['主角离开家乡'] },
@@ -489,11 +454,24 @@ describe('chapter report generation', () => {
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
     })
-    vi.mocked(processSummaryOutput).mockReturnValueOnce({
-      summary: '反派首次施压。',
-      storyState: createEmptyStoryState(),
-      verifiedBeats: ['反派首次施压'],
-    })
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '反派首次施压。',
+          storyEvents: [
+            {
+              id: 'evt-2',
+              type: 'plot-advance',
+              plotId: 'plot-1',
+              beatId: 'beat-2',
+              chapterIndex: 1,
+              source: 'chapter',
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
 
     const result = await finalize_chapter(createMockContext(), state)
 
@@ -577,10 +555,19 @@ describe('chapter report generation', () => {
             mandatoryBeats: ['主角反击'],
           },
         ],
-        keyBeats: [],
+        keyBeats: [{ id: 'beat-2', beat: '反派首次施压', deadlineAct: 1, required: true }],
       },
       actProgress: { 1: { consumed: [], pending: ['主角离开家乡', '反派首次施压'] } },
     })
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角继续赶路。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
 
     const result = await finalize_chapter(createMockContext(), state)
 

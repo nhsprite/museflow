@@ -140,6 +140,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 - item-location: <itemId> -> <holderId>
 - item-state: <itemId> / <attribute> -> <value>
 - plot-advance: <plotId> / <beatId>
+- foreshadow-introduce: <foreshadowId> (expectedFulfillChapter)
 - foreshadow-fulfill: <foreshadowId>
 - task-resolve: <taskId>
 - task-create: <taskId> / <description>
