@@ -12,9 +12,17 @@ import type { Issue } from '../../types/agent.js'
 
 function isResolvedActCoverageIssue(issue: Issue, actIndex: number): boolean {
   if (issue.type !== 'outline_coverage') return false
-  if (issue.severity !== 'error') return false
   if (issue.source !== 'outline_compliance') return false
-  return issue.id.startsWith(`unverified-beat-${actIndex}-`)
+  // unverified-beat-{act}-{beatIndex} issues are resolved when the act is extended
+  if (issue.id.startsWith(`unverified-beat-${actIndex}-`)) return true
+  // Auto-extension-limit errors for the adjusted act are resolved by manual adjustment
+  if (
+    issue.severity === 'error' &&
+    issue.description.includes(`第 ${actIndex} 幕自动延长已达到上限`)
+  ) {
+    return true
+  }
+  return false
 }
 
 function ensureOutlineLength(

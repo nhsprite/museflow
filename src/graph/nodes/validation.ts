@@ -194,6 +194,14 @@ export function inferRetryStrategy(issue: Issue): RetryStrategy {
   return 'draft'
 }
 
+/**
+ * 清理过期的 word_count issue。
+ * 字数问题是针对当前章与上一章的瞬时指标，写到后续章节时不应继续携带旧章节的字数警告。
+ */
+export function pruneStaleWordCountIssues(issues: Issue[]): Issue[] {
+  return issues.filter((issue) => issue.type !== 'word_count')
+}
+
 export async function validate_chapter(
   _context: RuntimeContext,
   state: ReducedGraphState
@@ -399,6 +407,11 @@ export async function validate_chapter_comprehensive(
   // 将字数、伏笔、一致性（含质量/幻觉/大纲合规）校验串行聚合为单个图节点，
   // 避免每个 agent 占用一个 LangGraph 步骤，从而防止重写循环时 recursionLimit 被快速耗尽。
   let workingState: ReducedGraphState = { ...state }
+
+  // 字数问题是针对当前章与上一章的瞬时指标，旧章节遗留的字数警告
+  // （如写到第 23 章时仍携带第 10 章的字数差异警告）会变成不可操作的噪音。
+  // 因此在每次综合校验前，先清理既有 word_count issue，再由 validate_chapter 重新生成当前章的相关问题。
+  workingState.pendingIssues = pruneStaleWordCountIssues(workingState.pendingIssues)
 
   function mergePendingIssues(updates: Partial<ReducedGraphState>): void {
     if (updates.pendingIssues) {

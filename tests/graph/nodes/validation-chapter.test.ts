@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { validate_chapter } from '../../../src/graph/nodes/validation.js'
+import { validate_chapter, pruneStaleWordCountIssues } from '../../../src/graph/nodes/validation.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { Issue } from '../../../src/types/agent.js'
 import type { RuntimeContext } from '../../../src/core/context.js'
@@ -64,5 +64,40 @@ describe('validate_chapter', () => {
     expect(result.pendingIssues).toHaveLength(1)
     expect(result.pendingIssues![0]!.type).toBe('word_count')
     expect(result.pendingIssues!.some((i) => i.id === 'old-1')).toBe(false)
+  })
+})
+
+describe('pruneStaleWordCountIssues', () => {
+  it('removes word_count issues while preserving other issues', () => {
+    const staleWordCountIssue: Issue = {
+      id: 'stale-word-count',
+      type: 'word_count',
+      severity: 'warning',
+      description: '第 10 章字数 3367 与上一章 6968 差异超过50%，请检查章节内容是否完整',
+      source: 'word_count',
+    }
+    const otherIssue: Issue = {
+      id: 'other-issue',
+      type: 'consistency',
+      severity: 'warning',
+      description: '其他警告',
+    }
+
+    const result = pruneStaleWordCountIssues([staleWordCountIssue, otherIssue])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.id).toBe('other-issue')
+  })
+
+  it('returns empty array when all issues are word_count', () => {
+    const issues: Issue[] = [
+      {
+        id: 'w1',
+        type: 'word_count',
+        severity: 'warning',
+        description: '字数差异',
+      },
+    ]
+    expect(pruneStaleWordCountIssues(issues)).toHaveLength(0)
   })
 })
