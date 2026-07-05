@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, ModelProvider } from '../../src/model/provider.ts'
 import type { ChapterAgentInput } from '../../src/agents/types.ts'
 import type { Issue } from '../../src/types/agent.ts'
+import type { StoryEvent } from '../../src/types/story-memory.js'
 
 function createMockProvider(chatResponse?: string): ModelProvider {
   return {
@@ -296,6 +297,8 @@ describe('ChapterAgent.parse', () => {
     expect(result.success).toBe(true)
     expect(result.content).toContain('## 第四章 王府递帖')
     expect(result.content).not.toContain('PRE_WRITE_CHECK')
+    expect(result.data?.storyEvents).toBeDefined()
+    expect(result.data?.storyEvents).toEqual([])
   })
 
   it('recognizes Chinese numeral chapter headings', () => {
@@ -324,5 +327,36 @@ describe('ChapterAgent.parse', () => {
     expect(result.success).toBe(true)
     expect(result.content).toContain('## 第4章 王府递帖')
     expect(result.content).not.toContain('预写对齐检查表')
+    expect(result.data?.storyEvents).toBeDefined()
+  })
+
+  it('extracts story events from STORY_EVENTS block', async () => {
+    const raw = `=== PRE_WRITE_CHECK ===
+- 检查项1
+=== STORY_EVENTS ===
+- character-location: char-1 -> loc-1
+- foreshadow-fulfill: fs-1
+- plot-advance: plot-1 / beat-1
+=== CHAPTER_CONTENT ===
+## 第四章 王府递帖
+
+正文内容。`
+    const agent = new TestableChapterAgent(createMockProvider(raw))
+    const result = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 5,
+      chapterIndex: 2,
+    })
+    expect(result.success).toBe(true)
+    expect(result.content).toContain('## 第四章 王府递帖')
+    const events = (result.data as { storyEvents?: StoryEvent[] } | undefined)?.storyEvents ?? []
+    expect(events).toHaveLength(3)
+    expect(events[0]?.type).toBe('character-location')
+    expect(events[1]?.type).toBe('foreshadow-fulfill')
+    expect(events[2]?.type).toBe('plot-advance')
+    expect(events[0]?.chapterIndex).toBe(2)
+    expect(events[1]?.chapterIndex).toBe(2)
+    expect(events[2]?.chapterIndex).toBe(2)
   })
 })
