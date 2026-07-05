@@ -206,6 +206,31 @@ describe('ChapterOutlineAgent', () => {
     expect(result.createdTaskIds).toEqual([])
   })
 
+  it('includes beat budget in the prompt based on act progress', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '过渡',
+        description: '主角整理线索，暂不推进新的强制节拍。',
+        claimedBeats: [],
+      })
+    )
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 20,
+      chapterIndex: 1,
+      storyArc,
+      actProgress: { 1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] } },
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('本章节拍预算')
+    expect(prompt).toContain('最多承载')
+  })
+
   it('propagates conflict flag and reason', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(

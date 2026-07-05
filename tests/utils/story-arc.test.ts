@@ -7,6 +7,7 @@ import {
   validateActBoundaryAdjustment,
   applyActBoundaryAdjustment,
   judgeMandatoryBeatCoverage,
+  calculateBeatBudget,
 } from '../../src/utils/story-arc.js'
 import type { StoryArc } from '../../src/types/outline.js'
 
@@ -352,6 +353,75 @@ describe('story-arc utilities', () => {
       expect(second.applied).toBe(false)
       expect(second.requiresManualResolution).toBe(true)
       expect(second.reason).toContain('全书累计自动延长上限')
+    })
+  })
+
+  describe('calculateBeatBudget', () => {
+    it('caps first chapter to at most 2 beats', () => {
+      const act: ActArc = {
+        index: 1,
+        startChapter: 1,
+        endChapter: 9,
+        title: '入局',
+        theme: '卷入',
+        function: '建立',
+        mandatoryBeats: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+      }
+      expect(calculateBeatBudget(act, 0, ['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toBe(2)
+    })
+
+    it('distributes beats across early chapters without consuming all at once', () => {
+      const act: ActArc = {
+        index: 1,
+        startChapter: 1,
+        endChapter: 9,
+        title: '入局',
+        theme: '卷入',
+        function: '建立',
+        mandatoryBeats: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+      }
+      // Chapter 2 (1-based position 2): 7 pending, 8 remaining, avg 0.875, cap ceil(1.31)=2
+      expect(calculateBeatBudget(act, 1, ['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toBe(2)
+    })
+
+    it('returns 0 when no pending beats remain', () => {
+      const act: ActArc = {
+        index: 1,
+        startChapter: 1,
+        endChapter: 9,
+        title: '入局',
+        theme: '卷入',
+        function: '建立',
+        mandatoryBeats: ['a', 'b'],
+      }
+      expect(calculateBeatBudget(act, 3, [])).toBe(0)
+    })
+
+    it('allows consuming all remaining beats in the last chapter', () => {
+      const act: ActArc = {
+        index: 1,
+        startChapter: 1,
+        endChapter: 5,
+        title: '入局',
+        theme: '卷入',
+        function: '建立',
+        mandatoryBeats: ['a', 'b', 'c'],
+      }
+      // Chapter 5 (position 5): 3 pending, 1 remaining, avg 3, cap 5 -> min(3,5)=3
+      expect(calculateBeatBudget(act, 4, ['a', 'b', 'c'])).toBe(3)
+    })
+
+    it('always allows at least 1 beat when there are pending beats', () => {
+      const act: ActArc = {
+        index: 1,
+        startChapter: 1,
+        endChapter: 9,
+        title: '入局',
+        theme: '卷入',
+        function: '建立',
+        mandatoryBeats: ['a'],
+      }
+      expect(calculateBeatBudget(act, 1, ['a'])).toBe(1)
     })
   })
 })

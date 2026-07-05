@@ -20,6 +20,36 @@ export function isClosingPhase(
   return currentChapterIndex + 1 >= totalChapters * (1 - ratio)
 }
 
+/**
+ * 计算当前章节在当前幕中最多可认领的 mandatory beats 数量。
+ *
+ * 目标：避免幕前期把全部节拍一次性消费完，导致后续章节无节拍可领。
+ * 策略：用“剩余节拍 / 剩余章节”作为平均值，前期允许最多 1.5 倍平均值，
+ * 为后续保留弹性；第一章通常承担启幕功能，最多认领 2 个。
+ */
+export function calculateBeatBudget(
+  act: ActArc,
+  chapterIndex: number,
+  pendingBeats: string[]
+): number {
+  const totalActChapters = act.endChapter - act.startChapter + 1
+  const currentPositionInAct = chapterIndex + 1 - act.startChapter + 1
+  const remainingChapters = Math.max(1, totalActChapters - currentPositionInAct + 1)
+
+  if (pendingBeats.length === 0) {
+    return 0
+  }
+
+  const average = pendingBeats.length / remainingChapters
+  const cap = Math.ceil(average * 1.5)
+
+  if (currentPositionInAct === 1) {
+    return Math.min(pendingBeats.length, Math.max(1, Math.min(cap, 2)))
+  }
+
+  return Math.min(pendingBeats.length, Math.max(1, cap))
+}
+
 export function getVerifiedBeatsFromMemory(memory: StoryMemory): string[] {
   return Object.values(memory.beats)
     .filter((b) => b.provenByEventIds.length > 0)

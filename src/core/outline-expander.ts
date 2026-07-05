@@ -27,7 +27,12 @@ import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.
 import { generateOutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 import type { Conflict } from '../types/story-state.js'
-import { applyActBoundaryAdjustment, proposeActBoundaryAdjustments } from '../utils/story-arc.js'
+import {
+  applyActBoundaryAdjustment,
+  calculateBeatBudget,
+  getActForChapter,
+  proposeActBoundaryAdjustments,
+} from '../utils/story-arc.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
 import {
   createGenericVerifiedConstraint,
@@ -273,12 +278,24 @@ async function generateChapterOutlineIfNeeded(
     state.storyArc,
     chapterIndex
   )
+
+  // 计算本章节拍预算，防止幕前期把全部 mandatory beats 一次性消费完
+  const currentAct = getActForChapter(state.storyArc, chapterIndex)
+  const actProgressForAct = currentAct ? state.actProgress?.[currentAct.index] : undefined
+  const pendingBeats = actProgressForAct?.pending ?? currentAct?.mandatoryBeats ?? []
+  const beatBudget = currentAct ? calculateBeatBudget(currentAct, chapterIndex, pendingBeats) : 0
+  const beatBudgetConstraint =
+    beatBudget > 0
+      ? `【节拍预算】本章属于第 ${currentAct?.index ?? '?'} 幕，剩余 ${pendingBeats.length} 个 mandatory beats、${currentAct ? currentAct.endChapter - (chapterIndex + 1) : 0} 章未写。本章 description 与 claimedBeats 最多承载 ${beatBudget} 个 mandatory beat，严禁在本章内一次性推进本幕其余所有节拍。`
+      : ''
+
   let correctionConstraints: string[] = []
   let result: ChapterOutlineResult | null = null
 
   for (let attempt = 0; attempt < MAX_JIT_OUTLINE_ATTEMPTS; attempt++) {
     const verifiedConstraints = [
       ...renderVerifiedConstraints(baseVerifiedConstraints),
+      ...(beatBudgetConstraint ? [beatBudgetConstraint] : []),
       ...correctionConstraints,
     ]
     const agentState: ChapterOutlineAgentInput = {
@@ -311,9 +328,24 @@ async function generateChapterOutlineIfNeeded(
       )
     }
 
+    const filteredClaimedBeats = filterClaimedBeatsToCurrentAct(
+      candidate.claimedBeats,
+      state,
+      chapterIndex
+    )
+    // 强制执行节拍预算：超出预算时只保留前 N 个 claimedBeats
+    const cappedClaimedBeats =
+      beatBudget > 0 ? filteredClaimedBeats.slice(0, beatBudget) : filteredClaimedBeats
+    if (filteredClaimedBeats.length > cappedClaimedBeats.length) {
+      logger.info(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章声称节拍 ${filteredClaimedBeats.length} 个，超出预算 ${beatBudget} 个，已裁剪为：${cappedClaimedBeats.join('、') || '（无）'}`
+      )
+    }
+
     result = {
       ...candidate,
-      claimedBeats: filterClaimedBeatsToCurrentAct(candidate.claimedBeats, state, chapterIndex),
+      claimedBeats: cappedClaimedBeats,
+      claimedBeatIds: (candidate.claimedBeatIds ?? []).slice(0, cappedClaimedBeats.length),
     }
     break
   }

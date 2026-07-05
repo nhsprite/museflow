@@ -4,7 +4,7 @@ import type { ChapterOutlineAgentInput } from './types.js'
 import type { ChapterOutline, ActArc, StoryArc } from '../types/outline.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
-import { isClosingPhase } from '../utils/story-arc.js'
+import { calculateBeatBudget, isClosingPhase } from '../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import {
   buildChapterOutlineSystemPrompt,
@@ -31,6 +31,10 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
     const actProgress = state.actProgress ?? {}
     const actProgressForAct = act ? actProgress[act.index] : undefined
 
+    const pendingBeats = actProgressForAct?.pending ?? act?.mandatoryBeats ?? []
+    const consumedBeats = actProgressForAct?.consumed ?? []
+    const beatBudget = act ? calculateBeatBudget(act, chapterIndex, pendingBeats) : 0
+
     const actSection = act
       ? `<current_act>
 幕标题：${act.title}
@@ -39,8 +43,9 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
 章节范围：第${act.startChapter}章 – 第${act.endChapter}章
 当前章号：第${displayChapterNumber}章
 本章在该幕中的位置：第 ${chapterIndex + 1 - act.startChapter + 1} / ${act.endChapter - act.startChapter + 1} 章
-尚未消费的 mandatory beats：${(actProgressForAct?.pending ?? act.mandatoryBeats).join('、') || '（无）'}
-已消费的 mandatory beats：${(actProgressForAct?.consumed ?? []).join('、') || '（无）'}
+尚未消费的 mandatory beats：${pendingBeats.join('、') || '（无）'}
+已消费的 mandatory beats：${consumedBeats.join('、') || '（无）'}
+本章节拍预算：${beatBudget > 0 ? `本章 description 最多承载 ${beatBudget} 个 mandatory beat` : '（暂无剩余节拍可领）'}
 </current_act>`
       : '<current_act>（暂无幕信息）</current_act>'
 
