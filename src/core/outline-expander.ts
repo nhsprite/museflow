@@ -327,12 +327,16 @@ async function generateChapterOutlineIfNeeded(
     number: chapterIndex + 1,
     title: result.title,
     description: result.description,
-  }
-  if (result.introducedCharacters && result.introducedCharacters.length > 0) {
-    newOutlineItem.introducedCharacters = result.introducedCharacters
-  }
-  if (result.claimedBeats && result.claimedBeats.length > 0) {
-    newOutlineItem.claimedBeats = result.claimedBeats
+    introducedCharacters: result.introducedCharacters ?? [],
+    claimedBeats: result.claimedBeats ?? [],
+    touchedCharacterIds: result.touchedCharacterIds ?? [],
+    touchedItemIds: result.touchedItemIds ?? [],
+    touchedLocationIds: result.touchedLocationIds ?? [],
+    claimedBeatIds: result.claimedBeatIds ?? [],
+    fulfilledForeshadowIds: result.fulfilledForeshadowIds ?? [],
+    introducedForeshadowIds: result.introducedForeshadowIds ?? [],
+    resolvedTaskIds: result.resolvedTaskIds ?? [],
+    createdTaskIds: result.createdTaskIds ?? [],
   }
   newOutline[chapterIndex] = newOutlineItem
 

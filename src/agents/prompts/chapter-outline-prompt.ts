@@ -42,12 +42,29 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 7. conflict: true 只能用于本章 description 与 <story_state> 或 <canonical_facts> 中已确立事实发生硬冲突的情况，并必须说明冲突的具体事实。
 8. 如果只是本章不适合推进某个 mandatory beat，不要返回 conflict: true；请返回 conflict: false，并从 claimedBeats 中移除该 beat，或改写 description 使其明确承载该 beat。
 9. claimedBeats 只能包含 description 已明确写出具体事件、冲突或状态变化的本幕 mandatory beats，不要强行贴标签。
-10. 输出 JSON 格式：
+10. 除章节内容外，输出下列结构化声明字段（无相关项时为空数组）：
+   - touchedCharacterIds: 本章出现的角色 EntityId 列表
+   - touchedItemIds: 本章出现的物品 EntityId 列表
+   - touchedLocationIds: 本章出现的地点 EntityId 列表
+   - claimedBeatIds: 本章推进的 BeatId 列表
+   - fulfilledForeshadowIds: 本章兑现的 ForeshadowId 列表
+   - introducedForeshadowIds: 本章埋下的 ForeshadowId 列表
+   - resolvedTaskIds: 本章关闭的 TaskId 列表
+   - createdTaskIds: 本章开启的 TaskId 列表
+11. 输出 JSON 格式：
    {
      "title": "章节标题",
      "description": "本章具体执行描述",
      "introducedCharacters": ["新角色名"],
      "claimedBeats": ["本幕 mandatory beat 1"],
+     "touchedCharacterIds": [],
+     "touchedItemIds": [],
+     "touchedLocationIds": [],
+     "claimedBeatIds": [],
+     "fulfilledForeshadowIds": [],
+     "introducedForeshadowIds": [],
+     "resolvedTaskIds": [],
+     "createdTaskIds": [],
      "conflict": false,
      "conflictReason": ""
    }

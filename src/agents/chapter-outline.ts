@@ -112,23 +112,28 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
       return baseError('章节大纲格式错误：缺少 title 或 description')
     }
 
+    const normalizeStringArray = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : []
+
     return {
       success: true,
       data: {
         title: data.title.trim(),
         description: data.description.trim(),
-        introducedCharacters: Array.isArray(data.introducedCharacters)
-          ? data.introducedCharacters.filter(
-              (name): name is string => typeof name === 'string' && name.trim().length > 0
-            )
-          : undefined,
-        claimedBeats: Array.isArray(data.claimedBeats)
-          ? data.claimedBeats.filter(
-              (beat): beat is string => typeof beat === 'string' && beat.trim().length > 0
-            )
-          : undefined,
+        introducedCharacters: normalizeStringArray(data.introducedCharacters),
+        claimedBeats: normalizeStringArray(data.claimedBeats),
         conflict: data.conflict === true,
         conflictReason: data.conflictReason ?? '',
+        touchedCharacterIds: normalizeStringArray(data.touchedCharacterIds),
+        touchedItemIds: normalizeStringArray(data.touchedItemIds),
+        touchedLocationIds: normalizeStringArray(data.touchedLocationIds),
+        claimedBeatIds: normalizeStringArray(data.claimedBeatIds),
+        fulfilledForeshadowIds: normalizeStringArray(data.fulfilledForeshadowIds),
+        introducedForeshadowIds: normalizeStringArray(data.introducedForeshadowIds),
+        resolvedTaskIds: normalizeStringArray(data.resolvedTaskIds),
+        createdTaskIds: normalizeStringArray(data.createdTaskIds),
       },
     }
   }
