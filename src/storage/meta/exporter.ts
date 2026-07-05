@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { StoryMeta } from './index.js'
 import type { Story } from '../../types/story.js'
@@ -9,6 +10,7 @@ import type { ChapterOutline, StoryArc } from '../../types/outline.js'
 import type { ForeshadowItem } from '../../types/foreshadow.js'
 import type { StoryState } from '../../types/story-state.js'
 import type { StateSnapshot } from '../../types/timeline.js'
+import type { StoryMemory } from '../../types/story-memory.js'
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { logger } from '../../utils/logger.js'
@@ -25,6 +27,7 @@ interface CheckpointState {
   foreshadowStack: ForeshadowItem[]
   timeline?: StateSnapshot[] | undefined
   storyState: StoryState
+  storyMemory?: StoryMemory | undefined
 }
 
 function getMetaPath(outputDir: string): string {
@@ -136,4 +139,13 @@ export async function exportMetaFromCheckpoint(
   ensureDir(outputDir)
   writeFileAtomic(getMetaPath(outputDir), JSON.stringify(meta, null, 2))
   logger.debug(`[MuseFlow] Exported meta.json from checkpoint: ${outputDir}`)
+
+  if (state.storyMemory) {
+    await writeFile(
+      join(outputDir, 'story-memory.json'),
+      JSON.stringify(state.storyMemory, null, 2),
+      'utf-8'
+    )
+    logger.debug(`[MuseFlow] Exported story-memory.json from checkpoint: ${outputDir}`)
+  }
 }

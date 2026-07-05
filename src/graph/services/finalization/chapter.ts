@@ -3,7 +3,19 @@ import type { ReducedGraphState } from '../../state.js'
 import type { SummaryAgentInput } from '../../../agents/types.js'
 import { getSummaryAgent } from '../../agent-factory.js'
 import { applyEvents, createEmptyStoryMemory } from '../../../story-memory/projector.js'
-import type { StoryEvent } from '../../../types/story-memory.js'
+import {
+  getActiveForeshadows,
+  getOpenTasks,
+  getUnprovenMandatoryBeats,
+} from '../../../story-memory/queries.js'
+import type {
+  StoryEvent,
+  StoryMemory,
+  ForeshadowId,
+  TaskId,
+  BeatId,
+} from '../../../types/story-memory.js'
+import type { ForeshadowItem } from '../../../types/foreshadow.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import { saveChapterReport } from '../../../storage/meta/stores/chapter-report.js'
 import { getForeshadowAlerts } from '../../../types/foreshadow.js'
@@ -71,6 +83,50 @@ function isSummaryData(
   return (
     typeof data === 'object' && data !== null && ('storyEvents' in data || 'chapterSummary' in data)
   )
+}
+
+function buildVerifiedConstraints(
+  memory: StoryMemory,
+  activeForeshadows: ForeshadowId[],
+  openTasks: TaskId[],
+  unprovenBeats: BeatId[]
+): string[] {
+  const constraints: string[] = []
+  for (const id of activeForeshadows) {
+    const fs = memory.foreshadows[id]
+    if (fs) constraints.push(`未回收伏笔 [${id}]: ${fs.text}`)
+  }
+  for (const id of openTasks) {
+    const task = memory.tasks[id]
+    if (task) constraints.push(`未完成任务 [${id}]: ${task.description}`)
+  }
+  for (const id of unprovenBeats) {
+    const beat = memory.beats[id]
+    if (beat) constraints.push(`未推进节拍 [${id}]: ${beat.description}`)
+  }
+  return constraints
+}
+
+function foreshadowMemoryToItem(
+  memory: import('../../../types/story-memory.js').ForeshadowMemory
+): ForeshadowItem {
+  const item: ForeshadowItem = {
+    id: memory.id,
+    text: memory.text,
+    expectedFulfillChapter: memory.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER,
+    createdAt: 0,
+    createdAtChapter: memory.introducedIn,
+    status: memory.fulfilledIn ? 'recalled' : 'planted',
+    isExplicit: true,
+    required: memory.required,
+  }
+  if (memory.fulfilledIn) {
+    item.fulfilledChapter = memory.fulfilledIn
+  }
+  if (memory.beatId) {
+    item.beatId = memory.beatId
+  }
+  return item
 }
 
 export async function finalizeChapter(
@@ -252,6 +308,30 @@ export async function finalizeChapter(
     }
   }
 
+  let updatedForeshadowStack = state.foreshadowStack
+  let memoryConstraintTexts: string[] = []
+  if (updatedStoryMemory) {
+    const memoryForeshadows = Object.values(updatedStoryMemory.foreshadows)
+    updatedForeshadowStack =
+      memoryForeshadows.length > 0
+        ? memoryForeshadows.map(foreshadowMemoryToItem)
+        : state.foreshadowStack
+    const activeForeshadows = getActiveForeshadows(updatedStoryMemory)
+    const openTasks = getOpenTasks(updatedStoryMemory)
+    const unprovenBeats = getUnprovenMandatoryBeats(updatedStoryMemory)
+    memoryConstraintTexts = buildVerifiedConstraints(
+      updatedStoryMemory,
+      activeForeshadows,
+      openTasks,
+      unprovenBeats
+    )
+    if (memoryConstraintTexts.length > 0) {
+      logger.info(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章生成 ${memoryConstraintTexts.length} 条 StoryMemory 约束`
+      )
+    }
+  }
+
   const currentDisplayChapter = chapterIndex + 1
   if (updatedStoryState) {
     const agedTasks = agePendingTasks(updatedStoryState.pendingTasks, currentDisplayChapter)
@@ -282,10 +362,13 @@ export async function finalizeChapter(
   const updatedTimeline = [...(state.timeline ?? []), snapshot]
 
   const newForeshadowConstraints = generateForeshadowConstraints(
-    state.foreshadowStack,
+    updatedForeshadowStack,
     chapterIndex + 1
   )
-  let updatedVerifiedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints)
+  let updatedVerifiedConstraints =
+    memoryConstraintTexts.length > 0
+      ? memoryConstraintTexts.map(createGenericVerifiedConstraint)
+      : normalizeVerifiedConstraints(state.verifiedConstraints)
   if (newForeshadowConstraints.length > 0) {
     updatedVerifiedConstraints = [
       ...updatedVerifiedConstraints,
@@ -299,6 +382,8 @@ export async function finalizeChapter(
     chapters: updatedChapters,
     chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
+    storyMemory: updatedStoryMemory,
+    foreshadowStack: updatedForeshadowStack,
   }
 
   const {
@@ -421,6 +506,8 @@ export async function finalizeChapter(
     chapters: updatedChapters,
     chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
+    storyMemory: updatedStoryMemory,
+    foreshadowStack: updatedForeshadowStack,
     verifiedConstraints: updatedVerifiedConstraints,
     actProgress: updatedActProgress,
     storyArc: updatedStoryArc ?? null,
@@ -461,6 +548,7 @@ export async function finalizeChapter(
     chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
     storyMemory: updatedStoryMemory,
+    foreshadowStack: updatedForeshadowStack,
     verifiedConstraints: updatedVerifiedConstraints,
     actProgress: updatedActProgress,
     chapterReport,

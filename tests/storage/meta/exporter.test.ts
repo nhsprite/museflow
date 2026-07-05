@@ -145,4 +145,41 @@ describe('exportMetaFromCheckpoint', () => {
 
     expect(existsSync(join(tmpDir, 'meta.json'))).toBe(false)
   })
+
+  it('exports story-memory.json when checkpoint has storyMemory', async () => {
+    const state = createMockState()
+    state.story.outputDir = tmpDir
+    state.storyMemory = {
+      version: '1',
+      lastChapterIndex: 0,
+      entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+      events: [
+        {
+          id: 'evt-1',
+          type: 'plot-advance',
+          plotId: 'p-1',
+          beatId: 'b-1',
+          chapterIndex: 0,
+          source: 'chapter',
+        },
+      ],
+      foreshadows: {},
+      beats: {},
+      tasks: {},
+    }
+
+    getTupleMock.mockResolvedValue({
+      checkpoint: {
+        channel_values: state,
+      },
+    })
+
+    await exportMetaFromCheckpoint(tmpDir)
+
+    const storyMemoryPath = join(tmpDir, 'story-memory.json')
+    expect(existsSync(storyMemoryPath)).toBe(true)
+    const storyMemory = JSON.parse(readFileSync(storyMemoryPath, 'utf-8'))
+    expect(storyMemory.version).toBe('1')
+    expect(storyMemory.events).toHaveLength(1)
+  })
 })
