@@ -1,5 +1,4 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { StoryMeta } from './index.js'
 import type { Story } from '../../types/story.js'
@@ -141,10 +140,9 @@ export async function exportMetaFromCheckpoint(
   logger.debug(`[MuseFlow] Exported meta.json from checkpoint: ${outputDir}`)
 
   if (state.storyMemory) {
-    await writeFile(
+    writeFileAtomic(
       join(outputDir, 'story-memory.json'),
-      JSON.stringify(state.storyMemory, null, 2),
-      'utf-8'
+      JSON.stringify(state.storyMemory, null, 2)
     )
     logger.debug(`[MuseFlow] Exported story-memory.json from checkpoint: ${outputDir}`)
   }
