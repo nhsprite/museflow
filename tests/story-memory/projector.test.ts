@@ -5,7 +5,50 @@ import {
   projectEntities,
   projectMemory,
   applyEvents,
+  computeLastChapterIndex,
 } from '../../src/story-memory/projector.js'
+
+describe('computeLastChapterIndex', () => {
+  it('returns fallback when no events', () => {
+    expect(computeLastChapterIndex([], 5)).toBe(5)
+  })
+
+  it('returns max chapter index when events exist', () => {
+    const events = [
+      {
+        id: 'e1',
+        type: 'character-location' as const,
+        characterId: 'c-1',
+        locationId: 'l-1',
+        chapterIndex: 2,
+        source: 'chapter' as const,
+      },
+      {
+        id: 'e2',
+        type: 'character-location' as const,
+        characterId: 'c-1',
+        locationId: 'l-2',
+        chapterIndex: 7,
+        source: 'chapter' as const,
+      },
+    ]
+    expect(computeLastChapterIndex(events, 3)).toBe(7)
+  })
+
+  it('returns fallback when fallback is greater than event indices', () => {
+    const events = [
+      {
+        id: 'e1',
+        type: 'character-location' as const,
+        characterId: 'c-1',
+        locationId: 'l-1',
+        chapterIndex: 2,
+        source: 'chapter' as const,
+      },
+    ]
+    expect(computeLastChapterIndex(events, 5)).toBe(5)
+  })
+})
 
 describe('projectEntities', () => {
   it('tracks character location changes', () => {
@@ -170,5 +213,99 @@ describe('applyEvents immutability', () => {
     expect(memory.events).toHaveLength(0)
     expect(next).not.toBe(memory)
     expect(next.events).not.toBe(memory.events)
+  })
+})
+
+describe('projectMemory foreshadows', () => {
+  it('tracks foreshadow introduction and fulfillment', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-1',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'e2',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'f-1',
+        chapterIndex: 4,
+        source: 'chapter',
+      },
+    ])
+    expect(next.foreshadows['f-1']?.fulfilledIn).toBe(4)
+  })
+
+  it('handles fulfillment before introduction defensively', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'f-1',
+        chapterIndex: 4,
+        source: 'chapter',
+      },
+    ])
+    expect(next.foreshadows['f-1']?.fulfilledIn).toBe(4)
+    expect(next.foreshadows['f-1']?.introducedIn).toBe(4)
+  })
+})
+
+describe('projectMemory beats', () => {
+  it('tracks plot-advance events', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'plot-advance',
+        plotId: 'p-1',
+        beatId: 'a1-b1',
+        chapterIndex: 2,
+        source: 'chapter',
+      },
+    ])
+    expect(next.beats['a1-b1']?.provenByEventIds).toContain('e1')
+  })
+})
+
+describe('projectMemory tasks', () => {
+  it('tracks task creation and resolution', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'task-create',
+        taskId: 't-1',
+        description: 'find the key',
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+      {
+        id: 'e2',
+        type: 'task-resolve',
+        taskId: 't-1',
+        chapterIndex: 3,
+        source: 'chapter',
+      },
+    ])
+    expect(next.tasks['t-1']?.resolvedIn).toBe(3)
+  })
+
+  it('handles resolution before creation defensively', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'task-resolve',
+        taskId: 't-1',
+        chapterIndex: 3,
+        source: 'chapter',
+      },
+    ])
+    expect(next.tasks['t-1']?.resolvedIn).toBe(3)
   })
 })
