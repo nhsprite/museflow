@@ -54,7 +54,9 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('  当前幕: 第 2 幕「第二幕」（第 4-8 章）')
     expect(logSpy).toHaveBeenCalledWith('  幕内进度: 第 3/5 章，剩余 2 章')
     expect(logSpy).toHaveBeenCalledWith('  节拍进度: 1/3 已消费，剩余 2')
-    expect(logSpy).toHaveBeenCalledWith('  待消费: 节拍三、节拍四')
+    expect(logSpy).toHaveBeenCalledWith('  待消费:')
+    expect(logSpy).toHaveBeenCalledWith('    1. 节拍三')
+    expect(logSpy).toHaveBeenCalledWith('    2. 节拍四')
   })
 
   it('prints updated act progress in the chapter completion report', () => {
@@ -73,6 +75,8 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith(
       '📚 幕进度：第 2 幕，1/3 节拍已消费，剩余 2 个，幕内剩余 2 章'
     )
-    expect(logSpy).toHaveBeenCalledWith('   待消费：节拍三、节拍四')
+    expect(logSpy).toHaveBeenCalledWith('   待消费：')
+    expect(logSpy).toHaveBeenCalledWith('     1. 节拍三')
+    expect(logSpy).toHaveBeenCalledWith('     2. 节拍四')
   })
 })

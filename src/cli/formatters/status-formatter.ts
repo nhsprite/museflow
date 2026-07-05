@@ -98,7 +98,10 @@ export function printChapterProgress(state: ReducedGraphState): void {
     console.log('节拍进度')
     console.log(`已消费: ${arcStatus.beatsConsumed}/${arcStatus.beatsTotal}`)
     if (arcStatus.beatsPending.length > 0) {
-      console.log(`待消费: ${arcStatus.beatsPending.join('、')}`)
+      console.log('待消费:')
+      for (let i = 0; i < arcStatus.beatsPending.length; i++) {
+        console.log(`  ${i + 1}. ${arcStatus.beatsPending[i]}`)
+      }
     }
     if (arcStatus.overdueKeyBeats.length > 0 || arcStatus.upcomingKeyBeats.length > 0) {
       console.log('')

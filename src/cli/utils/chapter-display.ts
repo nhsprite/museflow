@@ -47,7 +47,10 @@ export function printActProgress(
     `  节拍进度: ${arcStatus.beatsConsumed}/${arcStatus.beatsTotal} 已消费，剩余 ${arcStatus.beatsPending.length}`
   )
   if (arcStatus.beatsPending.length > 0) {
-    console.log(`  待消费: ${arcStatus.beatsPending.join('、')}`)
+    console.log('  待消费:')
+    for (let i = 0; i < arcStatus.beatsPending.length; i++) {
+      console.log(`    ${i + 1}. ${arcStatus.beatsPending[i]}`)
+    }
   }
 }
 
@@ -96,7 +99,10 @@ export function printChapterReport(report: ChapterReport | null | undefined): vo
       `📚 幕进度：第 ${progress.actIndex} 幕，${progress.beatsConsumed}/${progress.beatsTotal} 节拍已消费，剩余 ${progress.beatsPending.length} 个，幕内剩余 ${progress.chaptersRemaining} 章`
     )
     if (progress.beatsPending.length > 0) {
-      console.log(`   待消费：${progress.beatsPending.join('、')}`)
+      console.log('   待消费：')
+      for (let i = 0; i < progress.beatsPending.length; i++) {
+        console.log(`     ${i + 1}. ${progress.beatsPending[i]}`)
+      }
     }
   }
 
