@@ -3,14 +3,29 @@ import { validateChapterEvents } from '../../src/story-memory/validator.js'
 import { createEmptyStoryMemory, applyEvents } from '../../src/story-memory/projector.js'
 import type { ChapterPlan } from '../../src/agents/types.js'
 
+function createEmptyChapterPlan(
+  chapterIndex: number,
+  overrides: Partial<ChapterPlan> = {}
+): ChapterPlan {
+  return {
+    chapterIndex,
+    sections: [],
+    timeline: [],
+    outlineCheck: [],
+    expectedEvents: [],
+    claimedBeatIds: [],
+    fulfilledForeshadowIds: [],
+    introducedForeshadowIds: [],
+    resolvedTaskIds: [],
+    createdTaskIds: [],
+    ...overrides,
+  }
+}
+
 describe('validateChapterEvents', () => {
   it('detects missing expected event', () => {
     const memory = createEmptyStoryMemory()
-    const plan: ChapterPlan = {
-      chapterIndex: 1,
-      sections: [],
-      timeline: [],
-      outlineCheck: [],
+    const plan = createEmptyChapterPlan(1, {
       expectedEvents: [
         {
           id: 'e1',
@@ -21,12 +36,7 @@ describe('validateChapterEvents', () => {
           source: 'chapter',
         },
       ],
-      claimedBeatIds: [],
-      fulfilledForeshadowIds: [],
-      introducedForeshadowIds: [],
-      resolvedTaskIds: [],
-      createdTaskIds: [],
-    }
+    })
     const result = validateChapterEvents(memory, 1, plan, [])
     expect(result.missingEvents).toHaveLength(1)
   })
@@ -45,72 +55,32 @@ describe('validateChapterEvents', () => {
     ])
     memory.foreshadows['f-1']!.required = true
 
-    const plan: ChapterPlan = {
-      chapterIndex: 5,
-      sections: [],
-      timeline: [],
-      outlineCheck: [],
-      expectedEvents: [],
-      claimedBeatIds: [],
-      fulfilledForeshadowIds: [],
-      introducedForeshadowIds: [],
-      resolvedTaskIds: [],
-      createdTaskIds: [],
-    }
+    const plan = createEmptyChapterPlan(5)
     const result = validateChapterEvents(memory, 5, plan, [])
     expect(result.overdueForeshadows).toContain('f-1')
   })
 
   it('detects false foreshadow fulfillment claims', () => {
     const memory = createEmptyStoryMemory()
-    const plan: ChapterPlan = {
-      chapterIndex: 2,
-      sections: [],
-      timeline: [],
-      outlineCheck: [],
-      expectedEvents: [],
-      claimedBeatIds: [],
+    const plan = createEmptyChapterPlan(2, {
       fulfilledForeshadowIds: ['f-1'],
-      introducedForeshadowIds: [],
-      resolvedTaskIds: [],
-      createdTaskIds: [],
-    }
+    })
     const result = validateChapterEvents(memory, 2, plan, [])
     expect(result.falseFulfillments).toContain('f-1')
   })
 
   it('detects claimed but unproven beats', () => {
     const memory = createEmptyStoryMemory()
-    const plan: ChapterPlan = {
-      chapterIndex: 2,
-      sections: [],
-      timeline: [],
-      outlineCheck: [],
-      expectedEvents: [],
+    const plan = createEmptyChapterPlan(2, {
       claimedBeatIds: ['a1-b1'],
-      fulfilledForeshadowIds: [],
-      introducedForeshadowIds: [],
-      resolvedTaskIds: [],
-      createdTaskIds: [],
-    }
+    })
     const result = validateChapterEvents(memory, 2, plan, [])
     expect(result.claimedButUnprovenBeats).toContain('a1-b1')
   })
 
   it('detects state conflicts in same chapter', () => {
     const memory = createEmptyStoryMemory()
-    const plan: ChapterPlan = {
-      chapterIndex: 1,
-      sections: [],
-      timeline: [],
-      outlineCheck: [],
-      expectedEvents: [],
-      claimedBeatIds: [],
-      fulfilledForeshadowIds: [],
-      introducedForeshadowIds: [],
-      resolvedTaskIds: [],
-      createdTaskIds: [],
-    }
+    const plan = createEmptyChapterPlan(1)
     const actualEvents = [
       {
         id: 'e1',
@@ -135,18 +105,7 @@ describe('validateChapterEvents', () => {
 
   it('does not report duplicate same-value state events as conflicts', () => {
     const memory = createEmptyStoryMemory()
-    const plan: ChapterPlan = {
-      chapterIndex: 1,
-      sections: [],
-      timeline: [],
-      outlineCheck: [],
-      expectedEvents: [],
-      claimedBeatIds: [],
-      fulfilledForeshadowIds: [],
-      introducedForeshadowIds: [],
-      resolvedTaskIds: [],
-      createdTaskIds: [],
-    }
+    const plan = createEmptyChapterPlan(1)
     const actualEvents = [
       {
         id: 'e1',

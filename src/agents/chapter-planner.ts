@@ -46,7 +46,7 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
   }
 
   protected parse(content: string): AgentOutput {
-    const parsed = parseJsonFromLLM<ChapterPlan>(content)
+    const parsed = parseJsonFromLLM<Partial<ChapterPlan>>(content)
     if (!parsed.success) {
       logger.error('[MuseFlow] 章节规划 JSON 解析失败')
       return { success: false, error: parsed.error ?? '无法解析规划数据：JSON 格式错误' }
@@ -72,6 +72,24 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
         logger.warn(`  - ${u.requirement}`)
       }
     }
-    return { success: true, data }
+    const plan: ChapterPlan = {
+      chapterIndex: data.chapterIndex ?? 0,
+      sections: data.sections,
+      timeline: data.timeline,
+      outlineCheck: data.outlineCheck,
+      expectedEvents: data.expectedEvents ?? [],
+      claimedBeatIds: data.claimedBeatIds ?? [],
+      fulfilledForeshadowIds: data.fulfilledForeshadowIds ?? [],
+      introducedForeshadowIds: data.introducedForeshadowIds ?? [],
+      resolvedTaskIds: data.resolvedTaskIds ?? [],
+      createdTaskIds: data.createdTaskIds ?? [],
+    }
+    if (data.taskResolutions !== undefined) {
+      plan.taskResolutions = data.taskResolutions
+    }
+    if (data.chapterTimeAnchor !== undefined) {
+      plan.chapterTimeAnchor = data.chapterTimeAnchor
+    }
+    return { success: true, data: plan }
   }
 }

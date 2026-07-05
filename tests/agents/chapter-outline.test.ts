@@ -35,7 +35,7 @@ describe('ChapterOutlineAgent', () => {
         mandatoryBeats: ['主角找到盟友'],
       },
     ],
-    keyBeats: [{ beat: '核心秘密被主角获悉', deadlineAct: 1 }],
+    keyBeats: [{ id: 'A1-B1', beat: '核心秘密被主角获悉', deadlineAct: 1, required: true }],
   }
 
   it('parses chapter outline with claimed beats', async () => {

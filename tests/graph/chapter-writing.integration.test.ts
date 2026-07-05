@@ -33,7 +33,7 @@ function createMockContext(): RuntimeContext {
 vi.mock('../../src/core/outline-expander.js', () => ({
   expandOutlineForChapter: vi.fn(async (_state: ReducedGraphState, chapterIndex: number) => ({
     chapterPlan: {
-      chapterNumber: chapterIndex + 1,
+      chapterIndex,
       sections: [
         {
           title: '开端',
@@ -45,6 +45,12 @@ vi.mock('../../src/core/outline-expander.js', () => ({
       ],
       timeline: [],
       outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
     } as ChapterPlan,
     boundaryHints: [],
     pendingIssues: [],

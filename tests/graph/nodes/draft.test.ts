@@ -13,7 +13,18 @@ const chapterAgentRunMock = vi.fn(async () => ({
 
 vi.mock('../../../src/core/outline-expander.js', () => ({
   expandOutlineForChapter: vi.fn(async () => ({
-    chapterPlan: { sections: [], timeline: [], outlineCheck: [] },
+    chapterPlan: {
+      chapterIndex: 0,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    },
     boundaryHints: [],
     pendingIssues: [],
   })),
@@ -91,7 +102,18 @@ describe('draft_chapter output validation', () => {
       } as unknown as ReducedGraphState
       const updatedOutline = [{ number: 1, title: '即时标题', description: '即时生成描述' }]
       vi.mocked(expandOutlineForChapter).mockResolvedValueOnce({
-        chapterPlan: { sections: [], timeline: [], outlineCheck: [] },
+        chapterPlan: {
+          chapterIndex: 0,
+          sections: [],
+          timeline: [],
+          outlineCheck: [],
+          expectedEvents: [],
+          claimedBeatIds: [],
+          fulfilledForeshadowIds: [],
+          introducedForeshadowIds: [],
+          resolvedTaskIds: [],
+          createdTaskIds: [],
+        },
         boundaryHints: [],
         pendingIssues: [],
         outline: updatedOutline,

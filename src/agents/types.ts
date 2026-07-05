@@ -4,6 +4,7 @@ import type { Character } from '../types/character.js'
 import type { CanonicalFact } from '../types/story-state.js'
 import type { StoryArc } from '../types/outline.js'
 import type { WorldDirection } from '../types/story.js'
+import type { StoryEvent, BeatId, ForeshadowId, TaskId } from '../types/story-memory.js'
 
 export interface ParagraphFix {
   index: number
@@ -19,6 +20,7 @@ export interface SentenceFix {
 }
 
 export interface ChapterPlan {
+  chapterIndex: number
   sections: Array<{
     title: string
     summary: string
@@ -46,6 +48,14 @@ export interface ChapterPlan {
     section?: string
   }>
   chapterTimeAnchor?: string
+
+  // 新增结构化声明
+  expectedEvents: StoryEvent[]
+  claimedBeatIds: BeatId[]
+  fulfilledForeshadowIds: ForeshadowId[]
+  introducedForeshadowIds: ForeshadowId[]
+  resolvedTaskIds: TaskId[]
+  createdTaskIds: TaskId[]
 }
 
 export interface AgentOutput {

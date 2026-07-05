@@ -41,6 +41,17 @@ export class StoryArcAgent extends BaseAgent<StoryArcAgentInput> {
       data.keyBeats = []
     }
 
+    data.keyBeats = data.keyBeats.map((beat, i) => {
+      const deadlineAct = beat.deadlineAct || 1
+      return {
+        ...beat,
+        beat: beat.beat || '',
+        deadlineAct,
+        id: beat.id || `A${deadlineAct}-B${i + 1}`,
+        required: beat.required ?? true,
+      }
+    })
+
     const normalizedActs = data.acts.map((act, i) => ({
       index: act.index ?? i + 1,
       startChapter: act.startChapter ?? 1,

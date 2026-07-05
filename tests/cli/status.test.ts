@@ -152,7 +152,7 @@ describe('status command chapter display', () => {
           mandatoryBeats: ['核心秘密揭晓'],
         },
       ],
-      keyBeats: [{ beat: '核心秘密揭晓', deadlineAct: 1 }],
+      keyBeats: [{ id: 'A1-B1', beat: '核心秘密揭晓', deadlineAct: 1, required: true }],
     }
     state.actProgress = {
       1: { consumed: ['主角出发'], pending: [] },

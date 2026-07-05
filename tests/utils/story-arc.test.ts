@@ -52,8 +52,8 @@ function makeStoryArc(): StoryArc {
       },
     ],
     keyBeats: [
-      { beat: '核心秘密被主角获悉', deadlineAct: 2 },
-      { beat: '最终对决', deadlineAct: 4 },
+      { id: 'A2-B1', beat: '核心秘密被主角获悉', deadlineAct: 2, required: true },
+      { id: 'A4-B1', beat: '最终对决', deadlineAct: 4, required: true },
     ],
   }
 }

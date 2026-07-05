@@ -1,5 +1,5 @@
 import type { StoryState } from '../types/story-state.js'
-import type { StoryMemory, StoryEvent, EntityId, TaskId } from '../types/story-memory.js'
+import type { StoryMemory, StoryEvent } from '../types/story-memory.js'
 import { createEmptyStoryMemory, applyEvents } from './projector.js'
 
 /**
@@ -19,7 +19,7 @@ export function migrateFromStoryState(
     events.push({
       id: `mig-c${currentChapterIndex}-charloc-${characterId}`,
       type: 'character-location',
-      characterId: characterId as EntityId,
+      characterId,
       locationId: locationId || null,
       chapterIndex: currentChapterIndex,
       source: 'chapter',
@@ -30,7 +30,7 @@ export function migrateFromStoryState(
     events.push({
       id: `mig-c${currentChapterIndex}-charstatus-${characterId}`,
       type: 'character-status',
-      characterId: characterId as EntityId,
+      characterId,
       attribute: 'status',
       value: statusValue,
       chapterIndex: currentChapterIndex,
@@ -42,7 +42,7 @@ export function migrateFromStoryState(
     events.push({
       id: `mig-c${currentChapterIndex}-itemloc-${itemId}`,
       type: 'item-location',
-      itemId: itemId as EntityId,
+      itemId,
       holderId: null,
       locationId: locationId || null,
       chapterIndex: currentChapterIndex,
@@ -54,7 +54,7 @@ export function migrateFromStoryState(
     events.push({
       id: `mig-c${currentChapterIndex}-itemstate-${itemId}`,
       type: 'item-state',
-      itemId: itemId as EntityId,
+      itemId,
       attribute: 'state',
       value: stateValue,
       chapterIndex: currentChapterIndex,
@@ -66,7 +66,7 @@ export function migrateFromStoryState(
     events.push({
       id: `mig-c${currentChapterIndex}-task-${task.id}`,
       type: 'task-create',
-      taskId: task.id as TaskId,
+      taskId: task.id,
       description: task.description,
       chapterIndex: task.createdChapter,
       source: 'chapter',
@@ -75,7 +75,7 @@ export function migrateFromStoryState(
       events.push({
         id: `mig-c${currentChapterIndex}-taskresolve-${task.id}`,
         type: 'task-resolve',
-        taskId: task.id as TaskId,
+        taskId: task.id,
         chapterIndex: currentChapterIndex,
         source: 'chapter',
       })

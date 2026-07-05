@@ -1,22 +1,6 @@
-import type {
-  StoryMemory,
-  StoryEvent,
-  ForeshadowId,
-  BeatId,
-  TaskId,
-} from '../types/story-memory.js'
+import type { StoryMemory, StoryEvent, ForeshadowId, BeatId } from '../types/story-memory.js'
 import type { ChapterPlan } from '../agents/types.js'
 import { diffEvents } from './diff.js'
-
-interface StructuredChapterPlan extends ChapterPlan {
-  chapterIndex?: number
-  expectedEvents?: StoryEvent[]
-  fulfilledForeshadowIds?: ForeshadowId[]
-  introducedForeshadowIds?: ForeshadowId[]
-  resolvedTaskIds?: TaskId[]
-  createdTaskIds?: TaskId[]
-  claimedBeatIds?: BeatId[]
-}
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -48,11 +32,8 @@ export function validateChapterEvents(
   plan: ChapterPlan,
   actualEvents: StoryEvent[]
 ): StructuredValidationResult {
-  const structuredPlan = plan as StructuredChapterPlan
   const chapterActual = actualEvents.filter((e) => e.chapterIndex === chapterIndex)
-  const chapterExpected = (structuredPlan.expectedEvents ?? []).filter(
-    (e) => e.chapterIndex === chapterIndex
-  )
+  const chapterExpected = (plan.expectedEvents ?? []).filter((e) => e.chapterIndex === chapterIndex)
 
   const { missing, unexpected } = diffEvents(chapterExpected, chapterActual)
 
@@ -79,7 +60,7 @@ export function validateChapterEvents(
     }
   }
 
-  for (const id of structuredPlan.fulfilledForeshadowIds ?? []) {
+  for (const id of plan.fulfilledForeshadowIds ?? []) {
     const actualFulfilled = chapterActual.some(
       (e) => e.type === 'foreshadow-fulfill' && e.foreshadowId === id
     )
@@ -97,7 +78,7 @@ export function validateChapterEvents(
     }
   }
 
-  for (const id of structuredPlan.claimedBeatIds ?? []) {
+  for (const id of plan.claimedBeatIds ?? []) {
     const proven = (memory.beats[id]?.provenByEventIds.length ?? 0) > 0
     if (!proven) {
       claimedButUnprovenBeats.push(id)

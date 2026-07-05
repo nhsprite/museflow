@@ -103,7 +103,18 @@ describe('layered outline flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     expandOutlineMock.mockResolvedValue({
-      chapterPlan: { sections: [] },
+      chapterPlan: {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
       boundaryHints: [],
     })
     runAgentMock.mockReturnValue('chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600))
