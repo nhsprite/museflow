@@ -85,4 +85,41 @@ describe('migrateFromStoryState', () => {
     const memory = migrateFromStoryState(state, 3)
     expect(memory.tasks['t-1']?.resolvedIn).toBe(3)
   })
+
+  it('migrates character status', () => {
+    const state: StoryState = {
+      characterLocations: {},
+      characterStatus: { 'c-1': 'injured' },
+      keyItemsLocation: {},
+      keyItemsState: {},
+      activePlots: [],
+      revealedSecrets: [],
+      pendingTasks: [],
+      currentScene: '',
+      storyTime: '',
+    }
+    const memory = migrateFromStoryState(state, 2)
+    expect(memory.entities.characters['c-1']?.status['status']).toBe('injured')
+  })
+
+  it('produces unique event ids across repeated migrations', () => {
+    const state: StoryState = {
+      characterLocations: { 'c-1': 'l-1' },
+      characterStatus: {},
+      keyItemsLocation: {},
+      keyItemsState: {},
+      activePlots: [],
+      revealedSecrets: [],
+      pendingTasks: [],
+      currentScene: '',
+      storyTime: '',
+    }
+    const memory3 = migrateFromStoryState(state, 3)
+    const memory5 = migrateFromStoryState(state, 5)
+    const ids3 = new Set(memory3.events.map((e) => e.id))
+    const ids5 = new Set(memory5.events.map((e) => e.id))
+    for (const id of ids5) {
+      expect(ids3.has(id)).toBe(false)
+    }
+  })
 })

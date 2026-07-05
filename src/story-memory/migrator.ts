@@ -2,6 +2,13 @@ import type { StoryState } from '../types/story-state.js'
 import type { StoryMemory, StoryEvent, EntityId, TaskId } from '../types/story-memory.js'
 import { createEmptyStoryMemory, applyEvents } from './projector.js'
 
+/**
+ * Migrate core runtime state from the old StoryState snapshot to StoryMemory.
+ *
+ * Scope: character locations/status, item locations/state, and pending tasks.
+ * Not migrated (kept in StoryState or deferred): activePlots, revealedSecrets,
+ * chapterHandoff, canonicalFacts, supersededFacts, overrides.
+ */
 export function migrateFromStoryState(
   storyState: StoryState,
   currentChapterIndex: number
@@ -10,7 +17,7 @@ export function migrateFromStoryState(
 
   for (const [characterId, locationId] of Object.entries(storyState.characterLocations)) {
     events.push({
-      id: `mig-charloc-${characterId}`,
+      id: `mig-c${currentChapterIndex}-charloc-${characterId}`,
       type: 'character-location',
       characterId: characterId as EntityId,
       locationId: locationId || null,
@@ -21,7 +28,7 @@ export function migrateFromStoryState(
 
   for (const [characterId, statusValue] of Object.entries(storyState.characterStatus)) {
     events.push({
-      id: `mig-charstatus-${characterId}`,
+      id: `mig-c${currentChapterIndex}-charstatus-${characterId}`,
       type: 'character-status',
       characterId: characterId as EntityId,
       attribute: 'status',
@@ -33,7 +40,7 @@ export function migrateFromStoryState(
 
   for (const [itemId, locationId] of Object.entries(storyState.keyItemsLocation)) {
     events.push({
-      id: `mig-itemloc-${itemId}`,
+      id: `mig-c${currentChapterIndex}-itemloc-${itemId}`,
       type: 'item-location',
       itemId: itemId as EntityId,
       holderId: null,
@@ -45,7 +52,7 @@ export function migrateFromStoryState(
 
   for (const [itemId, stateValue] of Object.entries(storyState.keyItemsState)) {
     events.push({
-      id: `mig-itemstate-${itemId}`,
+      id: `mig-c${currentChapterIndex}-itemstate-${itemId}`,
       type: 'item-state',
       itemId: itemId as EntityId,
       attribute: 'state',
@@ -57,7 +64,7 @@ export function migrateFromStoryState(
 
   for (const task of storyState.pendingTasks ?? []) {
     events.push({
-      id: `mig-task-${task.id}`,
+      id: `mig-c${currentChapterIndex}-task-${task.id}`,
       type: 'task-create',
       taskId: task.id as TaskId,
       description: task.description,
@@ -66,7 +73,7 @@ export function migrateFromStoryState(
     })
     if (task.status === 'done') {
       events.push({
-        id: `mig-taskresolve-${task.id}`,
+        id: `mig-c${currentChapterIndex}-taskresolve-${task.id}`,
         type: 'task-resolve',
         taskId: task.id as TaskId,
         chapterIndex: currentChapterIndex,
