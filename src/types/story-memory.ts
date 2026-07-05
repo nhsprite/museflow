@@ -2,6 +2,7 @@ export type EntityId = string
 export type ForeshadowId = string
 export type BeatId = string
 export type TaskId = string
+export type EventId = string
 
 export interface StoryMemory {
   version: '1'
@@ -11,6 +12,7 @@ export interface StoryMemory {
     items: Record<EntityId, ItemMemory>
     locations: Record<EntityId, LocationMemory>
     factions: Record<EntityId, FactionMemory>
+    plots: Record<EntityId, PlotMemory>
   }
   events: StoryEvent[]
   foreshadows: Record<ForeshadowId, ForeshadowMemory>
@@ -19,7 +21,7 @@ export interface StoryMemory {
 }
 
 interface BaseEvent {
-  id: string
+  id: EventId
   chapterIndex: number
   source: 'outline' | 'chapter'
 }
@@ -114,6 +116,12 @@ export interface LocationMemory {
 }
 
 export interface FactionMemory {
+  id: EntityId
+  name: string
+  introducedIn: number
+}
+
+export interface PlotMemory {
   id: EntityId
   name: string
   introducedIn: number
