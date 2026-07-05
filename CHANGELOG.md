@@ -4,6 +4,16 @@ All notable changes to MuseFlow releases are documented in this file.
 
 This project follows semantic versioning. Dates use `YYYY-MM-DD`.
 
+## [1.0.1] - 2026-07-05
+
+### Added
+
+- Added a generic diversity constraint to title option generation so candidate titles use distinct imagery and avoid repeating the same word or metaphor across options.
+
+### Fixed
+
+- Fixed `start` command crash where Commander passed its `Command` instance as `RuntimeContext`, causing `provider` to be `undefined` and `chatStructured` to fail.
+
 ## [1.0.0] - 2026-07-04
 
 ### Added

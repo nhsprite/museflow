@@ -1,6 +1,6 @@
 {
   "name": "museflow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI Native 长篇小说生成工具 - 端到端 AI 写作助手",
   "type": "module",
   "author": "nihao.sensation@gmail.com",
