@@ -89,7 +89,7 @@ export interface ChapterAgentContext {
   chapterTimeAnchor?: string
 }
 
-export function buildChapterContract(
+function buildChapterContract(
   state: ReducedGraphState,
   chapterIndex: number,
   reconciledState: NonNullable<ReducedGraphState['storyState']>

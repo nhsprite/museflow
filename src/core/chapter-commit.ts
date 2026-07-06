@@ -2,17 +2,17 @@ import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../graph/state.js'
 import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 
-export interface ChapterCommitGraph {
+interface ChapterCommitGraph {
   getState(config: RunnableConfig): Promise<{
     config?: RunnableConfig
   }>
 }
 
-export interface ChapterCommitCheckpointService {
+interface ChapterCommitCheckpointService {
   saveChapterMarker(chapterNumber: number, checkpointId: string): Promise<void>
 }
 
-export interface ChapterCommitInput {
+interface ChapterCommitInput {
   result: ReducedGraphState
   graph: ChapterCommitGraph
   config: RunnableConfig

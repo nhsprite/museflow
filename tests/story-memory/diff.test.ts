@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { diffEvents, diffMemorySnapshots } from '../../src/story-memory/diff.js'
 import { createEmptyStoryMemory, applyEvents } from '../../src/story-memory/projector.js'
-import {
-  diffEvents as diffEventsFromIndex,
-  diffMemorySnapshots as diffMemorySnapshotsFromIndex,
-} from '../../src/story-memory/index.js'
 
 describe('diffEvents', () => {
   it('detects missing events', () => {
@@ -313,12 +309,5 @@ describe('diffMemorySnapshots', () => {
     const diff = diffMemorySnapshots(before, after)
     expect(diff.characterLocations).toHaveLength(1)
     expect(diff.characterLocations[0]?.after).toBe('l-2')
-  })
-})
-
-describe('public exports', () => {
-  it('exports diff functions from story-memory index', () => {
-    expect(diffEventsFromIndex).toBeDefined()
-    expect(diffMemorySnapshotsFromIndex).toBeDefined()
   })
 })

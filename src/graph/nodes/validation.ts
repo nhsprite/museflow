@@ -141,7 +141,7 @@ async function judgeChapterOpeningContinuity(
  * 当前仅跟踪以下维度：角色位置、物品持有者、物品位置、新引入/兑现的伏笔、
  * 新建/解决的任务。未来可扩展状态（status/state）和节拍（beat）等维度。
  */
-export function checkContinuityWithMemory(
+function checkContinuityWithMemory(
   previousMemory: StoryMemory,
   currentMemory: StoryMemory
 ): string[] {

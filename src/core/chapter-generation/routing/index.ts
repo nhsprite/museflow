@@ -13,13 +13,6 @@ import { classifyIssues, decideRepairApproach } from './fix-policy.js'
 import { issueFingerprint } from '../../../utils/issue-deduplication.js'
 
 export * from './types.js'
-export {
-  applyIssuePolicy,
-  capNonErrorIssuesByType,
-  calculateIssueSetSimilarity,
-} from './issue-policy.js'
-export { applyRewritePolicy, buildVerifiedConstraints } from './rewrite-policy.js'
-export { classifyIssues, decideRepairApproach } from './fix-policy.js'
 
 export interface RoutingDeps {
   issuePolicy: IssuePolicyDeps

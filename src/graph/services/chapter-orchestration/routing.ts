@@ -22,12 +22,11 @@ import {
 } from '../../../utils/issue-deduplication.js'
 import {
   decideNextStep,
-  capNonErrorIssuesByType,
-  calculateIssueSetSimilarity,
   type ChapterSession,
   type RoutingContext,
   type RoutingDeps,
 } from '../../../core/chapter-generation/routing/index.js'
+import { calculateIssueSetSimilarity } from '../../../core/chapter-generation/routing/issue-policy.js'
 import type { RoutingDecision, RewriteRoutingConfig } from './types.js'
 import { DEFAULT_REWRITE_ROUTING_CONFIG } from './types.js'
 import type { RuntimeContext } from '../../../core/context.js'
@@ -337,9 +336,3 @@ export function routeAfterFinalize(state: ReducedGraphState): string {
 export function routeMode(state: ReducedGraphState): string {
   return state.isWriting ? 'prepare_chapter' : 'build_world'
 }
-
-export { capNonErrorIssuesByType }
-export {
-  calculateIssueSetSimilarity,
-  buildVerifiedConstraints,
-} from '../../../core/chapter-generation/routing/index.js'

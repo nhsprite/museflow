@@ -6,11 +6,7 @@ export { CROSS_CHAPTER_CONTINUITY_RULES } from './continuity.js'
 export { FORESHADOW_BOUNDARY_RULES, FORESHADOW_DISCIPLINE_RULES } from './foreshadow.js'
 export { CHAPTER_OUTPUT_RULES } from './chapter-output.js'
 export { FIX_OUTPUT_RULES, SEVERITY_INSTRUCTIONS } from './fix-output.js'
-export {
-  OFFICIAL_CHARACTER_RULES,
-  buildCharacterWhitelistSection,
-  type CharacterWhitelistInput,
-} from './characters.js'
+export { OFFICIAL_CHARACTER_RULES, buildCharacterWhitelistSection } from './characters.js'
 export { STATE_AUTHORITY_RULES } from './state-authority.js'
 export { ABSTRACT_OUTCOME_RULES } from './abstract-outcome.js'
 export { PENDING_TASK_AUTHORITY_RULES } from './pending-tasks.js'

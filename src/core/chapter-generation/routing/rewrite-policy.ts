@@ -8,7 +8,7 @@ function buildConstraintFromIssue(issue: Issue): string {
   }${issue.suggestion ? `；修复方向：${issue.suggestion}` : ''}`
 }
 
-export async function buildVerifiedConstraints(
+async function buildVerifiedConstraints(
   previousIssues: Issue[],
   currentIssues: Issue[],
   isInterpretiveIssue: (issue: Issue) => Promise<boolean> | boolean,
