@@ -257,6 +257,49 @@ describe('finalizeChapter', () => {
     expect(provider.chat).not.toHaveBeenCalled()
   })
 
+  it('replaces stale unverified-beat warnings instead of stacking duplicates', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角还在家里收拾行李。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const state = buildState(tmpDir, {
+      outline: [
+        {
+          number: 1,
+          title: '启程',
+          description: '主角离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+        },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+      pendingIssues: [
+        {
+          id: 'unverified-beat-1-0',
+          type: 'outline_coverage',
+          severity: 'warning',
+          description:
+            '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
+          suggestion: '请在后续章节中确保该 beat 被明确确立。',
+        },
+      ],
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    const warnings = result.pendingIssues?.filter(
+      (i) => i.id === 'unverified-beat-1-0' && i.type === 'outline_coverage'
+    )
+    expect(warnings).toHaveLength(1)
+  })
+
   it('does not advance chapter index and requests rewrite when act boundary adjustment requires manual resolution', async () => {
     vi.mocked(proposeActBoundaryAdjustments).mockReturnValueOnce([
       {

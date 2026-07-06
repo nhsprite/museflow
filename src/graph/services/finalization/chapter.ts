@@ -466,10 +466,14 @@ export async function finalizeChapter(
     ]
   }
 
-  let updatedPendingIssues =
-    beatVerificationIssues && beatVerificationIssues.length > 0
-      ? [...state.pendingIssues, ...beatVerificationIssues]
-      : state.pendingIssues
+  // Avoid stacking duplicate unverified-beat warnings across chapters. The
+  // issue IDs are deterministic, so replace any previous warning for the same
+  // act/beat with the current chapter's assessment.
+  const newIssueIds = new Set(beatVerificationIssues?.map((i) => i.id) ?? [])
+  let updatedPendingIssues = state.pendingIssues.filter((i) => !newIssueIds.has(i.id))
+  if (beatVerificationIssues && beatVerificationIssues.length > 0) {
+    updatedPendingIssues = [...updatedPendingIssues, ...beatVerificationIssues]
+  }
   updatedPendingIssues = pruneResolvedOutlineCoverageIssues(
     updatedPendingIssues,
     state.storyArc,
