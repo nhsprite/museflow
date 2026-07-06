@@ -510,4 +510,72 @@ describe('runner revalidation', () => {
     expect(memory.entities.characters['甲']?.locationId).toBe('北京')
     expect(memory.lastChapterIndex).toBe(0)
   })
+
+  it('resets target and future mandatory beat progress during rewrite', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        totalChapters: 3,
+        storyArc: {
+          totalChapters: 3,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 3,
+              title: 'Act',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-a', 'beat-b', 'beat-c'],
+            },
+          ],
+          keyBeats: [
+            { id: 'kb-a', beat: 'beat-a', deadlineAct: 1, required: true },
+            { id: 'kb-b', beat: 'beat-b', deadlineAct: 1, required: true },
+            { id: 'kb-c', beat: 'beat-c', deadlineAct: 1, required: true },
+          ],
+        },
+        outline: [
+          { number: 1, title: 'Chapter 1', description: 'Desc 1', verifiedBeats: ['beat-a'] },
+          {
+            number: 2,
+            title: 'Chapter 2',
+            description: 'Desc 2',
+            verifiedBeats: ['beat-b'],
+            verifiedBeatEvidence: [
+              { beat: 'beat-b', chapterIndex: 1, quote: 'evidence', confidence: 'high' },
+            ],
+          },
+          { number: 3, title: 'Chapter 3', description: 'Desc 3', verifiedBeats: ['beat-c'] },
+        ],
+        actProgress: {
+          1: { consumed: ['beat-a', 'beat-b', 'beat-c'], pending: [] },
+        },
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter(
+      'story-1',
+      {
+        mode: 'rewrite',
+        targetChapterIndex: 1,
+        userResponse: true,
+      },
+      createMockContext()
+    )
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    expect(invokedState.outline[0]?.verifiedBeats).toEqual(['beat-a'])
+    expect(invokedState.outline[1]?.verifiedBeats).toBeUndefined()
+    expect(invokedState.outline[1]?.verifiedBeatEvidence).toBeUndefined()
+    expect(invokedState.outline[2]?.verifiedBeats).toBeUndefined()
+    expect(invokedState.actProgress?.[1]).toEqual({
+      consumed: ['beat-a'],
+      pending: ['beat-b', 'beat-c'],
+    })
+  })
 })

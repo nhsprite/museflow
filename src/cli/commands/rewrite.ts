@@ -1,5 +1,6 @@
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { runOneChapter, getState } from '../../core/runner.js'
+import { prepareRewritePreviewState } from '../../core/rewrite-state.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import {
@@ -29,11 +30,12 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
       process.exit(1)
     }
     const targetIndex = targetChapter - 1
+    const previewState = prepareRewritePreviewState(state, targetIndex)
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
     console.log(`  目标章节: ${targetChapter}/${state.totalChapters}`)
     console.log(`  原当前章节: ${state.currentChapterIndex + 1}`)
-    printActProgress(state, targetIndex)
-    const outlineItem = state.outline[targetIndex]
+    printActProgress(previewState, targetIndex)
+    const outlineItem = previewState.outline[targetIndex]
     printChapterOutline(outlineItem, targetIndex)
     await handleRewrite(storyId, true, targetIndex)
     return
@@ -51,10 +53,11 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
       ? state.currentChapterIndex
       : Math.max(0, state.currentChapterIndex - 1)
     const chapterNum = targetChapterIndex + 1
+    const previewState = prepareRewritePreviewState(state, targetChapterIndex)
     console.log('[MuseFlow] 重写章节: ', story.title)
     console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
-    printActProgress(state, targetChapterIndex)
-    const outlineItem = state.outline[targetChapterIndex]
+    printActProgress(previewState, targetChapterIndex)
+    const outlineItem = previewState.outline[targetChapterIndex]
     printChapterOutline(outlineItem, targetChapterIndex)
     console.log('[MuseFlow] 发现以下问题:')
     for (const issue of state.pendingIssues) {
@@ -66,12 +69,14 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     }
     console.log()
   } else {
-    const chapterNum = state.currentChapterIndex + 1
+    targetChapterIndex = state.currentChapterIndex
+    const chapterNum = targetChapterIndex + 1
+    const previewState = prepareRewritePreviewState(state, targetChapterIndex)
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
     console.log(`  目标章节: ${chapterNum}/${state.totalChapters}`)
-    printActProgress(state, state.currentChapterIndex)
-    const outlineItem = state.outline[state.currentChapterIndex]
-    printChapterOutline(outlineItem, state.currentChapterIndex)
+    printActProgress(previewState, targetChapterIndex)
+    const outlineItem = previewState.outline[targetChapterIndex]
+    printChapterOutline(outlineItem, targetChapterIndex)
     console.log('[MuseFlow] 当前章节没有已知问题，确认重写？')
     const answer = await question('  输入 y 确认重写，输入 n 取消 > ')
     const confirm = answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes'

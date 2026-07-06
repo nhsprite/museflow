@@ -469,6 +469,66 @@ describe('rewrite command state consistency', () => {
     logSpy.mockRestore()
   })
 
+  it('prints rewrite progress from the target chapter base state', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: testTempDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 3,
+      world: null,
+      characters: [],
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 3,
+            title: 'Act',
+            theme: '',
+            function: '',
+            mandatoryBeats: ['beat-a', 'beat-b', 'beat-c'],
+          },
+        ],
+        keyBeats: [
+          { id: 'kb-a', beat: 'beat-a', deadlineAct: 1, required: true },
+          { id: 'kb-b', beat: 'beat-b', deadlineAct: 1, required: true },
+          { id: 'kb-c', beat: 'beat-c', deadlineAct: 1, required: true },
+        ],
+      },
+      actProgress: {
+        1: { consumed: ['beat-a', 'beat-b', 'beat-c'], pending: [] },
+      },
+      outline: [
+        { number: 1, title: 'Chapter 1', description: 'Description 1', verifiedBeats: ['beat-a'] },
+        { number: 2, title: 'Chapter 2', description: 'Description 2', verifiedBeats: ['beat-b'] },
+        { number: 3, title: 'Chapter 3', description: 'Description 3', verifiedBeats: ['beat-c'] },
+      ],
+      chapters: Array(3).fill(null),
+      currentChapterIndex: 2,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+    })
+
+    await rewrite('story-1', { storyId: 'story-1', chapter: '2' }).catch(() => {})
+
+    expect(logSpy).toHaveBeenCalledWith('  节拍进度: 1/3 已消费，剩余 2')
+    expect(logSpy).toHaveBeenCalledWith('    1. beat-b')
+    expect(logSpy).toHaveBeenCalledWith('    2. beat-c')
+
+    logSpy.mockRestore()
+  })
+
   it('should target current chapter when mixed errors and warnings exist with rewriteRequested false', async () => {
     const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)

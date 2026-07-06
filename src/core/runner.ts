@@ -12,10 +12,13 @@ import { createCheckpointService } from '../storage/checkpoint-service.js'
 import { migrateLegacyCheckpoints } from '../storage/migration.js'
 import type { Issue } from '../types/agent.js'
 import type { StateOverride, StoryState } from '../types/story-state.js'
-import type { StoryMemory } from '../types/story-memory.js'
-import { projectMemory } from '../story-memory/projector.js'
 import { createRuntimeContext, type RuntimeContext } from './context.js'
 import { commitChapterRun } from './chapter-commit.js'
+import {
+  cleanOutlineForRewrite,
+  cleanStoryMemoryForRewrite,
+  recomputeActProgressForRewrite,
+} from './rewrite-state.js'
 import {
   createGenericVerifiedConstraint,
   normalizeVerifiedConstraints,
@@ -184,18 +187,6 @@ function cleanStoryStateForRewrite(storyState: StoryState, targetChapterIndex: n
   }
 }
 
-function cleanStoryMemoryForRewrite(memory: StoryMemory, targetChapterIndex: number): StoryMemory {
-  const filteredEvents = memory.events.filter((event) => event.chapterIndex < targetChapterIndex)
-  if (filteredEvents.length === memory.events.length) {
-    return memory
-  }
-  return projectMemory({
-    ...memory,
-    events: filteredEvents,
-    lastChapterIndex: Math.min(memory.lastChapterIndex, Math.max(0, targetChapterIndex - 1)),
-  })
-}
-
 export async function runOneChapter(
   storyId: string,
   options: RunOneChapterOptions,
@@ -275,6 +266,7 @@ export async function runOneChapter(
     workingState.foreshadowStack = checkpointState.foreshadowStack.filter(
       (f) => f.createdAtChapter < targetIndex + 1
     )
+    workingState.outline = cleanOutlineForRewrite(workingState.outline, targetIndex)
     if (checkpointState.storyState) {
       workingState.storyState = cleanStoryStateForRewrite(checkpointState.storyState, targetIndex)
     }
@@ -284,6 +276,7 @@ export async function runOneChapter(
         targetIndex
       )
     }
+    workingState.actProgress = recomputeActProgressForRewrite(workingState, targetIndex)
     if (options.targetChapterIndex !== undefined) {
       workingState.chapterPlan = null
     }
