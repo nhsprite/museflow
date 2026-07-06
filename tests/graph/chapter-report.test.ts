@@ -543,7 +543,7 @@ describe('chapter report generation', () => {
             title: '启程',
             theme: '出发',
             function: '建立动机',
-            mandatoryBeats: ['主角离开家乡', '反派首次施压'],
+            mandatoryBeats: ['beat1', 'beat2', 'beat3', 'beat4', 'beat5'],
           },
           {
             index: 2,
@@ -555,9 +555,9 @@ describe('chapter report generation', () => {
             mandatoryBeats: ['主角反击'],
           },
         ],
-        keyBeats: [{ id: 'beat-2', beat: '反派首次施压', deadlineAct: 1, required: true }],
+        keyBeats: [],
       },
-      actProgress: { 1: { consumed: [], pending: ['主角离开家乡', '反派首次施压'] } },
+      actProgress: { 1: { consumed: [], pending: ['beat1', 'beat2', 'beat3', 'beat4', 'beat5'] } },
     })
     vi.mocked(getSummaryAgent).mockReturnValue({
       run: vi.fn().mockResolvedValue({

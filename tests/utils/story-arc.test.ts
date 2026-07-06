@@ -107,10 +107,34 @@ describe('story-arc utilities', () => {
     expect(status.riskLevel).toBe('high')
   })
 
-  it('proposes extension when pending beats exceed capacity near boundary', () => {
+  it('does not propose extension when pending beats fit current and remaining chapter capacity', () => {
     const storyArc = makeStoryArc()
     const actProgress = {
       1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
+    }
+    const proposals = proposeActBoundaryAdjustments(storyArc, actProgress, 3)
+
+    expect(proposals).toHaveLength(0)
+  })
+
+  it('proposes extension when pending beats exceed current and remaining chapter capacity', () => {
+    const storyArc: StoryArc = {
+      totalChapters: 8,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 5,
+          title: '入局',
+          theme: '卷入',
+          function: '建立',
+          mandatoryBeats: ['beat1', 'beat2', 'beat3', 'beat4', 'beat5'],
+        },
+      ],
+      keyBeats: [],
+    }
+    const actProgress = {
+      1: { consumed: [], pending: ['beat1', 'beat2', 'beat3', 'beat4', 'beat5'] },
     }
     const proposals = proposeActBoundaryAdjustments(storyArc, actProgress, 3)
 

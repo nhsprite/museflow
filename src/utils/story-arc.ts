@@ -177,6 +177,31 @@ export function buildClosingPhaseConstraint(
   return parts.join('')
 }
 
+const AUTO_ADJUST_MAX_BEATS_PER_CHAPTER = 2
+
+function estimateBeatCapacityThroughActEnd(
+  act: ActArc,
+  currentChapterIndex: number,
+  pendingBeats: string[]
+): number {
+  let capacity = 0
+  let remaining = [...pendingBeats]
+  const lastChapterIndex = act.endChapter - 1
+
+  for (let chapterIndex = currentChapterIndex; chapterIndex <= lastChapterIndex; chapterIndex++) {
+    if (remaining.length === 0) break
+    const chapterBudget = Math.min(
+      AUTO_ADJUST_MAX_BEATS_PER_CHAPTER,
+      calculateBeatBudget(act, chapterIndex, remaining)
+    )
+    const consumed = Math.min(chapterBudget, remaining.length)
+    capacity += consumed
+    remaining = remaining.slice(consumed)
+  }
+
+  return capacity
+}
+
 export function proposeActBoundaryAdjustments(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
@@ -195,7 +220,13 @@ export function proposeActBoundaryAdjustments(
     pending: [...currentAct.mandatoryBeats],
   }
 
-  if (progress.pending.length >= 2) {
+  const beatCapacity = estimateBeatCapacityThroughActEnd(
+    currentAct,
+    currentChapterIndex,
+    progress.pending
+  )
+
+  if (progress.pending.length > beatCapacity) {
     const extension = Math.min(2, progress.pending.length)
     const proposedEnd = currentAct.endChapter + extension
     proposals.push({
