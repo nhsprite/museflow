@@ -4,6 +4,7 @@ import type { FixAgentInput } from './types.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import { CHAPTER_TITLE_ONLY_PATTERN } from '../utils/chapter-content-validation.js'
 import {
   buildFixSystemPrompt,
   buildFixPromptSections,
@@ -90,6 +91,10 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       extractedContent = content.trim()
     }
 
+    // The model sometimes emits a pre-write checklist before the actual chapter heading.
+    // Strip it so downstream validation does not mistake it for machine artifacts in the body.
+    extractedContent = this.stripPreWriteArtifacts(extractedContent)
+
     const sentencePattern =
       /【段落\s*(\d+)\s*·\s*第\s*(\d+)\s*句】\s*([\s\S]*?)(?=\s*【段落\s*\d+\s*·\s*第\s*\d+\s*句】|$)/g
     const modifiedSentences: Array<{
@@ -125,6 +130,25 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     }
 
     return { success: true, content: extractedContent }
+  }
+
+  private stripPreWriteArtifacts(content: string): string {
+    // If the model wrapped the real body in a CHAPTER_CONTENT marker, prefer that.
+    const chapterContentMatch = content.match(/===\s*CHAPTER_CONTENT\s*===([\s\S]*)/i)
+    if (chapterContentMatch && chapterContentMatch[1]) {
+      return chapterContentMatch[1].trim()
+    }
+
+    if (!/===\s*PRE_WRITE_CHECK\s*===/i.test(content)) {
+      return content
+    }
+
+    const headingMatch = content.match(CHAPTER_TITLE_ONLY_PATTERN)
+    if (headingMatch && headingMatch.index !== undefined && headingMatch.index > 0) {
+      return content.slice(headingMatch.index).trim()
+    }
+
+    return content
   }
 
   processOutput(
