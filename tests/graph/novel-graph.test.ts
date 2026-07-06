@@ -82,6 +82,7 @@ describe('novel graph', () => {
     expect(graph.builder.branches['finalize_chapter']?.condition.ends).toEqual({
       finalize_story: 'finalize_story',
       prepare_chapter: 'prepare_chapter',
+      request_rewrite: 'request_rewrite',
     })
   })
 

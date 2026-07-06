@@ -80,6 +80,7 @@ export function buildNovelGraph(context: RuntimeContext) {
   b1.addConditionalEdges('finalize_chapter', route_after_finalize, {
     finalize_story: 'finalize_story',
     prepare_chapter: 'prepare_chapter',
+    request_rewrite: 'request_rewrite',
   })
 
   b1.addEdge('finalize_story', END)
