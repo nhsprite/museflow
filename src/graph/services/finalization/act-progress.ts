@@ -3,6 +3,7 @@ import type { ReducedGraphState } from '../../state.js'
 import type { ModelProvider } from '../../../model/provider.js'
 import type { ActArc, StoryArc } from '../../../types/outline.js'
 import type { Issue } from '../../../types/agent.js'
+import type { BeatId, StoryMemory } from '../../../types/story-memory.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import {
   getVerifiedBeatsFromMemory,
@@ -85,11 +86,19 @@ export function pruneResolvedOutlineCoverageIssues(
   issues: Issue[],
   storyArc: StoryArc | null | undefined,
   actProgress: ReducedGraphState['actProgress'],
-  currentChapterIndex: number
+  currentChapterIndex: number,
+  storyMemory?: StoryMemory | null
 ): Issue[] {
   return issues.filter((issue) => {
-    if (issue.type !== 'outline_coverage' || issue.severity !== 'warning') {
+    if (issue.type !== 'outline_coverage') {
       return true
+    }
+
+    if (issue.subject) {
+      const beat = storyMemory?.beats[issue.subject]
+      if (beat && beat.provenByEventIds.length > 0) {
+        return false
+      }
     }
 
     const match = findIssueMandatoryBeat(issue, storyArc)
@@ -194,12 +203,13 @@ function updateActProgressFromMemory(
     }
 
     const currentOutline = state.outline[chapterIndex]
-    const claimedBeats = getClaimedBeatTexts(currentOutline, act, storyArc)
     beatVerificationIssues = buildBeatVerificationIssues(
-      claimedBeats,
+      currentOutline,
       progress.consumed,
+      verifiedBeatIds,
       act,
-      chapterIndex
+      chapterIndex,
+      storyArc
     )
   }
 
@@ -255,7 +265,6 @@ async function updateActProgressFromOutline(
   }
 
   const currentOutline = state.outline[chapterIndex]
-  const claimedBeats = currentOutline?.claimedBeats ?? []
   const rawVerifiedBeats = currentOutline?.verifiedBeats ?? []
 
   // Historical summaries can be narrative; normalize them back to exact mandatory beat text.
@@ -317,10 +326,12 @@ async function updateActProgressFromOutline(
   }
 
   const beatVerificationIssues = buildBeatVerificationIssues(
-    claimedBeats,
+    currentOutline,
     verifiedBeats,
+    undefined,
     act,
-    chapterIndex
+    chapterIndex,
+    storyArc
   )
 
   if (isInClosingPhase && pending.length > 0) {
@@ -358,26 +369,65 @@ async function updateActProgressFromOutline(
  * string equality. Only called from updateActProgressFromOutline.
  */
 function buildBeatVerificationIssues(
-  claimedBeats: string[],
+  outlineItem: ReducedGraphState['outline'][number] | undefined,
   verifiedBeats: string[],
+  verifiedBeatIds: ReadonlySet<BeatId> | undefined,
   act: ActArc,
-  _chapterIndex: number
+  chapterIndex: number,
+  storyArc?: StoryArc | null
 ): Issue[] {
   const issues: Issue[] = []
+  const shouldBlock = shouldBlockUnverifiedClaimedBeat(act, chapterIndex)
+  const claimedBeatIndexesFromIds = new Set<number>()
+  const keyBeatsById = new Map(storyArc?.keyBeats.map((beat) => [beat.id, beat] as const) ?? [])
+
+  for (const beatId of outlineItem?.claimedBeatIds ?? []) {
+    const keyBeat = keyBeatsById.get(beatId)
+    if (!keyBeat || keyBeat.deadlineAct !== act.index) continue
+    const proven = verifiedBeatIds?.has(beatId) ?? false
+    const beatIndex = act.mandatoryBeats.indexOf(keyBeat.beat)
+    if (beatIndex >= 0) {
+      claimedBeatIndexesFromIds.add(beatIndex)
+    }
+    if (proven) continue
+
+    issues.push({
+      id: `unverified-beat-id-${beatId}`,
+      type: 'outline_coverage',
+      severity: shouldBlock ? 'error' : 'warning',
+      subject: beatId,
+      description: `本章大纲声称推进 mandatory beat「${keyBeat.beat}」，但正文未验证到该 beat 的发生。`,
+      suggestion: shouldBlock
+        ? `请重写当前章节，补足该 mandatory beat 的明确推进事件，或调整大纲不再声称本章推进该 beat。`
+        : `请在后续章节中确保该 beat 被明确确立，或调整大纲不再声称推进该 beat。`,
+      source: 'outline_compliance',
+      ...(shouldBlock ? { retryStrategy: 'draft' as const } : {}),
+    })
+  }
+
+  const claimedBeats = getClaimedBeatTexts(outlineItem, act, storyArc)
   const unverifiedClaimed = claimedBeats.filter((beat) => !verifiedBeats.includes(beat))
   for (const beat of unverifiedClaimed) {
     const beatIndex = act.mandatoryBeats.indexOf(beat)
-    if (beatIndex >= 0) {
+    if (beatIndex >= 0 && !claimedBeatIndexesFromIds.has(beatIndex)) {
       issues.push({
         id: `unverified-beat-${act.index}-${beatIndex}`,
         type: 'outline_coverage',
         severity: 'warning',
         description: `本章大纲声称推进 mandatory beat「${beat}」，但正文未验证到该 beat 的发生。`,
         suggestion: `请在后续章节中确保该 beat 被明确确立，或调整大纲不再声称推进该 beat。`,
+        source: 'outline_compliance',
       })
     }
   }
   return issues
+}
+
+function shouldBlockUnverifiedClaimedBeat(act: ActArc, chapterIndex: number): boolean {
+  const chaptersRemaining = act.endChapter - (chapterIndex + 1)
+  const totalActChapters = act.endChapter - act.startChapter + 1
+  const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
+  return chaptersRemaining <= 1 || isInClosingPhase
 }
 
 async function scanActChaptersForBeats(

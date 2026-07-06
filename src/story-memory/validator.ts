@@ -1,6 +1,7 @@
 import type { StoryMemory, StoryEvent, ForeshadowId, BeatId } from '../types/story-memory.js'
 import type { ChapterPlan } from '../agents/types.js'
 import { diffEvents } from './diff.js'
+import { applyEvents } from './projector.js'
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -34,6 +35,7 @@ export function validateChapterEvents(
 ): StructuredValidationResult {
   const chapterActual = actualEvents.filter((e) => e.chapterIndex === chapterIndex)
   const chapterExpected = (plan.expectedEvents ?? []).filter((e) => e.chapterIndex === chapterIndex)
+  const effectiveMemory = applyNewChapterEvents(memory, chapterActual)
 
   const { missing, unexpected } = diffEvents(chapterExpected, chapterActual)
 
@@ -41,7 +43,7 @@ export function validateChapterEvents(
   const overdueForeshadows: ForeshadowId[] = []
   const falseFulfillments: ForeshadowId[] = []
 
-  for (const fs of Object.values(memory.foreshadows)) {
+  for (const fs of Object.values(effectiveMemory.foreshadows)) {
     if (
       fs.required &&
       !fs.fulfilledIn &&
@@ -72,14 +74,14 @@ export function validateChapterEvents(
   const unclaimedMandatoryBeats: BeatId[] = []
   const claimedButUnprovenBeats: BeatId[] = []
 
-  for (const beat of Object.values(memory.beats)) {
+  for (const beat of Object.values(effectiveMemory.beats)) {
     if (beat.required && beat.provenByEventIds.length === 0) {
       unclaimedMandatoryBeats.push(beat.id)
     }
   }
 
   for (const id of plan.claimedBeatIds ?? []) {
-    const proven = (memory.beats[id]?.provenByEventIds.length ?? 0) > 0
+    const proven = (effectiveMemory.beats[id]?.provenByEventIds.length ?? 0) > 0
     if (!proven) {
       claimedButUnprovenBeats.push(id)
     }
@@ -97,6 +99,13 @@ export function validateChapterEvents(
     claimedButUnprovenBeats,
     stateConflicts: detectStateConflicts(chapterActual),
   }
+}
+
+function applyNewChapterEvents(memory: StoryMemory, chapterActual: StoryEvent[]): StoryMemory {
+  if (chapterActual.length === 0) return memory
+  const knownEventIds = new Set(memory.events.map((event) => event.id))
+  const newEvents = chapterActual.filter((event) => !knownEventIds.has(event.id))
+  return newEvents.length > 0 ? applyEvents(memory, newEvents) : memory
 }
 
 function detectStateConflicts(events: StoryEvent[]): StateConflict[] {

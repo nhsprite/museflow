@@ -9,10 +9,19 @@ import {
 } from '../../utils/story-arc.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
+import type { StoryArc } from '../../types/outline.js'
 
-function isResolvedActCoverageIssue(issue: Issue, actIndex: number): boolean {
+function isResolvedActCoverageIssue(
+  issue: Issue,
+  actIndex: number,
+  storyArc: StoryArc | null | undefined
+): boolean {
   if (issue.type !== 'outline_coverage') return false
   if (issue.source !== 'outline_compliance') return false
+  if (issue.subject) {
+    const keyBeat = storyArc?.keyBeats.find((beat) => beat.id === issue.subject)
+    if (keyBeat?.deadlineAct === actIndex) return true
+  }
   // unverified-beat-{act}-{beatIndex} issues are resolved when the act is extended
   if (issue.id.startsWith(`unverified-beat-${actIndex}-`)) return true
   // Auto-extension-limit errors for the adjusted act are resolved by manual adjustment
@@ -107,7 +116,8 @@ export async function adjustAct(
       ? state.story
       : { ...state.story, totalChapters: newTotalChapters, updatedAt: Date.now() }
 
-  const resolvedIssueFilter = (issue: Issue) => !isResolvedActCoverageIssue(issue, actIndex)
+  const resolvedIssueFilter = (issue: Issue) =>
+    !isResolvedActCoverageIssue(issue, actIndex, storyArc)
 
   await checkpointService.updateLatestState({
     story: newStory,

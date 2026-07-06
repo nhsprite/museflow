@@ -479,7 +479,8 @@ export async function finalizeChapter(
     updatedPendingIssues,
     state.storyArc,
     updatedActProgress,
-    chapterIndex
+    chapterIndex,
+    updatedStoryMemory
   )
 
   const nextIndex = state.currentChapterIndex + 1
@@ -544,12 +545,10 @@ export async function finalizeChapter(
     }
   }
 
-  const blockingErrors = updatedPendingIssues.filter(
-    (i) => i.severity === 'error' && i.retryStrategy === 'manual'
-  )
+  const blockingErrors = updatedPendingIssues.filter((i) => i.severity === 'error')
   if (blockingErrors.length > 0) {
     logger.error(
-      `[MuseFlow] 第 ${chapterIndex + 1} 章定稿失败：存在 ${blockingErrors.length} 个需要人工处理的严重问题，无法进入下一章。`
+      `[MuseFlow] 第 ${chapterIndex + 1} 章定稿失败：存在 ${blockingErrors.length} 个严重问题，无法进入下一章。`
     )
     const failureReport = buildChapterReport(
       { ...state, pendingIssues: updatedPendingIssues },

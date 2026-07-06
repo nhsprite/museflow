@@ -301,6 +301,135 @@ describe('finalizeChapter', () => {
     expect(warnings).toHaveLength(1)
   })
 
+  it('requests rewrite when an act-end claimed mandatory beat is not verified', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角仍未真正离开家乡。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_3.md'),
+      '# 第三章 脱困\n\n主角仍在原地迟疑，旅途尚未开始。',
+      'utf-8'
+    )
+
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 2,
+      outline: [
+        { number: 1, title: '启程', description: '主角准备离开家乡。' },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        {
+          number: 3,
+          title: '脱困',
+          description: '主角应当离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+          claimedBeatIds: ['beat-1'],
+        },
+      ],
+      chapters: [
+        null,
+        null,
+        {
+          id: 'ch-3',
+          storyId: 'test-story',
+          number: 3,
+          title: '脱困',
+          outline: '主角应当离开家乡。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      storyMemory: null,
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.currentChapterIndex).toBeUndefined()
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'unverified-beat-id-beat-1',
+          type: 'outline_coverage',
+          severity: 'error',
+          subject: 'beat-1',
+        }),
+      ])
+    )
+  })
+
+  it('keeps text-only act-end claimed beats as warnings instead of blocking on prose matching', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角仍未真正离开家乡。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_3.md'),
+      '# 第三章 脱困\n\n主角仍在原地迟疑，旅途尚未开始。',
+      'utf-8'
+    )
+
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 2,
+      outline: [
+        { number: 1, title: '启程', description: '主角准备离开家乡。' },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        {
+          number: 3,
+          title: '脱困',
+          description: '主角应当离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+          claimedBeatIds: [],
+        },
+      ],
+      chapters: [
+        null,
+        null,
+        {
+          id: 'ch-3',
+          storyId: 'test-story',
+          number: 3,
+          title: '脱困',
+          outline: '主角应当离开家乡。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      storyMemory: null,
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.rewriteRequested).toBeFalsy()
+    expect(result.currentChapterIndex).toBe(3)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'unverified-beat-1-0',
+          type: 'outline_coverage',
+          severity: 'warning',
+        }),
+      ])
+    )
+  })
+
   it('does not advance chapter index and requests rewrite when act boundary adjustment requires manual resolution', async () => {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     vi.mocked(proposeActBoundaryAdjustments).mockReturnValueOnce([

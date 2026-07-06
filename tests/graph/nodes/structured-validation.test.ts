@@ -129,4 +129,52 @@ describe('validateChapterStructured', () => {
     expect(result.structuredValidationResult?.claimedButUnprovenBeats).toHaveLength(1)
     expect(result.structuredValidationResult?.claimedButUnprovenBeats[0]).toBe('beat-1')
   })
+
+  it('treats current chapter plot-advance events as proof for claimed beats', async () => {
+    const plan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: ['beat-1'],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      beats: {
+        'beat-1': {
+          id: 'beat-1',
+          description: '关键转折',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 3,
+          provenByEventIds: [],
+        },
+      },
+    }
+    const state = {
+      currentChapterIndex: 3,
+      storyMemory: memory,
+      chapterPlan: plan,
+      draftChapterEvents: [
+        {
+          id: 'evt-1',
+          type: 'plot-advance',
+          plotId: 'plot-1',
+          beatId: 'beat-1',
+          chapterIndex: 3,
+          source: 'chapter',
+        },
+      ],
+    } as ReducedGraphState
+
+    const result = await validateChapterStructured(createMockContext(), state)
+
+    expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual([])
+  })
 })
