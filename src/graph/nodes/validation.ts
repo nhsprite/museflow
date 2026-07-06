@@ -409,7 +409,7 @@ export async function validate_chapter_comprehensive(
   let workingState: ReducedGraphState = { ...state }
 
   // 字数问题是针对当前章与上一章的瞬时指标，旧章节遗留的字数警告
-  // （如写到第 23 章时仍携带第 10 章的字数差异警告）会变成不可操作的噪音。
+  // 会随时间累积成不可操作的噪音。
   // 因此在每次综合校验前，先清理既有 word_count issue，再由 validate_chapter 重新生成当前章的相关问题。
   workingState.pendingIssues = pruneStaleWordCountIssues(workingState.pendingIssues)
 

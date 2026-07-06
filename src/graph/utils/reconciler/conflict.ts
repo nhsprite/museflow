@@ -7,7 +7,9 @@ import type {
   ReconciliationReport,
   StateOverride,
   SupersededFact,
+  FactAttribute,
 } from '../../../types/story-state.js'
+import { labelFromFactAttribute } from '../../../types/story-state.js'
 import type { ModelProvider } from '../../../model/provider.js'
 import {
   batchExtractEntityChanges,
@@ -17,13 +19,13 @@ import {
 import { generateId } from '../../../utils/id.js'
 import { applyCanonicalFactsToState } from './state-merge.js'
 
-function generateConflictId(subject: string, attribute: string, index: number): string {
+function generateConflictId(subject: string, attribute: FactAttribute, index: number): string {
   return `${subject}:${attribute}:${index}`
 }
 
 function createConflict(
   subject: string,
-  attribute: string,
+  attribute: FactAttribute,
   oldValue: string,
   newValue: string,
   outlineReference: string,
@@ -39,17 +41,14 @@ function createConflict(
     newValue,
     outlineReference,
     severity,
-    description:
-      attribute === '所在位置'
-        ? `大纲将「${subject}」的位置从「${oldValue}」更新为「${newValue}」`
-        : `大纲将「${subject}」的状态从「${oldValue}」更新为「${newValue}」`,
+    description: `大纲将「${subject}」的${labelFromFactAttribute(attribute)}从「${oldValue}」更新为「${newValue}」`,
   }
 }
 
 async function detectEntityConflictsWithLLM<T extends Record<string, string>>(
   entities: T,
   outline: string,
-  attribute: '所在位置' | '状态',
+  attribute: FactAttribute,
   severity: 'auto' | 'warning',
   provider: ModelProvider
 ): Promise<Conflict[]> {
@@ -84,7 +83,7 @@ async function detectEntityConflictsWithLLM<T extends Record<string, string>>(
     if (!change || change.skip) continue
     if (change.changeKind !== 'explicit_change') continue
 
-    const newValue = attribute === '所在位置' ? change.location : change.state
+    const newValue = attribute === 'location' ? change.location : change.state
     if (!newValue || newValue === item.currentValue) continue
 
     conflicts.push(
@@ -108,7 +107,7 @@ export async function detectItemLocationConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflictsWithLLM(state.keyItemsLocation, outline, '所在位置', 'auto', provider)
+  return detectEntityConflictsWithLLM(state.keyItemsLocation, outline, 'location', 'auto', provider)
 }
 
 export async function detectItemStateConflicts(
@@ -116,7 +115,7 @@ export async function detectItemStateConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflictsWithLLM(state.keyItemsState, outline, '状态', 'auto', provider)
+  return detectEntityConflictsWithLLM(state.keyItemsState, outline, 'status', 'auto', provider)
 }
 
 export async function detectCharacterLocationConflicts(
@@ -127,7 +126,7 @@ export async function detectCharacterLocationConflicts(
   return detectEntityConflictsWithLLM(
     state.characterLocations,
     outline,
-    '所在位置',
+    'location',
     'auto',
     provider
   )
@@ -138,7 +137,7 @@ export async function detectCharacterStatusConflicts(
   outline: string,
   provider: ModelProvider
 ): Promise<Conflict[]> {
-  return detectEntityConflictsWithLLM(state.characterStatus, outline, '状态', 'warning', provider)
+  return detectEntityConflictsWithLLM(state.characterStatus, outline, 'status', 'warning', provider)
 }
 
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {
@@ -165,7 +164,7 @@ export async function detectTimeAnchorConflicts(
     id: `time-jump:${chapterIndex}`,
     type: 'time_jump',
     subject: '叙事时间',
-    attribute: '推进',
+    attribute: 'event',
     oldValue: state.storyTime,
     newValue: '大纲明确时间推进',
     outlineReference: outline.slice(0, 200),
@@ -238,10 +237,10 @@ export async function classifyConflicts(
     let severity: ConflictSeverity = conflict.severity
     let type: ConflictType = conflict.type
 
-    if (conflict.attribute === '所在位置') {
+    if (conflict.attribute === 'location') {
       type = 'retcon'
       severity = 'auto'
-    } else if (conflict.attribute === '状态') {
+    } else if (conflict.attribute === 'status') {
       type = 'retcon'
       severity = conflict.severity === 'blocking' ? 'blocking' : 'warning'
     } else if (conflict.type === 'time_jump') {
@@ -348,7 +347,7 @@ function generateSupersededFact(conflict: Conflict, chapterIndex: number): Super
   const chapterNumber = chapterIndex + 1
   return {
     subject: conflict.subject,
-    oldFact: `${conflict.attribute}：${conflict.oldValue}`,
+    oldFact: `${labelFromFactAttribute(conflict.attribute)}：${conflict.oldValue}`,
     reason: `大纲第 ${chapterNumber} 章更新为：${conflict.newValue}`,
     chapterIndex,
   }
@@ -392,7 +391,7 @@ export function autoReconcile(
 
     if (
       conflict.type === 'retcon' &&
-      (conflict.attribute === '所在位置' || conflict.attribute === '状态')
+      (conflict.attribute === 'location' || conflict.attribute === 'status')
     ) {
       autoResolved.push(conflict)
       const fact = generateCanonicalFact(conflict, chapterIndex, canonicalFacts)

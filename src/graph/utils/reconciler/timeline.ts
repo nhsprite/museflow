@@ -1,5 +1,6 @@
 import type { ReducedGraphState } from '../../state.js'
-import type { CanonicalFact } from '../../../types/story-state.js'
+import type { CanonicalFact, FactAttribute } from '../../../types/story-state.js'
+import { labelFromFactAttribute } from '../../../types/story-state.js'
 import {
   filterCharacterFactsByImportance,
   filterKeyEventsByImportance,
@@ -64,7 +65,7 @@ function formatCanonicalFact(fact: CanonicalFact): string {
     (fact.supersedes ?? []).length > 0
       ? `（覆盖：${fact.supersedes!.map((s) => s.oldValue).join('、')}）`
       : ''
-  return `  - [${fact.subject}] ${fact.attribute}: ${fact.value}${supersedesNote}`
+  return `  - [${fact.subject}] ${labelFromFactAttribute(fact.attribute)}: ${fact.value}${supersedesNote}`
 }
 
 /**
@@ -99,15 +100,15 @@ export function isCharacterSubject(subject: string, characters?: Array<{ name: s
 }
 
 function isCharacterFact(fact: CanonicalFact, characters: Array<{ name: string }>): boolean {
-  const characterAttributes = [
-    '所在位置',
-    '状态',
-    '已知信息',
-    '承诺',
-    '态度',
-    '对话',
-    '决定',
-    '计划',
+  const characterAttributes: FactAttribute[] = [
+    'location',
+    'status',
+    'known_info',
+    'promise',
+    'attitude',
+    'dialogue',
+    'decision',
+    'plan',
   ]
   return (
     isCharacterSubject(fact.subject, characters) && characterAttributes.includes(fact.attribute)
@@ -115,7 +116,7 @@ function isCharacterFact(fact: CanonicalFact, characters: Array<{ name: string }
 }
 
 function isKeyEventFact(fact: CanonicalFact): boolean {
-  const eventAttributes = ['关键事件', '事件', '发生', '结果', '转折']
+  const eventAttributes: FactAttribute[] = ['key_event', 'event', 'occurrence', 'result', 'twist']
   return eventAttributes.includes(fact.attribute)
 }
 

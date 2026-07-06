@@ -178,7 +178,7 @@ describe('adjust-act command', () => {
         retryStrategy: 'manual',
       },
       {
-        id: 'generated-uuid-1234',
+        id: 'auto-extension-limit-1-generated-uuid-1234',
         type: 'outline_coverage',
         severity: 'error',
         description: '第 1 幕自动延长已达到上限，仍有 mandatory beats 未消费。',

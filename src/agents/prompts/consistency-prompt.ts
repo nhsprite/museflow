@@ -231,7 +231,7 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
   </rule>
 
   <rule type="item_origin_consistency">
-    关键物品来源一致性：如果本章中角色使用了一件关键物品（尤其是武器、特殊物品/关键道具、重要道具），而该物品在前文中尚未明确出现或回归，本章又没有交代其来源或回归过程，则报 error。
+    关键物品来源一致性：如果本章中角色使用了一件关键物品，而该物品在前文中尚未明确出现或回归，本章又没有交代其来源或回归过程，则报 error。
   </rule>
 
   <rule type="future_information_boundary">

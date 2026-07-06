@@ -436,7 +436,7 @@ async function autoResolveBlockingOutlineConflicts(
         throw err
       }
 
-      // 避免反复陷入同一组冲突（例如修订建议无效时）
+      // 避免反复陷入同一组冲突（当冲突集合未改变时停止重试）
       if (lastError && conflictsEqual(lastError.conflicts, err.conflicts)) {
         logger.warn('[MuseFlow] 自动修订未能改变冲突集合，停止重试')
         lastError = err

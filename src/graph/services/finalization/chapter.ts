@@ -454,7 +454,7 @@ export async function finalizeChapter(
               updatedPendingIssues = [
                 ...updatedPendingIssues,
                 {
-                  id: generateId(),
+                  id: `auto-extension-limit-${proposal.actIndex}-${generateId()}`,
                   type: 'outline_coverage',
                   severity: 'error',
                   description: `第 ${proposal.actIndex} 幕自动延长已达到上限，仍有 mandatory beats 未消费。`,

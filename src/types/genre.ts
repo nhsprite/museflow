@@ -1,3 +1,5 @@
+import type { FactAttribute } from './story-state.js'
+
 export interface ChapterPlanningConfig {
   /** 核心事件字数占本章总字数的最低比例（硬底线） */
   coreEventRatioMin: number
@@ -26,7 +28,7 @@ export interface ChapterPlanningConfig {
   /** 核心事件场景的最少数量 */
   minCoreSections: number
   /** 必须被提升为 canonical facts 的关键属性维度 */
-  criticalFactAttributes: string[]
+  criticalFactAttributes: FactAttribute[]
   /** 高层次大纲描述的字数下限 */
   outlineDescriptionLengthMin: number
   /** 高层次大纲描述的字数上限 */

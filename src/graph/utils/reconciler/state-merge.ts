@@ -21,7 +21,7 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
   for (const override of overrides) {
     const { subject, attribute, newValue, chapterIndex } = override
 
-    if (attribute === '所在位置') {
+    if (attribute === 'location') {
       const characterKey = findMatchingKey(result.characterLocations, subject)
       if (characterKey) {
         result.characterLocations[characterKey] = newValue
@@ -29,7 +29,7 @@ export function applyAuthorOverrides(state: StoryState): StoryState {
       for (const itemKey of findMatchingKeys(result.keyItemsLocation, subject)) {
         result.keyItemsLocation[itemKey] = newValue
       }
-    } else if (attribute === '状态') {
+    } else if (attribute === 'status') {
       const characterKey = findMatchingKey(result.characterStatus, subject)
       if (characterKey) {
         result.characterStatus[characterKey] = newValue
@@ -92,24 +92,20 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
 
   const mergedLocations = { ...base.characterLocations }
   for (const [char, loc] of Object.entries(safeDelta.characterLocations)) {
-    if (loc && loc !== '同前') {
+    if (loc) {
       mergedLocations[char] = loc
     }
   }
 
   const mergedStatus = { ...base.characterStatus }
   for (const [char, status] of Object.entries(safeDelta.characterStatus)) {
-    if (status && status !== '同前') {
+    if (status) {
       mergedStatus[char] = status
     }
   }
 
-  const mergedItems = mergeCanonicalRecords(base.keyItemsLocation, safeDelta.keyItemsLocation, {
-    ignoreValue: '同前',
-  })
-  const mergedItemStates = mergeCanonicalRecords(base.keyItemsState, safeDelta.keyItemsState, {
-    ignoreValue: '同前',
-  })
+  const mergedItems = mergeCanonicalRecords(base.keyItemsLocation, safeDelta.keyItemsLocation)
+  const mergedItemStates = mergeCanonicalRecords(base.keyItemsState, safeDelta.keyItemsState)
 
   const mergedPlots = [...base.activePlots]
   for (const plot of safeDelta.activePlots) {
@@ -233,7 +229,7 @@ export function applyCanonicalFactsToState(
   const facts = state.canonicalFacts ?? []
 
   for (const fact of facts) {
-    if (fact.attribute === '所在位置') {
+    if (fact.attribute === 'location') {
       if (isCharacterSubject(fact.subject, characters)) {
         result.characterLocations[fact.subject] = fact.value
       } else {
@@ -253,7 +249,7 @@ export function applyCanonicalFactsToState(
       }
     }
 
-    if (fact.attribute === '状态') {
+    if (fact.attribute === 'status') {
       if (isCharacterSubject(fact.subject, characters)) {
         result.characterStatus[fact.subject] = fact.value
       } else {

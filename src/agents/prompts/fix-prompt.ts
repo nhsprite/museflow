@@ -155,7 +155,7 @@ const SENTENCE_USER_PROMPT_TEMPLATE = `<instruction>
   <constraint>保持原文的语言风格、叙事节奏和人物语气</constraint>
   ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后通读段落，确保没有句子重复出现</constraint>
-  <constraint priority="critical">修复时必须对照"前几章摘要"和"角色状态与时间线"，确保不引入与前文矛盾的描述。例如：如果前文已确立"某物在某地"，修复时不可改为"该物在另一处"</constraint>
+  <constraint priority="critical">修复时必须对照"前几章摘要"和"角色状态与时间线"，确保不引入与前文矛盾的描述；不得改变前文已确立的事实状态。</constraint>
   <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
   <constraint>你不需要输出完整章节或完整段落，只需要输出修改后的句子</constraint>
 </constraints>
@@ -205,7 +205,7 @@ const PARAGRAPH_USER_PROMPT_TEMPLATE = `<instruction>
   ${AI_PHRASE_PROHIBITIONS}
   ${FACT_CONSISTENCY_RULES}
   <constraint>修改后通读段落，确保没有句子重复出现</constraint>
-  <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述。例如：如果前文已确立"某物在某地"，修复时不可改为"该物在另一处"；如果状态记录显示角色"虚弱无力"，修复时不可改为"精力充沛"</constraint>
+  <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述；不得改变前文已确立的事实状态。</constraint>
   <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
   <constraint>你不需要输出完整章节，只需要输出修改后的段落</constraint>
 </constraints>
@@ -247,7 +247,7 @@ const LEGACY_USER_PROMPT_TEMPLATE = `<instruction>
   <constraint>用"替换"而非"追加"：修改时必须彻底删除原句，用新句替代</constraint>
   ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后确保没有任何句子重复出现</constraint>
-  <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述。例如：如果前文已确立"某物在某地"，修复时不可改为"该物在另一处"；如果前文角色"虚弱无力"，修复时不可改为"精力充沛"</constraint>
+  <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述；不得改变前文已确立的事实状态。</constraint>
   <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
 </constraints>
 

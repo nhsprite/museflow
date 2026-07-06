@@ -25,7 +25,7 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   minSections: 3,
   maxSections: 6,
   minCoreSections: 2,
-  criticalFactAttributes: ['来源', '制造者', '赠予者', '持有者', '身份', '状态', '位置'],
+  criticalFactAttributes: ['origin', 'maker', 'giver', 'holder', 'identity', 'status', 'location'],
   outlineDescriptionLengthMin: 30,
   outlineDescriptionLengthMax: 60,
   outlineDescriptionSentenceCountMin: 1,
@@ -79,7 +79,7 @@ export async function validateChapterPlanBudget(
     }
   }
 
-  // 优先使用注入的语义判断函数（如模型调用）。
+  // 优先使用注入的语义判断函数。
   // 若未提供，则回退到 outlineCheck 中标注的 fulfilled section 标题匹配。
   let coreFlags: boolean[]
   if (judgeCoreSections) {

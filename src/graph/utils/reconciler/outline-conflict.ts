@@ -4,7 +4,9 @@ import type {
   Conflict,
   ConflictSeverity,
   CanonicalFact,
+  FactAttribute,
 } from '../../../types/story-state.js'
+import { factAttributeFromLabel, labelFromFactAttribute } from '../../../types/story-state.js'
 import type { ModelProvider, Message, JsonSchema } from '../../../model/provider.js'
 import type { StoryMemory } from '../../../types/story-memory.js'
 import type { StoryArc } from '../../../types/outline.js'
@@ -40,7 +42,7 @@ const OUTLINE_AUTHORIZATION_SCHEMA: JsonSchema = {
 function canonicalFactExists(
   facts: CanonicalFact[] | undefined,
   subject: string,
-  attribute: string,
+  attribute: FactAttribute,
   value: string
 ): boolean {
   if (!facts || facts.length === 0) return false
@@ -50,7 +52,7 @@ function canonicalFactExists(
 function canonicalFactConflicts(
   facts: CanonicalFact[] | undefined,
   subject: string,
-  attribute: string
+  attribute: FactAttribute
 ): boolean {
   if (!facts || facts.length === 0) return false
   return facts.some((f) => f.subject === subject && f.attribute === attribute)
@@ -90,7 +92,7 @@ export async function authorizeOutlineFacts(
 - 如果某个事实已经在"已确立的权威事实"中记录，不要重复提取。
 - 如果某个事实与"已确立的权威事实"直接矛盾（同一 subject + attribute 但值不同），将 contradictsExisting 设为 true，不要返回它。
 - 不要提取一次性动作、情绪描写、氛围描写、纯过渡内容。
-- attribute 请使用简洁中文标签，如"所在位置"、"状态"、"来源"、"归属"、"关系"等。
+- attribute 必须使用以下枚举值之一，禁止输出中文自然语言标签：location, status, origin, maker, giver, holder, identity, known_info, promise, attitude, dialogue, decision, plan, key_event, event, occurrence, result, twist。
 
 请输出 JSON，格式为 {"facts": [{"subject": "...", "attribute": "...", "value": "...", "contradictsExisting": false}, ...]}。`,
     },
@@ -110,7 +112,7 @@ export async function authorizeOutlineFacts(
           0.3
         )
       } catch (structuredErr) {
-        // 部分兼容端（如 MiniMax-M3 通过 Anthropic 协议）会返回 markdown 包裹的 JSON 或截断 JSON
+        // 部分兼容端通过 Anthropic 协议返回时，可能将 JSON 包裹在 markdown 中或截断输出
         logger.debug(
           '结构化输出失败，回退到普通 chat 解析:',
           structuredErr instanceof Error ? structuredErr.message : String(structuredErr)
@@ -130,9 +132,9 @@ export async function authorizeOutlineFacts(
     for (const fact of parsed.facts ?? []) {
       if (!fact.subject || !fact.attribute || !fact.value) continue
       const subject = fact.subject.trim()
-      const attribute = fact.attribute.trim()
+      const attribute = factAttributeFromLabel(fact.attribute.trim())
       const value = fact.value.trim()
-      if (subject.length === 0 || attribute.length === 0 || value.length === 0) continue
+      if (subject.length === 0 || attribute === null || value.length === 0) continue
 
       if (fact.contradictsExisting || canonicalFactConflicts(existingFacts, subject, attribute)) {
         skipped.push(`${subject}/${attribute}`)
@@ -157,7 +159,7 @@ export async function authorizeOutlineFacts(
     if (facts.length > 0) {
       logger.info(`大纲预授权 ${facts.length} 个新事实`)
       for (const f of facts) {
-        logger.debug(`  - [${f.subject}] ${f.attribute}: ${f.value}`)
+        logger.debug(`  - [${f.subject}] ${labelFromFactAttribute(f.attribute)}: ${f.value}`)
       }
     }
 
@@ -227,7 +229,7 @@ function formatCanonicalFacts(state: StoryState): string {
   return facts
     .map((f) => {
       const lines = [
-        `- [${f.subject}] ${f.attribute}: ${f.value}（第${f.establishedIn + 1}章确立）`,
+        `- [${f.subject}] ${labelFromFactAttribute(f.attribute)}: ${f.value}（第${f.establishedIn + 1}章确立）`,
       ]
       if (f.supersedes && f.supersedes.length > 0) {
         for (const old of f.supersedes) {
@@ -258,7 +260,7 @@ function detectUnprovenBeatConflicts(
         id: generateId(),
         type: 'incomplete',
         subject: beat.id,
-        attribute: 'beat',
+        attribute: 'event',
         oldValue: 'unproven',
         newValue: 'required',
         outlineReference: '',
@@ -337,17 +339,25 @@ export async function detectOutlineStateConflicts(
     }
 
     const parsed = raw as OutlineStateConflictResult
-    const conflicts: Conflict[] = (parsed.conflicts ?? []).map((c, idx) => ({
-      id: buildOutlineStateConflictId(c.subject, c.attribute, idx),
-      type: 'contradiction',
-      subject: c.subject,
-      attribute: c.attribute,
-      oldValue: c.oldValue,
-      newValue: c.newValue,
-      outlineReference: outline.slice(0, 200),
-      severity: c.severity,
-      description: c.description,
-    }))
+    const conflicts: Conflict[] = []
+    for (const [idx, c] of (parsed.conflicts ?? []).entries()) {
+      const attribute = factAttributeFromLabel(c.attribute)
+      if (attribute === null) {
+        logger.debug(`[MuseFlow] 大纲-状态冲突 attribute 无法识别，已跳过：${c.attribute}`)
+        continue
+      }
+      conflicts.push({
+        id: buildOutlineStateConflictId(c.subject, attribute, idx),
+        type: 'contradiction',
+        subject: c.subject,
+        attribute,
+        oldValue: c.oldValue,
+        newValue: c.newValue,
+        outlineReference: outline.slice(0, 200),
+        severity: c.severity,
+        description: c.description,
+      })
+    }
 
     const constraints = (parsed.constraints ?? []).filter(
       (c): c is string => typeof c === 'string' && c.length > 0

@@ -16,10 +16,7 @@ function isResolvedActCoverageIssue(issue: Issue, actIndex: number): boolean {
   // unverified-beat-{act}-{beatIndex} issues are resolved when the act is extended
   if (issue.id.startsWith(`unverified-beat-${actIndex}-`)) return true
   // Auto-extension-limit errors for the adjusted act are resolved by manual adjustment
-  if (
-    issue.severity === 'error' &&
-    issue.description.includes(`第 ${actIndex} 幕自动延长已达到上限`)
-  ) {
+  if (issue.severity === 'error' && issue.id.startsWith(`auto-extension-limit-${actIndex}-`)) {
     return true
   }
   return false

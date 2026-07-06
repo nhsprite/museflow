@@ -32,7 +32,12 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
               },
               powerSystem: {
                 type: 'string',
-                description: '力量/规则体系，如魔法、超能力、诅咒规则、社会制度等（可选）',
+                description: '独立的力量/规则体系（可选）',
+              },
+              hasPowerSystem: {
+                type: 'boolean',
+                description:
+                  '该方案是否有独立的力量/规则体系；没有时请设为 false 并将 powerSystem 留空',
               },
             },
             required: ['coreConflict', 'worldFeatures'],
@@ -59,7 +64,7 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
 - coreConflict 点出核心矛盾
 - worldFeatures 列出 2-4 个独特的世界观元素
 - 必须返回 3-5 个不同的候选方案
-- 每个候选方案可包含 powerSystem 字段描述该作品的力量/规则体系（如魔法、超能力、诅咒规则、社会制度等）；若该方案没有体系，请将此字段留空，相关细节请放入 worldFeatures`
+- 每个候选方案必须包含 hasPowerSystem 字段（boolean）：若有独立的力量/规则体系则设为 true，并在 powerSystem 中描述；若没有则设为 false 并将 powerSystem 留空，相关细节请放入 worldFeatures`
 
 function getGenreConstraints(genre: string): string {
   const skill = getGenreSkill(genre)
@@ -162,7 +167,7 @@ function formatOptionForDisplay(option: TitleOption, number: number, _genre?: st
   const features = option.worldDirection.worldFeatures.join('、')
   const powerSystem = option.worldDirection.powerSystem?.trim()
   const isEmptyPowerSystem =
-    !powerSystem || powerSystem === '无' || powerSystem.startsWith('无体系')
+    !powerSystem || powerSystem === '无' || option.worldDirection.hasPowerSystem === false
   const powerLine = !isEmptyPowerSystem ? `规则体系：${powerSystem} | ` : ''
   return `${number}. ${option.title} | ${powerLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
 }

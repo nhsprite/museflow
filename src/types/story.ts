@@ -2,6 +2,8 @@ import type { ModelConfig } from './config.js'
 
 export interface WorldDirection {
   powerSystem?: string
+  /** 是否有独立的力量/规则体系。用于避免用自然语言前缀判断「无体系」。 */
+  hasPowerSystem?: boolean
   coreConflict: string
   worldFeatures: string[]
 }

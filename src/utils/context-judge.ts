@@ -1,6 +1,8 @@
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import { logger } from './logger.js'
 import type { Issue } from '../types/agent.js'
+import type { FactAttribute } from '../types/story-state.js'
+import { labelFromFactAttribute } from '../types/story-state.js'
 
 const MAX_BATCH_JUDGE_ITEMS = 20
 
@@ -215,7 +217,7 @@ export async function batchJudgeWithdrawnIssues(
 
   return batchJudge(
     provider,
-    `判断每个 issue 描述是否表示该 issue 被撤回、不成立、不构成问题、或已被否定。例如"此条不成立"、"不构成严重矛盾"、"重新审视后发现不成立"等。只输出 JSON {"results": [true/false, ...]}，顺序与输入一致。`,
+    `判断每个 issue 描述是否表示该 issue 被撤回、不成立、不构成问题、或已被否定。关注结论的语义倾向（否定性、撤销性、重新评估后判定无效），而非具体措辞。只输出 JSON {"results": [true/false, ...]}，顺序与输入一致。`,
     descriptions,
     schema,
     false
@@ -236,7 +238,7 @@ export async function batchJudgePositiveFeedback(
 
   return batchJudge(
     provider,
-    `判断每个描述是否表示"未发现问题"、"未检测到问题"、"无明显问题"等正面/无问题反馈。只输出 JSON {"results": [true/false, ...]}，顺序与输入一致。`,
+    `判断每个描述是否表示正面/无问题反馈（即审查后认为当前内容已满足要求、不存在需要修改的问题）。关注结论的语义倾向，而非具体措辞。只输出 JSON {"results": [true/false, ...]}，顺序与输入一致.`,
     descriptions,
     schema,
     false
@@ -315,7 +317,7 @@ export async function batchClassifyIssues(
   return batchJudge(
     provider,
     `你是小说质量检查 issue 分类助手。对每个 issue，判断以下标签：
-- isStructural: 是否结构性问题（如大纲违规、时间线矛盾、逻辑问题、严重偏离大纲、跨章知识错误）。
+- isStructural: 是否结构性问题（涉及故事骨架层面）。
 - isCrossChapter: 是否涉及前章知识/跨章一致性。
 - isTaskConsistency: 是否涉及前章遗留差事未执行或处理不当。
 - isItemLocationConflict: 是否涉及物品位置矛盾。
@@ -323,7 +325,7 @@ export async function batchClassifyIssues(
 - isOutlineStateConflict: 是否涉及大纲状态/canonical fact 冲突。
 - isLocal: 是否是 severity=error 且非结构性问题（由 isStructural 推导即可）。
 - isStateCorruption: 是否为物品位置冲突、虚构角色、或大纲状态冲突之一。
-- isInterpretive: 是否属于解释性、主观性或风格一致性问题（如描写冗余、语言拖沓、风格不一致、节奏欠佳等），这类问题在最后阶段可安全降级为 warning。
+- isInterpretive: 是否属于主观性或表达层面的问题，这类问题在最后阶段可安全降级为 warning。
 
 注意：isLocal 在 isStructural 为 false 且 severity 为 error 时为 true。isStateCorruption 在 isItemLocationConflict、isInventedCharacter、isOutlineStateConflict 任意一个为 true 时为 true。
 
@@ -359,7 +361,7 @@ export async function batchGenerateIssueFingerprints(
 
   return batchJudge(
     provider,
-    `你是 issue 去重助手。对每个 issue，生成一个稳定的语义指纹字符串。指纹应忽略表述差异，保留核心问题本质。例如"描写冗余"和"语言拖沓"应生成相同或相近指纹；"角色A在B处"和"角色A位于B"也应相近。指纹应只包含核心实体和关系，不要太长。只输出 JSON {"results": ["指纹1", "指纹2", ...]}，顺序与输入一致。`,
+    `你是 issue 去重助手。对每个 issue，生成一个稳定的语义指纹字符串。指纹应忽略表述差异，保留核心问题本质；不同措辞描述的同一问题应生成相同或相近指纹。指纹应只包含核心实体和关系，不要太长。只输出 JSON {"results": ["指纹1", "指纹2", ...]}，顺序与输入一致。`,
     items,
     schema,
     ''
@@ -381,8 +383,8 @@ export async function batchJudgeTaskRelevance(
   return batchJudge(
     provider,
     `你是小说章节规划校验助手。判断每个前章遗留差事是否与本章大纲描述直接相关：
-1. 如果差事的核心动作、关键角色或核心目标在本章大纲描述中有明确体现，返回 true。
-2. 如果差事只是 deadline 落在本章、铺垫、过渡、支线、背景介绍，返回 false。
+1. 如果差事的核心内容在本章大纲描述中有明确体现，返回 true。
+2. 如果差事只是时间 deadline 落在本章、或仅作为辅助性叙事功能出现（未直接推进差事核心内容），返回 false。
 3. 只输出 JSON {"results": [true/false, ...]}，顺序与输入一致，不要解释。`,
     items.map(
       (i) => `【本章大纲描述】\n${i.outlineDescription}\n\n【前章遗留差事】\n${i.taskDescription}`
@@ -419,7 +421,7 @@ function parseEntityChangeKind(value: unknown): EntityChangeKind {
 
 export async function batchExtractEntityChanges(
   provider: ModelProvider,
-  items: Array<{ text: string; subject: string; attribute: '所在位置' | '状态' }>
+  items: Array<{ text: string; subject: string; attribute: FactAttribute }>
 ): Promise<EntityChangeResult[]> {
   const schema: JsonSchema = {
     type: 'object',
@@ -451,20 +453,29 @@ export async function batchExtractEntityChanges(
     changeKind: 'not_present',
   }
 
+  const attributeLabels = ['location', 'status']
+    .map((attr) => `${attr}=${labelFromFactAttribute(attr as FactAttribute)}`)
+    .join('\n')
+
   return batchJudge(
     provider,
-    `你是小说状态抽取助手。对每条输入，判断文本中是否描述了 subject 的位置或状态变化：
-- changeKind="explicit_change"：文本明确写出 subject 的新位置/当前所在/持有者，或明确写出移动、交出、收回、携带、放置 subject 的动作，足以建立新的权威状态。
-- changeKind="scene_context"：文本只写了场景地点、人物所在地点、或章节发生地点，subject 的位置只是从场景上下文推断出来的。
-- changeKind="ambiguous"：subject 被提到，但地点/状态关系不明确，或可能是同类物品、别名、泛称、背景说明。
-- changeKind="not_present"：文本没有描述该 subject。
-- 若文本处于回忆、假设、梦境、条件句、未来计划或否定语境，则 changeKind="ambiguous" 或 "not_present"，skip=true，不提取。
+    `你是小说状态抽取助手。对每条输入，判断文本中是否描述了 subject 的指定属性变化：
+- changeKind="explicit_change"：文本明确写出 subject 的新属性值，或明确写出导致该属性值改变的动作，足以建立新的权威状态。
+- changeKind="scene_context"：属性值只是从场景、上下文或其他人物的同类属性中推断出来的，文本没有直接说明 subject 本身。
+- changeKind="ambiguous"：subject 被提到，但属性关系不明确，或可能是同类对象、别名、泛称、背景说明。
+- changeKind="not_present"：文本没有描述该 subject 的该属性。
+- 若文本处于非现实、假设、条件、计划或否定语境，则 changeKind="ambiguous" 或 "not_present"，skip=true，不提取。
 - 只有 changeKind="explicit_change" 时才填写 location 或 state，并设置 skip=false；其他情况必须 skip=true 且 location/state 为 null。
-- 若 attribute 为"所在位置"，提取 subject 的明确位置或明确持有者作为 location。
-- 若 attribute 为"状态"，提取 subject 的明确状态作为 state。
-- 不得把章节场景地点、人物地点、或持有者所在场景自动当成 subject 的位置。
+- 当前支持的属性标签映射如下：
+${attributeLabels}
+- 当 attribute 为 location 时，提取 subject 的明确位置或明确持有者作为 location。
+- 当 attribute 为 status 时，提取 subject 的明确状态作为 state。
+- 不得把章节场景、其他人物的状态/位置、或持有者所在场景自动当成 subject 的属性值。
 - 只输出 JSON {"results": [{"skip": bool, "location": "..."|null, "state": "..."|null, "changeKind": "explicit_change"|"scene_context"|"ambiguous"|"not_present"}, ...]}，顺序与输入一致。`,
-    items.map((i) => `attribute=${i.attribute}, subject=${i.subject}, text=${i.text}`),
+    items.map(
+      (i) =>
+        `attribute=${labelFromFactAttribute(i.attribute)}, subject=${i.subject}, text=${i.text}`
+    ),
     schema,
     defaultResult,
     (raw) => {
@@ -494,7 +505,7 @@ export async function batchDetectTimeJumps(
 
   return batchJudge(
     provider,
-    `判断每个大纲片段是否明确出现叙事时间推进（如几天后、次日、明年等），即本章时间锚点应相对前章调整。只输出 JSON {"results": [true/false, ...]}，顺序与输入一致。`,
+    `判断每个大纲片段是否明确出现相对前章的叙事时间推进。关注时间推进的语义，而非具体措辞。只输出 JSON {"results": [true/false, ...]}，顺序与输入一致。`,
     outlines,
     schema,
     false
@@ -520,9 +531,7 @@ export async function batchJudgeBlockingConflictDescriptions(
 
   return batchJudge(
     provider,
-    `判断每个冲突描述是否属于需要作者立即决策的阻断性矛盾：
-1. 已死亡/已遇害的角色再次登场、说话或行动。
-2. 已揭示/已公开的秘密被再次隐藏，或已暴露的信息被再次保密。
+    `判断每个冲突描述是否属于需要作者立即决策的阻断性矛盾：即描述表明某个已被前置章节确立为已发生状态的关键事实在本章被反向处理。关注事实状态的前后逆转，而非具体措辞。
 只输出 JSON {"results": [true/false, ...]}，顺序与输入一致。`,
     descriptions,
     schema,
@@ -560,8 +569,8 @@ export async function batchValidateFixedContent(
   return batchJudge(
     provider,
     `你是小说正文质量校验助手。对每段文本，判断：
-- looksLikeRevisionPlan: 是否更像修改计划、问题分析、修复建议，而不是正式章节正文（如包含"问题分析"、"修复建议"、"应该"、"可以"、"需要"等大量建议性表达，或列表式修改点）。
-- containsChecklistArtifacts: 是否包含预写对齐检查表、自检清单、Markdown 表格检查项、待办方框等残留。
+- looksLikeRevisionPlan: 是否更像修改计划、问题分析、修复建议，而不是正式章节正文。关注文本是否承担建议、计划或指令功能，而非具体措辞。
+- containsChecklistArtifacts: 是否包含机器/计划性残留内容，而非正常叙事文本。关注非叙事内容的结构化形态，而非具体措辞。
 只输出 JSON {"results": [{"looksLikeRevisionPlan": bool, "containsChecklistArtifacts": bool}, ...]}，顺序与输入一致。`,
     texts.map((t) => t.slice(0, 2000)),
     schema,
@@ -600,7 +609,7 @@ export async function batchValidateTimeAnchors(
     provider,
     `你是小说时间锚点校验助手。对每个 chapterTimeAnchor 和上一章正文片段，判断锚点是否有效：
 1. 如果 anchor 不涉及上一章（无时间回指），返回 valid=true。
-2. 如果 anchor 声称上一章某个事件已经完成、落地、收束或解决，但该事件的核心内容未出现在 previousContent 中，返回 valid=false 并在 reason 中说明。
+2. 如果 anchor 声称上一章某个事件已经达成终态，但该事件的核心内容未出现在 previousContent 中，返回 valid=false 并在 reason 中说明。
 3. 否则返回 valid=true。
 只输出 JSON {"results": [{"valid": bool, "reason": "..."|null}, ...]}，顺序与输入一致。`,
     anchors.map((a) => `anchor=${a.anchor}\npreviousContent=${a.previousContent.slice(0, 1200)}`),

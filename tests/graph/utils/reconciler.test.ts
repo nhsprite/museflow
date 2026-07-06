@@ -73,7 +73,7 @@ function makeConflict(overrides: Partial<Conflict>): Conflict {
     id: 'test',
     type: 'retcon',
     subject: '密信',
-    attribute: '所在位置',
+    attribute: 'location',
     oldValue: '书桌抽屉',
     newValue: '官府仓库',
     outlineReference: '',
@@ -136,7 +136,7 @@ describe('mergeStoryState', () => {
         { subject: '密信', oldFact: '书桌抽屉附近', reason: '冲突', chapterIndex: 1 },
       ],
       canonicalFacts: [
-        { id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 },
+        { id: 'cf1', subject: '密信', attribute: 'location', value: '主卧暗屉', establishedIn: 1 },
       ],
     }
     const delta: StoryState = {
@@ -145,7 +145,7 @@ describe('mergeStoryState', () => {
         { subject: '密信', oldFact: '书桌抽屉附近', reason: '冲突', chapterIndex: 1 },
       ],
       canonicalFacts: [
-        { id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 },
+        { id: 'cf1', subject: '密信', attribute: 'location', value: '主卧暗屉', establishedIn: 1 },
       ],
     }
     const merged = mergeStoryState(existing, delta)
@@ -157,13 +157,13 @@ describe('mergeStoryState', () => {
     const existing: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf1', subject: '密信', attribute: '所在位置', value: '主卧暗屉', establishedIn: 1 },
+        { id: 'cf1', subject: '密信', attribute: 'location', value: '主卧暗屉', establishedIn: 1 },
       ],
     }
     const delta: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf2', subject: '匕首', attribute: '所在位置', value: '口袋', establishedIn: 2 },
+        { id: 'cf2', subject: '匕首', attribute: 'location', value: '口袋', establishedIn: 2 },
       ],
     }
     const merged = mergeStoryState(existing, delta)
@@ -174,13 +174,13 @@ describe('mergeStoryState', () => {
     const existing: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf1', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 1 },
+        { id: 'cf1', subject: '密信', attribute: 'location', value: '官府仓库', establishedIn: 1 },
       ],
     }
     const delta: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf2', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 5 },
+        { id: 'cf2', subject: '密信', attribute: 'location', value: '官府仓库', establishedIn: 5 },
       ],
     }
     const merged = mergeStoryState(existing, delta)
@@ -193,13 +193,13 @@ describe('mergeStoryState', () => {
     const existing: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf1', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 5 },
+        { id: 'cf1', subject: '密信', attribute: 'location', value: '官府仓库', establishedIn: 5 },
       ],
     }
     const delta: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf2', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 1 },
+        { id: 'cf2', subject: '密信', attribute: 'location', value: '官府仓库', establishedIn: 1 },
       ],
     }
     const merged = mergeStoryState(existing, delta)
@@ -340,7 +340,7 @@ describe('applyCanonicalFactsToState', () => {
     const state = emptyState()
     state.keyItemsLocation = { 密信: '书桌抽屉', 另一物品: '书架' }
     state.canonicalFacts = [
-      { id: 'f1', subject: '密信', attribute: '所在位置', value: '官府仓库', establishedIn: 9 },
+      { id: 'f1', subject: '密信', attribute: 'location', value: '官府仓库', establishedIn: 9 },
     ]
 
     const result = applyCanonicalFactsToState(state)
@@ -425,7 +425,7 @@ describe('reconcileStoryState', () => {
   it('preserves canonical facts from input state and updates them', async () => {
     const state = baseState()
     state.canonicalFacts = [
-      { id: 'f1', subject: '密信', attribute: '所在位置', value: '书桌抽屉', establishedIn: 8 },
+      { id: 'f1', subject: '密信', attribute: 'location', value: '书桌抽屉', establishedIn: 8 },
     ]
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([
       { skip: false, location: '官府仓库', state: null, changeKind: 'explicit_change' },
@@ -477,7 +477,7 @@ describe('detectOutlineStateConflicts', () => {
         {
           id: 'cf1',
           subject: '秘密退路',
-          attribute: '限制',
+          attribute: 'status',
           value: '不写在账册上、不托付任何人，仅主角自己知道',
           establishedIn: 11,
         },
@@ -490,7 +490,7 @@ describe('detectOutlineStateConflicts', () => {
           conflicts: [
             {
               subject: '秘密退路',
-              attribute: '限制',
+              attribute: 'status',
               oldValue: '不托付任何人',
               newValue: '寄养于外姓友人',
               severity: 'warning',
@@ -534,7 +534,7 @@ describe('detectOutlineStateConflicts', () => {
       }),
       chat: vi.fn(
         async (): Promise<string> =>
-          '```json\n{"conflicts":[{"subject":"身份","attribute":"行动","oldValue":"等待听信","newValue":"已入府办差","severity":"warning","description":"大纲将听信结果提前，需要写作时交代时间衔接"}],"constraints":["必须交代听信结果为何已落定"]}\n```'
+          '```json\n{"conflicts":[{"subject":"身份","attribute":"status","oldValue":"等待听信","newValue":"已入府办差","severity":"warning","description":"大纲将听信结果提前，需要写作时交代时间衔接"}],"constraints":["必须交代听信结果为何已落定"]}\n```'
       ),
     } as unknown as ModelProvider
 
@@ -608,13 +608,13 @@ describe('conflict detection & classification', () => {
     )
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0].subject).toBe('主角')
-    expect(conflicts[0].attribute).toBe('状态')
+    expect(conflicts[0].attribute).toBe('status')
   })
 
   it('classifies location retcon as auto and status retcon as warning', async () => {
     const conflicts = [
-      makeConflict({ id: '1', attribute: '所在位置' }),
-      makeConflict({ id: '2', attribute: '状态' }),
+      makeConflict({ id: '1', attribute: 'location' }),
+      makeConflict({ id: '2', attribute: 'status' }),
     ]
     const results = await classifyConflicts(conflicts, createMockProvider())
     expect(results[0].severity).toBe('auto')
@@ -641,7 +641,7 @@ describe('applyAuthorOverrides', () => {
       {
         id: 'o1',
         subject: '主角',
-        attribute: '所在位置',
+        attribute: 'location',
         oldValue: '家中',
         newValue: '城外',
         reason: 'test',
@@ -652,7 +652,7 @@ describe('applyAuthorOverrides', () => {
       {
         id: 'o2',
         subject: '钥匙',
-        attribute: '所在位置',
+        attribute: 'location',
         oldValue: '口袋',
         newValue: '箱内',
         reason: 'test',
@@ -684,7 +684,7 @@ describe('applyAuthorOverrides', () => {
       {
         id: 'o1',
         subject: '主角',
-        attribute: '状态',
+        attribute: 'status',
         oldValue: '健康',
         newValue: '负伤',
         reason: 'test',
@@ -696,7 +696,7 @@ describe('applyAuthorOverrides', () => {
 
     const result = applyAuthorOverrides({ ...state, overrides })
     expect(result.characterStatus['主角']).toBe('负伤')
-    expect(result.canonicalFacts?.[0].attribute).toBe('状态')
+    expect(result.canonicalFacts?.[0].attribute).toBe('status')
     expect(result.canonicalFacts?.[0].value).toBe('负伤')
   })
 })
@@ -785,7 +785,7 @@ describe('prepareStoryStateForChapter', () => {
         ...emptyState(),
         characterLocations: { 主角: '家中' },
         canonicalFacts: [
-          { id: 'f1', subject: '主角', attribute: '所在位置', value: '家中', establishedIn: 1 },
+          { id: 'f1', subject: '主角', attribute: 'location', value: '家中', establishedIn: 1 },
         ],
       },
       chapterTimeAnchor: undefined,
@@ -804,7 +804,7 @@ describe('prepareStoryStateForChapter', () => {
           conflicts: [
             {
               subject: '主角',
-              attribute: '所在位置',
+              attribute: 'location',
               oldValue: '家中',
               newValue: '京城',
               severity: 'blocking',
@@ -831,7 +831,7 @@ describe('prepareStoryStateForChapter', () => {
           conflicts: [
             {
               subject: '主角',
-              attribute: '所在位置',
+              attribute: 'location',
               oldValue: '家中',
               newValue: '京城',
               severity: 'blocking',
@@ -858,14 +858,14 @@ describe('prepareStoryStateForChapter', () => {
 
   it('skips blocking conflicts that have an author decision', async () => {
     const state = makeState()
-    state.authorDecisions = { 'outline-state:主角:所在位置:0': 'canonical' }
+    state.authorDecisions = { 'outline-state:主角:location:0': 'canonical' }
     const provider = {
       chat: vi.fn(async (): Promise<string> =>
         JSON.stringify({
           conflicts: [
             {
               subject: '主角',
-              attribute: '所在位置',
+              attribute: 'location',
               oldValue: '家中',
               newValue: '京城',
               severity: 'blocking',
@@ -899,11 +899,16 @@ describe('prepareStoryStateForChapter', () => {
             facts: [
               {
                 subject: '密信',
-                attribute: '来源',
+                attribute: 'origin',
                 value: '旧友暗中递送',
                 contradictsExisting: false,
               },
-              { subject: '暗桩', attribute: '关系', value: '主角旧部', contradictsExisting: false },
+              {
+                subject: '暗桩',
+                attribute: 'identity',
+                value: '主角旧部',
+                contradictsExisting: false,
+              },
             ],
           })
         ),
@@ -915,7 +920,7 @@ describe('prepareStoryStateForChapter', () => {
       result.reconciledState.canonicalFacts?.some(
         (f) =>
           f.subject === '密信' &&
-          f.attribute === '来源' &&
+          f.attribute === 'origin' &&
           f.value === '旧友暗中递送' &&
           f.source === 'outline_inference'
       )
@@ -924,7 +929,7 @@ describe('prepareStoryStateForChapter', () => {
       result.reconciledState.canonicalFacts?.some(
         (f) =>
           f.subject === '暗桩' &&
-          f.attribute === '关系' &&
+          f.attribute === 'identity' &&
           f.value === '主角旧部' &&
           f.establishedIn === 0
       )
@@ -945,7 +950,7 @@ describe('prepareStoryStateForChapter', () => {
         .mockResolvedValueOnce(
           JSON.stringify({
             facts: [
-              { subject: '主角', attribute: '所在位置', value: '京城', contradictsExisting: true },
+              { subject: '主角', attribute: 'location', value: '京城', contradictsExisting: true },
             ],
           })
         ),
@@ -981,11 +986,16 @@ describe('authorizeOutlineFacts', () => {
           facts: [
             {
               subject: '主角',
-              attribute: '所在位置',
+              attribute: 'location',
               value: '废弃仓库',
               contradictsExisting: false,
             },
-            { subject: '暗桩', attribute: '关系', value: '主角旧部', contradictsExisting: false },
+            {
+              subject: '暗桩',
+              attribute: 'identity',
+              value: '主角旧部',
+              contradictsExisting: false,
+            },
           ],
         })
       ),
@@ -1000,14 +1010,14 @@ describe('authorizeOutlineFacts', () => {
     expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({
       subject: '主角',
-      attribute: '所在位置',
+      attribute: 'location',
       value: '废弃仓库',
       establishedIn: 4,
       source: 'outline_inference',
     })
     expect(result[1]).toMatchObject({
       subject: '暗桩',
-      attribute: '关系',
+      attribute: 'identity',
       value: '主角旧部',
       establishedIn: 4,
       source: 'outline_inference',
@@ -1018,7 +1028,7 @@ describe('authorizeOutlineFacts', () => {
     const state: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'f1', subject: '主角', attribute: '所在位置', value: '废弃仓库', establishedIn: 4 },
+        { id: 'f1', subject: '主角', attribute: 'location', value: '废弃仓库', establishedIn: 4 },
       ],
     }
     const provider = {
@@ -1027,7 +1037,7 @@ describe('authorizeOutlineFacts', () => {
           facts: [
             {
               subject: '主角',
-              attribute: '所在位置',
+              attribute: 'location',
               value: '废弃仓库',
               contradictsExisting: false,
             },
@@ -1044,14 +1054,14 @@ describe('authorizeOutlineFacts', () => {
     const state: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'f1', subject: '主角', attribute: '所在位置', value: '家中', establishedIn: 1 },
+        { id: 'f1', subject: '主角', attribute: 'location', value: '家中', establishedIn: 1 },
       ],
     }
     const provider = {
       chat: vi.fn(async (): Promise<string> =>
         JSON.stringify({
           facts: [
-            { subject: '主角', attribute: '所在位置', value: '京城', contradictsExisting: true },
+            { subject: '主角', attribute: 'location', value: '京城', contradictsExisting: true },
           ],
         })
       ),
@@ -1089,7 +1099,7 @@ describe('authorizeOutlineFacts', () => {
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({
       subject: '主角',
-      attribute: '所在位置',
+      attribute: 'location',
       value: '废弃仓库',
       establishedIn: 4,
       source: 'outline_inference',
@@ -1106,7 +1116,7 @@ describe('applyCanonicalFactsToState', () => {
         {
           id: 'f1',
           subject: '龙纹玉佩',
-          attribute: '所在位置',
+          attribute: 'location',
           value: '主角怀中',
           establishedIn: 2,
         },
@@ -1123,7 +1133,7 @@ describe('applyCanonicalFactsToState', () => {
         {
           id: 'f2',
           subject: '顾承舟',
-          attribute: '状态',
+          attribute: 'status',
           value: '负伤',
           establishedIn: 3,
         },
@@ -1162,13 +1172,13 @@ describe('detectSecretRevealConflicts', () => {
     const base: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'f1', subject: '玉佩', attribute: '所在位置', value: '桌上', establishedIn: 1 },
+        { id: 'f1', subject: '玉佩', attribute: 'location', value: '桌上', establishedIn: 1 },
       ],
     }
     const delta: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'f2', subject: '玉佩', attribute: '所在位置', value: '主角怀中', establishedIn: 2 },
+        { id: 'f2', subject: '玉佩', attribute: 'location', value: '主角怀中', establishedIn: 2 },
       ],
     }
     const merged = mergeStoryState(base, delta)

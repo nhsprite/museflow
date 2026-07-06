@@ -119,7 +119,7 @@ export function sanitizeStoryState(
       const canonical: CanonicalFact = {
         id: `cf_${chapterIndex}_${canonicalSubject}_${now}`,
         subject: canonicalSubject,
-        attribute: '所在位置',
+        attribute: 'location',
         value: winner.value,
         establishedIn: chapterIndex,
         confidence: 'medium',

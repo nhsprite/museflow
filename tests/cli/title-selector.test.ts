@@ -220,6 +220,7 @@ describe('title-selector', () => {
           title: '《血符京华》',
           worldDirection: {
             powerSystem: '无体系，萨满巫术以血祭反噬',
+            hasPowerSystem: false,
             coreConflict: '复仇唤醒血脉诅咒',
             worldFeatures: ['咒道', '阴兵'],
           },

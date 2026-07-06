@@ -35,7 +35,7 @@ describe('mergeStoryState', () => {
         {
           id: 'cf1',
           subject: '木之灵物',
-          attribute: '所在位置',
+          attribute: 'location',
           value: '昆仑山',
           establishedIn: 2,
         },
@@ -54,7 +54,7 @@ describe('mergeStoryState', () => {
         {
           id: 'cf1',
           subject: '木之灵物',
-          attribute: '所在位置',
+          attribute: 'location',
           value: '昆仑山',
           establishedIn: 2,
         },
@@ -66,7 +66,7 @@ describe('mergeStoryState', () => {
         {
           id: 'cf2',
           subject: '木之灵物',
-          attribute: '所在位置',
+          attribute: 'location',
           value: '昆仑山',
           establishedIn: 3,
         },
@@ -84,7 +84,7 @@ describe('mergeStoryState', () => {
         {
           id: 'cf1',
           subject: '木之灵物',
-          attribute: '所在位置',
+          attribute: 'location',
           value: '昆仑山',
           establishedIn: 2,
         },
@@ -93,7 +93,7 @@ describe('mergeStoryState', () => {
     const delta: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'cf2', subject: '木之灵物', attribute: '状态', value: '激活', establishedIn: 3 },
+        { id: 'cf2', subject: '木之灵物', attribute: 'status', value: '激活', establishedIn: 3 },
       ],
     }
 
@@ -108,7 +108,7 @@ describe('mergeStoryState', () => {
         {
           id: 'cf1',
           subject: '木之灵物',
-          attribute: '所在位置',
+          attribute: 'location',
           value: '昆仑山',
           establishedIn: 2,
         },
@@ -216,7 +216,7 @@ describe('filterSupersededFactsFromTimeline', () => {
       {
         id: 'cf1',
         subject: '木之灵物',
-        attribute: '所在位置',
+        attribute: 'location',
         value: '昆仑山',
         establishedIn: 2,
         supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
@@ -239,7 +239,7 @@ describe('filterSupersededFactsFromTimeline', () => {
       {
         id: 'cf1',
         subject: '样本',
-        attribute: '位置',
+        attribute: 'location',
         value: '实验室B',
         establishedIn: 2,
         supersedes: [{ chapter: 0, oldValue: '实验室A' }],
@@ -258,7 +258,7 @@ describe('filterSupersededEventsFromTimeline', () => {
       {
         id: 'cf1',
         subject: '木之灵物',
-        attribute: '所在位置',
+        attribute: 'location',
         value: '昆仑山',
         establishedIn: 2,
         supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
@@ -340,14 +340,14 @@ describe('buildCanonicalFactTimeline', () => {
           {
             id: 'cf1',
             subject: '木之灵物',
-            attribute: '所在位置',
+            attribute: 'location',
             value: '东方灵河旧址',
             establishedIn: 0,
           },
           {
             id: 'cf2',
             subject: '木之灵物',
-            attribute: '所在位置',
+            attribute: 'location',
             value: '昆仑山',
             establishedIn: 2,
             supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
@@ -379,14 +379,14 @@ describe('buildCharacterFactTimeline', () => {
           {
             id: 'cf1',
             subject: '主角',
-            attribute: '已知信息',
+            attribute: 'known_info',
             value: '主角知道密信在书桌抽屉',
             establishedIn: 0,
           },
           {
             id: 'cf2',
             subject: '侍女',
-            attribute: '态度',
+            attribute: 'attitude',
             value: '侍女对主角产生怀疑',
             establishedIn: 1,
           },
@@ -417,7 +417,7 @@ describe('buildKeyEventsTimeline', () => {
           {
             id: 'cf1',
             subject: '密信',
-            attribute: '关键事件',
+            attribute: 'key_event',
             value: '密信被转移至官府仓库',
             establishedIn: 1,
           },

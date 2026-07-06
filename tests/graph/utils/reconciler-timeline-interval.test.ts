@@ -63,7 +63,7 @@ describe('buildCharacterFactTimeline interval filtering', () => {
       {
         id: 'f1',
         subject: '主角',
-        attribute: '所在位置',
+        attribute: 'location',
         value: '家乡',
         establishedIn: 0,
         confidence: 'high',
@@ -72,7 +72,7 @@ describe('buildCharacterFactTimeline interval filtering', () => {
       {
         id: 'f2',
         subject: '主角',
-        attribute: '所在位置',
+        attribute: 'location',
         value: '京城',
         establishedIn: 2,
         retiredIn: 4,
@@ -82,7 +82,7 @@ describe('buildCharacterFactTimeline interval filtering', () => {
       {
         id: 'f3',
         subject: '主角',
-        attribute: '所在位置',
+        attribute: 'location',
         value: '边疆',
         establishedIn: 4,
         confidence: 'high',
