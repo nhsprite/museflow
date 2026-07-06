@@ -451,7 +451,7 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline).toHaveLength(8)
   })
 
-  it('logs an adjust-act suggestion when pre-outline act extension hits the auto limit', async () => {
+  it('stops before outline generation when pre-outline act extension needs manual adjustment', async () => {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     const overloadedState: ReducedGraphState = {
       ...baseState,
@@ -497,11 +497,14 @@ describe('expandOutlineForChapter', () => {
     }
 
     try {
-      await expandOutlineForChapter(overloadedState, 1, createMockProvider())
+      await expect(
+        expandOutlineForChapter(overloadedState, 1, createMockProvider())
+      ).rejects.toThrow('museflow adjust-act story-1 --act 2 --end-chapter 4')
 
       expect(warnSpy).toHaveBeenCalledWith(
         '[MuseFlow] 建议运行：museflow adjust-act story-1 --act 2 --end-chapter 4'
       )
+      expect(chapterOutlineRunMock).not.toHaveBeenCalled()
     } finally {
       warnSpy.mockRestore()
     }

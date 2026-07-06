@@ -125,9 +125,16 @@ async function autoExtendCurrentActBeforeOutline(
     const result = applyActBoundaryAdjustment(updatedStoryArc, proposal, chapterIndex)
     if (!result.applied) {
       logger.warn(`[MuseFlow] 写前自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
-      logger.warn(
-        `[MuseFlow] 建议运行：${formatActBoundaryAdjustmentCommand(state.story.id, proposal)}`
-      )
+      const command = formatActBoundaryAdjustmentCommand(state.story.id, proposal)
+      logger.warn(`[MuseFlow] 建议运行：${command}`)
+      if (result.requiresManualResolution) {
+        throw new Error(
+          [
+            `写前自动延长第 ${proposal.actIndex} 幕失败：${result.reason ?? '需要人工调整幕边界。'}`,
+            `请先运行：${command}`,
+          ].join('\n')
+        )
+      }
       continue
     }
     updatedStoryArc = result.storyArc
