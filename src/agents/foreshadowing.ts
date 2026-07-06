@@ -45,7 +45,8 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
     output: AgentOutput,
     chapterIndex: number,
     existingStack: ForeshadowItem[],
-    chapterContent?: string
+    chapterContent?: string,
+    genre?: string
   ): ForeshadowItem[] {
     void chapterContent
     if (!output.success || !output.data) return existingStack
@@ -62,7 +63,7 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
     }
 
     const currentChapter = chapterIndex + 1
-    const planningConfig = getChapterPlanningConfig('default')
+    const planningConfig = getChapterPlanningConfig(genre ?? 'default')
     const defaultFulfillDistance = Math.round(
       (planningConfig.foreshadowMinFulfillDistance + planningConfig.foreshadowMaxFulfillDistance) /
         2

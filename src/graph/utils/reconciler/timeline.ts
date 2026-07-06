@@ -24,6 +24,13 @@ function formatCharacterFactEntries(
   return lines.join('\n')
 }
 
+/**
+ * These fallback helpers operate on summary free-text. Implementing them would
+ * require natural-language substring matching against superseded old values,
+ * which violates the "no natural-language string matching for semantics" rule.
+ * They remain no-ops; the canonical-facts timeline path above already avoids
+ * superseded facts by using structured (subject, attribute, value) records.
+ */
 export function filterSupersededFactsFromTimeline(
   entries: Array<{ character: string; facts: string[] }>,
   canonicalFacts: CanonicalFact[]

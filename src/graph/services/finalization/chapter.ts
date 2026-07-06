@@ -243,6 +243,8 @@ export async function finalizeChapter(
 
           // 如果 SummaryAgent 返回的 verifiedBeats 没有覆盖当前幕全部 mandatory beats，
           // 再用正文内容做一次覆盖判定，避免 narrative 摘要导致 beats 被漏记。
+          // Note: normalizeVerifiedBeats relies on exact string equality because
+          // act.mandatoryBeats currently has no stable IDs. This is legacy behavior.
           const actForCoverage = getActForChapter(state.storyArc, chapterIndex)
           const latestCurrentOutline = updatedOutline[chapterIndex] ?? currentOutline
           if (actForCoverage && latestCurrentOutline && chapterContent) {

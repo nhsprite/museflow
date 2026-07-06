@@ -2,40 +2,40 @@ import { describe, expect, it } from 'vitest'
 import { buildCharacterWhitelist } from '../../src/utils/character-whitelist.js'
 import type { Character } from '../../src/types/character.js'
 
-function character(name: string, description = ''): Character {
-  return { id: '1', storyId: 's', name, description, createdAt: 1 }
+function makeCharacter(name: string): Character {
+  return {
+    id: 'c1',
+    storyId: 's1',
+    name,
+    description: '',
+    dialogueStyle: null,
+    createdAt: 1,
+  }
 }
 
 describe('buildCharacterWhitelist', () => {
-  it('accepts official names exactly as listed', () => {
-    const list = buildCharacterWhitelist([character('主角'), character('侍女')])
-    expect(list.isOfficial('主角')).toBe(true)
-    expect(list.isOfficial('侍女')).toBe(true)
+  it('recognizes official full names', () => {
+    const whitelist = buildCharacterWhitelist([makeCharacter('林黛玉')])
+    expect(whitelist.isOfficial('林黛玉')).toBe(true)
+    expect(whitelist.canonical('林黛玉')).toBe('林黛玉')
   })
 
-  it('flags names that are not in the whitelist', () => {
-    const list = buildCharacterWhitelist([character('主角')])
-    expect(list.isOfficial('路人甲')).toBe(false)
-    expect(list.isOfficial(' invented 角色')).toBe(false)
+  it('recognizes derived aliases for Chinese names', () => {
+    const whitelist = buildCharacterWhitelist([makeCharacter('林黛玉')])
+    expect(whitelist.isOfficial('黛玉')).toBe(true)
+    expect(whitelist.canonical('黛玉')).toBe('林黛玉')
   })
 
-  it('keeps parenthetical names exact without generating aliases', () => {
-    const list = buildCharacterWhitelist([character('何氏（奶娘）')])
-    expect(list.isOfficial('何氏（奶娘）')).toBe(true)
-    expect(list.isOfficial('何氏')).toBe(false)
-    expect(list.canonical('何氏（奶娘）')).toBe('何氏（奶娘）')
+  it('does not derive aliases for short names', () => {
+    const whitelist = buildCharacterWhitelist([makeCharacter('宝玉')])
+    expect(whitelist.isOfficial('玉')).toBe(false)
+    expect(whitelist.canonical('玉')).toBeUndefined()
   })
 
-  it('trims whitespace around names', () => {
-    const list = buildCharacterWhitelist([character('  主角  ')])
-    expect(list.isOfficial('主角')).toBe(true)
-    expect(list.canonical('  主角  ')).toBe('主角')
-  })
-
-  it('does not derive canonical names from parenthetical variants', () => {
-    const list = buildCharacterWhitelist([character('苏氏（夫人）')])
-    expect(list.canonical('苏氏（夫人）')).toBe('苏氏（夫人）')
-    expect(list.canonical('苏氏')).toBeUndefined()
-    expect(list.canonical('未知')).toBeUndefined()
+  it('does not confuse aliases from different characters', () => {
+    const whitelist = buildCharacterWhitelist([makeCharacter('林黛玉'), makeCharacter('薛宝钗')])
+    // "黛玉" maps to 林黛玉, "宝钗" maps to 薛宝钗.
+    expect(whitelist.canonical('黛玉')).toBe('林黛玉')
+    expect(whitelist.canonical('宝钗')).toBe('薛宝钗')
   })
 })

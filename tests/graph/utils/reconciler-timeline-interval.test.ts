@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildCharacterFactTimeline } from '../../../src/graph/utils/reconciler/timeline.js'
+import {
+  buildCharacterFactTimeline,
+  filterSupersededFactsFromTimeline,
+  filterSupersededEventsFromTimeline,
+} from '../../../src/graph/utils/reconciler/timeline.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { CanonicalFact } from '../../../src/types/story-state.js'
 
@@ -104,5 +108,48 @@ describe('buildCharacterFactTimeline interval filtering', () => {
     const chapter4 = buildCharacterFactTimeline(state, 4)
     expect(chapter4).not.toContain('京城')
     expect(chapter4).toContain('边疆')
+  })
+})
+
+describe('filterSupersededFactsFromTimeline', () => {
+  it('is a no-op to avoid natural-language matching on summary text', () => {
+    const entries = [
+      { character: '主角', facts: ['在家乡', '在京城'] },
+      { character: '配角', facts: ['在家乡'] },
+    ]
+    const canonicalFacts: CanonicalFact[] = [
+      {
+        id: 'f1',
+        subject: '主角',
+        attribute: 'location',
+        value: '边疆',
+        establishedIn: 2,
+        confidence: 'high',
+        source: 'chapter_text',
+        supersedes: [{ chapter: 0, oldValue: '京城' }],
+      },
+    ]
+    const filtered = filterSupersededFactsFromTimeline(entries, canonicalFacts)
+    expect(filtered).toEqual(entries)
+  })
+})
+
+describe('filterSupersededEventsFromTimeline', () => {
+  it('is a no-op to avoid natural-language matching on summary text', () => {
+    const events = ['主角在家乡', '主角在京城', '主角在边疆']
+    const canonicalFacts: CanonicalFact[] = [
+      {
+        id: 'f1',
+        subject: '主角',
+        attribute: 'location',
+        value: '边疆',
+        establishedIn: 2,
+        confidence: 'high',
+        source: 'chapter_text',
+        supersedes: [{ chapter: 0, oldValue: '京城' }],
+      },
+    ]
+    const filtered = filterSupersededEventsFromTimeline(events, canonicalFacts)
+    expect(filtered).toEqual(events)
   })
 })

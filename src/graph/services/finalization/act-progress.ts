@@ -43,6 +43,12 @@ export function getPendingMandatoryBeats(state: ReducedGraphState, chapterIndex:
   return act.mandatoryBeats.filter((beat) => !progress.consumed.includes(beat))
 }
 
+/**
+ * Legacy outline-path helper: matches verified beat strings to act mandatory beat
+ * strings by exact equality. This is fragile because LLMs may paraphrase beats.
+ * It is kept only for runs without usable storyMemory; the memory path uses beat
+ * IDs via getVerifiedBeatsFromMemory instead.
+ */
 export function normalizeVerifiedBeats(
   rawVerifiedBeats: string[],
   mandatoryBeats: string[]
@@ -161,6 +167,11 @@ function updateActProgressFromMemory(
   return result
 }
 
+/**
+ * Legacy outline-only fallback for act progress. Uses exact string matching
+ * between outline.verifiedBeats and act.mandatoryBeats. Prefer
+ * updateActProgressFromMemory when storyMemory is available.
+ */
 async function updateActProgressFromOutline(
   state: ReducedGraphState,
   chapterIndex: number,
@@ -271,6 +282,10 @@ async function updateActProgressFromOutline(
   return { actProgress: updatedActProgress, beatVerificationIssues }
 }
 
+/**
+ * Legacy outline-only helper: compares claimed and verified beats by exact
+ * string equality. Only called from updateActProgressFromOutline.
+ */
 function buildBeatVerificationIssues(
   claimedBeats: string[],
   verifiedBeats: string[],

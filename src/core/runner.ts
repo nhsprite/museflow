@@ -12,6 +12,8 @@ import { createCheckpointService } from '../storage/checkpoint-service.js'
 import { migrateLegacyCheckpoints } from '../storage/migration.js'
 import type { Issue } from '../types/agent.js'
 import type { StateOverride, StoryState } from '../types/story-state.js'
+import type { StoryMemory } from '../types/story-memory.js'
+import { projectMemory } from '../story-memory/projector.js'
 import { createRuntimeContext, type RuntimeContext } from './context.js'
 import { commitChapterRun } from './chapter-commit.js'
 import {
@@ -182,6 +184,18 @@ function cleanStoryStateForRewrite(storyState: StoryState, targetChapterIndex: n
   }
 }
 
+function cleanStoryMemoryForRewrite(memory: StoryMemory, targetChapterIndex: number): StoryMemory {
+  const filteredEvents = memory.events.filter((event) => event.chapterIndex < targetChapterIndex)
+  if (filteredEvents.length === memory.events.length) {
+    return memory
+  }
+  return projectMemory({
+    ...memory,
+    events: filteredEvents,
+    lastChapterIndex: Math.min(memory.lastChapterIndex, Math.max(0, targetChapterIndex - 1)),
+  })
+}
+
 export async function runOneChapter(
   storyId: string,
   options: RunOneChapterOptions,
@@ -263,6 +277,12 @@ export async function runOneChapter(
     )
     if (checkpointState.storyState) {
       workingState.storyState = cleanStoryStateForRewrite(checkpointState.storyState, targetIndex)
+    }
+    if (checkpointState.storyMemory) {
+      workingState.storyMemory = cleanStoryMemoryForRewrite(
+        checkpointState.storyMemory,
+        targetIndex
+      )
     }
     if (options.targetChapterIndex !== undefined) {
       workingState.chapterPlan = null

@@ -447,4 +447,67 @@ describe('runner revalidation', () => {
     expect(invokedState.storyState?.canonicalFacts?.map((f) => f.id)).toEqual(['prev', 'author'])
     expect(invokedState.storyState?.supersededFacts?.map((f) => f.subject)).toEqual(['前章事实'])
   })
+
+  it('truncates storyMemory events to before the target chapter during rewrite', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        storyMemory: {
+          version: '1',
+          lastChapterIndex: 2,
+          entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+          events: [
+            {
+              id: 'e0',
+              type: 'character-location',
+              chapterIndex: 0,
+              source: 'chapter',
+              characterId: '甲',
+              locationId: '北京',
+            },
+            {
+              id: 'e1',
+              type: 'character-location',
+              chapterIndex: 1,
+              source: 'chapter',
+              characterId: '甲',
+              locationId: '上海',
+            },
+            {
+              id: 'e2',
+              type: 'character-location',
+              chapterIndex: 2,
+              source: 'chapter',
+              characterId: '甲',
+              locationId: '广州',
+            },
+          ],
+          foreshadows: {},
+          beats: {},
+          tasks: {},
+        },
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter(
+      'story-1',
+      {
+        mode: 'rewrite',
+        targetChapterIndex: 1,
+        userResponse: true,
+      },
+      createMockContext()
+    )
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    const memory = invokedState.storyMemory
+    expect(memory).toBeDefined()
+    expect(memory.events.map((e: { id: string }) => e.id)).toEqual(['e0'])
+    expect(memory.entities.characters['甲']?.locationId).toBe('北京')
+    expect(memory.lastChapterIndex).toBe(0)
+  })
 })

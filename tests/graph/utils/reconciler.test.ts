@@ -281,7 +281,6 @@ describe('sanitizeStoryState', () => {
     const report = sanitizeStoryState(state, characters)
     expect(report.state.activePlots).toEqual(['配角甲出门办事'])
     expect(report.state.revealedSecrets).toEqual(['配角乙偷了东西'])
-    expect(report.removedFacts).toEqual([])
   })
 
   it('keeps plots and secrets that reference official characters', () => {
@@ -293,7 +292,6 @@ describe('sanitizeStoryState', () => {
     const report = sanitizeStoryState(state, characters)
     expect(report.state.activePlots).toEqual(['主角追查密信下落'])
     expect(report.state.revealedSecrets).toEqual(['主角发现密信被转移出王府'])
-    expect(report.removedFacts).toEqual([])
   })
 
   it('detects ambiguous item names at same location', () => {
@@ -544,6 +542,101 @@ describe('detectOutlineStateConflicts', () => {
     expect(result.conflicts[0].description).toContain('时间衔接')
     expect(result.constraints).toEqual(['必须交代听信结果为何已落定'])
     expect(provider.chat).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs canonical-fact alignment even when storyMemory is present', async () => {
+    const state: StoryState & { storyMemory?: object } = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'cf1',
+          subject: '密信',
+          attribute: 'location',
+          value: '官府仓库',
+          establishedIn: 5,
+        },
+      ],
+      storyMemory: {
+        version: '1',
+        lastChapterIndex: 5,
+        entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+        events: [],
+        foreshadows: {},
+        beats: {},
+        tasks: {},
+      },
+    }
+    const storyArc = {
+      totalChapters: 10,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 10,
+          title: 'Act 1',
+          theme: '',
+          function: '',
+          mandatoryBeats: [],
+        },
+      ],
+      keyBeats: [],
+    }
+
+    const provider = {
+      chat: vi.fn(async (): Promise<string> =>
+        JSON.stringify({
+          conflicts: [
+            {
+              subject: '密信',
+              attribute: 'location',
+              oldValue: '官府仓库',
+              newValue: '王府',
+              severity: 'warning',
+              description: '大纲将密信位置改为王府',
+            },
+          ],
+          constraints: [],
+        })
+      ),
+    } as unknown as ModelProvider
+
+    const result = await detectOutlineStateConflicts(
+      state,
+      '密信被转移至王府。',
+      6,
+      provider,
+      storyArc
+    )
+    expect(result.conflicts).toHaveLength(1)
+    expect(result.conflicts[0].subject).toBe('密信')
+  })
+})
+
+describe('detectSecretRevealConflicts', () => {
+  it('flags outline that re-hides a revealed secret', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      revealedSecrets: ['主角是主谋'],
+    }
+    const conflicts = detectSecretRevealConflicts(state, '众人仍不知主角是主谋')
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].severity).toBe('blocking')
+    expect(conflicts[0].type).toBe('contradiction')
+  })
+
+  it('ignores outline that simply reuses a revealed secret', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      revealedSecrets: ['主角是主谋'],
+    }
+    const conflicts = detectSecretRevealConflicts(state, '主角是主谋的事实震惊了所有人')
+    expect(conflicts).toHaveLength(0)
+  })
+
+  it('returns empty array when no secrets are revealed', () => {
+    const state = emptyState()
+    const conflicts = detectSecretRevealConflicts(state, '众人仍不知真相')
+    expect(conflicts).toHaveLength(0)
   })
 })
 

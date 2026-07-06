@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ModelProvider } from '../../src/model/provider.ts'
-import { batchJudgeTaskRelevance, batchClassifyIssues } from '../../src/utils/context-judge.js'
+import {
+  batchJudgeTaskRelevance,
+  batchClassifyIssues,
+  generateIssueFingerprint,
+} from '../../src/utils/context-judge.js'
 
 describe('context-judge robustness', () => {
   it('maps indexed structured results by id', async () => {
@@ -113,5 +117,52 @@ describe('context-judge robustness', () => {
     const relevance = await batchJudgeTaskRelevance(provider, items)
     expect(relevance).toEqual([true, false])
     expect(provider.chat).toHaveBeenCalledTimes(1)
+  })
+
+  it('generateIssueFingerprint uses structured fields and ignores description', () => {
+    const a = {
+      id: '1',
+      type: 'consistency' as const,
+      severity: 'error' as const,
+      description: '角色甲不应该出现在这里',
+      dimension: 'character',
+      subject: '角色甲',
+      locationRef: { paragraphIndex: 2, sentenceIndex: 3 },
+    }
+    const b = {
+      id: '2',
+      type: 'consistency' as const,
+      severity: 'error' as const,
+      description: '角色甲出现在了错误的位置',
+      dimension: 'character',
+      subject: '角色甲',
+      locationRef: { paragraphIndex: 2, sentenceIndex: 3 },
+    }
+    expect(generateIssueFingerprint(a)).toBe(generateIssueFingerprint(b))
+    expect(generateIssueFingerprint(a)).not.toContain('角色甲不应该出现在这里')
+  })
+
+  it('generateIssueFingerprint falls back to locationRef when subject is missing', () => {
+    const issue = {
+      id: 'issue-7',
+      type: 'consistency' as const,
+      severity: 'error' as const,
+      description: 'description text',
+      locationRef: { paragraphIndex: 1, sentenceIndex: 2 },
+    }
+    const fp = generateIssueFingerprint(issue)
+    expect(fp).toContain('consistency')
+    expect(fp).toContain('p1s2')
+    expect(fp).not.toContain('description text')
+  })
+
+  it('generateIssueFingerprint marks fingerprint generic when no subject or location', () => {
+    const issue = {
+      id: 'issue-8',
+      type: 'hallucination' as const,
+      severity: 'error' as const,
+      description: 'any text',
+    }
+    expect(generateIssueFingerprint(issue)).toBe('hallucination:unknown:__generic__:issue-8')
   })
 })

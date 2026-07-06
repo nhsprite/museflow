@@ -324,7 +324,8 @@ export async function detect_foreshadowing(
     output,
     chapterIndex,
     cleanedForeshadowStack,
-    content || undefined
+    content || undefined,
+    state.genre
   )
 
   return { foreshadowStack }

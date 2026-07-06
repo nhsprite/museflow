@@ -272,22 +272,12 @@ function detectUnprovenBeatConflicts(
   return conflicts
 }
 
-export async function detectOutlineStateConflicts(
-  state: StoryState & { storyMemory?: StoryMemory | null },
+async function detectCanonicalFactOutlineConflicts(
+  state: StoryState,
   outline: string,
   chapterIndex: number,
-  provider?: ModelProvider,
-  storyArc?: StoryArc
+  provider?: ModelProvider
 ): Promise<{ conflicts: Conflict[]; constraints: string[] }> {
-  if (!outline || outline.trim().length === 0) {
-    return { conflicts: [], constraints: [] }
-  }
-
-  if (state.storyMemory && storyArc) {
-    const conflicts = detectUnprovenBeatConflicts(storyArc, state.storyMemory, chapterIndex)
-    return { conflicts, constraints: [] }
-  }
-
   if (!provider) {
     return { conflicts: [], constraints: [] }
   }
@@ -378,4 +368,33 @@ export async function detectOutlineStateConflicts(
     )
     return { conflicts: [], constraints: [] }
   }
+}
+
+export async function detectOutlineStateConflicts(
+  state: StoryState & { storyMemory?: StoryMemory | null },
+  outline: string,
+  chapterIndex: number,
+  provider?: ModelProvider,
+  storyArc?: StoryArc
+): Promise<{ conflicts: Conflict[]; constraints: string[] }> {
+  if (!outline || outline.trim().length === 0) {
+    return { conflicts: [], constraints: [] }
+  }
+
+  const canonicalResult = await detectCanonicalFactOutlineConflicts(
+    state,
+    outline,
+    chapterIndex,
+    provider
+  )
+
+  if (state.storyMemory && storyArc) {
+    const beatConflicts = detectUnprovenBeatConflicts(storyArc, state.storyMemory, chapterIndex)
+    return {
+      conflicts: [...canonicalResult.conflicts, ...beatConflicts],
+      constraints: canonicalResult.constraints,
+    }
+  }
+
+  return canonicalResult
 }

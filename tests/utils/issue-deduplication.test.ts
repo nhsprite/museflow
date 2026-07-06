@@ -108,10 +108,13 @@ describe('issueFingerprint with provider', () => {
       type: 'hallucination',
       severity: 'error',
       description: '角色甲不在官方列表',
+      dimension: 'character',
+      subject: '角色甲',
     }
     const provider = createMockProvider('llm-fingerprint')
     const fp = await issueFingerprint(provider, issue)
     expect(fp).toBe(generateIssueFingerprint(issue))
+    expect(provider.chat).not.toHaveBeenCalled()
   })
 
   it('falls back to LLM fingerprint when rule fingerprint is generic', async () => {
@@ -124,6 +127,21 @@ describe('issueFingerprint with provider', () => {
     const provider = createMockProvider('llm-fingerprint')
     const fp = await issueFingerprint(provider, issue)
     expect(fp).toBe('hallucination:llm-fingerprint')
+  })
+
+  it('does not use LLM fallback when locationRef is present without subject', async () => {
+    const issue: Issue = {
+      id: '1',
+      type: 'consistency',
+      severity: 'error',
+      description: 'any text',
+      locationRef: { paragraphIndex: 0, sentenceIndex: 1 },
+    }
+    const provider = createMockProvider('should-not-be-used')
+    const fp = await issueFingerprint(provider, issue)
+    expect(fp).not.toContain('should-not-be-used')
+    expect(fp).toContain('p0s1')
+    expect(provider.chat).not.toHaveBeenCalled()
   })
 
   it('falls back to generateIssueFingerprint when provider is undefined', async () => {

@@ -140,10 +140,43 @@ export async function detectCharacterStatusConflicts(
   return detectEntityConflictsWithLLM(state.characterStatus, outline, 'status', 'warning', provider)
 }
 
+/**
+ * TODO: revealedSecrets is currently a string array, so this function must use
+ * substring matching. Once secrets are stored as structured records with stable
+ * IDs, replace this with structured comparison.
+ */
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {
-  void state
-  void outline
-  return []
+  if (!state.revealedSecrets || state.revealedSecrets.length === 0 || !outline) {
+    return []
+  }
+
+  const conflicts: Conflict[] = []
+  const negationPattern = /(未|不|没有|仍|依旧|尚未|不曾|未知|保密|隐藏|隐瞒|无人知晓|不得泄露)/
+
+  for (let i = 0; i < state.revealedSecrets.length; i++) {
+    const secret = state.revealedSecrets[i]!
+    if (secret.length === 0) continue
+    if (!outline.includes(secret)) continue
+
+    const index = outline.indexOf(secret)
+    const window = outline.slice(Math.max(0, index - 30), index + secret.length + 30)
+    if (negationPattern.test(window)) {
+      const subject = secret.length > 20 ? `${secret.slice(0, 20)}…` : secret
+      conflicts.push({
+        id: `secret-reveal:${i}`,
+        type: 'contradiction',
+        subject,
+        attribute: 'known_info',
+        oldValue: secret,
+        newValue: 're-hidden',
+        outlineReference: outline.slice(0, 200),
+        severity: 'blocking',
+        description: `大纲试图重新隐藏已揭示的秘密：${subject}`,
+      })
+    }
+  }
+
+  return conflicts
 }
 
 export async function detectTimeAnchorConflicts(

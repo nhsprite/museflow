@@ -133,7 +133,6 @@ export interface SanitizationReport {
   state: StoryState
   removedCharacters: string[]
   itemLocationConflicts: Array<{ item: string; locations: string[] }>
-  removedFacts: string[]
   ambiguousItems: Array<{ location: string; items: string[] }>
 }
 

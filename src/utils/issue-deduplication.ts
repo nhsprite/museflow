@@ -20,7 +20,7 @@ function formatLocationRef(issue: Issue): string {
 }
 
 function isGenericFingerprint(fp: string): boolean {
-  return fp === 'unknown:no-subject' || fp === 'unknown:'
+  return fp.includes(':__generic__:')
 }
 
 export async function issueFingerprint(

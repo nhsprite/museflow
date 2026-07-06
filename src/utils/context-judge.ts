@@ -338,8 +338,18 @@ export async function batchClassifyIssues(
 
 export function generateIssueFingerprint(issue: Issue): string {
   const dimension = issue.dimension ?? 'unknown'
-  const subject = issue.subject ?? issue.description?.slice(0, 40) ?? 'no-subject'
-  return `${dimension}:${subject}`
+  const location = issue.locationRef
+    ? `p${issue.locationRef.paragraphIndex ?? -1}s${issue.locationRef.sentenceIndex ?? -1}`
+    : ''
+
+  if (issue.subject) {
+    return `${issue.type}:${dimension}:${issue.subject}${location ? ':' + location : ''}`
+  }
+  if (location) {
+    return `${issue.type}:${dimension}:${location}:${issue.id}`
+  }
+  // No subject or location available; mark as generic so callers can decide to use LLM fallback.
+  return `${issue.type}:${dimension}:__generic__:${issue.id}`
 }
 
 export async function batchGenerateIssueFingerprints(

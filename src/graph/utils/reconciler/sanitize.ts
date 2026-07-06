@@ -87,6 +87,10 @@ export function sanitizeStoryState(
   const itemLocationConflicts: Array<{ item: string; locations: string[] }> = []
   const newSupersededFacts: SupersededFact[] = []
   const newCanonicalFacts: CanonicalFact[] = []
+  // Note: plot/secret filtering is intentionally not implemented here because
+  // activePlots and revealedSecrets are free-text arrays without structured
+  // character associations. Filtering them by substring would violate the
+  // "no natural-language string matching for semantics" rule.
 
   for (const group of itemGroups.values()) {
     const distinctLocations = Array.from(new Set(group.map((g) => g.location)))
@@ -139,8 +143,6 @@ export function sanitizeStoryState(
     }
   }
 
-  const removedFacts: string[] = []
-
   const ambiguousItems = detectAmbiguousItemNames(state)
   if (ambiguousItems.length > 0) {
     logger.warn('[MuseFlow] 检测到同一位置下多个歧义物品名：')
@@ -165,7 +167,6 @@ export function sanitizeStoryState(
     },
     removedCharacters,
     itemLocationConflicts,
-    removedFacts,
     ambiguousItems,
   }
 }
@@ -180,16 +181,6 @@ export function formatStateConflicts(report: SanitizationReport): string {
     }
     lines.push(
       '  说明：以上角色不在官方角色、大纲登场角色或前文已建立角色列表中。如果确需登场，请先通过大纲或角色设定明确引入。'
-    )
-  }
-
-  if (report.removedFacts.length > 0) {
-    lines.push('【不关联官方角色的情节线/秘密已移除】')
-    for (const fact of report.removedFacts) {
-      lines.push(`  - ${fact}`)
-    }
-    lines.push(
-      '  说明：以上情节线或秘密因未关联任何官方角色而被过滤。如果确需保留，请确保其文本中明确出现官方角色名。'
     )
   }
 
