@@ -129,19 +129,47 @@ function updateActProgressFromMemory(
   // a keyBeat ID, regardless of whether it was pre-populated in memory.beats.
   const textToKeyBeat = new Map(storyArc?.keyBeats.map((kb) => [kb.beat, kb] as const) ?? [])
 
+  // outline.verifiedBeats may contain mandatory beat text that was recognized
+  // by the fallback judge or directly derived from plot-advance events. When
+  // keyBeat.beat text differs from mandatory beat text (e.g. model paraphrased),
+  // these outline entries are the only structured signal we have.
+  const outlineVerifiedBeats = new Set<string>()
+  for (let idx = 0; idx <= chapterIndex; idx++) {
+    const outlineItem = state.outline[idx]
+    if (!outlineItem?.verifiedBeats) continue
+    for (const act of storyArc?.acts ?? []) {
+      for (const beat of normalizeVerifiedBeats(outlineItem.verifiedBeats, act.mandatoryBeats)) {
+        outlineVerifiedBeats.add(beat)
+      }
+    }
+  }
+
   const actProgress: ReducedGraphState['actProgress'] = {}
   for (const act of storyArc?.acts ?? []) {
     const consumed: string[] = []
-    const pending: string[] = []
     for (const beat of act.mandatoryBeats) {
       const keyBeat = textToKeyBeat.get(beat)
-      const isVerified = keyBeat && verifiedBeatIds.has(keyBeat.id)
-      if (isVerified) {
+      const isVerifiedByMemory = keyBeat && verifiedBeatIds.has(keyBeat.id)
+      const isVerifiedByOutline = outlineVerifiedBeats.has(beat)
+      if (isVerifiedByMemory || isVerifiedByOutline) {
         if (!consumed.includes(beat)) consumed.push(beat)
-      } else {
-        if (!pending.includes(beat)) pending.push(beat)
       }
     }
+
+    // Merge with existing actProgress so that rewriting a chapter does not
+    // silently drop beats that were consumed in earlier chapters. This is
+    // especially important when keyBeat text and mandatory beat text differ
+    // and the memory path alone cannot map them back.
+    const existing = state.actProgress?.[act.index]
+    if (existing) {
+      for (const beat of existing.consumed) {
+        if (act.mandatoryBeats.includes(beat) && !consumed.includes(beat)) {
+          consumed.push(beat)
+        }
+      }
+    }
+
+    const pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
     actProgress[act.index] = { consumed, pending }
   }
 
