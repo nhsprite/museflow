@@ -150,7 +150,10 @@ export async function finalizeChapter(
     logger.warn(
       `[MuseFlow] 第 ${chapterIndex + 1} 章存在 ${pendingErrors.length} 个未解决的严重问题，跳过 finalize，避免未验证内容进入 storyState。`
     )
-    return {}
+    return {
+      pendingIssues: state.pendingIssues,
+      rewriteRequested: true,
+    }
   }
 
   let updatedStoryState = state.storyState
@@ -480,6 +483,31 @@ export async function finalizeChapter(
           '  如要采纳，请运行：museflow adjust-act <story-id> --act <index> --end-chapter <number>'
         )
       }
+    }
+  }
+
+  const blockingErrors = updatedPendingIssues.filter(
+    (i) => i.severity === 'error' && i.retryStrategy === 'manual'
+  )
+  if (blockingErrors.length > 0) {
+    logger.error(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章定稿失败：存在 ${blockingErrors.length} 个需要人工处理的严重问题，无法进入下一章。`
+    )
+    const failureReport = buildChapterReport(
+      { ...state, pendingIssues: updatedPendingIssues },
+      updatedChapter ?? existingChapter ?? null,
+      chapterContent,
+      state.storyState,
+      updatedPendingIssues
+    )
+    if (boundaryProposals.length > 0) {
+      failureReport.actBoundaryProposals = boundaryProposals
+    }
+    saveChapterReport(state.story.outputDir, failureReport)
+    return {
+      pendingIssues: updatedPendingIssues,
+      rewriteRequested: true,
+      chapterReport: failureReport,
     }
   }
 

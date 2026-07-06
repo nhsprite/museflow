@@ -163,7 +163,7 @@ async function executeWrite(
       }
       console.log(`\n请运行以下命令重写本章：`)
       console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
-      return
+      process.exit(1)
     }
 
     if (result.currentChapterIndex >= result.totalChapters) {

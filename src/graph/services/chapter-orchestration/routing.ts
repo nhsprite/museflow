@@ -324,6 +324,9 @@ export function routeAfterValidation(_state: ReducedGraphState): string {
 }
 
 export function routeAfterFinalize(state: ReducedGraphState): string {
+  if (state.rewriteRequested) {
+    return 'request_rewrite'
+  }
   if (state.writeOneChapterOnly) {
     return 'finalize_story'
   }

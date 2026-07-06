@@ -7,6 +7,7 @@ import { createEmptyStoryState } from '@/storage/meta/stores/story-state.js'
 import type { ReducedGraphState } from '@/graph/state.js'
 import type { ModelProvider } from '@/model/provider.js'
 import type { ChapterSession } from '@/core/chapter-generation/routing/types.js'
+import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/utils/story-arc.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -60,6 +61,18 @@ vi.mock('@/graph/checkpointer.js', () => ({
     deleteThread: vi.fn().mockResolvedValue(undefined),
   }),
 }))
+
+vi.mock('@/utils/story-arc.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/story-arc.js')>()
+  return {
+    ...actual,
+    proposeActBoundaryAdjustments: vi.fn().mockReturnValue([]),
+    applyActBoundaryAdjustment: vi.fn().mockReturnValue({
+      storyArc: null,
+      applied: false,
+    }),
+  }
+})
 
 function createMockProvider(): ModelProvider {
   return { chat: vi.fn().mockResolvedValue(''), chatStructured: vi.fn().mockResolvedValue({}) }
@@ -210,5 +223,51 @@ describe('finalizeChapter', () => {
     expect(result.foreshadowStack).toEqual([])
     expect(result.verifiedConstraints?.some((c) => c.text.includes('未完成任务'))).toBe(true)
     expect(result.currentChapterIndex).toBe(1)
+  })
+
+  it('does not advance chapter index and requests rewrite when act boundary adjustment requires manual resolution', async () => {
+    vi.mocked(proposeActBoundaryAdjustments).mockReturnValueOnce([
+      {
+        actIndex: 1,
+        proposedEndChapter: 5,
+        reason: 'test proposal',
+      },
+    ])
+    vi.mocked(applyActBoundaryAdjustment).mockReturnValueOnce({
+      storyArc: null,
+      applied: false,
+      requiresManualResolution: true,
+      reason: '已达到自动延长上限',
+    })
+    loadConfigMock.mockReturnValue({
+      model: { provider: 'openai' as const, model: 'gpt-4o' },
+      autoAdjustActBoundaries: true,
+    })
+
+    const state = buildState(tmpDir)
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.currentChapterIndex).toBeUndefined()
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'outline_coverage',
+          severity: 'error',
+          retryStrategy: 'manual',
+        }),
+      ])
+    )
+    expect(result.chapterReport).not.toBeNull()
+    expect(result.chapterReport?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'outline_coverage',
+          severity: 'error',
+        }),
+      ])
+    )
   })
 })

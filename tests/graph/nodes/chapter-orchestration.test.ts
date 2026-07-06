@@ -6,6 +6,7 @@ import {
   converge_and_decide,
   route_by_decision,
   route_after_validation,
+  route_after_finalize,
 } from '../../../src/graph/nodes/chapter-orchestration.js'
 import { readChapterContent } from '../../../src/storage/filesystem/writer.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
@@ -493,5 +494,42 @@ describe('route_after_validation', () => {
   it('always routes back to converge_and_decide', () => {
     const state = buildBaseState()
     expect(route_after_validation(state)).toBe('converge_and_decide')
+  })
+})
+
+describe('route_after_finalize', () => {
+  it('routes to request_rewrite when rewriteRequested is true', () => {
+    const state = buildBaseState({ rewriteRequested: true, writeOneChapterOnly: false })
+    expect(route_after_finalize(state)).toBe('request_rewrite')
+  })
+
+  it('still routes to request_rewrite even when writeOneChapterOnly is true', () => {
+    const state = buildBaseState({ rewriteRequested: true, writeOneChapterOnly: true })
+    expect(route_after_finalize(state)).toBe('request_rewrite')
+  })
+
+  it('routes to finalize_story when writeOneChapterOnly is true and no rewrite requested', () => {
+    const state = buildBaseState({ rewriteRequested: false, writeOneChapterOnly: true })
+    expect(route_after_finalize(state)).toBe('finalize_story')
+  })
+
+  it('routes to prepare_chapter when more chapters remain and no rewrite requested', () => {
+    const state = buildBaseState({
+      rewriteRequested: false,
+      writeOneChapterOnly: false,
+      currentChapterIndex: 1,
+      totalChapters: 3,
+    })
+    expect(route_after_finalize(state)).toBe('prepare_chapter')
+  })
+
+  it('routes to finalize_story when all chapters are written and no rewrite requested', () => {
+    const state = buildBaseState({
+      rewriteRequested: false,
+      writeOneChapterOnly: false,
+      currentChapterIndex: 3,
+      totalChapters: 3,
+    })
+    expect(route_after_finalize(state)).toBe('finalize_story')
   })
 })
