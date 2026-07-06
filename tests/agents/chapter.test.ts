@@ -3,6 +3,7 @@ import type { Message, ModelProvider } from '../../src/model/provider.ts'
 import type { ChapterAgentInput } from '../../src/agents/types.ts'
 import type { Issue } from '../../src/types/agent.ts'
 import type { StoryEvent } from '../../src/types/story-memory.js'
+import type { StoryArc } from '../../src/types/outline.js'
 
 function createMockProvider(chatResponse?: string): ModelProvider {
   return {
@@ -281,6 +282,88 @@ describe('ChapterAgent chapter numbering', () => {
       '涉及关键物品/设定的来源、制造者、来历、赠予者时，必须与【权威事实】中的记录一致'
     )
     expect(userMessage).toContain('严禁 invent 具体来源')
+  })
+})
+
+describe('ChapterAgent beat mapping', () => {
+  it('includes beat mapping section with claimed and available beats', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+
+    const storyArc: StoryArc = {
+      totalChapters: 5,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: '启程',
+          theme: '出发',
+          function: '建立动机',
+          mandatoryBeats: ['身份暴露', '阵营洗牌'],
+        },
+      ],
+      keyBeats: [
+        { id: 'act1-b1', beat: '身份暴露', deadlineAct: 1, required: true },
+        { id: 'act1-b2', beat: '阵营洗牌', deadlineAct: 1, required: true },
+      ],
+    }
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 5,
+      world: '',
+      characters: '【主角】少年',
+      outline: '第1章：破庙惊梦\n少年在破庙中醒来',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyArc,
+      chapterPlan: {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [],
+        claimedBeatIds: ['act1-b1'],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('<beat_mapping>')
+    expect(userMessage).toContain('当前幕 mandatory beat ID 映射')
+    expect(userMessage).toContain('act1-b1: 身份暴露')
+    expect(userMessage).toContain('act1-b2: 阵营洗牌')
+    expect(userMessage).toContain('<claimed_beats>')
+    expect(userMessage).toContain('<available_beats>')
+    expect(userMessage).toContain('plot-advance: act-1 / <beatId>')
+  })
+
+  it('omits beat mapping section when storyArc is missing', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 3,
+      world: '',
+      characters: '【主角】少年',
+      outline: '第1章：破庙惊梦\n少年在破庙中醒来',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).not.toContain('<beat_mapping>')
   })
 })
 

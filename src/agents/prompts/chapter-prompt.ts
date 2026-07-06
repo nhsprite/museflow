@@ -71,6 +71,8 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 {factVerificationSection}
 
+{beatMappingSection}
+
 {planSection}
 
 {taskResolutionSection}
@@ -196,6 +198,7 @@ export interface ChapterPromptSections {
   stateConflictsSection: string
   timeAnchorSection: string
   factVerificationSection: string
+  beatMappingSection: string
   planSection: string
   taskResolutionSection: string
   outlineComplianceSection: string
@@ -229,4 +232,53 @@ export function buildChapterUserPrompt(
     ...sections,
     ...vars,
   })
+}
+
+export interface BeatMappingEntry {
+  beatId: string
+  description: string
+  claimed: boolean
+}
+
+export function buildBeatMappingSection(actIndex: number, entries: BeatMappingEntry[]): string {
+  if (entries.length === 0) return ''
+
+  const claimed = entries.filter((e) => e.claimed)
+  const unclaimed = entries.filter((e) => !e.claimed)
+
+  const renderEntry = (e: BeatMappingEntry) => `- ${e.beatId}: ${e.description}`
+
+  const claimedLines =
+    claimed.length > 0
+      ? [
+          '<claimed_beats>',
+          '本章规划要求推进以下节拍（请在 STORY_EVENTS 中输出对应 plot-advance 事件）：',
+          ...claimed.map(renderEntry),
+          '</claimed_beats>',
+        ]
+      : []
+
+  const unclaimedLines =
+    unclaimed.length > 0
+      ? [
+          '<available_beats>',
+          '本幕其余待推进节拍（如本章正文也推进了这些节拍，请同样输出 plot-advance 事件）：',
+          ...unclaimed.map(renderEntry),
+          '</available_beats>',
+        ]
+      : []
+
+  return `<beat_mapping>
+<title>【当前幕 mandatory beat ID 映射 - 必须使用这些精确 ID】</title>
+<content>
+第 ${actIndex} 幕的 mandatory beats 已分配稳定 ID。在 === STORY_EVENTS === 区块中，每推进一个节拍，必须输出：
+
+- plot-advance: act-${actIndex} / <beatId>
+
+其中 &lt;beatId&gt; 必须严格使用下方列表中的 ID，不得使用描述文本或自造 ID。
+
+${claimedLines.join('\n')}
+${unclaimedLines.join('\n')}
+</content>
+</beat_mapping>`
 }

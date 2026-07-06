@@ -87,6 +87,7 @@ export interface ChapterAgentContext {
   timelineSnapshot: string
   canonicalFacts: CanonicalFact[] | undefined
   chapterTimeAnchor?: string
+  storyArc: ReducedGraphState['storyArc']
 }
 
 function buildChapterContract(
@@ -209,6 +210,7 @@ export async function buildChapterAgentContext(
     timelineSnapshot,
     canonicalFacts: reconciledState.canonicalFacts,
     ...(chapterTimeAnchor ? { chapterTimeAnchor } : {}),
+    storyArc: state.storyArc,
   }
 }
 
@@ -238,6 +240,7 @@ export function mergeAgentState(
     timelineSnapshot: base.timelineSnapshot,
     ...(base.stateConflicts ? { stateConflicts: base.stateConflicts } : {}),
     ...(base.chapterTimeAnchor ? { chapterTimeAnchor: base.chapterTimeAnchor } : {}),
+    ...(base.storyArc ? { storyArc: base.storyArc } : {}),
     ...extras,
   }
 }

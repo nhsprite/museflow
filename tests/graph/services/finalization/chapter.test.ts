@@ -7,6 +7,7 @@ import { createEmptyStoryState } from '@/storage/meta/stores/story-state.js'
 import type { ReducedGraphState } from '@/graph/state.js'
 import type { ModelProvider } from '@/model/provider.js'
 import type { ChapterSession } from '@/core/chapter-generation/routing/types.js'
+import type { StoryEvent } from '@/types/story-memory.js'
 import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/utils/story-arc.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
@@ -197,6 +198,11 @@ describe('finalizeChapter', () => {
     vi.mocked(getSummaryAgent).mockReturnValue(
       createBaseSummaryAgent() as unknown as ReturnType<typeof getSummaryAgent>
     )
+    vi.mocked(proposeActBoundaryAdjustments).mockReturnValue([])
+    vi.mocked(applyActBoundaryAdjustment).mockReturnValue({
+      storyArc: null,
+      applied: false,
+    })
 
     tmpDir = path.join(process.cwd(), 'tests', 'tmp', `finalize-chapter-${Date.now()}`)
     await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
@@ -223,6 +229,32 @@ describe('finalizeChapter', () => {
     expect(result.foreshadowStack).toEqual([])
     expect(result.verifiedConstraints?.some((c) => c.text.includes('未完成任务'))).toBe(true)
     expect(result.currentChapterIndex).toBe(1)
+  })
+
+  it('consumes mandatory beats from draftChapterEvents without prose-based judgment', async () => {
+    const state = buildState(tmpDir, {
+      draftChapterEvents: [
+        {
+          id: 'evt-draft-1',
+          type: 'plot-advance',
+          plotId: 'act-1',
+          beatId: 'beat-1',
+          chapterIndex: 0,
+          source: 'chapter',
+        } as StoryEvent,
+      ],
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.rewriteRequested).toBeFalsy()
+    expect(result.currentChapterIndex).toBe(1)
+    expect(result.storyMemory?.beats['beat-1']?.provenByEventIds).toContain('evt-draft-1')
+    expect(result.outline?.[0]?.verifiedBeats).toContain('主角离开家乡')
+    expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
+    expect(result.actProgress?.[1]?.pending).not.toContain('主角离开家乡')
+    expect(provider.chat).not.toHaveBeenCalled()
   })
 
   it('does not advance chapter index and requests rewrite when act boundary adjustment requires manual resolution', async () => {

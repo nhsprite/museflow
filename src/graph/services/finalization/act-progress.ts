@@ -122,26 +122,32 @@ function updateActProgressFromMemory(
   chapterIndex: number
 ): ActProgressUpdate {
   const memory = state.storyMemory!
-  const actProgress: ReducedGraphState['actProgress'] = {}
+  const storyArc = state.storyArc
   const verifiedBeatIds = new Set(getVerifiedBeatsFromMemory(memory))
 
-  for (const beat of Object.values(memory.beats)) {
-    if (beat.actIndex === 0) continue
-    let progress = actProgress[beat.actIndex]
-    if (!progress) {
-      progress = { consumed: [], pending: [] }
-      actProgress[beat.actIndex] = progress
+  // Map beat text to its keyBeat so we can verify any mandatory beat that has
+  // a keyBeat ID, regardless of whether it was pre-populated in memory.beats.
+  const textToKeyBeat = new Map(storyArc?.keyBeats.map((kb) => [kb.beat, kb] as const) ?? [])
+
+  const actProgress: ReducedGraphState['actProgress'] = {}
+  for (const act of storyArc?.acts ?? []) {
+    const consumed: string[] = []
+    const pending: string[] = []
+    for (const beat of act.mandatoryBeats) {
+      const keyBeat = textToKeyBeat.get(beat)
+      const isVerified = keyBeat && verifiedBeatIds.has(keyBeat.id)
+      if (isVerified) {
+        if (!consumed.includes(beat)) consumed.push(beat)
+      } else {
+        if (!pending.includes(beat)) pending.push(beat)
+      }
     }
-    if (verifiedBeatIds.has(beat.id)) {
-      if (!progress.consumed.includes(beat.id)) progress.consumed.push(beat.id)
-    } else if (beat.required && !progress.pending.includes(beat.id)) {
-      progress.pending.push(beat.id)
-    }
+    actProgress[act.index] = { consumed, pending }
   }
 
-  const storyArc = state.storyArc
   const act = getActForChapter(storyArc, chapterIndex)
   let beatPressureConstraint: VerifiedConstraint | undefined
+  let beatVerificationIssues: Issue[] | undefined
 
   if (act) {
     const progress = actProgress[act.index] ?? { consumed: [], pending: [] }
@@ -158,13 +164,50 @@ function updateActProgressFromMemory(
         `第 ${act.index} 幕「${act.title}」还剩 ${chaptersRemaining} 章结束，必须优先消费以下 mandatory beats：${progress.pending.join('、')}。本章及后续章节必须将推进这些节拍作为最高优先级，不得再扩展无关支线。`
       )
     }
+
+    const currentOutline = state.outline[chapterIndex]
+    const claimedBeats = getClaimedBeatTexts(currentOutline, act, storyArc)
+    beatVerificationIssues = buildBeatVerificationIssues(
+      claimedBeats,
+      progress.consumed,
+      act,
+      chapterIndex
+    )
   }
 
   const result: ActProgressUpdate = { actProgress }
   if (beatPressureConstraint) {
     result.beatPressureConstraint = beatPressureConstraint
   }
+  if (beatVerificationIssues && beatVerificationIssues.length > 0) {
+    result.beatVerificationIssues = beatVerificationIssues
+  }
   return result
+}
+
+function getClaimedBeatTexts(
+  outlineItem: ReducedGraphState['outline'][number] | undefined,
+  act: ActArc,
+  storyArc: StoryArc | null | undefined
+): string[] {
+  if (!outlineItem) return []
+  const claimed = new Set<string>()
+  if (outlineItem.claimedBeatIds && storyArc) {
+    for (const id of outlineItem.claimedBeatIds) {
+      const keyBeat = storyArc.keyBeats.find((kb) => kb.id === id)
+      if (keyBeat && act.mandatoryBeats.includes(keyBeat.beat)) {
+        claimed.add(keyBeat.beat)
+      }
+    }
+  }
+  if (outlineItem.claimedBeats) {
+    for (const beat of outlineItem.claimedBeats) {
+      if (act.mandatoryBeats.includes(beat)) {
+        claimed.add(beat)
+      }
+    }
+  }
+  return Array.from(claimed)
 }
 
 /**

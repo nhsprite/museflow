@@ -9,6 +9,7 @@ import type {
   BeatMemory,
   TaskMemory,
 } from '../types/story-memory.js'
+import type { StoryArc } from '../types/outline.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
   return {
@@ -26,6 +27,34 @@ export function createEmptyStoryMemory(): StoryMemory {
     beats: {},
     tasks: {},
   }
+}
+
+/**
+ * Pre-populate storyMemory beats from storyArc keyBeats so that each beat has
+ * the correct actIndex. Without this, plot-advance events created by the writer
+ * would produce BeatMemory entries with actIndex 0, which updateActProgress
+ * ignores.
+ */
+export function ensureBeatsHaveActIndex(
+  memory: StoryMemory,
+  storyArc: StoryArc | null | undefined
+): StoryMemory {
+  if (!storyArc || storyArc.keyBeats.length === 0) return memory
+
+  const beats: Record<string, BeatMemory> = { ...memory.beats }
+  for (const keyBeat of storyArc.keyBeats) {
+    const existing = beats[keyBeat.id]
+    beats[keyBeat.id] = {
+      id: keyBeat.id,
+      description: keyBeat.beat,
+      actIndex: keyBeat.deadlineAct,
+      deadlineAct: keyBeat.deadlineAct,
+      required: keyBeat.required ?? existing?.required ?? true,
+      claimedIn: existing?.claimedIn ?? null,
+      provenByEventIds: existing?.provenByEventIds ?? [],
+    }
+  }
+  return { ...memory, beats }
 }
 
 export function projectEntities(events: StoryEvent[]): StoryMemory['entities'] {
@@ -84,7 +113,31 @@ export function applyEvents(memory: StoryMemory, events: StoryEvent[]): StoryMem
     ...memory,
     events: nextEvents,
   }
-  return projectMemory(nextMemory)
+  const projected = projectMemory(nextMemory)
+
+  // projectMemory rebuilds beats from events, which loses actIndex/description
+  // metadata for beats that were pre-populated from storyArc. Merge the original
+  // beat metadata back in, keeping event-derived provenByEventIds and claimedIn.
+  const mergedBeats: Record<string, BeatMemory> = {}
+  for (const [id, original] of Object.entries(memory.beats)) {
+    const updated = projected.beats[id]
+    if (updated) {
+      mergedBeats[id] = {
+        ...original,
+        provenByEventIds: updated.provenByEventIds,
+        claimedIn: updated.claimedIn ?? original.claimedIn,
+      }
+    } else {
+      mergedBeats[id] = original
+    }
+  }
+  for (const [id, projectedBeat] of Object.entries(projected.beats)) {
+    if (!mergedBeats[id]) {
+      mergedBeats[id] = projectedBeat
+    }
+  }
+
+  return { ...projected, beats: mergedBeats }
 }
 
 function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemory> {

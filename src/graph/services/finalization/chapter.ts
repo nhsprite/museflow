@@ -2,7 +2,11 @@ import { logger } from '../../../utils/logger.js'
 import type { ReducedGraphState } from '../../state.js'
 import type { SummaryAgentInput } from '../../../agents/types.js'
 import { getSummaryAgent } from '../../agent-factory.js'
-import { applyEvents, createEmptyStoryMemory } from '../../../story-memory/projector.js'
+import {
+  applyEvents,
+  createEmptyStoryMemory,
+  ensureBeatsHaveActIndex,
+} from '../../../story-memory/projector.js'
 import {
   getActiveForeshadows,
   getOpenTasks,
@@ -63,6 +67,30 @@ function ensureOutlineLength(
   for (let i = next.length; i < totalChapters; i++) {
     next.push({ number: i + 1, title: '', description: '' })
   }
+  return next
+}
+
+function deriveVerifiedBeatsFromPlotAdvanceEvents(
+  events: StoryEvent[],
+  storyArc: StoryArc | null | undefined
+): string[] {
+  const beatIdToText = new Map(storyArc?.keyBeats.map((kb) => [kb.id, kb.beat]) ?? [])
+  return events
+    .filter((e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance')
+    .map((e) => beatIdToText.get(e.beatId))
+    .filter((b): b is string => !!b)
+}
+
+function updateOutlineVerifiedBeats(
+  outline: ReducedGraphState['outline'],
+  chapterIndex: number,
+  verifiedBeats: string[]
+): ReducedGraphState['outline'] {
+  const currentOutline = outline[chapterIndex]
+  if (!currentOutline || verifiedBeats.length === 0) return outline
+  const merged = Array.from(new Set([...(currentOutline.verifiedBeats ?? []), ...verifiedBeats]))
+  const next = [...outline]
+  next[chapterIndex] = { ...currentOutline, verifiedBeats: merged }
   return next
 }
 
@@ -157,7 +185,30 @@ export async function finalizeChapter(
   }
 
   let updatedStoryState = state.storyState
-  let updatedStoryMemory = state.storyMemory
+  let updatedStoryMemory = ensureBeatsHaveActIndex(
+    state.storyMemory ?? createEmptyStoryMemory(),
+    state.storyArc
+  )
+
+  // Authoritative source of events: the writer already emitted them in the
+  // STORY_EVENTS block. Apply them before asking SummaryAgent to avoid losing
+  // structured plot-advance events and to skip prose-based guessing.
+  const draftEvents = state.draftChapterEvents ?? []
+  const draftPlotAdvanceBeatIds = new Set(
+    draftEvents
+      .filter((e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance')
+      .map((e) => e.beatId)
+  )
+  if (draftEvents.length > 0) {
+    updatedStoryMemory = applyEvents(updatedStoryMemory ?? createEmptyStoryMemory(), draftEvents)
+    const draftVerifiedBeats = deriveVerifiedBeatsFromPlotAdvanceEvents(draftEvents, state.storyArc)
+    if (draftVerifiedBeats.length > 0) {
+      updatedOutline = updateOutlineVerifiedBeats(updatedOutline, chapterIndex, draftVerifiedBeats)
+      logger.info(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章已从 draft 事件消费 ${draftVerifiedBeats.length} 个 mandatory beats`
+      )
+    }
+  }
 
   if (updatedChapter) {
     let summary = updatedChapter.summary || ''
@@ -213,65 +264,64 @@ export async function finalizeChapter(
           updatedChapters[chapterIndex] = updatedChapter
           summarySuccess = true
 
+          // SummaryAgent events are a fallback for events the writer missed.
+          // For plot-advance, draft events are authoritative; skip duplicates.
           const actualEvents = summaryData.storyEvents ?? []
-          if (actualEvents.length > 0) {
+          const newEvents = actualEvents.filter((event) => {
+            if (event.type === 'plot-advance') {
+              return !draftPlotAdvanceBeatIds.has(event.beatId)
+            }
+            return true
+          })
+          if (newEvents.length > 0) {
             updatedStoryMemory = applyEvents(
               updatedStoryMemory ?? createEmptyStoryMemory(),
-              actualEvents
+              newEvents
             )
             logger.info(
-              `[MuseFlow] 第 ${chapterIndex + 1} 章已应用 ${actualEvents.length} 个 storyEvents`
+              `[MuseFlow] 第 ${chapterIndex + 1} 章已从摘要补充 ${newEvents.length} 个 storyEvents`
             )
           }
 
-          const plotAdvanceEvents = actualEvents.filter(
-            (e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance'
+          const summaryVerifiedBeats = deriveVerifiedBeatsFromPlotAdvanceEvents(
+            newEvents,
+            state.storyArc
           )
-          const beatIdToText = new Map(state.storyArc?.keyBeats.map((kb) => [kb.id, kb.beat]) ?? [])
-          const derivedVerifiedBeats = plotAdvanceEvents
-            .map((e) => beatIdToText.get(e.beatId))
-            .filter((b): b is string => !!b)
-
-          // verifiedBeatEvidence 不再由 SummaryAgent 维护；plot-advance 事件及其 id 已能证明
-          // mandatory beat 确实发生，因此 outline 中仅保留 verifiedBeats 列表即可。
-
-          if (derivedVerifiedBeats.length > 0 && currentOutline) {
-            const newOutline = [...updatedOutline]
-            newOutline[chapterIndex] = {
-              ...currentOutline,
-              verifiedBeats: derivedVerifiedBeats,
-            }
-            updatedOutline = newOutline
+          if (summaryVerifiedBeats.length > 0) {
+            updatedOutline = updateOutlineVerifiedBeats(
+              updatedOutline,
+              chapterIndex,
+              summaryVerifiedBeats
+            )
           }
 
-          // 如果 SummaryAgent 返回的 verifiedBeats 没有覆盖当前幕全部 mandatory beats，
-          // 再用正文内容做一次覆盖判定，避免 narrative 摘要导致 beats 被漏记。
-          // Note: normalizeVerifiedBeats relies on exact string equality because
-          // act.mandatoryBeats currently has no stable IDs. This is legacy behavior.
+          // Only fall back to prose-based judgment for beats that are still
+          // missing after structured events. This keeps the critical path on
+          // explicit event IDs.
           const actForCoverage = getActForChapter(state.storyArc, chapterIndex)
           const latestCurrentOutline = updatedOutline[chapterIndex] ?? currentOutline
           if (actForCoverage && latestCurrentOutline && chapterContent) {
-            const summaryVerified = normalizeVerifiedBeats(
-              derivedVerifiedBeats,
+            const allVerified = normalizeVerifiedBeats(
+              latestCurrentOutline.verifiedBeats ?? [],
               actForCoverage.mandatoryBeats
             )
-            const missingAfterSummary = actForCoverage.mandatoryBeats.filter(
-              (beat) => !summaryVerified.includes(beat)
+            const missingAfterEvents = actForCoverage.mandatoryBeats.filter(
+              (beat) => !allVerified.includes(beat)
             )
-            if (missingAfterSummary.length > 0) {
+            if (missingAfterEvents.length > 0) {
               const contentVerified = await judgeMandatoryBeatCoverage(
                 provider,
                 chapterContent,
                 actForCoverage.mandatoryBeats
               )
-              const merged = Array.from(new Set([...summaryVerified, ...contentVerified]))
-              if (merged.length > summaryVerified.length) {
+              const merged = Array.from(new Set([...allVerified, ...contentVerified]))
+              if (merged.length > allVerified.length) {
                 const newOutline = [...updatedOutline]
                 const latestOutline = newOutline[chapterIndex] ?? latestCurrentOutline
                 newOutline[chapterIndex] = { ...latestOutline, verifiedBeats: merged }
                 updatedOutline = newOutline
                 logger.debug(
-                  `[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - summaryVerified.length} 个 beats`
+                  `[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - allVerified.length} 个 beats`
                 )
               }
             }
@@ -297,7 +347,7 @@ export async function finalizeChapter(
               id: generateId(),
               type: 'state_corruption',
               severity: 'error',
-              description: `第 ${chapterIndex + 1} 章摘要与事件提取失败，无法安全进入下一章。`,
+              description: `第 ${chapterIndex + 1} 章摘要提取失败，无法安全进入下一章。`,
               suggestion:
                 '请重试当前章节 finalize；如果模型持续失败，请检查模型输出或运行 rewrite 重新生成本章。',
               source: 'state_reconciliation',

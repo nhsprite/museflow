@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { StoryMemory } from '../../src/types/story-memory.js'
+import type { StoryArc } from '../../src/types/outline.js'
 import {
   createEmptyStoryMemory,
   projectEntities,
   projectMemory,
   applyEvents,
   computeLastChapterIndex,
+  ensureBeatsHaveActIndex,
 } from '../../src/story-memory/projector.js'
 
 describe('computeLastChapterIndex', () => {
@@ -307,5 +309,79 @@ describe('projectMemory tasks', () => {
       },
     ])
     expect(next.tasks['t-1']?.resolvedIn).toBe(3)
+  })
+})
+
+describe('ensureBeatsHaveActIndex', () => {
+  it('returns the same memory when storyArc is null', () => {
+    const memory = createEmptyStoryMemory()
+    expect(ensureBeatsHaveActIndex(memory, null)).toBe(memory)
+  })
+
+  it('pre-populates beats from storyArc keyBeats with correct actIndex', () => {
+    const memory = createEmptyStoryMemory()
+    const storyArc: StoryArc = {
+      totalChapters: 3,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: '启程',
+          theme: '出发',
+          function: '建立动机',
+          mandatoryBeats: ['主角离开家乡'],
+        },
+      ],
+      keyBeats: [{ id: 'beat-1', beat: '主角离开家乡', deadlineAct: 1, required: true }],
+    }
+
+    const next = ensureBeatsHaveActIndex(memory, storyArc)
+
+    expect(next.beats['beat-1']).toEqual({
+      id: 'beat-1',
+      description: '主角离开家乡',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    })
+  })
+
+  it('preserves existing proven event ids and claimed chapter', () => {
+    const memory = createEmptyStoryMemory()
+    memory.beats['beat-1'] = {
+      id: 'beat-1',
+      description: 'legacy',
+      actIndex: 0,
+      deadlineAct: 0,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['evt-1'],
+    }
+
+    const storyArc: StoryArc = {
+      totalChapters: 5,
+      acts: [
+        {
+          index: 2,
+          startChapter: 3,
+          endChapter: 5,
+          title: '成长',
+          theme: '修炼',
+          function: '提升实力',
+          mandatoryBeats: ['主角突破'],
+        },
+      ],
+      keyBeats: [{ id: 'beat-1', beat: '主角突破', deadlineAct: 2, required: true }],
+    }
+
+    const next = ensureBeatsHaveActIndex(memory, storyArc)
+
+    expect(next.beats['beat-1']?.actIndex).toBe(2)
+    expect(next.beats['beat-1']?.description).toBe('主角突破')
+    expect(next.beats['beat-1']?.claimedIn).toBe(2)
+    expect(next.beats['beat-1']?.provenByEventIds).toContain('evt-1')
   })
 })

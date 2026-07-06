@@ -12,7 +12,12 @@ import {
   buildCharacterWhitelistSection,
   FACT_CONSISTENCY_RULES,
 } from './prompts/fragments/index.js'
-import { buildChapterSystemPrompt, buildChapterUserPrompt } from './prompts/chapter-prompt.js'
+import {
+  buildChapterSystemPrompt,
+  buildChapterUserPrompt,
+  buildBeatMappingSection,
+  type BeatMappingEntry,
+} from './prompts/chapter-prompt.js'
 import { parseStoryEventsBlock } from '../story-memory/parser.js'
 import {
   CHAPTER_HEADING_PATTERN,
@@ -219,6 +224,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 
     const factVerificationSection = this.buildFactVerificationSection(state)
     const absoluteConstraintsSection = this.buildAbsoluteConstraints(state)
+    const beatMappingSection = this.buildBeatMappingSection(state)
 
     const userContent = buildChapterUserPrompt(
       {
@@ -231,6 +237,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         stateConflictsSection,
         timeAnchorSection,
         factVerificationSection,
+        beatMappingSection,
         planSection,
         taskResolutionSection,
         outlineComplianceSection,
@@ -352,6 +359,33 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     }
 
     return `<absolute_constraints>\n<mandatory>【绝对约束 - 优先级最高】</mandatory>\n${constraints.map((c) => `- ${c}`).join('\n')}\n</absolute_constraints>`
+  }
+
+  private buildBeatMappingSection(state: ChapterAgentInput): string {
+    const storyArc = state.storyArc
+    const chapterIndex = state.chapterIndex ?? 0
+    if (!storyArc) return ''
+
+    const currentAct = storyArc.acts.find(
+      (act) => chapterIndex + 1 >= act.startChapter && chapterIndex + 1 <= act.endChapter
+    )
+    if (!currentAct) return ''
+
+    const currentActKeyBeats = storyArc.keyBeats.filter(
+      (kb) =>
+        kb.deadlineAct === currentAct.index ||
+        currentAct.mandatoryBeats.some((beat) => beat.trim() === kb.beat.trim())
+    )
+    if (currentActKeyBeats.length === 0) return ''
+
+    const claimedBeatIds = new Set(state.chapterPlan?.claimedBeatIds ?? [])
+    const entries: BeatMappingEntry[] = currentActKeyBeats.map((kb) => ({
+      beatId: kb.id,
+      description: kb.beat,
+      claimed: claimedBeatIds.has(kb.id),
+    }))
+
+    return buildBeatMappingSection(currentAct.index, entries)
   }
 
   protected parse(content: string): AgentOutput {
