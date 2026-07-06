@@ -107,16 +107,43 @@ export async function adjustAct(
       ? state.story
       : { ...state.story, totalChapters: newTotalChapters, updatedAt: Date.now() }
 
+  const resolvedIssueFilter = (issue: Issue) => !isResolvedActCoverageIssue(issue, actIndex)
+
   await checkpointService.updateLatestState({
     story: newStory,
     totalChapters: newTotalChapters,
     storyArc: newStoryArc,
     outline: newOutline,
     chapters: newChapters,
-    pendingIssues: state.pendingIssues.filter(
-      (issue) => !isResolvedActCoverageIssue(issue, actIndex)
-    ),
+    pendingIssues: state.pendingIssues.filter(resolvedIssueFilter),
   })
+
+  // 同步更新章节标记，否则 `rewrite -c N` 会从旧标记加载到未调整的幕边界。
+  const markers = await checkpointService.listChapterMarkers()
+  for (const marker of markers) {
+    const markerTuple = await checkpointService.getTuple({
+      configurable: {
+        thread_id: storyId,
+        outputDir: story.outputDir,
+        checkpoint_id: marker.checkpointId,
+      },
+    })
+    if (!markerTuple) continue
+    const markerState = markerTuple.checkpoint.channel_values as ReducedGraphState
+    const newMarkerId = await checkpointService.createDerivedCheckpoint(
+      marker.checkpointId,
+      {
+        story: newStory,
+        totalChapters: newTotalChapters,
+        storyArc: newStoryArc,
+        outline: ensureOutlineLength(markerState.outline, newTotalChapters),
+        chapters: ensureChaptersLength(markerState.chapters, newTotalChapters),
+        pendingIssues: markerState.pendingIssues.filter(resolvedIssueFilter),
+      },
+      'update'
+    )
+    await checkpointService.saveChapterMarker(marker.chapterNumber, newMarkerId)
+  }
 
   await writeOutlineContent(story.outputDir, state.story.title, newOutline, newStoryArc)
   await exportMetaFromCheckpoint(story.outputDir)

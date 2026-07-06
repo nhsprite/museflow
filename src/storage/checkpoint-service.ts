@@ -156,6 +156,54 @@ export class StoryCheckpointService {
     return this.checkpointer.getTuple(config)
   }
 
+  /**
+   * 基于已有 checkpoint 创建一个新 checkpoint，并合并部分状态字段。
+   * 返回新 checkpoint 的 id。这用于 adjust-act 等需要同步更新章节标记的场景。
+   */
+  async createDerivedCheckpoint(
+    baseCheckpointId: string,
+    partialState: Partial<ReducedGraphState>,
+    source: 'input' | 'update' | 'loop' | 'fork' = 'update'
+  ): Promise<string> {
+    const tuple = await this.checkpointer.getTuple({
+      configurable: {
+        thread_id: '',
+        outputDir: this.outputDir,
+        checkpoint_id: baseCheckpointId,
+      },
+    })
+    if (!tuple) {
+      throw new Error(`Base checkpoint ${baseCheckpointId} not found`)
+    }
+
+    const mergedValues: ReducedGraphState = {
+      ...(tuple.checkpoint.channel_values as ReducedGraphState),
+      ...partialState,
+    }
+    const newCheckpointId = randomUUID()
+    const newCheckpoint: Checkpoint = {
+      ...tuple.checkpoint,
+      id: newCheckpointId,
+      channel_values: mergedValues,
+    }
+
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: '',
+        outputDir: this.outputDir,
+        checkpoint_id: baseCheckpointId,
+      },
+    }
+    const metadata = tuple.metadata ?? {
+      source,
+      step: -1,
+      parents: {},
+    }
+    await this.checkpointer.put(config, newCheckpoint, metadata, {})
+    logger.debug(`Derived checkpoint created: ${baseCheckpointId} -> ${newCheckpointId}`)
+    return newCheckpointId
+  }
+
   async saveBlockingReport(report: BlockingReport): Promise<void> {
     ensureDir(this.getReportsDir())
     const path = this.getBlockingReportPath(report.id)

@@ -13,6 +13,10 @@ const updateLatestStateMock = vi.fn<() => Promise<void>>()
 const writeOutlineContentMock = vi.fn<() => Promise<void>>()
 const exportMetaFromCheckpointMock = vi.fn<() => Promise<void>>()
 const getTupleMock = vi.fn()
+const listChapterMarkersMock =
+  vi.fn<() => Promise<{ chapterNumber: number; checkpointId: string }[]>>()
+const saveChapterMarkerMock = vi.fn<() => Promise<void>>()
+const createDerivedCheckpointMock = vi.fn<() => Promise<string>>()
 
 vi.mock('../../src/cli/utils/story-loader.js', () => ({
   requireStory: requireStoryMock,
@@ -22,6 +26,9 @@ vi.mock('../../src/storage/checkpoint-service.js', () => ({
   createCheckpointService: () => ({
     getTuple: getTupleMock,
     updateLatestState: updateLatestStateMock,
+    listChapterMarkers: listChapterMarkersMock,
+    saveChapterMarker: saveChapterMarkerMock,
+    createDerivedCheckpoint: createDerivedCheckpointMock,
   }),
 }))
 
@@ -110,6 +117,8 @@ describe('adjust-act command', () => {
     getTupleMock.mockResolvedValue({
       checkpoint: { channel_values: makeState() },
     })
+    listChapterMarkersMock.mockResolvedValue([])
+    createDerivedCheckpointMock.mockResolvedValue('derived-checkpoint-id')
   })
 
   it('rejects non-numeric act or end-chapter', async () => {
@@ -223,6 +232,84 @@ describe('adjust-act command', () => {
     await adjustAct('story-1', { act: '1', endChapter: '6' })
 
     expect(exportMetaFromCheckpointMock).toHaveBeenCalledWith(testTempDir)
+    logSpy.mockRestore()
+  })
+
+  it('updates chapter markers with adjusted act boundaries and filtered issues', async () => {
+    const baseState = makeState({
+      pendingIssues: [
+        {
+          id: 'auto-extension-limit-1-generated-uuid-1234',
+          type: 'outline_coverage',
+          severity: 'error',
+          source: 'outline_compliance',
+          retryStrategy: 'manual',
+          description: '第 1 幕自动延长已达到上限',
+        },
+      ],
+    })
+    getTupleMock.mockImplementation((config) => {
+      const checkpointId = (config as { configurable?: { checkpoint_id?: string } }).configurable
+        ?.checkpoint_id
+      if (checkpointId === 'marker-1') {
+        return Promise.resolve({
+          checkpoint: {
+            channel_values: {
+              ...baseState,
+              currentChapterIndex: 0,
+              outline: [{ number: 1, title: 'A', description: 'a' }],
+              chapters: [null],
+            },
+          },
+        })
+      }
+      if (checkpointId === 'marker-2') {
+        return Promise.resolve({
+          checkpoint: {
+            channel_values: {
+              ...baseState,
+              currentChapterIndex: 1,
+              outline: [
+                { number: 1, title: 'A', description: 'a' },
+                { number: 2, title: 'B', description: 'b' },
+              ],
+              chapters: [null, null],
+              pendingIssues: [],
+            },
+          },
+        })
+      }
+      return Promise.resolve({ checkpoint: { channel_values: baseState } })
+    })
+    listChapterMarkersMock.mockResolvedValue([
+      { chapterNumber: 1, checkpointId: 'marker-1' },
+      { chapterNumber: 2, checkpointId: 'marker-2' },
+    ])
+
+    const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await adjustAct('story-1', { act: '1', endChapter: '6' })
+
+    expect(createDerivedCheckpointMock).toHaveBeenCalledTimes(2)
+    expect(saveChapterMarkerMock).toHaveBeenCalledTimes(2)
+    expect(saveChapterMarkerMock).toHaveBeenNthCalledWith(1, 1, 'derived-checkpoint-id')
+    expect(saveChapterMarkerMock).toHaveBeenNthCalledWith(2, 2, 'derived-checkpoint-id')
+
+    const firstDerived = createDerivedCheckpointMock.mock.calls[0]![1] as {
+      storyArc: { acts: Array<{ endChapter: number }>; totalChapters: number }
+      pendingIssues: Issue[]
+      totalChapters: number
+      outline: unknown[]
+      chapters: unknown[]
+    }
+    expect(firstDerived.storyArc.acts[0]?.endChapter).toBe(6)
+    expect(firstDerived.storyArc.totalChapters).toBe(21)
+    expect(firstDerived.totalChapters).toBe(21)
+    expect(firstDerived.outline).toHaveLength(21)
+    expect(firstDerived.chapters).toHaveLength(21)
+    expect(firstDerived.pendingIssues).toHaveLength(0)
+
     logSpy.mockRestore()
   })
 })
