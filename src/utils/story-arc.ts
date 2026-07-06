@@ -129,6 +129,13 @@ export interface ActBoundaryProposal {
   reason: string
 }
 
+export function formatActBoundaryAdjustmentCommand(
+  storyId: string,
+  proposal: ActBoundaryProposal
+): string {
+  return `museflow adjust-act ${storyId} --act ${proposal.actIndex} --end-chapter ${proposal.proposedEndChapter}`
+}
+
 export function buildClosingPhaseConstraint(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,

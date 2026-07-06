@@ -9,6 +9,7 @@ import type { ModelProvider } from '@/model/provider.js'
 import type { ChapterSession } from '@/core/chapter-generation/routing/types.js'
 import type { StoryEvent } from '@/types/story-memory.js'
 import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/utils/story-arc.js'
+import { logger } from '@/utils/logger.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -301,6 +302,7 @@ describe('finalizeChapter', () => {
   })
 
   it('does not advance chapter index and requests rewrite when act boundary adjustment requires manual resolution', async () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     vi.mocked(proposeActBoundaryAdjustments).mockReturnValueOnce([
       {
         actIndex: 1,
@@ -343,6 +345,9 @@ describe('finalizeChapter', () => {
           severity: 'error',
         }),
       ])
+    )
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[MuseFlow] 建议运行：museflow adjust-act test-story --act 1 --end-chapter 5'
     )
   })
 })

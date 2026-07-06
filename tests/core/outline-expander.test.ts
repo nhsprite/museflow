@@ -15,6 +15,7 @@ import {
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
 import type { ModelProvider } from '../../src/model/provider.js'
+import { logger } from '../../src/utils/logger.js'
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-${randomUUID().slice(0, 8)}`)
 
@@ -448,6 +449,62 @@ describe('expandOutlineForChapter', () => {
     expect(agentInput.totalChapters).toBe(8)
     expect(result.storyArc?.totalChapters).toBe(8)
     expect(result.outline).toHaveLength(8)
+  })
+
+  it('logs an adjust-act suggestion when pre-outline act extension hits the auto limit', async () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const overloadedState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 46,
+      story: { ...baseState.story, totalChapters: 46 },
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 46,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '第一幕',
+            theme: '建立',
+            function: '开篇',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 2,
+            title: '第二幕',
+            theme: '对抗',
+            function: '升级冲突',
+            mandatoryBeats: ['beat1', 'beat2', 'beat3', 'beat4'],
+          },
+        ],
+        keyBeats: [],
+        autoBoundaryAdjustment: {
+          originalTotalChapters: 40,
+          totalExtendedChapters: 6,
+        },
+      },
+      outline: [
+        { number: 1, title: '启程', description: '开篇。' },
+        { number: 2, title: '', description: '' },
+      ],
+      actProgress: {
+        2: { consumed: [], pending: ['beat1', 'beat2', 'beat3', 'beat4'] },
+      },
+      chapters: [null, null],
+    }
+
+    try {
+      await expandOutlineForChapter(overloadedState, 1, createMockProvider())
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[MuseFlow] 建议运行：museflow adjust-act story-1 --act 2 --end-chapter 4'
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('includes next-act boundary hint when next chapter enters new act', async () => {

@@ -30,6 +30,7 @@ import type { Conflict } from '../types/story-state.js'
 import {
   applyActBoundaryAdjustment,
   calculateBeatBudget,
+  formatActBoundaryAdjustmentCommand,
   getActForChapter,
   proposeActBoundaryAdjustments,
 } from '../utils/story-arc.js'
@@ -124,6 +125,9 @@ async function autoExtendCurrentActBeforeOutline(
     const result = applyActBoundaryAdjustment(updatedStoryArc, proposal, chapterIndex)
     if (!result.applied) {
       logger.warn(`[MuseFlow] 写前自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
+      logger.warn(
+        `[MuseFlow] 建议运行：${formatActBoundaryAdjustmentCommand(state.story.id, proposal)}`
+      )
       continue
     }
     updatedStoryArc = result.storyArc

@@ -41,6 +41,7 @@ import {
   buildClosingPhaseConstraint,
   proposeActBoundaryAdjustments,
   applyActBoundaryAdjustment,
+  formatActBoundaryAdjustmentCommand,
   judgeMandatoryBeatCoverage,
 } from '../../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
@@ -509,6 +510,9 @@ export async function finalizeChapter(
             logger.info(`[MuseFlow] ${result.reason}`)
           } else {
             logger.warn(`[MuseFlow] 自动调整第 ${proposal.actIndex} 幕边界失败：${result.reason}`)
+            logger.warn(
+              `[MuseFlow] 建议运行：${formatActBoundaryAdjustmentCommand(state.story.id, proposal)}`
+            )
             if (result.requiresManualResolution) {
               updatedPendingIssues = [
                 ...updatedPendingIssues,
