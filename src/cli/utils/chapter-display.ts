@@ -36,9 +36,10 @@ export function printActProgress(
   const actChapterNumber = chapterNumber - act.startChapter + 1
   const actChapterTotal = act.endChapter - act.startChapter + 1
   const actChaptersRemaining = Math.max(0, act.endChapter - chapterNumber)
+  const totalActs = state.storyArc.acts.length
 
   console.log(
-    `  当前幕: 第 ${act.index} 幕「${act.title}」（第 ${act.startChapter}-${act.endChapter} 章）`
+    `  当前幕: 第 ${act.index}/${totalActs} 幕「${act.title}」（第 ${act.startChapter}-${act.endChapter} 章）`
   )
   console.log(
     `  幕内进度: 第 ${actChapterNumber}/${actChapterTotal} 章，剩余 ${actChaptersRemaining} 章`

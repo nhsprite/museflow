@@ -51,7 +51,7 @@ describe('CLI chapter display', () => {
   it('prints current act and beat progress for the target chapter', () => {
     printActProgress(buildState(), 5)
 
-    expect(logSpy).toHaveBeenCalledWith('  当前幕: 第 2 幕「第二幕」（第 4-8 章）')
+    expect(logSpy).toHaveBeenCalledWith('  当前幕: 第 2/2 幕「第二幕」（第 4-8 章）')
     expect(logSpy).toHaveBeenCalledWith('  幕内进度: 第 3/5 章，剩余 2 章')
     expect(logSpy).toHaveBeenCalledWith('  节拍进度: 1/3 已消费，剩余 2')
     expect(logSpy).toHaveBeenCalledWith('  待消费:')
