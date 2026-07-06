@@ -95,6 +95,29 @@ function updateOutlineVerifiedBeats(
   return next
 }
 
+function filterStoryEventsForStoryArc(
+  events: StoryEvent[],
+  storyArc: StoryArc | null | undefined
+): StoryEvent[] {
+  if (!storyArc || storyArc.keyBeats.length === 0) return events
+  const validBeatIds = new Set(storyArc.keyBeats.map((beat) => beat.id))
+  return events.filter((event) => event.type !== 'plot-advance' || validBeatIds.has(event.beatId))
+}
+
+function getClaimedMandatoryBeatsForCoverage(
+  outlineItem: ReducedGraphState['outline'][number] | undefined,
+  mandatoryBeats: string[]
+): string[] {
+  const allowed = new Set(mandatoryBeats)
+  const claimed = new Set<string>()
+  for (const beat of outlineItem?.claimedBeats ?? []) {
+    if (allowed.has(beat)) {
+      claimed.add(beat)
+    }
+  }
+  return Array.from(claimed)
+}
+
 function ensureChaptersLength(
   chapters: ReducedGraphState['chapters'],
   totalChapters: number
@@ -194,7 +217,7 @@ export async function finalizeChapter(
   // Authoritative source of events: the writer already emitted them in the
   // STORY_EVENTS block. Apply them before asking SummaryAgent to avoid losing
   // structured plot-advance events and to skip prose-based guessing.
-  const draftEvents = state.draftChapterEvents ?? []
+  const draftEvents = filterStoryEventsForStoryArc(state.draftChapterEvents ?? [], state.storyArc)
   const draftPlotAdvanceBeatIds = new Set(
     draftEvents
       .filter((e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance')
@@ -267,7 +290,10 @@ export async function finalizeChapter(
 
           // SummaryAgent events are a fallback for events the writer missed.
           // For plot-advance, draft events are authoritative; skip duplicates.
-          const actualEvents = summaryData.storyEvents ?? []
+          const actualEvents = filterStoryEventsForStoryArc(
+            summaryData.storyEvents ?? [],
+            state.storyArc
+          )
           const newEvents = actualEvents.filter((event) => {
             if (event.type === 'plot-advance') {
               return !draftPlotAdvanceBeatIds.has(event.beatId)
@@ -306,14 +332,18 @@ export async function finalizeChapter(
               latestCurrentOutline.verifiedBeats ?? [],
               actForCoverage.mandatoryBeats
             )
-            const missingAfterEvents = actForCoverage.mandatoryBeats.filter(
+            const coverageCandidates = getClaimedMandatoryBeatsForCoverage(
+              latestCurrentOutline,
+              actForCoverage.mandatoryBeats
+            )
+            const missingAfterEvents = coverageCandidates.filter(
               (beat) => !allVerified.includes(beat)
             )
             if (missingAfterEvents.length > 0) {
               const contentVerified = await judgeMandatoryBeatCoverage(
                 provider,
                 chapterContent,
-                actForCoverage.mandatoryBeats
+                missingAfterEvents
               )
               const merged = Array.from(new Set([...allVerified, ...contentVerified]))
               if (merged.length > allVerified.length) {

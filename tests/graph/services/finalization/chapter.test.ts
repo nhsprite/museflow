@@ -258,6 +258,128 @@ describe('finalizeChapter', () => {
     expect(provider.chat).not.toHaveBeenCalled()
   })
 
+  it('limits prose-based beat coverage to beats claimed by the current chapter', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '本章只推进了第二与第四个结构节拍。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_3.md'),
+      '# 第三章 推进\n\n本章集中推进第二与第四个结构节拍。',
+      'utf-8'
+    )
+
+    const mandatoryBeats = ['beat-a', 'beat-b', 'beat-c', 'beat-d', 'beat-e']
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 2,
+      totalChapters: 6,
+      story: {
+        ...buildState(tmpDir).story,
+        totalChapters: 6,
+      },
+      outline: [
+        { number: 1, title: '起', description: 'beat-a', verifiedBeats: ['beat-a'] },
+        { number: 2, title: '承', description: '过渡' },
+        {
+          number: 3,
+          title: '推进',
+          description: '推进第二与第四个结构节拍。',
+          claimedBeats: ['beat-b', 'beat-d'],
+        },
+        { number: 4, title: '转', description: '' },
+        { number: 5, title: '合', description: '' },
+        { number: 6, title: '余', description: '' },
+      ],
+      chapters: [
+        null,
+        null,
+        {
+          id: 'ch-3',
+          storyId: 'test-story',
+          number: 3,
+          title: '推进',
+          outline: '推进第二与第四个结构节拍。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      storyArc: {
+        totalChapters: 6,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 6,
+            title: 'Act',
+            theme: '',
+            function: '',
+            mandatoryBeats,
+          },
+        ],
+        keyBeats: mandatoryBeats.map((beat, index) => ({
+          id: `beat-${index + 1}`,
+          beat,
+          deadlineAct: 1,
+          required: true,
+        })),
+      },
+      actProgress: {
+        1: { consumed: ['beat-a'], pending: ['beat-b', 'beat-c', 'beat-d', 'beat-e'] },
+      },
+      storyMemory: null,
+    })
+    const provider: ModelProvider = {
+      chat: vi.fn().mockResolvedValue(''),
+      chatStructured: vi.fn().mockResolvedValue({ coveredBeats: mandatoryBeats }),
+    }
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.outline?.[2]?.verifiedBeats).toEqual(['beat-b', 'beat-d'])
+    expect(result.actProgress?.[1]?.consumed).toEqual(['beat-a', 'beat-b', 'beat-d'])
+    expect(result.actProgress?.[1]?.pending).toEqual(['beat-c', 'beat-e'])
+  })
+
+  it('ignores plot-advance events with beat IDs outside the story arc', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角仍未真正离开家乡。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const state = buildState(tmpDir, {
+      draftChapterEvents: [
+        {
+          id: 'evt-invalid',
+          type: 'plot-advance',
+          plotId: 'act-1',
+          beatId: 'beat-1（补充说明）',
+          chapterIndex: 0,
+          source: 'chapter',
+        } as StoryEvent,
+      ],
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-invalid')).toBe(false)
+    expect(result.storyMemory?.beats['beat-1（补充说明）']).toBeUndefined()
+    expect(result.actProgress?.[1]?.consumed).not.toContain('主角离开家乡')
+  })
+
   it('replaces stale unverified-beat warnings instead of stacking duplicates', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue({
       run: vi.fn().mockResolvedValue({
