@@ -23,6 +23,7 @@ import {
   createGenericVerifiedConstraint,
   normalizeVerifiedConstraints,
 } from '../utils/verified-constraints.js'
+import { projectVerifiedClaimedBeatIdsIntoActProgress } from './act-progress-projection.js'
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -438,6 +439,7 @@ export async function getState(
     graphState.pendingIssues = graphState.pendingIssues.filter(
       (issue) => issue.type !== 'draft_failure'
     )
+    graphState.actProgress = projectVerifiedClaimedBeatIdsIntoActProgress(graphState)
 
     return graphState
   } catch (err) {

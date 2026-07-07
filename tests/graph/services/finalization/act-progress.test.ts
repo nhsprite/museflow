@@ -144,6 +144,92 @@ describe('updateActProgress', () => {
     expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
   })
 
+  it('uses paired claimedBeatIds and claimedBeats to consume mandatory beats when keyBeat text differs', async () => {
+    const storyArc = makeStoryArc()
+    const state = {
+      storyArc,
+      outline: [
+        {
+          number: 1,
+          title: 'A',
+          description: 'a',
+          claimedBeats: ['身份暴露'],
+          claimedBeatIds: ['A1-B1'],
+        },
+      ],
+      storyMemory: makeStoryMemory({
+        beats: {
+          'A1-B1': {
+            id: 'A1-B1',
+            description: '身份彻底暴露后的坠落',
+            actIndex: 1,
+            deadlineAct: 1,
+            required: true,
+            claimedIn: 0,
+            provenByEventIds: ['evt-1'],
+          },
+        },
+      }),
+      actProgress: {
+        1: { consumed: [], pending: ['身份暴露', '敌友洗牌', '终局布局'] },
+      },
+    } as unknown as ReducedGraphState
+
+    const result = await updateActProgress(state, 0)
+
+    expect(result.actProgress[1]?.consumed).toContain('身份暴露')
+    expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
+  })
+
+  it('uses paired claimedBeatIds and claimedBeats for unverified beat issues', async () => {
+    const storyArc = makeStoryArc()
+    const state = {
+      storyArc,
+      currentChapterIndex: 8,
+      outline: [
+        ...Array.from({ length: 8 }, (_, index) => ({
+          number: index + 1,
+          title: `Chapter ${index + 1}`,
+          description: '',
+        })),
+        {
+          number: 9,
+          title: 'A',
+          description: 'a',
+          claimedBeats: ['身份暴露'],
+          claimedBeatIds: ['A1-B1'],
+        },
+      ],
+      storyMemory: makeStoryMemory({
+        beats: {
+          'A1-B1': {
+            id: 'A1-B1',
+            description: '身份彻底暴露后的坠落',
+            actIndex: 1,
+            deadlineAct: 1,
+            required: true,
+            claimedIn: 8,
+            provenByEventIds: [],
+          },
+        },
+      }),
+      actProgress: {
+        1: { consumed: [], pending: ['身份暴露', '敌友洗牌', '终局布局'] },
+      },
+    } as unknown as ReducedGraphState
+
+    const result = await updateActProgress(state, 8)
+
+    expect(result.beatVerificationIssues).toEqual([
+      expect.objectContaining({
+        id: 'unverified-beat-id-A1-B1',
+        severity: 'error',
+        subject: 'A1-B1',
+        description: expect.stringContaining('身份暴露'),
+      }),
+    ])
+  })
+
   it('does not double-count consumed beats', async () => {
     const storyArc = makeStoryArc()
     const state = {

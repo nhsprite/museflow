@@ -2,6 +2,7 @@ import type { ReducedGraphState } from '../graph/state.js'
 import type { StoryMemory } from '../types/story-memory.js'
 import { projectMemory } from '../story-memory/projector.js'
 import { getVerifiedBeatsFromMemory } from '../utils/story-arc.js'
+import { findClaimedMandatoryBeatForId } from '../utils/mandatory-beat-mapping.js'
 
 export function cleanOutlineForRewrite(
   outline: ReducedGraphState['outline'],
@@ -74,6 +75,12 @@ export function recomputeActProgressForRewrite(
     }
 
     for (const beatId of verifiedBeatIds) {
+      const claimedIn = state.storyMemory?.beats[beatId]?.claimedIn
+      const options =
+        typeof claimedIn === 'number'
+          ? { preferredChapterIndex: claimedIn, throughChapterIndex: targetChapterIndex - 1 }
+          : { throughChapterIndex: targetChapterIndex - 1 }
+      addIfMandatory(findClaimedMandatoryBeatForId(state.outline, storyArc, beatId, options))
       addIfMandatory(keyBeatTextById.get(beatId) ?? beatId)
     }
 

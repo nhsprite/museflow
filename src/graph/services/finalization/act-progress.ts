@@ -11,6 +11,10 @@ import {
   judgeMandatoryBeatCoverageAcrossAct,
 } from '../../../utils/story-arc.js'
 import { createActPressureConstraint } from '../../../utils/verified-constraints.js'
+import {
+  findClaimedMandatoryBeatForId,
+  getClaimedMandatoryBeatForId,
+} from '../../../utils/mandatory-beat-mapping.js'
 import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
 
 export interface ActProgressUpdate {
@@ -137,6 +141,23 @@ function updateActProgressFromMemory(
   // Map beat text to its keyBeat so we can verify any mandatory beat that has
   // a keyBeat ID, regardless of whether it was pre-populated in memory.beats.
   const textToKeyBeat = new Map(storyArc?.keyBeats.map((kb) => [kb.beat, kb] as const) ?? [])
+  const mandatoryBeatsVerifiedByClaimedId = new Set<string>()
+  for (const beatId of verifiedBeatIds) {
+    const claimedIn = memory.beats[beatId]?.claimedIn
+    const options =
+      typeof claimedIn === 'number'
+        ? { preferredChapterIndex: claimedIn, throughChapterIndex: chapterIndex }
+        : { throughChapterIndex: chapterIndex }
+    const claimedMandatoryBeat = findClaimedMandatoryBeatForId(
+      state.outline,
+      storyArc,
+      beatId,
+      options
+    )
+    if (claimedMandatoryBeat) {
+      mandatoryBeatsVerifiedByClaimedId.add(claimedMandatoryBeat)
+    }
+  }
 
   // outline.verifiedBeats may contain mandatory beat text that was recognized
   // by the fallback judge or directly derived from plot-advance events. When
@@ -160,7 +181,8 @@ function updateActProgressFromMemory(
       const keyBeat = textToKeyBeat.get(beat)
       const isVerifiedByMemory = keyBeat && verifiedBeatIds.has(keyBeat.id)
       const isVerifiedByOutline = outlineVerifiedBeats.has(beat)
-      if (isVerifiedByMemory || isVerifiedByOutline) {
+      const isVerifiedByClaimedId = mandatoryBeatsVerifiedByClaimedId.has(beat)
+      if (isVerifiedByMemory || isVerifiedByOutline || isVerifiedByClaimedId) {
         if (!consumed.includes(beat)) consumed.push(beat)
       }
     }
@@ -233,7 +255,10 @@ function getClaimedBeatTexts(
   if (outlineItem.claimedBeatIds && storyArc) {
     for (const id of outlineItem.claimedBeatIds) {
       const keyBeat = storyArc.keyBeats.find((kb) => kb.id === id)
-      if (keyBeat && act.mandatoryBeats.includes(keyBeat.beat)) {
+      const claimedMandatoryBeat = getClaimedMandatoryBeatForId(outlineItem, storyArc, id)
+      if (claimedMandatoryBeat) {
+        claimed.add(claimedMandatoryBeat)
+      } else if (keyBeat && act.mandatoryBeats.includes(keyBeat.beat)) {
         claimed.add(keyBeat.beat)
       }
     }
@@ -385,7 +410,9 @@ function buildBeatVerificationIssues(
     const keyBeat = keyBeatsById.get(beatId)
     if (!keyBeat || keyBeat.deadlineAct !== act.index) continue
     const proven = verifiedBeatIds?.has(beatId) ?? false
-    const beatIndex = act.mandatoryBeats.indexOf(keyBeat.beat)
+    const claimedMandatoryBeat = getClaimedMandatoryBeatForId(outlineItem, storyArc, beatId)
+    const issueBeat = claimedMandatoryBeat ?? keyBeat.beat
+    const beatIndex = act.mandatoryBeats.indexOf(issueBeat)
     if (beatIndex >= 0) {
       claimedBeatIndexesFromIds.add(beatIndex)
     }
@@ -396,7 +423,7 @@ function buildBeatVerificationIssues(
       type: 'outline_coverage',
       severity: shouldBlock ? 'error' : 'warning',
       subject: beatId,
-      description: `本章大纲声称推进 mandatory beat「${keyBeat.beat}」，但正文未验证到该 beat 的发生。`,
+      description: `本章大纲声称推进 mandatory beat「${issueBeat}」，但正文未验证到该 beat 的发生。`,
       suggestion: shouldBlock
         ? `请重写当前章节，补足该 mandatory beat 的明确推进事件，或调整大纲不再声称本章推进该 beat。`
         : `请在后续章节中确保该 beat 被明确确立，或调整大纲不再声称推进该 beat。`,
