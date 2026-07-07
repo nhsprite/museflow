@@ -15,6 +15,11 @@ interface ValidationResult {
   error?: string
 }
 
+interface NormalizeChapterHeadingOptions {
+  chapterIndex: number
+  title?: string | null
+}
+
 const CHINESE_NUMERALS: Record<string, number> = {
   零: 0,
   一: 1,
@@ -106,6 +111,33 @@ export interface ChapterHeadingCorrection {
   corrected: string
   originalFoundNumber: number
   reason: string
+}
+
+export function buildExpectedChapterHeading(chapterIndex: number, title?: string | null): string {
+  const normalizedTitle = title?.trim()
+  return normalizedTitle
+    ? `# 第${chapterIndex + 1}章 ${normalizedTitle}`
+    : `# 第${chapterIndex + 1}章`
+}
+
+export function normalizeChapterHeading(
+  rawContent: string,
+  options: NormalizeChapterHeadingOptions
+): string {
+  const trimmedContent = rawContent.trim()
+  const expectedHeading = buildExpectedChapterHeading(options.chapterIndex, options.title)
+  if (!trimmedContent) {
+    return expectedHeading
+  }
+
+  const lines = trimmedContent.split('\n')
+  const headingIndex = lines.findIndex((line) => CHAPTER_HEADING_PATTERN.test(line.trim()))
+  if (headingIndex >= 0) {
+    lines[headingIndex] = expectedHeading
+    return lines.join('\n').trim()
+  }
+
+  return `${expectedHeading}\n\n${trimmedContent}`
 }
 
 /**

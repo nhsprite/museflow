@@ -13,6 +13,7 @@ export const STORY_STATUSES = [
   'worldbuilding',
   'outlining',
   'writing',
+  'freeze',
   'done',
   'error',
 ] as const

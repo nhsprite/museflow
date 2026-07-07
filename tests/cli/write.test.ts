@@ -47,6 +47,13 @@ function createState(overrides: Record<string, unknown> = {}) {
 }
 
 const getStateMock = vi.fn().mockResolvedValue(createState())
+const getStoryMock = vi.fn().mockReturnValue({
+  id: 'story-1',
+  title: 'Test Story',
+  outputDir: testTempDir,
+  status: 'writing',
+})
+const updateStoryStatusMock = vi.fn()
 
 const loadPendingWritesForThreadMock = vi.fn().mockResolvedValue([])
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
@@ -57,13 +64,8 @@ vi.mock('../../src/core/runner.js', () => ({
 }))
 
 vi.mock('../../src/storage/meta/stores/story.js', () => ({
-  getStory: vi.fn().mockReturnValue({
-    id: 'story-1',
-    title: 'Test Story',
-    outputDir: testTempDir,
-    status: 'writing',
-  }),
-  updateStoryStatus: vi.fn(),
+  getStory: getStoryMock,
+  updateStoryStatus: updateStoryStatusMock,
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -100,6 +102,13 @@ vi.mock('node:fs', () => ({
 describe('write command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getStateMock.mockResolvedValue(createState())
+    getStoryMock.mockReturnValue({
+      id: 'story-1',
+      title: 'Test Story',
+      outputDir: testTempDir,
+      status: 'writing',
+    })
     runOneChapterMock.mockResolvedValue({
       story: { id: 'story-1', outputDir: testTempDir },
       currentChapterIndex: 1,
@@ -129,5 +138,43 @@ describe('write command', () => {
       expect.objectContaining({ currentChapterIndex: 0 }),
       0
     )
+  })
+
+  it('sets story status to freeze after writing the final chapter', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+
+    getStateMock.mockResolvedValue(createState({ currentChapterIndex: 2 }))
+    runOneChapterMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: testTempDir },
+      currentChapterIndex: 3,
+      totalChapters: 3,
+      pendingIssues: [],
+      rewriteRequested: false,
+      outline: [
+        { number: 1, title: 'Chapter 1', description: 'Desc 1' },
+        { number: 2, title: 'Chapter 2', description: 'Desc 2' },
+        { number: 3, title: 'Chapter 3', description: 'Desc 3' },
+      ],
+    })
+
+    await write('story-1', { storyId: 'story-1' })
+
+    expect(updateStoryStatusMock).toHaveBeenCalledWith('story-1', 'freeze')
+  })
+
+  it('does not write when the story is frozen', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+
+    getStoryMock.mockReturnValue({
+      id: 'story-1',
+      title: 'Test Story',
+      outputDir: testTempDir,
+      status: 'freeze',
+    })
+    getStateMock.mockResolvedValue(createState({ currentChapterIndex: 1 }))
+
+    await write('story-1', { storyId: 'story-1' })
+
+    expect(runOneChapterMock).not.toHaveBeenCalled()
   })
 })

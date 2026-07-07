@@ -15,6 +15,13 @@ const runOneChapterMock = vi.fn().mockResolvedValue({
   rewriteRequested: false,
 })
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
+const getStoryMock = vi.fn().mockReturnValue({
+  id: 'story-1',
+  title: 'Test Story',
+  outputDir: testTempDir,
+  status: 'writing',
+})
+const updateStoryStatusMock = vi.fn()
 
 vi.mock('../../src/storage/checkpoint-service.js', () => ({
   createCheckpointService: () => ({
@@ -23,12 +30,8 @@ vi.mock('../../src/storage/checkpoint-service.js', () => ({
 }))
 
 vi.mock('../../src/storage/meta/stores/story.js', () => ({
-  getStory: vi.fn().mockReturnValue({
-    id: 'story-1',
-    title: 'Test Story',
-    outputDir: testTempDir,
-  }),
-  updateStoryStatus: vi.fn(),
+  getStory: getStoryMock,
+  updateStoryStatus: updateStoryStatusMock,
   initStoryDb: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -174,6 +177,12 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
 describe('rewrite command state consistency', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getStoryMock.mockReturnValue({
+      id: 'story-1',
+      title: 'Test Story',
+      outputDir: testTempDir,
+      status: 'writing',
+    })
     runOneChapterMock.mockResolvedValue({
       story: { id: 'story-1', outputDir: testTempDir },
       currentChapterIndex: 5,
@@ -181,6 +190,47 @@ describe('rewrite command state consistency', () => {
       pendingIssues: [],
       rewriteRequested: false,
     })
+  })
+
+  it('does not rewrite when the story is frozen', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+
+    getStoryMock.mockReturnValue({
+      id: 'story-1',
+      title: 'Test Story',
+      outputDir: testTempDir,
+      status: 'freeze',
+    })
+    getStateMock.mockResolvedValue({
+      story: { id: 'story-1', outputDir: testTempDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      world: null,
+      characters: [],
+      outline: Array.from({ length: 10 }, (_, i) => ({
+        number: i + 1,
+        title: `Chapter ${i + 1}`,
+        description: `Description ${i + 1}`,
+      })),
+      chapters: Array(10).fill(null),
+      currentChapterIndex: 10,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      pendingIssues: [],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+    })
+
+    await rewrite('story-1', { storyId: 'story-1', chapter: '7' })
+
+    expect(runOneChapterMock).not.toHaveBeenCalled()
+    expect(clearPendingWritesMock).not.toHaveBeenCalled()
+    expect(updateStoryStatusMock).not.toHaveBeenCalledWith('story-1', 'writing')
   })
 
   it('should invoke chapter graph when rewrite fails with errors', async () => {

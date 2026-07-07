@@ -13,6 +13,7 @@ import type { Issue } from '../../types/agent.js'
 import { createInterface } from 'node:readline'
 import { requireStoryState } from '../utils/story-loader.js'
 import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
+import { printFrozenStoryMessage, shouldFreezeLockStory } from '../utils/story-freeze.js'
 
 interface RewriteOptions {
   storyId: string
@@ -23,6 +24,14 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
   const targetChapter = options.chapter ? parseInt(options.chapter, 10) : null
 
   const { story, state } = await requireStoryState(storyId)
+
+  if (shouldFreezeLockStory(story, state)) {
+    if (state.currentChapterIndex >= state.totalChapters && story.status !== 'freeze') {
+      updateStoryStatus(storyId, 'freeze')
+    }
+    printFrozenStoryMessage(story, state, storyId)
+    return
+  }
 
   if (targetChapter !== null) {
     if (targetChapter < 1 || targetChapter > state.totalChapters) {
@@ -152,7 +161,7 @@ async function handleRewrite(
     }
 
     if (result.currentChapterIndex >= result.totalChapters) {
-      updateStatus('done')
+      updateStatus('freeze')
       return
     }
 
@@ -179,7 +188,7 @@ async function handleRewrite(
     if (nextIndex < result.totalChapters) {
       updateStatus('writing')
     } else {
-      updateStatus('done')
+      updateStatus('freeze')
     }
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))

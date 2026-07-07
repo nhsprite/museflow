@@ -130,4 +130,43 @@ describe('draft_chapter output validation', () => {
       expect(result.chapters?.[0]?.outline).toBe('即时生成描述')
     }
   )
+
+  it('normalizes model-generated chapter heading numbers before validation', async () => {
+    const outline = Array.from({ length: 16 }, (_, i) => ({
+      number: i + 1,
+      title: i === 15 ? '第十七页的空白' : `第${i + 1}章`,
+      description: i === 15 ? '本章围绕第十七页的空白展开。' : '',
+    }))
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 50,
+      currentChapterIndex: 15,
+      outline,
+      chapters: Array(16).fill(null),
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+      chapterPlan: null,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValueOnce({
+      success: true,
+      content: `# 第17章 第十七页的空白\n\n${'林屿低头看着纸页上的空白，笔尖悬在格线上。'.repeat(300)}`,
+    })
+
+    await draft_chapter(createMockContext(), state)
+    const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_16.md'), 'utf8')
+
+    expect(written.startsWith('# 第16章 第十七页的空白')).toBe(true)
+  })
 })

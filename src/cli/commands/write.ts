@@ -13,6 +13,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { requireStoryState } from '../utils/story-loader.js'
 import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
+import { printFrozenStoryMessage, shouldFreezeLockStory } from '../utils/story-freeze.js'
 
 interface WriteOptions {
   storyId: string
@@ -39,14 +40,11 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
     startChapterIndex = state.currentChapterIndex
   }
 
-  if (startChapterIndex >= state.totalChapters) {
-    console.log(`[MuseFlow] 故事已完成: ${story.title}`)
-    console.log(`  总章节: ${state.totalChapters}/${state.totalChapters} (100%)`)
-    console.log('\n全部章节已撰写完成，无需继续。')
-    console.log('使用以下命令查看或导出故事:')
-    console.log(`   museflow status ${storyId}  # 查看进度`)
-    console.log(`   museflow info ${storyId}     # 查看详情`)
-    console.log(`   museflow export ${storyId}   # 导出为 txt 文件\n`)
+  if (shouldFreezeLockStory(story, state) || startChapterIndex >= state.totalChapters) {
+    if (startChapterIndex >= state.totalChapters && story.status !== 'freeze') {
+      updateStoryStatus(storyId, 'freeze')
+    }
+    printFrozenStoryMessage(story, state, storyId, startChapterIndex)
     return
   }
 
@@ -167,7 +165,7 @@ async function executeWrite(
     }
 
     if (result.currentChapterIndex >= result.totalChapters) {
-      updateStatus('done')
+      updateStatus('freeze')
       return
     }
 

@@ -9,7 +9,7 @@ import { formatChapterOutlineForAgent } from './planning.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 import {
   validateFixedChapterContent,
-  tryCorrectOffByOneChapterHeading,
+  normalizeChapterHeading,
 } from '../../utils/chapter-content-validation.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import {
@@ -85,51 +85,20 @@ export async function draft_chapter(
     logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
   }
 
-  const trimmedContent = content.trim()
-  const firstLine = trimmedContent
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.length > 0)
-  const hasTitle =
-    firstLine &&
-    (/^#{1,2}\s/.test(firstLine) ||
-      firstLine.includes(`第${chapterIndex + 1}章`) ||
-      firstLine.includes(`第 ${chapterIndex + 1} 章`))
-
-  if (!hasTitle && outlineItem) {
-    content = `# 第${chapterIndex + 1}章 ${outlineItem.title}\n\n${trimmedContent}`
-  }
+  content = normalizeChapterHeading(content, {
+    chapterIndex,
+    title: outlineItem?.title ?? null,
+  })
 
   const genre = getGenreSkill(state.genre)
   const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
   const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
 
-  let validation = await validateFixedChapterContent(content, {
+  const validation = await validateFixedChapterContent(content, {
     chapterIndex,
     minWordCount: min,
     maxWordCount: max,
   })
-
-  if (!validation.valid && validation.error?.includes('章节号不匹配')) {
-    const nextOutlineItem = state.outline[chapterIndex + 1]
-    const correction = tryCorrectOffByOneChapterHeading(
-      content,
-      chapterIndex,
-      outlineItem?.description ?? '',
-      nextOutlineItem?.description
-    )
-    if (correction) {
-      logger.warn(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章检测到章节号笔误（实际为第 ${correction.originalFoundNumber} 章），已自动修正标题：${correction.reason}`
-      )
-      content = correction.corrected
-      validation = await validateFixedChapterContent(content, {
-        chapterIndex,
-        minWordCount: min,
-        maxWordCount: max,
-      })
-    }
-  }
 
   if (!validation.valid) {
     throw new Error(`第 ${chapterIndex + 1} 章起草后校验失败：${validation.error}`)
