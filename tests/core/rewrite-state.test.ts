@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { recomputeActProgressForRewrite } from '../../src/core/rewrite-state.js'
+import {
+  cleanOutlineForRewrite,
+  recomputeActProgressForRewrite,
+} from '../../src/core/rewrite-state.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { StoryMemory } from '../../src/types/story-memory.js'
 
@@ -64,5 +67,107 @@ describe('recomputeActProgressForRewrite', () => {
 
     expect(progress[1]?.consumed).toContain('身份暴露')
     expect(progress[1]?.pending).not.toContain('身份暴露')
+  })
+
+  it('does not let legacy outline verifiedBeats consume unclaimed act beats during rewrite', () => {
+    const state = {
+      storyArc: {
+        totalChapters: 7,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 7,
+            title: 'Act',
+            theme: '',
+            function: '',
+            mandatoryBeats: ['身份重构', '初次接触', '暴露危机'],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        {
+          number: 1,
+          title: 'Chapter 1',
+          description: 'Description 1',
+          claimedBeats: ['身份重构'],
+          verifiedBeats: ['身份重构', '初次接触', '暴露危机'],
+        },
+        { number: 2, title: 'Chapter 2', description: 'Description 2' },
+        { number: 3, title: 'Chapter 3', description: 'Description 3' },
+        { number: 4, title: 'Chapter 4', description: 'Description 4' },
+        { number: 5, title: 'Chapter 5', description: 'Description 5' },
+        { number: 6, title: 'Chapter 6', description: 'Description 6' },
+      ],
+      storyMemory: null,
+    } as unknown as ReducedGraphState
+
+    const progress = recomputeActProgressForRewrite(state, 6)
+
+    expect(progress[1]?.consumed).toEqual(['身份重构'])
+    expect(progress[1]?.pending).toEqual(['初次接触', '暴露危机'])
+  })
+})
+
+describe('cleanOutlineForRewrite', () => {
+  it('prunes legacy verifiedBeats before the target chapter to beats claimed by that chapter', () => {
+    const storyArc = {
+      totalChapters: 3,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: 'Act',
+          theme: '',
+          function: '',
+          mandatoryBeats: ['身份重构', '初次接触', '暴露危机'],
+        },
+      ],
+      keyBeats: [],
+    }
+    const outline = [
+      {
+        number: 1,
+        title: 'Chapter 1',
+        description: 'Description 1',
+        claimedBeats: ['身份重构'],
+        verifiedBeats: ['身份重构', '初次接触', '暴露危机'],
+        verifiedBeatEvidence: [
+          {
+            beat: '身份重构',
+            chapterIndex: 0,
+            quote: 'evidence',
+            confidence: 'high' as const,
+          },
+          {
+            beat: '初次接触',
+            chapterIndex: 0,
+            quote: 'evidence',
+            confidence: 'medium' as const,
+          },
+        ],
+      },
+      {
+        number: 2,
+        title: 'Chapter 2',
+        description: 'Description 2',
+        verifiedBeats: ['暴露危机'],
+      },
+    ] as ReducedGraphState['outline']
+
+    const cleaned = cleanOutlineForRewrite(outline, 1, storyArc)
+
+    expect(cleaned[0]?.verifiedBeats).toEqual(['身份重构'])
+    expect(cleaned[0]?.verifiedBeatEvidence).toEqual([
+      {
+        beat: '身份重构',
+        chapterIndex: 0,
+        quote: 'evidence',
+        confidence: 'high',
+      },
+    ])
+    expect(cleaned[1]?.verifiedBeats).toBeUndefined()
   })
 })

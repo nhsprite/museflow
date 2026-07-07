@@ -267,7 +267,11 @@ export async function runOneChapter(
     workingState.foreshadowStack = checkpointState.foreshadowStack.filter(
       (f) => f.createdAtChapter < targetIndex + 1
     )
-    workingState.outline = cleanOutlineForRewrite(workingState.outline, targetIndex)
+    workingState.outline = cleanOutlineForRewrite(
+      workingState.outline,
+      targetIndex,
+      workingState.storyArc
+    )
     if (checkpointState.storyState) {
       workingState.storyState = cleanStoryStateForRewrite(checkpointState.storyState, targetIndex)
     }

@@ -2,17 +2,54 @@ import type { ReducedGraphState } from '../graph/state.js'
 import type { StoryMemory } from '../types/story-memory.js'
 import { projectMemory } from '../story-memory/projector.js'
 import { getVerifiedBeatsFromMemory } from '../utils/story-arc.js'
-import { findClaimedMandatoryBeatForId } from '../utils/mandatory-beat-mapping.js'
+import {
+  findClaimedMandatoryBeatForId,
+  getClaimedMandatoryBeatForId,
+} from '../utils/mandatory-beat-mapping.js'
 
 export function cleanOutlineForRewrite(
   outline: ReducedGraphState['outline'],
-  targetChapterIndex: number
+  targetChapterIndex: number,
+  storyArc?: ReducedGraphState['storyArc']
 ): ReducedGraphState['outline'] {
   let changed = false
   const next = outline.map((item, index) => {
-    if (index < targetChapterIndex || (!item?.verifiedBeats && !item?.verifiedBeatEvidence)) {
+    if (!item?.verifiedBeats && !item?.verifiedBeatEvidence) {
       return item
     }
+
+    if (index < targetChapterIndex) {
+      if (!storyArc) return item
+      const trustedVerifiedBeats = getTrustedOutlineVerifiedBeatsForRewrite(item, storyArc)
+      const trustedSet = new Set(trustedVerifiedBeats)
+      const trustedEvidence = item.verifiedBeatEvidence?.filter((evidence) =>
+        trustedSet.has(evidence.beat)
+      )
+      const currentVerifiedBeats = item.verifiedBeats ?? []
+      const currentEvidence = item.verifiedBeatEvidence ?? []
+      const sameVerifiedBeats =
+        trustedVerifiedBeats.length === currentVerifiedBeats.length &&
+        trustedVerifiedBeats.every((beat, beatIndex) => beat === currentVerifiedBeats[beatIndex])
+      const sameEvidence =
+        !item.verifiedBeatEvidence || trustedEvidence?.length === currentEvidence.length
+      if (sameVerifiedBeats && sameEvidence) {
+        return item
+      }
+      changed = true
+      const {
+        verifiedBeats: _verifiedBeats,
+        verifiedBeatEvidence: _verifiedBeatEvidence,
+        ...rest
+      } = item
+      return {
+        ...rest,
+        ...(trustedVerifiedBeats.length > 0 ? { verifiedBeats: trustedVerifiedBeats } : {}),
+        ...(trustedEvidence && trustedEvidence.length > 0
+          ? { verifiedBeatEvidence: trustedEvidence }
+          : {}),
+      }
+    }
+
     changed = true
     const {
       verifiedBeats: _verifiedBeats,
@@ -39,6 +76,52 @@ export function cleanStoryMemoryForRewrite(
   })
 }
 
+function getTrustedOutlineVerifiedBeatsForRewrite(
+  outlineItem: ReducedGraphState['outline'][number] | undefined,
+  storyArc: NonNullable<ReducedGraphState['storyArc']>
+): string[] {
+  if (!outlineItem?.verifiedBeats) return []
+
+  const claimedBeats = outlineItem.claimedBeats ?? []
+  const claimedBeatIds = outlineItem.claimedBeatIds ?? []
+  if (claimedBeats.length === 0 && claimedBeatIds.length === 0) {
+    const trusted: string[] = []
+    for (const beat of outlineItem.verifiedBeats) {
+      if (!trusted.includes(beat)) {
+        trusted.push(beat)
+      }
+    }
+    return trusted
+  }
+
+  const trustedCandidates = new Set<string>()
+
+  for (const beat of claimedBeats) {
+    trustedCandidates.add(beat)
+  }
+
+  for (const beatId of claimedBeatIds) {
+    const claimedMandatoryBeat = getClaimedMandatoryBeatForId(outlineItem, storyArc, beatId)
+    if (claimedMandatoryBeat) {
+      trustedCandidates.add(claimedMandatoryBeat)
+    }
+
+    const keyBeat = storyArc.keyBeats.find((beat) => beat.id === beatId)
+    if (keyBeat) {
+      trustedCandidates.add(keyBeat.beat)
+    }
+  }
+
+  const trusted: string[] = []
+  for (const beat of outlineItem.verifiedBeats) {
+    if (trustedCandidates.has(beat) && !trusted.includes(beat)) {
+      trusted.push(beat)
+    }
+  }
+
+  return trusted
+}
+
 export function recomputeActProgressForRewrite(
   state: Pick<ReducedGraphState, 'storyArc' | 'outline' | 'storyMemory'>,
   targetChapterIndex: number
@@ -53,7 +136,7 @@ export function recomputeActProgressForRewrite(
 
   const outlineVerifiedBeats = new Set<string>()
   for (let index = 0; index < targetChapterIndex; index++) {
-    const verifiedBeats = state.outline[index]?.verifiedBeats ?? []
+    const verifiedBeats = getTrustedOutlineVerifiedBeatsForRewrite(state.outline[index], storyArc)
     for (const beat of verifiedBeats) {
       outlineVerifiedBeats.add(beat)
     }
@@ -97,7 +180,7 @@ export function prepareRewritePreviewState(
   state: ReducedGraphState,
   targetChapterIndex: number
 ): ReducedGraphState {
-  const outline = cleanOutlineForRewrite(state.outline, targetChapterIndex)
+  const outline = cleanOutlineForRewrite(state.outline, targetChapterIndex, state.storyArc)
   const storyMemory = state.storyMemory
     ? cleanStoryMemoryForRewrite(state.storyMemory, targetChapterIndex)
     : state.storyMemory
