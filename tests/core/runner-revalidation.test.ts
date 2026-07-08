@@ -578,4 +578,67 @@ describe('runner revalidation', () => {
       pending: ['beat-b', 'beat-c'],
     })
   })
+
+  it('blocks continuing when a previous act still has pending mandatory beats', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        totalChapters: 5,
+        currentChapterIndex: 3,
+        storyArc: {
+          totalChapters: 5,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 3,
+              title: 'Act 1',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-a', 'beat-b'],
+            },
+            {
+              index: 2,
+              startChapter: 4,
+              endChapter: 5,
+              title: 'Act 2',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-c'],
+            },
+          ],
+          keyBeats: [],
+        },
+        actProgress: {
+          1: { consumed: ['beat-a'], pending: ['beat-b'] },
+          2: { consumed: [], pending: ['beat-c'] },
+        },
+        outline: [
+          { number: 1, title: 'Chapter 1', description: 'Desc 1' },
+          { number: 2, title: 'Chapter 2', description: 'Desc 2' },
+          { number: 3, title: 'Chapter 3', description: 'Desc 3' },
+          { number: 4, title: 'Chapter 4', description: 'Desc 4' },
+          { number: 5, title: 'Chapter 5', description: 'Desc 5' },
+        ],
+        chapters: [{}, {}, {}, null, null],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    const result = await runOneChapter('story-1', { mode: 'draft' }, createMockContext())
+
+    expect(mockGraph.invoke).not.toHaveBeenCalled()
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'act-1-pending-beats-at-boundary',
+          type: 'outline_coverage',
+          severity: 'error',
+          retryStrategy: 'manual',
+        }),
+      ])
+    )
+  })
 })

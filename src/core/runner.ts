@@ -24,6 +24,7 @@ import {
   normalizeVerifiedConstraints,
 } from '../utils/verified-constraints.js'
 import { projectVerifiedClaimedBeatIdsIntoActProgress } from './act-progress-projection.js'
+import { formatActBoundaryAdjustmentCommand } from '../utils/story-arc.js'
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -188,6 +189,54 @@ function cleanStoryStateForRewrite(storyState: StoryState, targetChapterIndex: n
   }
 }
 
+function buildPastActPendingIssue(
+  storyId: string,
+  act: NonNullable<ReducedGraphState['storyArc']>['acts'][number],
+  pendingBeats: string[],
+  targetChapterIndex: number
+): Issue {
+  const extensionChapters = Math.min(2, Math.max(1, pendingBeats.length))
+  const rewriteCommand = `museflow rewrite ${storyId} -c ${act.endChapter}`
+  const proposal = {
+    actIndex: act.index,
+    proposedEndChapter: act.endChapter + extensionChapters,
+    reason: `第 ${act.index} 幕结束时仍有 mandatory beats 未消费。`,
+  }
+
+  return {
+    id: `act-${act.index}-pending-beats-at-boundary`,
+    type: 'outline_coverage',
+    severity: 'error',
+    subject: `act-${act.index}`,
+    description: `第 ${act.index} 幕已在第 ${act.endChapter} 章结束，但仍有 ${pendingBeats.length} 个 mandatory beats 未消费：${pendingBeats.join('、')}。当前不能继续撰写第 ${targetChapterIndex + 1} 章；请运行 ${rewriteCommand} 重写本幕末章，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕后再继续。`,
+    suggestion: `运行 ${rewriteCommand}，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)}。`,
+    source: 'outline_compliance',
+    retryStrategy: 'manual',
+  }
+}
+
+function findPastActPendingIssue(
+  storyId: string,
+  state: ReducedGraphState,
+  targetChapterIndex: number
+): Issue | undefined {
+  if (!state.storyArc) return undefined
+
+  for (const act of state.storyArc.acts) {
+    if (act.endChapter > targetChapterIndex) continue
+
+    const progress = state.actProgress?.[act.index] ?? {
+      consumed: [],
+      pending: [...act.mandatoryBeats],
+    }
+    if (progress.pending.length === 0) continue
+
+    return buildPastActPendingIssue(storyId, act, progress.pending, targetChapterIndex)
+  }
+
+  return undefined
+}
+
 export async function runOneChapter(
   storyId: string,
   options: RunOneChapterOptions,
@@ -303,6 +352,21 @@ export async function runOneChapter(
 
     for (let ch = targetIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)
+    }
+  }
+
+  const pastActPendingIssue = findPastActPendingIssue(storyId, workingState, targetIndex)
+  if (pastActPendingIssue) {
+    const issueIds = new Set([pastActPendingIssue.id])
+    const pendingIssues = [
+      ...workingState.pendingIssues.filter((issue) => !issueIds.has(issue.id)),
+      pastActPendingIssue,
+    ]
+    return {
+      ...workingState,
+      pendingIssues,
+      rewriteRequested: true,
+      isWriting: false,
     }
   }
 

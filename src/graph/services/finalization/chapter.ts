@@ -35,7 +35,7 @@ import {
   type ChapterReport,
 } from '../../../types/chapter-report.js'
 import { countChineseWords } from '../../../utils/text.js'
-import type { StoryArc } from '../../../types/outline.js'
+import type { ActArc, StoryArc } from '../../../types/outline.js'
 import type { Issue } from '../../../types/agent.js'
 import {
   buildClosingPhaseConstraint,
@@ -127,6 +127,27 @@ function ensureChaptersLength(
     next.push(null)
   }
   return next
+}
+
+function buildActBoundaryPendingIssue(storyId: string, act: ActArc, pendingBeats: string[]): Issue {
+  const extensionChapters = Math.min(2, Math.max(1, pendingBeats.length))
+  const rewriteCommand = `museflow rewrite ${storyId} -c ${act.endChapter}`
+  const proposal = {
+    actIndex: act.index,
+    proposedEndChapter: act.endChapter + extensionChapters,
+    reason: `第 ${act.index} 幕结束时仍有 mandatory beats 未消费。`,
+  }
+
+  return {
+    id: `act-${act.index}-pending-beats-at-boundary`,
+    type: 'outline_coverage',
+    severity: 'error',
+    subject: `act-${act.index}`,
+    description: `第 ${act.index} 幕已到结束章节第 ${act.endChapter} 章，但仍有 ${pendingBeats.length} 个 mandatory beats 未消费：${pendingBeats.join('、')}。不能在本幕未完成时进入下一幕；请运行 ${rewriteCommand} 重写本幕末章，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕后再继续。`,
+    suggestion: `运行 ${rewriteCommand} 重写当前章节，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕。`,
+    source: 'outline_compliance',
+    retryStrategy: 'manual',
+  }
 }
 
 function isSummaryData(
@@ -512,6 +533,10 @@ export async function finalizeChapter(
     chapterIndex,
     updatedStoryMemory
   )
+  const actBoundaryIssueIds = new Set(
+    (state.storyArc?.acts ?? []).map((act) => `act-${act.index}-pending-beats-at-boundary`)
+  )
+  updatedPendingIssues = updatedPendingIssues.filter((issue) => !actBoundaryIssueIds.has(issue.id))
 
   const nextIndex = state.currentChapterIndex + 1
 
@@ -572,6 +597,20 @@ export async function finalizeChapter(
           '  如要采纳，请运行：museflow adjust-act <story-id> --act <index> --end-chapter <number>'
         )
       }
+    }
+  }
+
+  const finalizedAct = getActForChapter(updatedStoryArc, chapterIndex)
+  if (finalizedAct && chapterIndex + 1 >= finalizedAct.endChapter) {
+    const finalizedProgress = updatedActProgress[finalizedAct.index] ?? {
+      consumed: [],
+      pending: [...finalizedAct.mandatoryBeats],
+    }
+    if (finalizedProgress.pending.length > 0) {
+      updatedPendingIssues = [
+        ...updatedPendingIssues,
+        buildActBoundaryPendingIssue(state.story.id, finalizedAct, finalizedProgress.pending),
+      ]
     }
   }
 
