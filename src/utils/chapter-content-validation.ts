@@ -7,6 +7,7 @@ interface ValidationOptions {
   chapterIndex: number
   minWordCount?: number
   maxWordCount?: number
+  enforceWordCount?: boolean
 }
 
 interface ValidationResult {
@@ -170,6 +171,7 @@ export async function validateFixedChapterContent(
     chapterIndex,
     minWordCount = DEFAULT_CHAPTER_WORD_COUNT_MIN,
     maxWordCount = DEFAULT_CHAPTER_WORD_COUNT_MAX,
+    enforceWordCount = true,
   } = options
 
   if (!rawContent || rawContent.trim().length === 0) {
@@ -190,18 +192,20 @@ export async function validateFixedChapterContent(
     }
   }
 
-  const wordCount = countChineseWords(rawContent)
-  if (wordCount < minWordCount) {
-    return {
-      valid: false,
-      error: `修复后的内容字数 ${wordCount} 低于最低要求 ${minWordCount}`,
+  if (enforceWordCount) {
+    const wordCount = countChineseWords(rawContent)
+    if (wordCount < minWordCount) {
+      return {
+        valid: false,
+        error: `修复后的内容字数 ${wordCount} 低于最低要求 ${minWordCount}`,
+      }
     }
-  }
 
-  if (maxWordCount !== undefined && wordCount > maxWordCount) {
-    return {
-      valid: false,
-      error: `修复后的内容字数 ${wordCount} 超过上限 ${maxWordCount}`,
+    if (maxWordCount !== undefined && wordCount > maxWordCount) {
+      return {
+        valid: false,
+        error: `修复后的内容字数 ${wordCount} 超过上限 ${maxWordCount}`,
+      }
     }
   }
 

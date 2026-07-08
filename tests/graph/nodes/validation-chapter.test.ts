@@ -65,6 +65,22 @@ describe('validate_chapter', () => {
     expect(result.pendingIssues![0]!.type).toBe('word_count')
     expect(result.pendingIssues!.some((i) => i.id === 'old-1')).toBe(false)
   })
+
+  it('treats chapters above the word count max as draft-retry errors', async () => {
+    vi.mocked(readChapterContent).mockResolvedValueOnce('超'.repeat(8001))
+
+    const state = makeState()
+    const result = await validate_chapter(context, state)
+
+    expect(result.pendingIssues).toEqual([
+      expect.objectContaining({
+        type: 'word_count',
+        severity: 'error',
+        retryStrategy: 'draft',
+      }),
+    ])
+    expect(result.pendingIssues?.[0]?.description).toContain('超过上限 8000')
+  })
 })
 
 describe('pruneStaleWordCountIssues', () => {

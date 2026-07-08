@@ -254,8 +254,8 @@ export async function validate_chapter(
         {
           id: generateId(),
           type: 'word_count' as const,
-          severity: 'warning',
-          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 超过建议上限 ${max} 字`,
+          severity: 'error',
+          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 超过上限 ${max} 字`,
         },
         'word_count',
         'draft'

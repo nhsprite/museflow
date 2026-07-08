@@ -98,6 +98,7 @@ export async function draft_chapter(
     chapterIndex,
     minWordCount: min,
     maxWordCount: max,
+    enforceWordCount: false,
   })
 
   if (!validation.valid) {

@@ -53,7 +53,7 @@ describe('draft_chapter output validation', () => {
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
-  it('throws when generated content lacks chapter heading', { timeout: 20000 }, async () => {
+  it('writes short generated content so word-count validation can route it', async () => {
     const state = {
       story: { id: 'test', title: 'Test', outputDir: tmpDir },
       idea: 'test',
@@ -71,7 +71,44 @@ describe('draft_chapter output validation', () => {
       rewriteApproved: false,
     } as unknown as ReducedGraphState
 
-    await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/起草后校验失败/)
+    await expect(draft_chapter(createMockContext(), state)).resolves.toBeDefined()
+
+    const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_1.md'), 'utf8')
+    expect(written.startsWith('# 第1章 开篇')).toBe(true)
+  })
+
+  it('writes overlong generated content so word-count validation can route it', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+      rewriteRequested: false,
+      isWriting: true,
+      writeOneChapterOnly: true,
+      lastPrintedChapter: 0,
+      lastTimelineSnapshot: null,
+      chapterPlan: null,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValueOnce({
+      success: true,
+      content: `# 第1章 开篇\n\n${'超长正文'.repeat(3000)}`,
+    })
+
+    await expect(draft_chapter(createMockContext(), state)).resolves.toBeDefined()
+
+    const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_1.md'), 'utf8')
+    expect(written).toContain('超长正文')
   })
 
   it(
