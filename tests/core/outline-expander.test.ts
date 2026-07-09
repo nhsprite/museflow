@@ -16,6 +16,7 @@ import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ChapterPlan } from '../../src/agents/chapter-planner.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 import { logger } from '../../src/utils/logger.js'
+import { readChapterContent } from '../../src/storage/filesystem/writer.js'
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-${randomUUID().slice(0, 8)}`)
 
@@ -141,6 +142,26 @@ describe('expandOutlineForChapter', () => {
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
     expect(result.outline?.[1]?.title).toBe('即时标题')
     expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
+  })
+
+  it('passes the previous chapter ending into JIT outline generation', async () => {
+    vi.mocked(readChapterContent).mockResolvedValue(
+      '上一章最后，主角已经离开医务室，沿走廊继续朝七班教室方向走。'
+    )
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+
+    await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as { previousChapters?: string }
+    expect(agentInput.previousChapters).toContain('上一章结尾片段')
+    expect(agentInput.previousChapters).toContain('继续朝七班教室方向走')
   })
 
   it('filters stale act-pressure constraints before generating a JIT outline', async () => {
@@ -592,6 +613,66 @@ describe('expandOutlineForChapter', () => {
     expect(result.pendingIssues![0].type).toBe('outline_density')
     expect(result.pendingIssues![0].severity).toBe('warning')
     expect(result.pendingIssues![0].description).toContain('预算修正')
+  })
+
+  it('replans when the generated chapter time anchor contradicts the previous chapter', async () => {
+    const invalidPlan: ChapterPlan = {
+      sections: [
+        {
+          title: '错误锚点',
+          summary: '错误地回到旧场景',
+          wordCount: 3000,
+          events: ['错误地回到医务室'],
+          characters: ['主角'],
+          timeMark: '上一章之前',
+        },
+      ],
+      timeline: [],
+      outlineCheck: [{ requirement: '承接上一章', fulfilled: true, section: '错误锚点' }],
+      chapterTimeAnchor: '声称上一章已经回到教室',
+    }
+    const correctedPlan: ChapterPlan = {
+      sections: [
+        {
+          title: '正确承接',
+          summary: '从上一章结尾位置继续推进',
+          wordCount: 3000,
+          events: ['继续朝七班教室方向走'],
+          characters: ['主角'],
+          timeMark: '承接上一章结尾',
+        },
+      ],
+      timeline: [],
+      outlineCheck: [{ requirement: '承接上一章', fulfilled: true, section: '正确承接' }],
+      chapterTimeAnchor: '承接上一章结尾',
+    }
+    planChapterWithOverrideMock
+      .mockResolvedValueOnce({ chapterPlan: invalidPlan })
+      .mockResolvedValueOnce({ chapterPlan: correctedPlan })
+    vi.mocked(readChapterContent).mockResolvedValue(
+      '上一章最后，主角已经离开医务室，沿走廊继续朝七班教室方向走。'
+    )
+    vi.mocked(contextJudge.batchValidateTimeAnchors)
+      .mockResolvedValueOnce([
+        {
+          valid: false,
+          reason: 'chapterTimeAnchor 声称上一章已经回到教室，但上一章正文没有该事件',
+        },
+      ])
+      .mockResolvedValueOnce([{ valid: true }])
+
+    const result = await expandOutlineForChapter(baseState, 1, createMockProvider())
+
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
+    expect(result.chapterPlan).toBe(correctedPlan)
+    const secondPlanState = planChapterWithOverrideMock.mock.calls[1]![1] as ReducedGraphState
+    expect(secondPlanState.verifiedConstraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: expect.stringContaining('chapterTimeAnchor 声称上一章已经回到教室'),
+        }),
+      ])
+    )
   })
 })
 

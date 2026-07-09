@@ -464,16 +464,20 @@ export async function validate_chapter_comprehensive(
     }
   }
 
+  const consistencyBaseState = workingState
   const foreshadowUpdates = await detect_foreshadowing(context, workingState)
-  if (foreshadowUpdates.foreshadowStack) {
+  const detectedForeshadowStack = foreshadowUpdates.foreshadowStack
+
+  const consistencyUpdates = await detect_consistency(context, consistencyBaseState)
+  mergePendingIssues(consistencyUpdates)
+
+  const hasBlockingErrors = workingState.pendingIssues.some((issue) => issue.severity === 'error')
+  if (detectedForeshadowStack && !hasBlockingErrors) {
     workingState = {
       ...workingState,
-      foreshadowStack: foreshadowUpdates.foreshadowStack,
+      foreshadowStack: detectedForeshadowStack,
     }
   }
-
-  const consistencyUpdates = await detect_consistency(context, workingState)
-  mergePendingIssues(consistencyUpdates)
 
   const result: Partial<ReducedGraphState> = {}
 

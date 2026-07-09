@@ -36,12 +36,17 @@ let capturedTimelineSnapshot = ''
 let capturedPreviousChapters = ''
 let capturedContinuityPrompt = ''
 let capturedIssues: unknown[] = []
+let capturedForeshadowStack: unknown[] = []
 let consistencyOutput = { success: true, data: { is_consistent: true, issues: [] } }
 let continuityCheckResponse: unknown = { isContinuous: true }
 
-const { readChapterContentMock } = vi.hoisted(() => ({
-  readChapterContentMock: vi.fn(),
-}))
+const { readChapterContentMock, foreshadowRunMock, foreshadowProcessOutputMock } = vi.hoisted(
+  () => ({
+    readChapterContentMock: vi.fn(),
+    foreshadowRunMock: vi.fn(),
+    foreshadowProcessOutputMock: vi.fn(),
+  })
+)
 
 vi.mock('../../src/agents/index.js', () => ({
   WorldbuilderAgent: class {},
@@ -50,15 +55,12 @@ vi.mock('../../src/agents/index.js', () => ({
   ChapterAgent: class {},
   ChapterPlannerAgent: class {},
   ForeshadowingAgent: class {
-    async run() {
-      return {
-        success: true,
-        data: { new_foreshadows: [], fulfilled_foreshadows: [], overdue_foreshadows: [] },
-      }
+    async run(state: unknown) {
+      return foreshadowRunMock(state)
     }
 
-    processOutput(_output: unknown, _chapterIndex: number, existingStack: unknown[]) {
-      return existingStack
+    processOutput(output: unknown, chapterIndex: number, existingStack: unknown[]) {
+      return foreshadowProcessOutputMock(output, chapterIndex, existingStack)
     }
   },
   ConsistencyAgent: class {
@@ -68,12 +70,14 @@ vi.mock('../../src/agents/index.js', () => ({
       timelineSnapshot?: string
       previousChapters?: string
       issues?: unknown[]
+      foreshadowStack?: unknown[]
     }) {
       capturedStoryState = state.storyState ?? ''
       capturedOutline = state.outline ?? ''
       capturedTimelineSnapshot = state.timelineSnapshot ?? ''
       capturedPreviousChapters = state.previousChapters ?? ''
       capturedIssues = state.issues ?? []
+      capturedForeshadowStack = state.foreshadowStack ?? []
       return consistencyOutput
     }
 
@@ -187,10 +191,18 @@ describe('detect_consistency validation context', () => {
     capturedPreviousChapters = ''
     capturedContinuityPrompt = ''
     capturedIssues = []
+    capturedForeshadowStack = []
     consistencyOutput = { success: true, data: { is_consistent: true, issues: [] } }
     continuityCheckResponse = { isContinuous: true }
     vi.clearAllMocks()
     readChapterContentMock.mockResolvedValue('正文内容')
+    foreshadowRunMock.mockResolvedValue({
+      success: true,
+      data: { new_foreshadows: [], fulfilled_foreshadows: [], overdue_foreshadows: [] },
+    })
+    foreshadowProcessOutputMock.mockImplementation(
+      (_output: unknown, _chapterIndex: number, existingStack: unknown[]) => existingStack
+    )
   })
 
   it('passes canonical facts to consistency agent', async () => {
@@ -205,6 +217,65 @@ describe('detect_consistency validation context', () => {
     expect(capturedStoryState).toContain('【权威事实】')
     expect(capturedStoryState).toContain('木之灵物')
     expect(capturedStoryState).toContain('昆仑山')
+  })
+
+  it('does not expose current-chapter new foreshadows to the same consistency pass or persist them on errors', async () => {
+    const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
+
+    const existingForeshadow = {
+      id: 'fs-existing',
+      text: '既有伏笔',
+      expectedFulfillChapter: 3,
+      createdAt: 0,
+      createdAtChapter: 1,
+      status: 'planted' as const,
+      isExplicit: false,
+      required: true,
+    }
+    const currentDraftForeshadow = {
+      id: 'fs-current',
+      text: '当前草稿刚抽取出的伏笔',
+      expectedFulfillChapter: 4,
+      createdAt: 0,
+      createdAtChapter: 1,
+      status: 'planted' as const,
+      isExplicit: false,
+      required: true,
+    }
+    foreshadowProcessOutputMock.mockImplementation(
+      (_output: unknown, _chapterIndex: number, existingStack: unknown[]) => [
+        ...existingStack,
+        currentDraftForeshadow,
+      ]
+    )
+    consistencyOutput = {
+      success: true,
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            id: 'consistency-error',
+            type: 'consistency',
+            severity: 'error',
+            description: '当前章仍有严重问题',
+            dimension: 'outline',
+          },
+        ],
+      },
+    }
+    readChapterContentMock.mockResolvedValue('这是足够长的正文内容。'.repeat(500))
+
+    const state = buildBaseState()
+    state.foreshadowStack = [existingForeshadow]
+
+    const result = await validate_chapter_comprehensive(createMockContext(), state)
+
+    expect(capturedForeshadowStack).toEqual([existingForeshadow])
+    expect(capturedForeshadowStack).not.toContain(currentDraftForeshadow)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ severity: 'error' })])
+    )
+    expect(result.foreshadowStack).toBeUndefined()
   })
 
   it('keeps summary timeline prose unchanged while providing canonical facts separately', async () => {

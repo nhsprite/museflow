@@ -21,6 +21,7 @@ import { getChapterOutlineAgent } from '../graph/agent-factory.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
 import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/reconciler/index.js'
 import { prepareStoryStateForChapterCached } from '../graph/utils/chapter-context.js'
+import { buildPreviousChapterEndingContext } from '../graph/utils/chapter-window.js'
 import type { RuntimeContext } from './context.js'
 import { charactersToString } from '../graph/utils/characters.js'
 import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.js'
@@ -309,6 +310,13 @@ async function generateChapterOutlineIfNeeded(
       ...(beatBudgetConstraint ? [beatBudgetConstraint] : []),
       ...correctionConstraints,
     ]
+    const previousChapters = [
+      buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+      await buildPreviousChapterEndingContext(state, chapterIndex),
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+
     const agentState: ChapterOutlineAgentInput = {
       idea: state.idea,
       genre: state.genre,
@@ -319,7 +327,7 @@ async function generateChapterOutlineIfNeeded(
       actProgress: state.actProgress,
       ...(worldContent ? { world: worldContent } : {}),
       characters: charactersToString(state.characters),
-      previousChapters: buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+      previousChapters,
       storyState: state.storyState ? formatStoryState(state.storyState) : '',
       ...(state.storyState?.canonicalFacts
         ? { canonicalFacts: state.storyState.canonicalFacts }
@@ -614,6 +622,48 @@ export async function expandOutlineForChapter(
     throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
   }
 
+  if (chapterIndex > 0) {
+    const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)
+    const maxTimeAnchorAttempts = 2
+    let timeAnchorAttempts = 0
+    while (timeAnchorAttempts < maxTimeAnchorAttempts) {
+      const validation = await validateChapterTimeAnchor(chapterPlan, previousContent, provider)
+      if (validation.valid) break
+
+      logger.warn(`[MuseFlow] ${validation.reason}`)
+
+      timeAnchorAttempts++
+      const reason = validation.reason ?? 'chapterTimeAnchor 与上一章正文不一致'
+      if (timeAnchorAttempts >= maxTimeAnchorAttempts) {
+        logger.warn('[MuseFlow] 时间锚点重新规划后仍不一致，将移除本章时间锚点继续')
+        const { chapterTimeAnchor, ...restPlan } = chapterPlan
+        void chapterTimeAnchor
+        chapterPlan = restPlan
+        break
+      }
+
+      logger.warn('[MuseFlow] 时间锚点与上一章正文不一致，将带约束重新规划...')
+      currentConstraints = [
+        ...currentConstraints,
+        createGenericVerifiedConstraint(
+          `【时间锚点修正】${reason}。本章必须自然承接上一章结尾的位置、动作和时间；如果确实需要跳转，必须在 chapterTimeAnchor、timeline 和首个 section 中明确说明跳转。`
+        ),
+      ]
+
+      const planState: ReducedGraphState = {
+        ...state,
+        currentChapterIndex: chapterIndex,
+        verifiedConstraints: currentConstraints,
+        chapterPlan: null,
+      }
+      const planResult = await plan_chapter_with_override(provider, planState, formattedOutline)
+      const replanned = planResult.chapterPlan ?? null
+      if (!replanned) break
+      chapterPlan = replanned
+      state = { ...state, chapterPlan: replanned }
+    }
+  }
+
   // 强制预算循环：校验核心事件占比和非核心段落字数，不合格则带约束重试
   const outlineDescription = outlineItem.description
 
@@ -667,18 +717,6 @@ export async function expandOutlineForChapter(
     ]
   } else if (budgetAttempts > 0) {
     logger.info('[MuseFlow] 重新规划后重心已修正')
-  }
-
-  if (chapterIndex > 0) {
-    const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)
-    const validation = await validateChapterTimeAnchor(chapterPlan, previousContent, provider)
-    if (!validation.valid) {
-      logger.warn(`[MuseFlow] ${validation.reason}`)
-      logger.warn('[MuseFlow] 时间锚点与上一章正文不一致，将使用 storyState 时间作为参考')
-      const { chapterTimeAnchor, ...restPlan } = chapterPlan
-      void chapterTimeAnchor
-      chapterPlan = restPlan
-    }
   }
 
   logger.info(`[MuseFlow] 已动态展开第 ${outlineItem.number} 章详细大纲`)
