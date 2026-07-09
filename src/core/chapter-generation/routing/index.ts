@@ -270,6 +270,18 @@ export async function decideNextStep(
   // Case 4: 需要继续修复，决定 draft 还是 fix
   const retryStrategy = decideStrategyFromRetryStrategies(remainingErrors)
 
+  if (!ctx.chapterFileExists) {
+    return {
+      step: { kind: 'draft', discardPlan: false, feedbackIssues: remainingErrors },
+      sessionUpdate: {
+        errorRewriteAttempts: session.errorRewriteAttempts + 1,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
+      processedIssues: policyResult.issues,
+      newConstraints: policyResult.newConstraints,
+    }
+  }
+
   if (retryStrategy === 'manual') {
     return {
       step: {

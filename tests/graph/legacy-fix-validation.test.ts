@@ -109,4 +109,51 @@ describe('runLegacyFix validation', () => {
     const fileContent = await fs.readFile(path.join(outputDir, 'chapters', 'chapter_4.md'), 'utf-8')
     expect(fileContent).toBe(existingContent)
   })
+
+  it('writes overlong repaired content so word-count validation can route another fix', async () => {
+    const outputDir = tmpDir
+    const existingContent = '# 第四章 王府递帖\n\n旧正文。'
+    const fixedContent = `# 第四章 王府递帖\n\n${'超'.repeat(8100)}`
+
+    const agent = {
+      run: vi.fn().mockResolvedValue({ success: true, content: fixedContent }),
+      processOutput: vi.fn().mockReturnValue({ content: fixedContent, chapterMeta: {} }),
+    }
+
+    const state = buildState(outputDir)
+    state.pendingIssues = [
+      {
+        id: 'word-count-1',
+        type: 'word_count',
+        severity: 'error',
+        description: '第 4 章字数 8100 超过上限 8000 字',
+        source: 'word_count',
+        retryStrategy: 'fix',
+      },
+    ]
+    await fs.writeFile(path.join(outputDir, 'chapters', 'chapter_4.md'), existingContent, 'utf-8')
+
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValueOnce({
+      results: [{ looksLikeRevisionPlan: false, containsChecklistArtifacts: false }],
+    })
+    await expect(
+      runLegacyFix(
+        agent as never,
+        context.provider,
+        state,
+        existingContent,
+        3,
+        state.outline[3],
+        '前几章摘要',
+        '时间线',
+        ''
+      )
+    ).resolves.toMatchObject({
+      chapters: expect.arrayContaining([{}]),
+    })
+
+    const fileContent = await fs.readFile(path.join(outputDir, 'chapters', 'chapter_4.md'), 'utf-8')
+    expect(fileContent).toBe(fixedContent)
+  })
 })

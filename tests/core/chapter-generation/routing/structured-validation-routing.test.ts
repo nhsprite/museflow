@@ -189,4 +189,30 @@ describe('decideNextStep structured validation routing', () => {
 
     expect(result.step.kind).not.toBe('request_rewrite')
   })
+
+  it('routes fix retry issues to draft when the chapter file is missing', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession(),
+      pendingIssues: [
+        {
+          id: 'word-count-1',
+          type: 'word_count',
+          severity: 'error',
+          description: '第 1 章字数 8114 超过上限 8000 字',
+          source: 'word_count',
+          retryStrategy: 'fix',
+        },
+      ],
+      genre: 'general',
+      chapterFileExists: false,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step).toEqual({
+      kind: 'draft',
+      discardPlan: false,
+      feedbackIssues: ctx.pendingIssues,
+    })
+  })
 })

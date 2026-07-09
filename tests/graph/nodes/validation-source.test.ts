@@ -18,14 +18,14 @@ describe('tagIssueSource', () => {
 })
 
 describe('inferRetryStrategy', () => {
-  it('maps word_count issues to draft', () => {
+  it('maps word_count issues to fix', () => {
     const issue: Issue = {
       id: '1',
       type: 'word_count',
       severity: 'error',
       description: 'too short',
     }
-    expect(inferRetryStrategy(issue)).toBe('draft')
+    expect(inferRetryStrategy(issue)).toBe('fix')
   })
 
   it('maps outline violations to draft', () => {

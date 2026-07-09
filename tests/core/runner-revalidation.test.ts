@@ -17,6 +17,7 @@ const saveChapterMarker = vi.fn().mockResolvedValue(undefined)
 const getChapterMarker = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const clearPendingWrites = vi.fn().mockResolvedValue(undefined)
+const exportMetaFromCheckpoint = vi.fn().mockResolvedValue(undefined)
 const updateStoryStatus = vi.fn()
 const chapterPlannerRun = vi.fn().mockResolvedValue({
   success: true,
@@ -32,6 +33,10 @@ vi.mock('../../src/storage/checkpoint-service.js', () => ({
     getChapterMarker,
     pruneIntermediateCheckpoints,
   }),
+}))
+
+vi.mock('../../src/storage/meta/exporter.js', () => ({
+  exportMetaFromCheckpoint,
 }))
 
 const mockExistsSync = vi.fn().mockReturnValue(true)
@@ -220,6 +225,25 @@ describe('runner revalidation', () => {
     expect(result.currentChapterIndex).toBe(1)
     expect(result.pendingIssues).toEqual([])
     expect(result.rewriteRequested).toBe(false)
+  })
+
+  it('normalizes stale word_count retry issues to fix when the target chapter exists', async () => {
+    const { normalizePendingIssuesForChapter } = await import('../../src/core/runner.js')
+    const staleWordCountIssue = {
+      id: 'old-word-count',
+      type: 'word_count' as const,
+      severity: 'error' as const,
+      description: '第 1 章字数 8114 超过上限 8000 字',
+      source: 'word_count' as const,
+      retryStrategy: 'draft' as const,
+    }
+
+    expect(normalizePendingIssuesForChapter([staleWordCountIssue], true)).toEqual([
+      expect.objectContaining({
+        id: 'old-word-count',
+        retryStrategy: 'fix',
+      }),
+    ])
   })
 
   it('propagates rewriteRequested when the graph returns broken state', async () => {

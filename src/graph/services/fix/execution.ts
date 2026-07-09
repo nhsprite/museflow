@@ -241,6 +241,7 @@ export async function runLegacyFix(
       chapterIndex,
       minWordCount: min,
       maxWordCount: max,
+      enforceWordCount: false,
     },
     provider
   )

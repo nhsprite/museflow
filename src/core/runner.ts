@@ -7,7 +7,11 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 
-import { deleteChapterContent, writeOutlineContent } from '../storage/filesystem/writer.js'
+import {
+  deleteChapterContent,
+  readChapterContent,
+  writeOutlineContent,
+} from '../storage/filesystem/writer.js'
 import { createCheckpointService } from '../storage/checkpoint-service.js'
 import { migrateLegacyCheckpoints } from '../storage/migration.js'
 import type { Issue } from '../types/agent.js'
@@ -237,6 +241,20 @@ function findPastActPendingIssue(
   return undefined
 }
 
+export function normalizePendingIssuesForChapter(
+  issues: Issue[],
+  targetChapterFileExists: boolean
+): Issue[] {
+  return issues
+    .filter((issue) => issue.type !== 'draft_failure')
+    .map((issue) => {
+      if (issue.type === 'word_count' && targetChapterFileExists) {
+        return { ...issue, retryStrategy: 'fix' as const }
+      }
+      return issue
+    })
+}
+
 export async function runOneChapter(
   storyId: string,
   options: RunOneChapterOptions,
@@ -282,7 +300,17 @@ export async function runOneChapter(
   const basePendingIssues = options.retryIssues?.length
     ? options.retryIssues
     : checkpointState.pendingIssues
-  const cleanedPendingIssues = basePendingIssues.filter((issue) => issue.type !== 'draft_failure')
+  const hasWordCountIssue = basePendingIssues.some((issue) => issue.type === 'word_count')
+  let targetChapterFileExists = false
+  if (hasWordCountIssue) {
+    const existingTargetContent = await readChapterContent(outputDir, targetIndex + 1)
+    targetChapterFileExists =
+      existingTargetContent !== null && existingTargetContent.trim().length > 0
+  }
+  const cleanedPendingIssues = normalizePendingIssuesForChapter(
+    basePendingIssues,
+    targetChapterFileExists
+  )
 
   const workingState: ReducedGraphState = {
     ...checkpointState,

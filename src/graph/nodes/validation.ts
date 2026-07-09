@@ -184,7 +184,7 @@ export function tagIssueSource(
 }
 
 export function inferRetryStrategy(issue: Issue): RetryStrategy {
-  if (issue.type === 'word_count') return 'draft'
+  if (issue.type === 'word_count') return 'fix'
   if (issue.type === 'outline_violation' || issue.type === 'outline_deviation') return 'draft'
   if (issue.dimension === 'quality') return 'fix'
   if (issue.dimension === 'foreshadowing') return 'draft'
@@ -245,7 +245,7 @@ export async function validate_chapter(
           description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 低于最低要求 ${min} 字`,
         },
         'word_count',
-        'draft'
+        'fix'
       )
     )
   } else if (wordCount > max) {
@@ -258,7 +258,7 @@ export async function validate_chapter(
           description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 超过上限 ${max} 字`,
         },
         'word_count',
-        'draft'
+        'fix'
       )
     )
   }
