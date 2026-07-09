@@ -226,11 +226,11 @@ describe('expandOutlineForChapter', () => {
   it('keeps exact current-act claimed beats without description support matching', async () => {
     const jitState: ReducedGraphState = {
       ...baseState,
-      totalChapters: 4,
-      story: { ...baseState.story, totalChapters: 4 },
+      totalChapters: 3,
+      story: { ...baseState.story, totalChapters: 3 },
       currentChapterIndex: 1,
       storyArc: {
-        totalChapters: 4,
+        totalChapters: 3,
         acts: [
           {
             index: 1,
@@ -244,7 +244,7 @@ describe('expandOutlineForChapter', () => {
           {
             index: 2,
             startChapter: 2,
-            endChapter: 4,
+            endChapter: 3,
             title: '新幕',
             theme: '裂变',
             function: '外部势力干扰核心安排，主角危机浮现',
@@ -257,12 +257,11 @@ describe('expandOutlineForChapter', () => {
         { number: 1, title: '旧幕收束', description: '旧幕收束。' },
         { number: 2, title: '', description: '' },
         { number: 3, title: '', description: '' },
-        { number: 4, title: '', description: '' },
       ],
       actProgress: {
         2: { consumed: [], pending: ['外部势力干扰核心安排'] },
       },
-      chapters: [null, null, null, null],
+      chapters: [null, null, null],
     }
 
     chapterOutlineRunMock.mockResolvedValueOnce({
@@ -340,6 +339,69 @@ describe('expandOutlineForChapter', () => {
     // Chapter 2 of act 2 (3 pending, 4 remaining chapters) -> budget = ceil(0.75 * 1.5) = 2
     expect(result.outline?.[1]?.claimedBeats).toHaveLength(2)
     expect(result.outline?.[1]?.claimedBeats).toEqual(['beat1', 'beat2'])
+  })
+
+  it('keeps claimedBeatIds paired with claimedBeats when filtering and capping', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 3,
+      story: { ...baseState.story, totalChapters: 3 },
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '上一幕',
+            theme: '收束',
+            function: '处理上一幕尾声',
+            mandatoryBeats: ['opening'],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 3,
+            title: '新幕',
+            theme: '裂变',
+            function: '外部势力干扰核心安排，主角危机浮现',
+            mandatoryBeats: ['beat1', 'beat2'],
+          },
+        ],
+        keyBeats: [
+          { id: 'future-id', beat: 'futureBeat', deadlineAct: 3, required: true },
+          { id: 'beat1-id', beat: 'beat1', deadlineAct: 2, required: true },
+          { id: 'beat2-id', beat: 'beat2', deadlineAct: 2, required: true },
+        ],
+      },
+      outline: [
+        { number: 1, title: '旧幕收束', description: '旧幕收束。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '', description: '' },
+      ],
+      actProgress: {
+        1: { consumed: ['opening'], pending: [] },
+        2: { consumed: [], pending: ['beat1', 'beat2'] },
+      },
+      chapters: [null, null, null],
+    }
+
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '配对测试',
+        description: '本章推进 beat1 与 beat2，同时误报未来节拍。',
+        introducedCharacters: [],
+        claimedBeats: ['futureBeat', 'beat1', 'beat2'],
+        claimedBeatIds: ['future-id', 'beat1-id', 'beat2-id'],
+      },
+    })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(result.outline?.[1]?.claimedBeats).toEqual(['beat1', 'beat2'])
+    expect(result.outline?.[1]?.claimedBeatIds).toEqual(['beat1-id', 'beat2-id'])
   })
 
   it('throws JIT outline conflicts without parsing conflictReason text for retries', async () => {

@@ -327,7 +327,8 @@ describe('ChapterAgent beat mapping', () => {
         timeline: [],
         outlineCheck: [],
         expectedEvents: [],
-        claimedBeatIds: ['act1-b1'],
+        claimedBeatIds: [],
+        claimedMandatoryBeatIds: ['A1-M1'],
         fulfilledForeshadowIds: [],
         introducedForeshadowIds: [],
         resolvedTaskIds: [],
@@ -338,8 +339,9 @@ describe('ChapterAgent beat mapping', () => {
     const userMessage = messages[1]?.content ?? ''
     expect(userMessage).toContain('<beat_mapping>')
     expect(userMessage).toContain('当前幕 mandatory beat ID 映射')
-    expect(userMessage).toContain('act1-b1: 身份暴露')
-    expect(userMessage).toContain('act1-b2: 阵营洗牌')
+    expect(userMessage).toContain('A1-M1: 身份暴露')
+    expect(userMessage).toContain('A1-M2: 阵营洗牌')
+    expect(userMessage).not.toContain('act1-b1: 身份暴露')
     expect(userMessage).toContain('<claimed_beats>')
     expect(userMessage).toContain('<available_beats>')
     expect(userMessage).toContain('plot-advance: act-1 / <beatId>')

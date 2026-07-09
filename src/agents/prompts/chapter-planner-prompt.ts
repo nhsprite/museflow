@@ -136,7 +136,8 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
      - 事件类型包括：character-location、character-status、item-location、item-state、plot-advance、foreshadow-introduce、foreshadow-fulfill、task-resolve、task-create。
      - 每个事件的 source 固定为 "chapter"。
      - 如果本章没有某类事件，对应字段的数组为空。
-     - 同时输出 claimedBeatIds、fulfilledForeshadowIds、introducedForeshadowIds、resolvedTaskIds、createdTaskIds 五个结构化声明数组；无对应内容时输出空数组。
+     - 同时输出 claimedMandatoryBeatIds、claimedBeatIds、fulfilledForeshadowIds、introducedForeshadowIds、resolvedTaskIds、createdTaskIds 六个结构化声明数组；无对应内容时输出空数组。
+     - claimedMandatoryBeatIds 必须使用大纲上下文中提供的 mandatory beat ID（如 A2-M3）；claimedBeatIds 只用于全局 keyBeat ID（如 A2-B3），不得混用。
 
 ${OFFICIAL_CHARACTER_RULES}
 ${FORESHADOW_DISCIPLINE_RULES}
@@ -190,6 +191,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
       "source": "chapter"
     }
   ],
+  "claimedMandatoryBeatIds": [],
   "claimedBeatIds": [],
   "fulfilledForeshadowIds": [],
   "introducedForeshadowIds": [],

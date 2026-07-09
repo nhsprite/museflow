@@ -15,6 +15,10 @@ import {
   findClaimedMandatoryBeatForId,
   getClaimedMandatoryBeatForId,
 } from '../../../utils/mandatory-beat-mapping.js'
+import {
+  findMandatoryBeatById,
+  getMandatoryBeatIdByText,
+} from '../../../utils/mandatory-beat-ids.js'
 import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
 
 export interface ActProgressUpdate {
@@ -143,6 +147,11 @@ function updateActProgressFromMemory(
   const textToKeyBeat = new Map(storyArc?.keyBeats.map((kb) => [kb.beat, kb] as const) ?? [])
   const mandatoryBeatsVerifiedByClaimedId = new Set<string>()
   for (const beatId of verifiedBeatIds) {
+    const mandatoryBeat = findMandatoryBeatById(storyArc, beatId)?.beat
+    if (mandatoryBeat) {
+      mandatoryBeatsVerifiedByClaimedId.add(mandatoryBeat)
+    }
+
     const claimedIn = memory.beats[beatId]?.claimedIn
     const options =
       typeof claimedIn === 'number'
@@ -166,9 +175,18 @@ function updateActProgressFromMemory(
   const outlineVerifiedBeats = new Set<string>()
   for (let idx = 0; idx <= chapterIndex; idx++) {
     const outlineItem = state.outline[idx]
-    if (!outlineItem?.verifiedBeats) continue
+    if (!outlineItem?.verifiedBeats && !outlineItem?.verifiedMandatoryBeatIds) continue
+    for (const beatId of outlineItem.verifiedMandatoryBeatIds ?? []) {
+      const beat = findMandatoryBeatById(storyArc, beatId)?.beat
+      if (beat) {
+        outlineVerifiedBeats.add(beat)
+      }
+    }
     for (const act of storyArc?.acts ?? []) {
-      for (const beat of normalizeVerifiedBeats(outlineItem.verifiedBeats, act.mandatoryBeats)) {
+      for (const beat of normalizeVerifiedBeats(
+        outlineItem.verifiedBeats ?? [],
+        act.mandatoryBeats
+      )) {
         outlineVerifiedBeats.add(beat)
       }
     }
@@ -178,11 +196,18 @@ function updateActProgressFromMemory(
   for (const act of storyArc?.acts ?? []) {
     const consumed: string[] = []
     for (const beat of act.mandatoryBeats) {
+      const mandatoryBeatId = getMandatoryBeatIdByText(storyArc, act.index, beat)
       const keyBeat = textToKeyBeat.get(beat)
       const isVerifiedByMemory = keyBeat && verifiedBeatIds.has(keyBeat.id)
+      const isVerifiedByMandatoryId = mandatoryBeatId ? verifiedBeatIds.has(mandatoryBeatId) : false
       const isVerifiedByOutline = outlineVerifiedBeats.has(beat)
       const isVerifiedByClaimedId = mandatoryBeatsVerifiedByClaimedId.has(beat)
-      if (isVerifiedByMemory || isVerifiedByOutline || isVerifiedByClaimedId) {
+      if (
+        isVerifiedByMemory ||
+        isVerifiedByMandatoryId ||
+        isVerifiedByOutline ||
+        isVerifiedByClaimedId
+      ) {
         if (!consumed.includes(beat)) consumed.push(beat)
       }
     }
@@ -252,6 +277,14 @@ function getClaimedBeatTexts(
 ): string[] {
   if (!outlineItem) return []
   const claimed = new Set<string>()
+  if (outlineItem.claimedMandatoryBeatIds && storyArc) {
+    for (const id of outlineItem.claimedMandatoryBeatIds) {
+      const lookup = findMandatoryBeatById(storyArc, id)
+      if (lookup && lookup.act.index === act.index) {
+        claimed.add(lookup.beat)
+      }
+    }
+  }
   if (outlineItem.claimedBeatIds && storyArc) {
     for (const id of outlineItem.claimedBeatIds) {
       const keyBeat = storyArc.keyBeats.find((kb) => kb.id === id)
@@ -299,6 +332,12 @@ async function updateActProgressFromOutline(
   for (let idx = act.startChapter - 1; idx <= chapterIndex; idx++) {
     const outlineItem = state.outline[idx]
     if (!outlineItem) continue
+    for (const beatId of outlineItem.verifiedMandatoryBeatIds ?? []) {
+      const lookup = findMandatoryBeatById(storyArc, beatId)
+      if (lookup && lookup.act.index === act.index && !consumed.includes(lookup.beat)) {
+        consumed.push(lookup.beat)
+      }
+    }
     const normalized = normalizeVerifiedBeats(outlineItem.verifiedBeats ?? [], act.mandatoryBeats)
     for (const beat of normalized) {
       if (!consumed.includes(beat)) {
@@ -405,6 +444,27 @@ function buildBeatVerificationIssues(
   const shouldBlock = shouldBlockUnverifiedClaimedBeat(act, chapterIndex)
   const claimedBeatIndexesFromIds = new Set<number>()
   const keyBeatsById = new Map(storyArc?.keyBeats.map((beat) => [beat.id, beat] as const) ?? [])
+
+  for (const beatId of outlineItem?.claimedMandatoryBeatIds ?? []) {
+    const lookup = findMandatoryBeatById(storyArc, beatId)
+    if (!lookup || lookup.act.index !== act.index) continue
+    const proven = verifiedBeatIds?.has(beatId) ?? false
+    claimedBeatIndexesFromIds.add(lookup.beatIndex)
+    if (proven) continue
+
+    issues.push({
+      id: `unverified-mandatory-beat-id-${beatId}`,
+      type: 'outline_coverage',
+      severity: shouldBlock ? 'error' : 'warning',
+      subject: beatId,
+      description: `本章大纲声称推进 mandatory beat「${lookup.beat}」，但正文未验证到该 beat 的发生。`,
+      suggestion: shouldBlock
+        ? `请重写当前章节，补足该 mandatory beat 的明确推进事件，或调整大纲不再声称本章推进该 beat。`
+        : `请在后续章节中确保该 beat 被明确确立，或调整大纲不再声称推进该 beat。`,
+      source: 'outline_compliance',
+      ...(shouldBlock ? { retryStrategy: 'draft' as const } : {}),
+    })
+  }
 
   for (const beatId of outlineItem?.claimedBeatIds ?? []) {
     const keyBeat = keyBeatsById.get(beatId)

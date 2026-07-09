@@ -89,7 +89,10 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
 
     const userContent = buildSummaryUserPrompt(
       {
-        claimedBeatsSection: buildClaimedBeatsSection(state.claimedBeats ?? []),
+        claimedBeatsSection: buildClaimedBeatsSection(
+          state.claimedBeats ?? [],
+          state.claimedMandatoryBeatIds ?? []
+        ),
         whitelistSection,
       },
       {

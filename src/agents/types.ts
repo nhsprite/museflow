@@ -51,6 +51,7 @@ export interface ChapterPlan {
 
   // 新增结构化声明
   expectedEvents: StoryEvent[]
+  claimedMandatoryBeatIds?: BeatId[]
   claimedBeatIds: BeatId[]
   fulfilledForeshadowIds: ForeshadowId[]
   introducedForeshadowIds: ForeshadowId[]
@@ -97,6 +98,7 @@ export interface AgentInput {
   storyArc?: StoryArc
   actProgress?: Record<number, { consumed: string[]; pending: string[] }>
   claimedBeats?: string[]
+  claimedMandatoryBeatIds?: string[]
   chapterSummaries?: string[]
   chapterTitle?: string
   chapterSummary?: string

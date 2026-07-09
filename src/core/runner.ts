@@ -390,12 +390,14 @@ export async function runOneChapter(
       ...workingState.pendingIssues.filter((issue) => !issueIds.has(issue.id)),
       pastActPendingIssue,
     ]
-    return {
+    const blockedState: ReducedGraphState = {
       ...workingState,
       pendingIssues,
       rewriteRequested: true,
       isWriting: false,
     }
+    await checkpointService.updateLatestState(blockedState)
+    return blockedState
   }
 
   return runChapterGraph(storyId, outputDir, workingState, context)

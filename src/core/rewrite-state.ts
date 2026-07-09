@@ -6,6 +6,7 @@ import {
   findClaimedMandatoryBeatForId,
   getClaimedMandatoryBeatForId,
 } from '../utils/mandatory-beat-mapping.js'
+import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
 
 export function cleanOutlineForRewrite(
   outline: ReducedGraphState['outline'],
@@ -80,13 +81,21 @@ function getTrustedOutlineVerifiedBeatsForRewrite(
   outlineItem: ReducedGraphState['outline'][number] | undefined,
   storyArc: NonNullable<ReducedGraphState['storyArc']>
 ): string[] {
-  if (!outlineItem?.verifiedBeats) return []
+  if (!outlineItem?.verifiedBeats && !outlineItem?.verifiedMandatoryBeatIds) return []
 
   const claimedBeats = outlineItem.claimedBeats ?? []
   const claimedBeatIds = outlineItem.claimedBeatIds ?? []
-  if (claimedBeats.length === 0 && claimedBeatIds.length === 0) {
+  const claimedMandatoryBeatIds = outlineItem.claimedMandatoryBeatIds ?? []
+  const verifiedMandatoryBeats = (outlineItem.verifiedMandatoryBeatIds ?? [])
+    .map((beatId) => findMandatoryBeatById(storyArc, beatId)?.beat)
+    .filter((beat): beat is string => !!beat)
+  if (
+    claimedBeats.length === 0 &&
+    claimedBeatIds.length === 0 &&
+    claimedMandatoryBeatIds.length === 0
+  ) {
     const trusted: string[] = []
-    for (const beat of outlineItem.verifiedBeats) {
+    for (const beat of [...(outlineItem.verifiedBeats ?? []), ...verifiedMandatoryBeats]) {
       if (!trusted.includes(beat)) {
         trusted.push(beat)
       }
@@ -96,8 +105,19 @@ function getTrustedOutlineVerifiedBeatsForRewrite(
 
   const trustedCandidates = new Set<string>()
 
+  for (const beat of verifiedMandatoryBeats) {
+    trustedCandidates.add(beat)
+  }
+
   for (const beat of claimedBeats) {
     trustedCandidates.add(beat)
+  }
+
+  for (const beatId of claimedMandatoryBeatIds) {
+    const mandatoryBeat = findMandatoryBeatById(storyArc, beatId)?.beat
+    if (mandatoryBeat) {
+      trustedCandidates.add(mandatoryBeat)
+    }
   }
 
   for (const beatId of claimedBeatIds) {
@@ -113,7 +133,7 @@ function getTrustedOutlineVerifiedBeatsForRewrite(
   }
 
   const trusted: string[] = []
-  for (const beat of outlineItem.verifiedBeats) {
+  for (const beat of [...(outlineItem.verifiedBeats ?? []), ...verifiedMandatoryBeats]) {
     if (trustedCandidates.has(beat) && !trusted.includes(beat)) {
       trusted.push(beat)
     }
@@ -123,7 +143,8 @@ function getTrustedOutlineVerifiedBeatsForRewrite(
 }
 
 export function recomputeActProgressForRewrite(
-  state: Pick<ReducedGraphState, 'storyArc' | 'outline' | 'storyMemory'>,
+  state: Pick<ReducedGraphState, 'storyArc' | 'outline' | 'storyMemory'> &
+    Partial<Pick<ReducedGraphState, 'actProgress'>>,
   targetChapterIndex: number
 ): ReducedGraphState['actProgress'] {
   const storyArc = state.storyArc
@@ -163,8 +184,16 @@ export function recomputeActProgressForRewrite(
         typeof claimedIn === 'number'
           ? { preferredChapterIndex: claimedIn, throughChapterIndex: targetChapterIndex - 1 }
           : { throughChapterIndex: targetChapterIndex - 1 }
+      addIfMandatory(findMandatoryBeatById(storyArc, beatId)?.beat)
       addIfMandatory(findClaimedMandatoryBeatForId(state.outline, storyArc, beatId, options))
       addIfMandatory(keyBeatTextById.get(beatId) ?? beatId)
+    }
+
+    if (act.endChapter <= targetChapterIndex) {
+      const existing = state.actProgress?.[act.index]
+      for (const beat of existing?.consumed ?? []) {
+        addIfMandatory(beat)
+      }
     }
 
     actProgress[act.index] = {

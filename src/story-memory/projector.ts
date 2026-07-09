@@ -10,6 +10,7 @@ import type {
   TaskMemory,
 } from '../types/story-memory.js'
 import type { StoryArc } from '../types/outline.js'
+import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
   return {
@@ -42,6 +43,19 @@ export function ensureBeatsHaveActIndex(
   if (!storyArc || storyArc.keyBeats.length === 0) return memory
 
   const beats: Record<string, BeatMemory> = { ...memory.beats }
+  for (const mandatoryBeat of getMandatoryBeatEntries(storyArc)) {
+    const existing = beats[mandatoryBeat.id]
+    beats[mandatoryBeat.id] = {
+      id: mandatoryBeat.id,
+      description: mandatoryBeat.beat,
+      actIndex: mandatoryBeat.actIndex,
+      deadlineAct: mandatoryBeat.actIndex,
+      required: existing?.required ?? true,
+      claimedIn: existing?.claimedIn ?? null,
+      provenByEventIds: existing?.provenByEventIds ?? [],
+    }
+  }
+
   for (const keyBeat of storyArc.keyBeats) {
     const existing = beats[keyBeat.id]
     beats[keyBeat.id] = {

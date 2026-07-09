@@ -110,6 +110,7 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
       timeline: data.timeline,
       outlineCheck: data.outlineCheck,
       expectedEvents,
+      claimedMandatoryBeatIds: data.claimedMandatoryBeatIds ?? [],
       claimedBeatIds: data.claimedBeatIds ?? [],
       fulfilledForeshadowIds: data.fulfilledForeshadowIds ?? [],
       introducedForeshadowIds: data.introducedForeshadowIds ?? [],

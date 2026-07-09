@@ -17,6 +17,7 @@ const saveChapterMarker = vi.fn().mockResolvedValue(undefined)
 const getChapterMarker = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const clearPendingWrites = vi.fn().mockResolvedValue(undefined)
+const updateLatestState = vi.fn().mockResolvedValue(undefined)
 const exportMetaFromCheckpoint = vi.fn().mockResolvedValue(undefined)
 const updateStoryStatus = vi.fn()
 const chapterPlannerRun = vi.fn().mockResolvedValue({
@@ -32,6 +33,7 @@ vi.mock('../../src/storage/checkpoint-service.js', () => ({
     saveChapterMarker,
     getChapterMarker,
     pruneIntermediateCheckpoints,
+    updateLatestState,
   }),
 }))
 
@@ -663,6 +665,17 @@ describe('runner revalidation', () => {
           retryStrategy: 'manual',
         }),
       ])
+    )
+    expect(updateLatestState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rewriteRequested: true,
+        isWriting: false,
+        pendingIssues: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'act-1-pending-beats-at-boundary',
+          }),
+        ]),
+      })
     )
   })
 })

@@ -1,5 +1,6 @@
 import type { ChapterOutline, StoryArc } from '../types/outline.js'
 import type { BeatId } from '../types/story-memory.js'
+import { getMandatoryBeatTextById } from './mandatory-beat-ids.js'
 
 type BeatClaimOutline = Pick<ChapterOutline, 'claimedBeats' | 'claimedBeatIds'> | undefined
 
@@ -13,6 +14,9 @@ export function getClaimedMandatoryBeatForId(
   storyArc: StoryArc | null | undefined,
   beatId: BeatId
 ): string | undefined {
+  const mandatoryBeat = getMandatoryBeatTextById(storyArc, beatId)
+  if (mandatoryBeat) return mandatoryBeat
+
   if (!outlineItem || !storyArc) return undefined
 
   const keyBeat = storyArc.keyBeats.find((beat) => beat.id === beatId)

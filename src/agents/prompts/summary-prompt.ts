@@ -12,13 +12,23 @@ export function buildSummarySystemPrompt(): string {
   return SUMMARY_SYSTEM_PROMPT
 }
 
-export function buildClaimedBeatsSection(claimedBeats: string[]): string {
-  if (claimedBeats.length === 0) return ''
+export function buildClaimedBeatsSection(
+  claimedBeats: string[],
+  claimedMandatoryBeatIds: string[] = []
+): string {
+  if (claimedBeats.length === 0 && claimedMandatoryBeatIds.length === 0) return ''
+  const lines =
+    claimedBeats.length > 0
+      ? claimedBeats.map((beat, index) => {
+          const id = claimedMandatoryBeatIds[index]
+          return id ? `- ${id}: ${beat}` : `- ${beat}`
+        })
+      : claimedMandatoryBeatIds.map((id) => `- ${id}`)
   return `<claimed_beats>
 本章大纲声称要推进的 mandatory beats：
-${claimedBeats.map((beat) => `- ${beat}`).join('\n')}
+${lines.join('\n')}
 
-如果上述 beat 在本章正文中确实发生，请在 storyEvents 中以 plot-advance 事件体现；未发生则不要编造对应事件。
+如果上述 beat 在本章正文中确实发生，请在 storyEvents 中以 plot-advance 事件体现；有 ID 前缀时必须把该 ID 作为 beatId；未发生则不要编造对应事件。
 </claimed_beats>`
 }
 

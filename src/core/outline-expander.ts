@@ -35,6 +35,7 @@ import {
   getActForChapter,
   proposeActBoundaryAdjustments,
 } from '../utils/story-arc.js'
+import { findMandatoryBeatById, getMandatoryBeatIdByText } from '../utils/mandatory-beat-ids.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
 import {
   createGenericVerifiedConstraint,
@@ -178,17 +179,65 @@ function getCurrentActMandatoryBeats(state: ReducedGraphState, chapterIndex: num
   return new Set((currentAct?.mandatoryBeats ?? []).map((beat) => beat.trim()).filter(Boolean))
 }
 
-function filterClaimedBeatsToCurrentAct(
+function filterClaimedMandatoryBeatPairsToCurrentAct(
   claimedBeats: string[] | undefined,
+  claimedMandatoryBeatIds: string[] | undefined,
   state: ReducedGraphState,
   chapterIndex: number
-): string[] {
+): Array<{ beat: string; id: string }> {
+  const currentAct = getActForChapter(state.storyArc, chapterIndex)
   const currentActMandatoryBeats = getCurrentActMandatoryBeats(state, chapterIndex)
   if (currentActMandatoryBeats.size === 0) return []
 
-  return (claimedBeats ?? [])
-    .map((beat) => beat.trim())
-    .filter((beat) => currentActMandatoryBeats.has(beat))
+  const pairs: Array<{ beat: string; id: string }> = []
+  const addPair = (beat: string, id: string) => {
+    if (!pairs.some((pair) => pair.id === id)) {
+      pairs.push({ beat, id })
+    }
+  }
+
+  for (const id of claimedMandatoryBeatIds ?? []) {
+    const trimmed = id.trim()
+    const lookup = findMandatoryBeatById(state.storyArc, trimmed)
+    if (!lookup || lookup.act.index !== currentAct?.index) continue
+    addPair(lookup.beat, trimmed)
+  }
+
+  if (pairs.length > 0) {
+    return pairs
+  }
+
+  for (const beat of claimedBeats ?? []) {
+    const trimmed = beat.trim()
+    if (!trimmed || !currentActMandatoryBeats.has(trimmed)) continue
+    const id = currentAct
+      ? getMandatoryBeatIdByText(state.storyArc, currentAct.index, trimmed)
+      : undefined
+    if (id) addPair(trimmed, id)
+  }
+  return pairs
+}
+
+function filterClaimedKeyBeatIdsToStoryArc(
+  claimedBeatIds: string[] | undefined,
+  state: ReducedGraphState,
+  chapterIndex: number
+): string[] {
+  if (!state.storyArc) return []
+  const currentAct = getActForChapter(state.storyArc, chapterIndex)
+  const allowed = new Set(
+    state.storyArc.keyBeats
+      .filter((beat) => !currentAct || beat.deadlineAct === currentAct.index)
+      .map((beat) => beat.id)
+  )
+  const result: string[] = []
+  for (const id of claimedBeatIds ?? []) {
+    const trimmed = id.trim()
+    if (allowed.has(trimmed) && !result.includes(trimmed)) {
+      result.push(trimmed)
+    }
+  }
+  return result
 }
 
 async function judgeCoreSectionsWithModel(
@@ -347,24 +396,33 @@ async function generateChapterOutlineIfNeeded(
       )
     }
 
-    const filteredClaimedBeats = filterClaimedBeatsToCurrentAct(
+    const filteredClaimedBeatPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
       candidate.claimedBeats,
+      candidate.claimedMandatoryBeatIds,
       state,
       chapterIndex
     )
     // 强制执行节拍预算：超出预算时只保留前 N 个 claimedBeats
-    const cappedClaimedBeats =
-      beatBudget > 0 ? filteredClaimedBeats.slice(0, beatBudget) : filteredClaimedBeats
-    if (filteredClaimedBeats.length > cappedClaimedBeats.length) {
+    const cappedClaimedBeatPairs =
+      beatBudget > 0 ? filteredClaimedBeatPairs.slice(0, beatBudget) : filteredClaimedBeatPairs
+    const cappedClaimedBeats = cappedClaimedBeatPairs.map((pair) => pair.beat)
+    const cappedClaimedMandatoryBeatIds = cappedClaimedBeatPairs.map((pair) => pair.id)
+    const claimedBeatIds = filterClaimedKeyBeatIdsToStoryArc(
+      candidate.claimedBeatIds,
+      state,
+      chapterIndex
+    )
+    if (filteredClaimedBeatPairs.length > cappedClaimedBeatPairs.length) {
       logger.info(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章声称节拍 ${filteredClaimedBeats.length} 个，超出预算 ${beatBudget} 个，已裁剪为：${cappedClaimedBeats.join('、') || '（无）'}`
+        `[MuseFlow] 第 ${chapterIndex + 1} 章声称节拍 ${filteredClaimedBeatPairs.length} 个，超出预算 ${beatBudget} 个，已裁剪为：${cappedClaimedBeats.join('、') || '（无）'}`
       )
     }
 
     result = {
       ...candidate,
       claimedBeats: cappedClaimedBeats,
-      claimedBeatIds: (candidate.claimedBeatIds ?? []).slice(0, cappedClaimedBeats.length),
+      claimedMandatoryBeatIds: cappedClaimedMandatoryBeatIds,
+      claimedBeatIds,
     }
     break
   }
@@ -380,6 +438,7 @@ async function generateChapterOutlineIfNeeded(
     description: result.description,
     introducedCharacters: result.introducedCharacters ?? [],
     claimedBeats: result.claimedBeats ?? [],
+    claimedMandatoryBeatIds: result.claimedMandatoryBeatIds ?? [],
     touchedCharacterIds: result.touchedCharacterIds ?? [],
     touchedItemIds: result.touchedItemIds ?? [],
     touchedLocationIds: result.touchedLocationIds ?? [],
@@ -573,7 +632,8 @@ export async function expandOutlineForChapter(
       : nextBoundaryHint
 
   const declarations = [
-    { label: '【本章认领节拍】', ids: outlineItem.claimedBeatIds },
+    { label: '【本章认领 mandatory beats】', ids: outlineItem.claimedMandatoryBeatIds },
+    { label: '【本章认领 key beats】', ids: outlineItem.claimedBeatIds },
     { label: '【本章兑现伏笔】', ids: outlineItem.fulfilledForeshadowIds },
     { label: '【本章引入伏笔】', ids: outlineItem.introducedForeshadowIds },
     { label: '【本章出场角色】', ids: outlineItem.touchedCharacterIds },

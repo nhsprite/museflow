@@ -613,15 +613,13 @@ describe('detectOutlineStateConflicts', () => {
 })
 
 describe('detectSecretRevealConflicts', () => {
-  it('flags outline that re-hides a revealed secret', () => {
+  it('does not infer secret re-hiding from prose matching', () => {
     const state: StoryState = {
       ...emptyState(),
       revealedSecrets: ['主角是主谋'],
     }
     const conflicts = detectSecretRevealConflicts(state, '众人仍不知主角是主谋')
-    expect(conflicts).toHaveLength(1)
-    expect(conflicts[0].severity).toBe('blocking')
-    expect(conflicts[0].type).toBe('contradiction')
+    expect(conflicts).toHaveLength(0)
   })
 
   it('ignores outline that simply reuses a revealed secret', () => {

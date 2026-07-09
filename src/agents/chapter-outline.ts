@@ -11,6 +11,7 @@ import {
   buildChapterOutlineUserPrompt,
   type ChapterOutlinePromptSections,
 } from './prompts/chapter-outline-prompt.js'
+import { getMandatoryBeatIdByText } from '../utils/mandatory-beat-ids.js'
 
 export interface ChapterOutlineResult extends ChapterOutline {
   conflict?: boolean
@@ -35,6 +36,16 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
     const consumedBeats = actProgressForAct?.consumed ?? []
     const beatBudget = act ? calculateBeatBudget(act, chapterIndex, pendingBeats) : 0
 
+    const formatMandatoryBeatList = (beats: string[]): string =>
+      beats.length > 0
+        ? beats
+            .map((beat) => {
+              const id = act ? getMandatoryBeatIdByText(storyArc, act.index, beat) : undefined
+              return id ? `- ${id}: ${beat}` : `- ${beat}`
+            })
+            .join('\n')
+        : '（无）'
+
     const actSection = act
       ? `<current_act>
 幕标题：${act.title}
@@ -43,8 +54,10 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
 章节范围：第${act.startChapter}章 – 第${act.endChapter}章
 当前章号：第${displayChapterNumber}章
 本章在该幕中的位置：第 ${chapterIndex + 1 - act.startChapter + 1} / ${act.endChapter - act.startChapter + 1} 章
-尚未消费的 mandatory beats：${pendingBeats.join('、') || '（无）'}
-已消费的 mandatory beats：${consumedBeats.join('、') || '（无）'}
+尚未消费的 mandatory beats：
+${formatMandatoryBeatList(pendingBeats)}
+已消费的 mandatory beats：
+${formatMandatoryBeatList(consumedBeats)}
 本章节拍预算：${beatBudget > 0 ? `本章 description 最多承载 ${beatBudget} 个 mandatory beat` : '（暂无剩余节拍可领）'}
 </current_act>`
       : '<current_act>（暂无幕信息）</current_act>'
@@ -129,6 +142,7 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
         description: data.description.trim(),
         introducedCharacters: normalizeStringArray(data.introducedCharacters),
         claimedBeats: normalizeStringArray(data.claimedBeats),
+        claimedMandatoryBeatIds: normalizeStringArray(data.claimedMandatoryBeatIds),
         conflict: data.conflict === true,
         conflictReason: data.conflictReason ?? '',
         touchedCharacterIds: normalizeStringArray(data.touchedCharacterIds),

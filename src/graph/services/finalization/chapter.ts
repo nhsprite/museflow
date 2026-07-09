@@ -59,6 +59,11 @@ import {
   pruneResolvedOutlineCoverageIssues,
   updateActProgress,
 } from './act-progress.js'
+import {
+  findMandatoryBeatById,
+  getMandatoryBeatEntries,
+  getMandatoryBeatTextById,
+} from '../../../utils/mandatory-beat-ids.js'
 
 function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
@@ -78,20 +83,44 @@ function deriveVerifiedBeatsFromPlotAdvanceEvents(
   const beatIdToText = new Map(storyArc?.keyBeats.map((kb) => [kb.id, kb.beat]) ?? [])
   return events
     .filter((e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance')
-    .map((e) => beatIdToText.get(e.beatId))
+    .map((e) => getMandatoryBeatTextById(storyArc, e.beatId) ?? beatIdToText.get(e.beatId))
     .filter((b): b is string => !!b)
+}
+
+function deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents(
+  events: StoryEvent[],
+  storyArc: StoryArc | null | undefined
+): string[] {
+  const verified = new Set<string>()
+  for (const event of events) {
+    if (event.type !== 'plot-advance') continue
+    if (findMandatoryBeatById(storyArc, event.beatId)) {
+      verified.add(event.beatId)
+    }
+  }
+  return Array.from(verified)
 }
 
 function updateOutlineVerifiedBeats(
   outline: ReducedGraphState['outline'],
   chapterIndex: number,
-  verifiedBeats: string[]
+  verifiedBeats: string[],
+  verifiedMandatoryBeatIds: string[] = []
 ): ReducedGraphState['outline'] {
   const currentOutline = outline[chapterIndex]
-  if (!currentOutline || verifiedBeats.length === 0) return outline
+  if (!currentOutline || (verifiedBeats.length === 0 && verifiedMandatoryBeatIds.length === 0)) {
+    return outline
+  }
   const merged = Array.from(new Set([...(currentOutline.verifiedBeats ?? []), ...verifiedBeats]))
+  const mergedIds = Array.from(
+    new Set([...(currentOutline.verifiedMandatoryBeatIds ?? []), ...verifiedMandatoryBeatIds])
+  )
   const next = [...outline]
-  next[chapterIndex] = { ...currentOutline, verifiedBeats: merged }
+  next[chapterIndex] = {
+    ...currentOutline,
+    ...(merged.length > 0 ? { verifiedBeats: merged } : {}),
+    ...(mergedIds.length > 0 ? { verifiedMandatoryBeatIds: mergedIds } : {}),
+  }
   return next
 }
 
@@ -100,16 +129,26 @@ function filterStoryEventsForStoryArc(
   storyArc: StoryArc | null | undefined
 ): StoryEvent[] {
   if (!storyArc || storyArc.keyBeats.length === 0) return events
-  const validBeatIds = new Set(storyArc.keyBeats.map((beat) => beat.id))
+  const validBeatIds = new Set([
+    ...storyArc.keyBeats.map((beat) => beat.id),
+    ...getMandatoryBeatEntries(storyArc).map((beat) => beat.id),
+  ])
   return events.filter((event) => event.type !== 'plot-advance' || validBeatIds.has(event.beatId))
 }
 
 function getClaimedMandatoryBeatsForCoverage(
   outlineItem: ReducedGraphState['outline'][number] | undefined,
-  mandatoryBeats: string[]
+  mandatoryBeats: string[],
+  storyArc?: StoryArc | null
 ): string[] {
   const allowed = new Set(mandatoryBeats)
   const claimed = new Set<string>()
+  for (const beatId of outlineItem?.claimedMandatoryBeatIds ?? []) {
+    const beat = getMandatoryBeatTextById(storyArc, beatId)
+    if (beat && allowed.has(beat)) {
+      claimed.add(beat)
+    }
+  }
   for (const beat of outlineItem?.claimedBeats ?? []) {
     if (allowed.has(beat)) {
       claimed.add(beat)
@@ -247,8 +286,17 @@ export async function finalizeChapter(
   if (draftEvents.length > 0) {
     updatedStoryMemory = applyEvents(updatedStoryMemory ?? createEmptyStoryMemory(), draftEvents)
     const draftVerifiedBeats = deriveVerifiedBeatsFromPlotAdvanceEvents(draftEvents, state.storyArc)
-    if (draftVerifiedBeats.length > 0) {
-      updatedOutline = updateOutlineVerifiedBeats(updatedOutline, chapterIndex, draftVerifiedBeats)
+    const draftVerifiedMandatoryBeatIds = deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents(
+      draftEvents,
+      state.storyArc
+    )
+    if (draftVerifiedBeats.length > 0 || draftVerifiedMandatoryBeatIds.length > 0) {
+      updatedOutline = updateOutlineVerifiedBeats(
+        updatedOutline,
+        chapterIndex,
+        draftVerifiedBeats,
+        draftVerifiedMandatoryBeatIds
+      )
       logger.info(
         `[MuseFlow] 第 ${chapterIndex + 1} 章已从 draft 事件消费 ${draftVerifiedBeats.length} 个 mandatory beats`
       )
@@ -270,6 +318,7 @@ export async function finalizeChapter(
         currentOutline?.claimedBeats && currentOutline.claimedBeats.length > 0
           ? currentOutline.claimedBeats
           : getPendingMandatoryBeats(state, chapterIndex)
+      const claimedMandatoryBeatIds = currentOutline?.claimedMandatoryBeatIds ?? []
       const summaryState: SummaryAgentInput = {
         idea: state.idea,
         genre: state.genre,
@@ -281,6 +330,7 @@ export async function finalizeChapter(
         ...(currentOutline?.title ? { chapterTitle: currentOutline.title } : {}),
         chapterIndex,
         ...(beatsToVerify.length > 0 ? { claimedBeats: beatsToVerify } : {}),
+        ...(claimedMandatoryBeatIds.length > 0 ? { claimedMandatoryBeatIds } : {}),
       }
 
       const MAX_SUMMARY_RETRIES = 2
@@ -335,11 +385,14 @@ export async function finalizeChapter(
             newEvents,
             state.storyArc
           )
-          if (summaryVerifiedBeats.length > 0) {
+          const summaryVerifiedMandatoryBeatIds =
+            deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents(newEvents, state.storyArc)
+          if (summaryVerifiedBeats.length > 0 || summaryVerifiedMandatoryBeatIds.length > 0) {
             updatedOutline = updateOutlineVerifiedBeats(
               updatedOutline,
               chapterIndex,
-              summaryVerifiedBeats
+              summaryVerifiedBeats,
+              summaryVerifiedMandatoryBeatIds
             )
           }
 
@@ -353,9 +406,16 @@ export async function finalizeChapter(
               latestCurrentOutline.verifiedBeats ?? [],
               actForCoverage.mandatoryBeats
             )
+            for (const beatId of latestCurrentOutline.verifiedMandatoryBeatIds ?? []) {
+              const beat = getMandatoryBeatTextById(state.storyArc, beatId)
+              if (beat && !allVerified.includes(beat)) {
+                allVerified.push(beat)
+              }
+            }
             const coverageCandidates = getClaimedMandatoryBeatsForCoverage(
               latestCurrentOutline,
-              actForCoverage.mandatoryBeats
+              actForCoverage.mandatoryBeats,
+              state.storyArc
             )
             const missingAfterEvents = coverageCandidates.filter(
               (beat) => !allVerified.includes(beat)

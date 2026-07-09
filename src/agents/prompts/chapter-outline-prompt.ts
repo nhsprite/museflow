@@ -46,7 +46,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
    - touchedCharacterIds: 本章出现的角色 EntityId 列表
    - touchedItemIds: 本章出现的物品 EntityId 列表
    - touchedLocationIds: 本章出现的地点 EntityId 列表
-   - claimedBeatIds: 本章推进的 BeatId 列表，必须严格引用上方 <story_arc> 中 keyBeats 给出的精确 ID（如 A2-B3），不得使用描述文本或自造 ID
+   - claimedMandatoryBeatIds: 本章推进的 mandatory beat ID 列表，必须严格引用 <current_act> 中给出的精确 ID（如 A2-M3），不得使用描述文本或自造 ID
+   - claimedBeatIds: 本章推进的全局 keyBeat ID 列表，只能引用上方 <story_arc> 中 keyBeats 给出的精确 ID（如 A2-B3）；没有推进全局 keyBeat 时输出空数组
    - fulfilledForeshadowIds: 本章兑现的 ForeshadowId 列表
    - introducedForeshadowIds: 本章埋下的 ForeshadowId 列表
    - resolvedTaskIds: 本章关闭的 TaskId 列表
@@ -57,6 +58,7 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
      "description": "本章具体执行描述",
      "introducedCharacters": ["新角色名"],
      "claimedBeats": ["本幕 mandatory beat 1"],
+     "claimedMandatoryBeatIds": ["A2-M1"],
      "touchedCharacterIds": [],
      "touchedItemIds": [],
      "touchedLocationIds": [],

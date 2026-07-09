@@ -23,6 +23,7 @@ import {
   CHAPTER_HEADING_PATTERN,
   CHAPTER_TITLE_ONLY_PATTERN,
 } from '../utils/chapter-content-validation.js'
+import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
 
 export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   // Note: currentChapterIndex is stored as instance state because BaseAgent.parse
@@ -371,18 +372,14 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     )
     if (!currentAct) return ''
 
-    const currentActKeyBeats = storyArc.keyBeats.filter(
-      (kb) =>
-        kb.deadlineAct === currentAct.index ||
-        currentAct.mandatoryBeats.some((beat) => beat.trim() === kb.beat.trim())
-    )
-    if (currentActKeyBeats.length === 0) return ''
+    const currentActMandatoryBeats = getMandatoryBeatEntriesForAct(currentAct)
+    if (currentActMandatoryBeats.length === 0) return ''
 
-    const claimedBeatIds = new Set(state.chapterPlan?.claimedBeatIds ?? [])
-    const entries: BeatMappingEntry[] = currentActKeyBeats.map((kb) => ({
-      beatId: kb.id,
-      description: kb.beat,
-      claimed: claimedBeatIds.has(kb.id),
+    const claimedMandatoryBeatIds = new Set(state.chapterPlan?.claimedMandatoryBeatIds ?? [])
+    const entries: BeatMappingEntry[] = currentActMandatoryBeats.map((beat) => ({
+      beatId: beat.id,
+      description: beat.beat,
+      claimed: claimedMandatoryBeatIds.has(beat.id),
     }))
 
     return buildBeatMappingSection(currentAct.index, entries)

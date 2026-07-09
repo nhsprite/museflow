@@ -37,6 +37,7 @@ async function runPlanChapter(
 
   const chapterPlan: import('../../agents/chapter-planner.js').ChapterPlan = {
     expectedEvents: [],
+    claimedMandatoryBeatIds: [],
     claimedBeatIds: [],
     fulfilledForeshadowIds: [],
     introducedForeshadowIds: [],

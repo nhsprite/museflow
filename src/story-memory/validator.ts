@@ -80,7 +80,8 @@ export function validateChapterEvents(
     }
   }
 
-  for (const id of plan.claimedBeatIds ?? []) {
+  const claimedBeatIds = [...(plan.claimedMandatoryBeatIds ?? []), ...(plan.claimedBeatIds ?? [])]
+  for (const id of claimedBeatIds) {
     const proven = (effectiveMemory.beats[id]?.provenByEventIds.length ?? 0) > 0
     if (!proven) {
       claimedButUnprovenBeats.push(id)

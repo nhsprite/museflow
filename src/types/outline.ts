@@ -48,13 +48,15 @@ export interface ChapterOutline {
   introducedCharacters?: string[]
   claimedBeats?: string[] // ChapterOutlineAgent 声称本章要推进的 mandatory beats
   verifiedBeats?: string[] // SummaryAgent 从正文中验证确实发生的 mandatory beats
+  claimedMandatoryBeatIds?: BeatId[] // 本章推进的 mandatory beat 稳定 ID（A{act}-M{index}）
+  verifiedMandatoryBeatIds?: BeatId[] // 正文验证到的 mandatory beat 稳定 ID
   verifiedBeatEvidence?: VerifiedBeatEvidence[] // verifiedBeats 的正文证据
 
   // 新增结构化声明
   touchedCharacterIds?: EntityId[]
   touchedItemIds?: EntityId[]
   touchedLocationIds?: EntityId[]
-  claimedBeatIds?: BeatId[]
+  claimedBeatIds?: BeatId[] // 全局 keyBeat ID，不用于 mandatory beat 覆盖判断
   fulfilledForeshadowIds?: ForeshadowId[]
   introducedForeshadowIds?: ForeshadowId[]
   resolvedTaskIds?: TaskId[]

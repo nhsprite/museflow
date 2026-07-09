@@ -152,6 +152,53 @@ describe('projectEntities', () => {
   })
 })
 
+describe('ensureBeatsHaveActIndex', () => {
+  it('pre-populates stable mandatory beat ids separately from global key beats', () => {
+    const storyArc: StoryArc = {
+      totalChapters: 3,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: 'Act',
+          theme: '',
+          function: '',
+          mandatoryBeats: ['身份暴露', '阵营洗牌'],
+        },
+      ],
+      keyBeats: [{ id: 'A1-B1', beat: '全局关键节点', deadlineAct: 1, required: true }],
+    }
+
+    const memory = ensureBeatsHaveActIndex(createEmptyStoryMemory(), storyArc)
+
+    expect(memory.beats['A1-M1']).toEqual(
+      expect.objectContaining({
+        id: 'A1-M1',
+        description: '身份暴露',
+        actIndex: 1,
+        deadlineAct: 1,
+        required: true,
+      })
+    )
+    expect(memory.beats['A1-M2']).toEqual(
+      expect.objectContaining({
+        id: 'A1-M2',
+        description: '阵营洗牌',
+        actIndex: 1,
+        deadlineAct: 1,
+        required: true,
+      })
+    )
+    expect(memory.beats['A1-B1']).toEqual(
+      expect.objectContaining({
+        id: 'A1-B1',
+        description: '全局关键节点',
+      })
+    )
+  })
+})
+
 describe('applyEvents', () => {
   it('appends events and updates projection', () => {
     const memory = createEmptyStoryMemory()
