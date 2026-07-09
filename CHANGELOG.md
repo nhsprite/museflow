@@ -4,6 +4,33 @@ All notable changes to MuseFlow releases are documented in this file.
 
 This project follows semantic versioning. Dates use `YYYY-MM-DD`.
 
+## [1.0.2] - 2026-07-09
+
+### Added
+
+- Added per-chapter mandatory beat budgeting so current-act beats are not over-consumed before the act has enough remaining chapters.
+- Added stable mandatory beat IDs (`A{act}-M{index}`) across outline planning, chapter planning, drafting prompts, summary verification, StoryMemory projection, and rewrite recomputation.
+- Added clearer CLI progress display for pending act beats and total act count.
+
+### Changed
+
+- Reworked mandatory beat verification to prefer structured `plot-advance` events, stable IDs, and StoryMemory evidence instead of local prose heuristics.
+- Routed word-count and chapter validation retries through the structured validation/fix loop so blocking failures preserve rewrite context correctly.
+- Hardened runtime neutrality by removing additional natural-language matching paths and dead barrel exports.
+
+### Fixed
+
+- Fixed rewrite false positives where completed past-act mandatory beats could be recomputed as pending when rewriting a later chapter.
+- Fixed rewrite and `adjust-act` checkpoint consistency by preserving consumed mandatory beat progress, syncing chapter markers, and resetting stale rewrite progress.
+- Fixed act-boundary handling so incomplete act transitions, unproven mandatory beat claims, and early over-consumption are blocked or surfaced with actionable adjustment guidance.
+- Fixed finalization safety so chapter advancement stops on finalization failures, completed stories are frozen, generated headings are normalized, and fix-agent checklist residue is removed from rewritten text.
+
+### Dependencies
+
+- Added `@inquirer/prompts`, `@langchain/langgraph-checkpoint`, `@eslint/js`, `@vitest/coverage-v8`, and `uuid`.
+- Removed unused `p-limit`, `@types/inquirer`, and `ts-node`.
+- Refreshed the npm lockfile for the current dependency graph.
+
 ## [1.0.1] - 2026-07-05
 
 ### Added
