@@ -22,6 +22,7 @@ const getStoryMock = vi.fn().mockReturnValue({
   status: 'writing',
 })
 const updateStoryStatusMock = vi.fn()
+const updateStoryRuntimeStatusMock = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('../../src/storage/checkpoint-service.js', () => ({
   createCheckpointService: () => ({
@@ -67,6 +68,7 @@ vi.mock('../../src/core/runner.js', () => ({
     getState: vi.fn().mockResolvedValue({ values: mockGraphState }),
   }),
   runOneChapter: runOneChapterMock,
+  updateStoryRuntimeStatus: updateStoryRuntimeStatusMock,
 }))
 
 vi.mock('../../src/graph/novel.graph.js', () => ({
@@ -230,7 +232,7 @@ describe('rewrite command state consistency', () => {
 
     expect(runOneChapterMock).not.toHaveBeenCalled()
     expect(clearPendingWritesMock).not.toHaveBeenCalled()
-    expect(updateStoryStatusMock).not.toHaveBeenCalledWith('story-1', 'writing')
+    expect(updateStoryRuntimeStatusMock).not.toHaveBeenCalledWith('story-1', 'writing')
   })
 
   it('should invoke chapter graph when rewrite fails with errors', async () => {

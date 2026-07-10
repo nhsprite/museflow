@@ -1,5 +1,9 @@
 import { createStory } from '../../storage/meta/stores/story.js'
-import { runStory } from '../../core/runner.js'
+import {
+  runStory,
+  updateStoryRuntimeStatus,
+  updateStoryStatusInCheckpoint,
+} from '../../core/runner.js'
 import { initStoryDb } from '../../storage/meta/stores/story.js'
 import { getGenreRegistry } from '../../genres/registry.js'
 import { updateStoryStatus } from '../../storage/meta/stores/story.js'
@@ -8,6 +12,7 @@ import { generateTitleOptions, selectTitleOption, type TitleOption } from './tit
 import { withSpinner } from '../utils/spinner.js'
 import type { ModelConfig } from '../../types/config.js'
 import { createRuntimeContext, type RuntimeContext } from '../../core/context.js'
+import type { Story } from '../../types/story.js'
 
 interface StartOptions {
   idea: string
@@ -105,6 +110,7 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     }
 
     updateStatus('worldbuilding')
+    const storyForRun: Story = { ...story, status: 'worldbuilding', updatedAt: Date.now() }
 
     const result = await withSpinner('正在构建世界观和角色设定...', () =>
       runStory(
@@ -113,7 +119,7 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
           idea,
           genre,
           totalChapters: chapters,
-          story,
+          story: storyForRun,
         },
         runtimeContext
       )
@@ -139,15 +145,16 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     }
 
     await exportMetaFromCheckpoint(result.story.outputDir)
-
-    updateStatus('outlining')
+    await updateStoryStatusInCheckpoint(story.id, result.story.outputDir, 'outlining')
 
     console.log('[MuseFlow] 规划阶段完成！\n')
     console.log(`[MuseFlow] 故事ID: ${story.id}`)
     console.log('[MuseFlow] 使用 "museflow write" 开始撰写正文')
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
-    updateStoryStatus(story.id, 'error')
+    await updateStoryRuntimeStatus(story.id, 'error').catch(() =>
+      updateStoryStatus(story.id, 'error')
+    )
     process.exit(1)
   }
 }

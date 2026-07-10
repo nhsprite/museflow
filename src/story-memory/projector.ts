@@ -10,6 +10,7 @@ import type {
   TaskMemory,
 } from '../types/story-memory.js'
 import type { StoryArc } from '../types/outline.js'
+import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
@@ -152,6 +153,88 @@ export function applyEvents(memory: StoryMemory, events: StoryEvent[]): StoryMem
   }
 
   return { ...projected, beats: mergedBeats }
+}
+
+function createEmptyProjectedStoryState(): StoryState {
+  return {
+    characterLocations: {},
+    characterStatus: {},
+    keyItemsLocation: {},
+    keyItemsState: {},
+    activePlots: [],
+    revealedSecrets: [],
+    pendingTasks: [],
+    currentScene: '',
+    storyTime: '',
+    canonicalFacts: [],
+  }
+}
+
+function projectionValueToString(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (value === null || value === undefined) return ''
+  return JSON.stringify(value)
+}
+
+export function projectStoryStateFromMemory(
+  memory: StoryMemory,
+  previousState?: StoryState | null
+): StoryState {
+  const base = previousState ?? createEmptyProjectedStoryState()
+  const characterLocations = { ...base.characterLocations }
+  const characterStatus = { ...base.characterStatus }
+  const keyItemsLocation = { ...base.keyItemsLocation }
+  const keyItemsState = { ...base.keyItemsState }
+
+  for (const character of Object.values(memory.entities.characters)) {
+    if (character.locationId) {
+      characterLocations[character.id] = character.locationId
+    }
+    const status = character.status.status
+    if (status !== undefined) {
+      characterStatus[character.id] = projectionValueToString(status)
+    }
+  }
+
+  for (const item of Object.values(memory.entities.items)) {
+    const location = item.holderId ?? item.locationId
+    if (location) {
+      keyItemsLocation[item.id] = location
+    }
+    const state = item.state.state
+    if (state !== undefined) {
+      keyItemsState[item.id] = projectionValueToString(state)
+    }
+  }
+
+  const pendingTasksById = new Map<string, PendingTask>()
+  for (const task of base.pendingTasks ?? []) {
+    pendingTasksById.set(task.id, task)
+  }
+  for (const task of Object.values(memory.tasks)) {
+    const existing = pendingTasksById.get(task.id)
+    pendingTasksById.set(task.id, {
+      id: task.id,
+      assignee: existing?.assignee ?? '',
+      description: task.description,
+      createdChapter: task.createdIn + 1,
+      status: task.resolvedIn === null ? (existing?.status ?? 'pending') : 'done',
+      ...(existing?.dueChapter !== undefined ? { dueChapter: existing.dueChapter } : {}),
+      ...(existing?.dueTime !== undefined ? { dueTime: existing.dueTime } : {}),
+    })
+  }
+
+  return {
+    ...base,
+    characterLocations,
+    characterStatus,
+    keyItemsLocation,
+    keyItemsState,
+    pendingTasks: Array.from(pendingTasksById.values()).sort(
+      (a, b) => a.createdChapter - b.createdChapter
+    ),
+  }
 }
 
 function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemory> {

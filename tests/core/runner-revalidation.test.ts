@@ -13,6 +13,8 @@ const testOutputsDir = join(
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('chapter content')
 const deleteChapterContent = vi.fn().mockResolvedValue(undefined)
+const deleteStagedChapterContent = vi.fn().mockResolvedValue(undefined)
+const promoteStagedChapterContent = vi.fn().mockResolvedValue(true)
 const saveChapterMarker = vi.fn().mockResolvedValue(undefined)
 const getChapterMarker = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
@@ -106,6 +108,8 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeChapterContent,
   readChapterContent,
   deleteChapterContent,
+  deleteStagedChapterContent,
+  promoteStagedChapterContent,
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),
 }))

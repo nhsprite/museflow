@@ -124,12 +124,32 @@ describe('updateActProgress', () => {
     expect(result.actProgress[1]?.consumed.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('adds beats recognized via outline.verifiedBeats even when keyBeat text differs', async () => {
+  it('does not consume legacy outline.verifiedBeats without mandatory beat IDs', async () => {
     const storyArc = makeStoryArc()
     const state = {
       storyArc,
       outline: [
         { number: 1, title: 'A', description: 'a', verifiedBeats: ['身份暴露'] },
+        { number: 2, title: 'B', description: 'b' },
+      ],
+      storyMemory: makeStoryMemory(),
+      actProgress: {
+        1: { consumed: [], pending: ['身份暴露', '敌友洗牌', '终局布局'] },
+      },
+    } as unknown as ReducedGraphState
+
+    const result = await updateActProgress(state, 1)
+
+    expect(result.actProgress[1]?.consumed).not.toContain('身份暴露')
+    expect(result.actProgress[1]?.pending).toContain('身份暴露')
+  })
+
+  it('consumes explicit verifiedMandatoryBeatIds even when keyBeat text differs', async () => {
+    const storyArc = makeStoryArc()
+    const state = {
+      storyArc,
+      outline: [
+        { number: 1, title: 'A', description: 'a', verifiedMandatoryBeatIds: ['A1-M1'] },
         { number: 2, title: 'B', description: 'b' },
       ],
       storyMemory: makeStoryMemory(),

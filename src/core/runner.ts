@@ -9,12 +9,16 @@ import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 
 import {
   deleteChapterContent,
+  deleteStagedChapterContent,
   readChapterContent,
   writeOutlineContent,
 } from '../storage/filesystem/writer.js'
 import { createCheckpointService } from '../storage/checkpoint-service.js'
 import { migrateLegacyCheckpoints } from '../storage/migration.js'
+import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
+import { updateStoryStatus } from '../storage/meta/stores/story.js'
 import type { Issue } from '../types/agent.js'
+import type { StoryStatus } from '../types/story.js'
 import type { StateOverride, StoryState } from '../types/story-state.js'
 import { createRuntimeContext, type RuntimeContext } from './context.js'
 import { commitChapterRun } from './chapter-commit.js'
@@ -29,6 +33,7 @@ import {
 } from '../utils/verified-constraints.js'
 import { projectVerifiedClaimedBeatIdsIntoActProgress } from './act-progress-projection.js'
 import { formatActBoundaryAdjustmentCommand } from '../utils/story-arc.js'
+import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -135,6 +140,7 @@ async function runChapterGraph(
   const graph = buildNovelGraph(context)
   const checkpointService = createCheckpointService(outputDir)
   await checkpointService.clearPendingWrites()
+  await deleteStagedChapterContent(outputDir, workingState.currentChapterIndex + 1)
 
   const config: RunnableConfig = {
     configurable: { thread_id: storyId, outputDir },
@@ -154,6 +160,9 @@ async function runChapterGraph(
 
     return result as ReducedGraphState
   } catch (err) {
+    await deleteStagedChapterContent(outputDir, workingState.currentChapterIndex + 1).catch(
+      () => {}
+    )
     const errorMessage = err instanceof Error ? err.message : String(err)
     logger.error(`[MuseFlow] 章节写作流程出错: ${errorMessage}`)
     throw err
@@ -253,6 +262,44 @@ export function normalizePendingIssuesForChapter(
       }
       return issue
     })
+}
+
+export async function updateStoryStatusInCheckpoint(
+  storyId: string,
+  outputDir: string,
+  status: StoryStatus,
+  checkpointer?: BaseCheckpointSaver<string>
+): Promise<void> {
+  const checkpointService = createCheckpointService(outputDir, checkpointer)
+  const tuple = await checkpointService.getTuple({
+    configurable: { thread_id: storyId, outputDir },
+  })
+
+  if (!tuple) {
+    updateStoryStatus(storyId, status)
+    return
+  }
+
+  const checkpointState = tuple.checkpoint.channel_values as ReducedGraphState
+  const story = {
+    ...checkpointState.story,
+    status,
+    updatedAt: Date.now(),
+  }
+
+  await checkpointService.updateLatestState({ story })
+  await exportMetaFromCheckpoint(outputDir, checkpointer)
+}
+
+export async function updateStoryRuntimeStatus(
+  storyId: string,
+  status: StoryStatus
+): Promise<void> {
+  const outputDir = getOutputDirFromStoryId(storyId)
+  if (!outputDir) {
+    throw new Error(`Story ${storyId} not found`)
+  }
+  await updateStoryStatusInCheckpoint(storyId, outputDir, status)
 }
 
 export async function runOneChapter(
@@ -380,6 +427,7 @@ export async function runOneChapter(
 
     for (let ch = targetIndex + 1; ch <= checkpointState.totalChapters; ch++) {
       await deleteChapterContent(outputDir, ch)
+      await deleteStagedChapterContent(outputDir, ch)
     }
   }
 

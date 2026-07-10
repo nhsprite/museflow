@@ -7,7 +7,7 @@ import { generateId } from '../../../utils/id.js'
 import { createCheckpointService } from '../../../storage/checkpoint-service.js'
 import { shouldForceTemporaryReplan } from '../../../utils/outline-boundary.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
-import { readChapterContent } from '../../../storage/filesystem/writer.js'
+import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import {
   isStructuralIssue,
   isLocalIssue,
@@ -190,7 +190,7 @@ export async function convergeAndDecide(
 ): Promise<Partial<ReducedGraphState>> {
   const session = buildChapterSession(state)
   const chapterNumber = state.currentChapterIndex + 1
-  const existingContent = await readChapterContent(state.story.outputDir, chapterNumber)
+  const existingContent = await readChapterContentForRun(state.story.outputDir, chapterNumber)
   const chapterFileExists = existingContent !== null && existingContent.trim().length > 0
 
   const config = buildRoutingConfig(state.genre)

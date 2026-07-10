@@ -54,6 +54,7 @@ const getStoryMock = vi.fn().mockReturnValue({
   status: 'writing',
 })
 const updateStoryStatusMock = vi.fn()
+const updateStoryRuntimeStatusMock = vi.fn().mockResolvedValue(undefined)
 
 const loadPendingWritesForThreadMock = vi.fn().mockResolvedValue([])
 const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
@@ -61,6 +62,7 @@ const clearPendingWritesMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../src/core/runner.js', () => ({
   runOneChapter: runOneChapterMock,
   getState: getStateMock,
+  updateStoryRuntimeStatus: updateStoryRuntimeStatusMock,
 }))
 
 vi.mock('../../src/storage/meta/stores/story.js', () => ({
@@ -159,7 +161,7 @@ describe('write command', () => {
 
     await write('story-1', { storyId: 'story-1' })
 
-    expect(updateStoryStatusMock).toHaveBeenCalledWith('story-1', 'freeze')
+    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledWith('story-1', 'freeze')
   })
 
   it('does not write when the story is frozen', async () => {

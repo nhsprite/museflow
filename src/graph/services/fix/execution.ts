@@ -2,7 +2,7 @@ import type { ReducedGraphState } from '../../state.js'
 import type { FixAgentInput, SentenceFix } from '../../../agents/types.js'
 import type { FixAgent } from '../../../agents/index.js'
 import type { ModelProvider } from '../../../model/provider.js'
-import { writeChapterContent } from '../../../storage/filesystem/writer.js'
+import { writeStagedChapterContent } from '../../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../../genres/registry.js'
 import {
   DEFAULT_CHAPTER_WORD_COUNT_MIN,
@@ -83,7 +83,7 @@ export async function runSentenceFix(
     chapterIndex + 1
   )
 
-  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+  await writeStagedChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
@@ -170,7 +170,7 @@ export async function runParagraphFix(
     chapterIndex + 1
   )
 
-  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+  await writeStagedChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
@@ -261,7 +261,7 @@ export async function runLegacyFix(
     chapterIndex + 1
   )
 
-  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+  await writeStagedChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter

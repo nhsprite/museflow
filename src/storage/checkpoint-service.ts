@@ -87,7 +87,11 @@ export class StoryCheckpointService {
     const preservedIds = new Set(Object.values(markers))
 
     const files = readdirSync(dir).filter(
-      (f) => f.endsWith('.json') && f !== 'pending_writes.json' && f !== 'chapter_markers.json'
+      (f) =>
+        f.endsWith('.json') &&
+        f !== 'pending_writes.json' &&
+        f !== 'chapter_markers.json' &&
+        f !== 'latest.json'
     )
 
     const toDelete = files.filter((f) => !preservedIds.has(f.slice(0, -5)))

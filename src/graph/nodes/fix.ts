@@ -1,7 +1,7 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import { getFixAgent } from '../agent-factory.js'
-import { readChapterContent } from '../../storage/filesystem/writer.js'
+import { readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
 import { buildCharacterFactTimeline } from '../utils/reconciler/index.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
@@ -24,7 +24,7 @@ export async function fix_chapter(
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
 
-  const existingContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const existingContent = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
   if (!existingContent) {
     throw new Error(`第 ${chapterIndex + 1} 章文件不存在，无法修复。请运行 write 或 rewrite。`)
   }

@@ -1,5 +1,4 @@
-import { updateStoryStatus } from '../../storage/meta/stores/story.js'
-import { runOneChapter, getState } from '../../core/runner.js'
+import { runOneChapter, getState, updateStoryRuntimeStatus } from '../../core/runner.js'
 import { prepareRewritePreviewState } from '../../core/rewrite-state.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -27,7 +26,7 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
 
   if (shouldFreezeLockStory(story, state)) {
     if (state.currentChapterIndex >= state.totalChapters && story.status !== 'freeze') {
-      updateStoryStatus(storyId, 'freeze')
+      await updateStoryRuntimeStatus(storyId, 'freeze')
     }
     printFrozenStoryMessage(story, state, storyId)
     return
@@ -106,7 +105,7 @@ async function handleRewrite(
   retryIssues: Issue[] = []
 ): Promise<void> {
   const updateStatus = (status: StoryStatus) => {
-    updateStoryStatus(storyId, status)
+    return updateStoryRuntimeStatus(storyId, status)
   }
 
   const state = await getState(storyId)
@@ -161,11 +160,11 @@ async function handleRewrite(
     }
 
     if (result.currentChapterIndex >= result.totalChapters) {
-      updateStatus('freeze')
+      await updateStatus('freeze')
       return
     }
 
-    updateStatus('writing')
+    await updateStatus('writing')
 
     const errors = result.pendingIssues.filter((i) => i.severity === 'error')
 
@@ -186,13 +185,13 @@ async function handleRewrite(
 
     const nextIndex = result.currentChapterIndex + 1
     if (nextIndex < result.totalChapters) {
-      updateStatus('writing')
+      await updateStatus('writing')
     } else {
-      updateStatus('freeze')
+      await updateStatus('freeze')
     }
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
-    updateStatus('error')
+    await updateStatus('error')
     process.exit(1)
   }
 }

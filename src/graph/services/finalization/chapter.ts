@@ -6,6 +6,7 @@ import {
   applyEvents,
   createEmptyStoryMemory,
   ensureBeatsHaveActIndex,
+  projectStoryStateFromMemory,
 } from '../../../story-memory/projector.js'
 import {
   getActiveForeshadows,
@@ -20,11 +21,9 @@ import type {
   BeatId,
 } from '../../../types/story-memory.js'
 import type { ForeshadowItem } from '../../../types/foreshadow.js'
-import { readChapterContent } from '../../../storage/filesystem/writer.js'
-import { saveChapterReport } from '../../../storage/meta/stores/chapter-report.js'
+import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import { getForeshadowAlerts } from '../../../types/foreshadow.js'
 import { generateId } from '../../../utils/id.js'
-import { createCheckpointService } from '../../../storage/checkpoint-service.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
 import { buildEffectiveCharactersList } from '../../utils/characters.js'
 import { generateForeshadowConstraints } from '../../../utils/foreshadow-constraints.js'
@@ -42,11 +41,9 @@ import {
   proposeActBoundaryAdjustments,
   applyActBoundaryAdjustment,
   formatActBoundaryAdjustmentCommand,
-  judgeMandatoryBeatCoverage,
 } from '../../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import { loadConfig } from '../../../config/store.js'
-import { writeOutlineContent } from '../../../storage/filesystem/writer.js'
 import {
   createGenericVerifiedConstraint,
   filterVerifiedConstraintsForChapter,
@@ -55,7 +52,6 @@ import {
 import {
   getActForChapter,
   getPendingMandatoryBeats,
-  normalizeVerifiedBeats,
   pruneResolvedOutlineCoverageIssues,
   updateActProgress,
 } from './act-progress.js'
@@ -134,27 +130,6 @@ function filterStoryEventsForStoryArc(
     ...getMandatoryBeatEntries(storyArc).map((beat) => beat.id),
   ])
   return events.filter((event) => event.type !== 'plot-advance' || validBeatIds.has(event.beatId))
-}
-
-function getClaimedMandatoryBeatsForCoverage(
-  outlineItem: ReducedGraphState['outline'][number] | undefined,
-  mandatoryBeats: string[],
-  storyArc?: StoryArc | null
-): string[] {
-  const allowed = new Set(mandatoryBeats)
-  const claimed = new Set<string>()
-  for (const beatId of outlineItem?.claimedMandatoryBeatIds ?? []) {
-    const beat = getMandatoryBeatTextById(storyArc, beatId)
-    if (beat && allowed.has(beat)) {
-      claimed.add(beat)
-    }
-  }
-  for (const beat of outlineItem?.claimedBeats ?? []) {
-    if (allowed.has(beat)) {
-      claimed.add(beat)
-    }
-  }
-  return Array.from(claimed)
 }
 
 function ensureChaptersLength(
@@ -252,7 +227,7 @@ export async function finalizeChapter(
   let updatedChapters = [...state.chapters]
   let updatedChapterSummaries = [...state.chapterSummaries]
 
-  const chapterContent = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const chapterContent = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
   if (chapterContent === null || chapterContent.trim().length === 0) {
     throw new Error(`第 ${chapterIndex + 1} 章文件为空或不存在，无法标记为完成。请重试撰写。`)
   }
@@ -396,49 +371,6 @@ export async function finalizeChapter(
             )
           }
 
-          // Only fall back to prose-based judgment for beats that are still
-          // missing after structured events. This keeps the critical path on
-          // explicit event IDs.
-          const actForCoverage = getActForChapter(state.storyArc, chapterIndex)
-          const latestCurrentOutline = updatedOutline[chapterIndex] ?? currentOutline
-          if (actForCoverage && latestCurrentOutline && chapterContent) {
-            const allVerified = normalizeVerifiedBeats(
-              latestCurrentOutline.verifiedBeats ?? [],
-              actForCoverage.mandatoryBeats
-            )
-            for (const beatId of latestCurrentOutline.verifiedMandatoryBeatIds ?? []) {
-              const beat = getMandatoryBeatTextById(state.storyArc, beatId)
-              if (beat && !allVerified.includes(beat)) {
-                allVerified.push(beat)
-              }
-            }
-            const coverageCandidates = getClaimedMandatoryBeatsForCoverage(
-              latestCurrentOutline,
-              actForCoverage.mandatoryBeats,
-              state.storyArc
-            )
-            const missingAfterEvents = coverageCandidates.filter(
-              (beat) => !allVerified.includes(beat)
-            )
-            if (missingAfterEvents.length > 0) {
-              const contentVerified = await judgeMandatoryBeatCoverage(
-                provider,
-                chapterContent,
-                missingAfterEvents
-              )
-              const merged = Array.from(new Set([...allVerified, ...contentVerified]))
-              if (merged.length > allVerified.length) {
-                const newOutline = [...updatedOutline]
-                const latestOutline = newOutline[chapterIndex] ?? latestCurrentOutline
-                newOutline[chapterIndex] = { ...latestOutline, verifiedBeats: merged }
-                updatedOutline = newOutline
-                logger.debug(
-                  `[MuseFlow] 第 ${chapterIndex + 1} 章通过正文覆盖判定补充 ${merged.length - allVerified.length} 个 beats`
-                )
-              }
-            }
-          }
-
           break
         } catch (err) {
           logger.warn(
@@ -497,6 +429,7 @@ export async function finalizeChapter(
         `[MuseFlow] 第 ${chapterIndex + 1} 章生成 ${memoryConstraintTexts.length} 条 StoryMemory 约束`
       )
     }
+    updatedStoryState = projectStoryStateFromMemory(updatedStoryMemory, updatedStoryState)
   }
 
   const currentDisplayChapter = chapterIndex + 1
@@ -689,7 +622,6 @@ export async function finalizeChapter(
     if (boundaryProposals.length > 0) {
       failureReport.actBoundaryProposals = boundaryProposals
     }
-    saveChapterReport(state.story.outputDir, failureReport)
     return {
       pendingIssues: updatedPendingIssues,
       rewriteRequested: true,
@@ -740,21 +672,6 @@ export async function finalizeChapter(
   if (boundaryProposals.length > 0) {
     chapterReport.actBoundaryProposals = boundaryProposals
   }
-
-  if (updatedStoryArc && updatedStoryArc !== state.storyArc) {
-    await writeOutlineContent(
-      state.story.outputDir,
-      state.story.title,
-      updatedOutline,
-      updatedStoryArc
-    )
-  }
-
-  saveChapterReport(state.story.outputDir, chapterReport)
-
-  const checkpointService = createCheckpointService(state.story.outputDir)
-  await checkpointService.pruneIntermediateCheckpoints().catch(() => {})
-  await checkpointService.clearPendingWrites().catch(() => {})
 
   return {
     story: updatedStory,

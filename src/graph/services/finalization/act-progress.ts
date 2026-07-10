@@ -4,12 +4,7 @@ import type { ModelProvider } from '../../../model/provider.js'
 import type { ActArc, StoryArc } from '../../../types/outline.js'
 import type { Issue } from '../../../types/agent.js'
 import type { BeatId, StoryMemory } from '../../../types/story-memory.js'
-import { readChapterContent } from '../../../storage/filesystem/writer.js'
-import {
-  getVerifiedBeatsFromMemory,
-  judgeMandatoryBeatCoverage,
-  judgeMandatoryBeatCoverageAcrossAct,
-} from '../../../utils/story-arc.js'
+import { getVerifiedBeatsFromMemory } from '../../../utils/story-arc.js'
 import { createActPressureConstraint } from '../../../utils/verified-constraints.js'
 import {
   findClaimedMandatoryBeatForId,
@@ -124,14 +119,14 @@ export function pruneResolvedOutlineCoverageIssues(
 export async function updateActProgress(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider?: ModelProvider
+  _provider?: ModelProvider
 ): Promise<ActProgressUpdate> {
   const hasUsableMemory =
     state.storyMemory && Object.values(state.storyMemory.beats).some((beat) => beat.actIndex !== 0)
   if (hasUsableMemory) {
     return updateActProgressFromMemory(state, chapterIndex)
   }
-  return updateActProgressFromOutline(state, chapterIndex, provider)
+  return updateActProgressFromOutline(state, chapterIndex)
 }
 
 function updateActProgressFromMemory(
@@ -168,26 +163,14 @@ function updateActProgressFromMemory(
     }
   }
 
-  // outline.verifiedBeats may contain mandatory beat text that was recognized
-  // by the fallback judge or directly derived from plot-advance events. When
-  // keyBeat.beat text differs from mandatory beat text (e.g. model paraphrased),
-  // these outline entries are the only structured signal we have.
-  const outlineVerifiedBeats = new Set<string>()
+  const outlineVerifiedMandatoryBeats = new Set<string>()
   for (let idx = 0; idx <= chapterIndex; idx++) {
     const outlineItem = state.outline[idx]
-    if (!outlineItem?.verifiedBeats && !outlineItem?.verifiedMandatoryBeatIds) continue
+    if (!outlineItem?.verifiedMandatoryBeatIds) continue
     for (const beatId of outlineItem.verifiedMandatoryBeatIds ?? []) {
       const beat = findMandatoryBeatById(storyArc, beatId)?.beat
       if (beat) {
-        outlineVerifiedBeats.add(beat)
-      }
-    }
-    for (const act of storyArc?.acts ?? []) {
-      for (const beat of normalizeVerifiedBeats(
-        outlineItem.verifiedBeats ?? [],
-        act.mandatoryBeats
-      )) {
-        outlineVerifiedBeats.add(beat)
+        outlineVerifiedMandatoryBeats.add(beat)
       }
     }
   }
@@ -200,12 +183,12 @@ function updateActProgressFromMemory(
       const keyBeat = textToKeyBeat.get(beat)
       const isVerifiedByMemory = keyBeat && verifiedBeatIds.has(keyBeat.id)
       const isVerifiedByMandatoryId = mandatoryBeatId ? verifiedBeatIds.has(mandatoryBeatId) : false
-      const isVerifiedByOutline = outlineVerifiedBeats.has(beat)
+      const isVerifiedByMandatoryOutlineId = outlineVerifiedMandatoryBeats.has(beat)
       const isVerifiedByClaimedId = mandatoryBeatsVerifiedByClaimedId.has(beat)
       if (
         isVerifiedByMemory ||
         isVerifiedByMandatoryId ||
-        isVerifiedByOutline ||
+        isVerifiedByMandatoryOutlineId ||
         isVerifiedByClaimedId
       ) {
         if (!consumed.includes(beat)) consumed.push(beat)
@@ -313,8 +296,7 @@ function getClaimedBeatTexts(
  */
 async function updateActProgressFromOutline(
   state: ReducedGraphState,
-  chapterIndex: number,
-  provider?: ModelProvider
+  chapterIndex: number
 ): Promise<ActProgressUpdate> {
   const storyArc = state.storyArc
   const act = getActForChapter(storyArc, chapterIndex)
@@ -323,12 +305,14 @@ async function updateActProgressFromOutline(
   }
 
   const currentOutline = state.outline[chapterIndex]
-  const rawVerifiedBeats = currentOutline?.verifiedBeats ?? []
-
-  // Historical summaries can be narrative; normalize them back to exact mandatory beat text.
-  const verifiedBeats = normalizeVerifiedBeats(rawVerifiedBeats, act.mandatoryBeats)
 
   const consumed: string[] = []
+  const existing = state.actProgress?.[act.index]
+  for (const beat of existing?.consumed ?? []) {
+    if (act.mandatoryBeats.includes(beat) && !consumed.includes(beat)) {
+      consumed.push(beat)
+    }
+  }
   for (let idx = act.startChapter - 1; idx <= chapterIndex; idx++) {
     const outlineItem = state.outline[idx]
     if (!outlineItem) continue
@@ -338,51 +322,12 @@ async function updateActProgressFromOutline(
         consumed.push(lookup.beat)
       }
     }
-    const normalized = normalizeVerifiedBeats(outlineItem.verifiedBeats ?? [], act.mandatoryBeats)
-    for (const beat of normalized) {
-      if (!consumed.includes(beat)) {
-        consumed.push(beat)
-      }
-    }
   }
-  let pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
+  const pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
 
   const chaptersRemaining = act.endChapter - (chapterIndex + 1)
   const totalActChapters = act.endChapter - act.startChapter + 1
   const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
-
-  if (isInClosingPhase && pending.length > 0 && provider) {
-    const retroactive = await judgeMandatoryBeatCoverageAcrossAct(
-      provider,
-      act,
-      pending,
-      state.chapterSummaries,
-      state.outline.map((o) => o.description ?? '')
-    )
-    for (const beat of retroactive) {
-      if (!consumed.includes(beat)) {
-        consumed.push(beat)
-      }
-    }
-    pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
-
-    if (pending.length > 0) {
-      const contentVerified = await scanActChaptersForBeats(
-        state.story.outputDir,
-        act,
-        pending,
-        provider,
-        state.outline,
-        chapterIndex
-      )
-      for (const beat of contentVerified) {
-        if (!consumed.includes(beat)) {
-          consumed.push(beat)
-        }
-      }
-      pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
-    }
-  }
 
   const updatedActProgress: ReducedGraphState['actProgress'] = {
     ...state.actProgress,
@@ -391,7 +336,7 @@ async function updateActProgressFromOutline(
 
   const beatVerificationIssues = buildBeatVerificationIssues(
     currentOutline,
-    verifiedBeats,
+    consumed,
     undefined,
     act,
     chapterIndex,
@@ -414,10 +359,7 @@ async function updateActProgressFromOutline(
 
   const currentActIndex = act.index
   const overdueKeyBeats = storyArc.keyBeats.filter(
-    (kb) =>
-      kb.deadlineAct <= currentActIndex &&
-      !consumed.includes(kb.beat) &&
-      !verifiedBeats.includes(kb.beat)
+    (kb) => kb.deadlineAct <= currentActIndex && !consumed.includes(kb.beat)
   )
   if (overdueKeyBeats.length > 0 && chaptersRemaining === 0) {
     logger.warn(
@@ -515,45 +457,4 @@ function shouldBlockUnverifiedClaimedBeat(act: ActArc, chapterIndex: number): bo
   const totalActChapters = act.endChapter - act.startChapter + 1
   const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
   return chaptersRemaining <= 1 || isInClosingPhase
-}
-
-async function scanActChaptersForBeats(
-  outputDir: string,
-  act: ActArc,
-  pendingBeats: string[],
-  provider: ModelProvider,
-  outline: ReducedGraphState['outline'],
-  currentChapterIndex: number
-): Promise<string[]> {
-  const newlyVerified: string[] = []
-  let remaining = [...pendingBeats]
-
-  for (
-    let chapterNumber = act.startChapter;
-    chapterNumber <= Math.min(act.endChapter, currentChapterIndex + 1);
-    chapterNumber++
-  ) {
-    if (remaining.length === 0) break
-    const content = await readChapterContent(outputDir, chapterNumber)
-    if (!content || content.trim().length === 0) continue
-
-    const found = await judgeMandatoryBeatCoverage(provider, content, remaining)
-    if (found.length === 0) continue
-
-    const outlineIndex = chapterNumber - 1
-    const outlineItem = outline[outlineIndex]
-    if (outlineItem) {
-      const mergedVerified = Array.from(new Set([...(outlineItem.verifiedBeats ?? []), ...found]))
-      outline[outlineIndex] = { ...outlineItem, verifiedBeats: mergedVerified }
-    }
-
-    for (const beat of found) {
-      if (!newlyVerified.includes(beat)) {
-        newlyVerified.push(beat)
-      }
-      remaining = remaining.filter((b) => b !== beat)
-    }
-  }
-
-  return newlyVerified
 }

@@ -200,7 +200,7 @@ describe('chapter report generation', () => {
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
-  it('generates and saves a chapter report on finalize', async () => {
+  it('generates a chapter report on finalize', async () => {
     const state = buildState(tmpDir)
 
     const result = await finalize_chapter(createMockContext(), state)
@@ -212,18 +212,7 @@ describe('chapter report generation', () => {
     expect(result.chapterReport!.convergence).toBe('success')
     expect(result.chapterReport!.wordCount).toBeGreaterThan(0)
 
-    const reportPath = path.join(tmpDir, 'reports', 'chapter_1.report.json')
-    const exists = await fs
-      .access(reportPath)
-      .then(() => true)
-      .catch(() => false)
-    expect(exists).toBe(true)
-
-    const saved = JSON.parse(await fs.readFile(reportPath, 'utf-8'))
-    expect(saved.storyId).toBe('test-story')
-    expect(saved.chapterIndex).toBe(0)
-    expect(saved.chapterTitle).toBe('启程')
-    expect(saved.convergence).toBe('success')
+    expect(result.chapterReport!.storyId).toBe('test-story')
   })
 
   it('records pending issues in the report', async () => {

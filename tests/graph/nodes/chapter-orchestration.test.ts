@@ -8,7 +8,7 @@ import {
   route_after_validation,
   route_after_finalize,
 } from '../../../src/graph/nodes/chapter-orchestration.js'
-import { readChapterContent } from '../../../src/storage/filesystem/writer.js'
+import { readChapterContentForRun } from '../../../src/storage/filesystem/writer.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { Issue } from '../../../src/types/agent.js'
 import type { ChapterSession } from '../../../src/core/chapter-generation/routing/types.js'
@@ -23,6 +23,7 @@ vi.mock('../../../src/storage/filesystem/writer.js', async (importOriginal) => {
   return {
     ...actual,
     readChapterContent: vi.fn().mockResolvedValue('existing chapter content'),
+    readChapterContentForRun: vi.fn().mockResolvedValue('existing chapter content'),
     writeChapterContent: vi.fn().mockResolvedValue(undefined),
     deleteChapterContent: vi.fn().mockResolvedValue(undefined),
   }
@@ -145,7 +146,7 @@ function buildBaseState(
 describe('converge_and_decide', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
-    vi.mocked(readChapterContent).mockResolvedValue('existing chapter content')
+    vi.mocked(readChapterContentForRun).mockResolvedValue('existing chapter content')
     const {
       isStructuralIssue,
       isLocalIssue,
@@ -168,11 +169,11 @@ describe('converge_and_decide', () => {
     expect(result.session?.routingDecision).toBe('finalize_chapter')
     expect(result.session?.rewriteApproved).toBe(false)
     expect(result.session?.autoFixAttempts).toBe(0)
-    expect(readChapterContent).toHaveBeenCalledWith(testTempDir, 2)
+    expect(readChapterContentForRun).toHaveBeenCalledWith(testTempDir, 2)
   })
 
   it('drafts the chapter when there is no existing chapter file', async () => {
-    vi.mocked(readChapterContent).mockResolvedValue(null)
+    vi.mocked(readChapterContentForRun).mockResolvedValue(null)
 
     const state = buildBaseState({ session: { rewriteApproved: false }, pendingIssues: [] })
     const result = await converge_and_decide(createMockContext(), state)
@@ -411,7 +412,7 @@ describe('converge_and_decide', () => {
   })
 
   it('routes to draft_chapter on first iteration when rewrite is approved and chapter file is missing', async () => {
-    vi.mocked(readChapterContent).mockResolvedValue(null)
+    vi.mocked(readChapterContentForRun).mockResolvedValue(null)
 
     const state = buildBaseState({
       session: { rewriteApproved: true, rewriteAttempts: 0 },

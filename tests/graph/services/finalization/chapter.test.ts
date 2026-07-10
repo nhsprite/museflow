@@ -227,6 +227,12 @@ describe('finalizeChapter', () => {
 
     expect(result.storyMemory).not.toBeNull()
     expect(result.storyMemory?.events).toHaveLength(2)
+    expect(result.storyState?.pendingTasks[0]).toMatchObject({
+      id: 'task-1',
+      description: '主角需要找到失散的同伴。',
+      createdChapter: 1,
+      status: 'pending',
+    })
     expect(result.foreshadowStack).toEqual([])
     expect(result.verifiedConstraints?.some((c) => c.text.includes('未完成任务'))).toBe(true)
     expect(result.currentChapterIndex).toBe(1)
@@ -258,7 +264,7 @@ describe('finalizeChapter', () => {
     expect(provider.chat).not.toHaveBeenCalled()
   })
 
-  it('limits prose-based beat coverage to beats claimed by the current chapter', async () => {
+  it('does not consume claimed beats through prose-based coverage fallback', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue({
       run: vi.fn().mockResolvedValue({
         success: true,
@@ -343,9 +349,10 @@ describe('finalizeChapter', () => {
 
     const result = await finalizeChapter(state, provider)
 
-    expect(result.outline?.[2]?.verifiedBeats).toEqual(['beat-b', 'beat-d'])
-    expect(result.actProgress?.[1]?.consumed).toEqual(['beat-a', 'beat-b', 'beat-d'])
-    expect(result.actProgress?.[1]?.pending).toEqual(['beat-c', 'beat-e'])
+    expect(provider.chatStructured).not.toHaveBeenCalled()
+    expect(result.outline?.[2]?.verifiedBeats).toBeUndefined()
+    expect(result.actProgress?.[1]?.consumed).toEqual(['beat-a'])
+    expect(result.actProgress?.[1]?.pending).toEqual(['beat-b', 'beat-c', 'beat-d', 'beat-e'])
   })
 
   it('ignores plot-advance events with beat IDs outside the story arc', async () => {

@@ -92,6 +92,7 @@ vi.mock('../../src/agents/index.js', () => ({
 
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
   readChapterContent: readChapterContentMock,
+  readChapterContentForRun: readChapterContentMock,
   writeChapterContent: vi.fn().mockResolvedValue(undefined),
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),

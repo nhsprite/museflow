@@ -73,7 +73,10 @@ describe('draft_chapter output validation', () => {
 
     await expect(draft_chapter(createMockContext(), state)).resolves.toBeDefined()
 
-    const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_1.md'), 'utf8')
+    const written = await fs.readFile(
+      path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
+      'utf8'
+    )
     expect(written.startsWith('# 第1章 开篇')).toBe(true)
   })
 
@@ -107,7 +110,10 @@ describe('draft_chapter output validation', () => {
 
     await expect(draft_chapter(createMockContext(), state)).resolves.toBeDefined()
 
-    const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_1.md'), 'utf8')
+    const written = await fs.readFile(
+      path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
+      'utf8'
+    )
     expect(written).toContain('超长正文')
   })
 
@@ -161,7 +167,10 @@ describe('draft_chapter output validation', () => {
       })
 
       const result = await draft_chapter(createMockContext(), state)
-      const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_1.md'), 'utf8')
+      const written = await fs.readFile(
+        path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
+        'utf8'
+      )
 
       expect(written.startsWith('# 第1章 即时标题')).toBe(true)
       expect(result.chapters?.[0]?.outline).toBe('即时生成描述')
@@ -202,7 +211,10 @@ describe('draft_chapter output validation', () => {
     })
 
     await draft_chapter(createMockContext(), state)
-    const written = await fs.readFile(path.join(tmpDir, 'chapters', 'chapter_16.md'), 'utf8')
+    const written = await fs.readFile(
+      path.join(tmpDir, '.staging', 'chapters', 'chapter_16.md'),
+      'utf8'
+    )
 
     expect(written.startsWith('# 第16章 第十七页的空白')).toBe(true)
   })

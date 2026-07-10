@@ -153,7 +153,15 @@ describe('runLegacyFix validation', () => {
       chapters: expect.arrayContaining([{}]),
     })
 
-    const fileContent = await fs.readFile(path.join(outputDir, 'chapters', 'chapter_4.md'), 'utf-8')
-    expect(fileContent).toBe(fixedContent)
+    const committedContent = await fs.readFile(
+      path.join(outputDir, 'chapters', 'chapter_4.md'),
+      'utf-8'
+    )
+    const stagedContent = await fs.readFile(
+      path.join(outputDir, '.staging', 'chapters', 'chapter_4.md'),
+      'utf-8'
+    )
+    expect(committedContent).toBe(existingContent)
+    expect(stagedContent).toBe(fixedContent)
   })
 })

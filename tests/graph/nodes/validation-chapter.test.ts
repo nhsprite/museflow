@@ -6,10 +6,11 @@ import type { RuntimeContext } from '../../../src/core/context.js'
 
 vi.mock('../../../src/storage/filesystem/writer.js', () => ({
   readChapterContent: vi.fn(),
+  readChapterContentForRun: vi.fn(),
   writeChapterContent: vi.fn(),
 }))
 
-import { readChapterContent } from '../../../src/storage/filesystem/writer.js'
+import { readChapterContentForRun } from '../../../src/storage/filesystem/writer.js'
 
 function makeState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
   return {
@@ -39,7 +40,7 @@ describe('validate_chapter', () => {
       severity: 'error',
       description: '已有问题',
     }
-    vi.mocked(readChapterContent).mockResolvedValueOnce(
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce(
       '这是足够长的正文内容，字数应该超过最低要求。'.repeat(100)
     )
 
@@ -56,7 +57,7 @@ describe('validate_chapter', () => {
       severity: 'error',
       description: '已有问题',
     }
-    vi.mocked(readChapterContent).mockResolvedValueOnce('太短')
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('太短')
 
     const state = makeState({ pendingIssues: [oldIssue] })
     const result = await validate_chapter(context, state)
@@ -67,7 +68,7 @@ describe('validate_chapter', () => {
   })
 
   it('treats chapters above the word count max as fix-retry errors', async () => {
-    vi.mocked(readChapterContent).mockResolvedValueOnce('超'.repeat(8001))
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('超'.repeat(8001))
 
     const state = makeState()
     const result = await validate_chapter(context, state)

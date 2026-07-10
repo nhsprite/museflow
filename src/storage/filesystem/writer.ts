@@ -17,6 +17,19 @@ async function ensureStoryDir(outputDir: string): Promise<void> {
   }
 }
 
+async function ensureStagingDir(outputDir: string): Promise<void> {
+  await ensureStoryDir(outputDir)
+  const stagingDir = join(outputDir, '.staging', 'chapters')
+  if (!existsSync(stagingDir)) {
+    await mkdir(stagingDir, { recursive: true })
+    logger.debug(`Created staged chapters directory: ${stagingDir}`)
+  }
+}
+
+function getStagedChapterFilePath(outputDir: string, chapterNumber: number): string {
+  return join(outputDir, '.staging', 'chapters', `chapter_${chapterNumber}.md`)
+}
+
 export async function writeChapterContent(
   outputDir: string,
   chapterNumber: number,
@@ -30,11 +43,52 @@ export async function writeChapterContent(
   logger.debug(`Chapter ${chapterNumber} written to: ${filePath}`)
 }
 
+export async function writeStagedChapterContent(
+  outputDir: string,
+  chapterNumber: number,
+  content: string
+): Promise<void> {
+  await ensureStagingDir(outputDir)
+  const filePath = getStagedChapterFilePath(outputDir, chapterNumber)
+  const tmpPath = `${filePath}.tmp`
+  await writeFile(tmpPath, content, 'utf-8')
+  await rename(tmpPath, filePath)
+  logger.debug(`Chapter ${chapterNumber} staged to: ${filePath}`)
+}
+
+export async function promoteStagedChapterContent(
+  outputDir: string,
+  chapterNumber: number
+): Promise<boolean> {
+  const stagedPath = getStagedChapterFilePath(outputDir, chapterNumber)
+  if (!existsSync(stagedPath)) return false
+
+  await ensureStoryDir(outputDir)
+  const filePath = getChapterFilePath(outputDir, chapterNumber)
+  await rename(stagedPath, filePath)
+  logger.debug(`Staged chapter ${chapterNumber} promoted to: ${filePath}`)
+  return true
+}
+
 export async function deleteChapterContent(
   outputDir: string,
   chapterNumber: number
 ): Promise<void> {
   const filePath = getChapterFilePath(outputDir, chapterNumber)
+  try {
+    await unlink(filePath)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err
+    }
+  }
+}
+
+export async function deleteStagedChapterContent(
+  outputDir: string,
+  chapterNumber: number
+): Promise<void> {
+  const filePath = getStagedChapterFilePath(outputDir, chapterNumber)
   try {
     await unlink(filePath)
   } catch (err) {
@@ -112,6 +166,17 @@ export async function readChapterContent(
   const filePath = getChapterFilePath(outputDir, chapterNumber)
   if (!existsSync(filePath)) return null
   return readFile(filePath, 'utf-8')
+}
+
+export async function readChapterContentForRun(
+  outputDir: string,
+  chapterNumber: number
+): Promise<string | null> {
+  const stagedPath = getStagedChapterFilePath(outputDir, chapterNumber)
+  if (existsSync(stagedPath)) {
+    return readFile(stagedPath, 'utf-8')
+  }
+  return readChapterContent(outputDir, chapterNumber)
 }
 
 export async function listChapterFiles(outputDir: string): Promise<number[]> {

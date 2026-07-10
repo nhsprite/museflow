@@ -5,6 +5,7 @@ import {
   createEmptyStoryMemory,
   projectEntities,
   projectMemory,
+  projectStoryStateFromMemory,
   applyEvents,
   computeLastChapterIndex,
   ensureBeatsHaveActIndex,
@@ -243,6 +244,99 @@ describe('projectMemory', () => {
     }
     const projected = projectMemory(memory)
     expect(projected.entities.characters['c-1']?.locationId).toBe('l-1')
+  })
+})
+
+describe('projectStoryStateFromMemory', () => {
+  it('projects structured memory fields while preserving legacy-only storyState fields', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'character-location',
+        characterId: 'char-1',
+        locationId: 'room-2',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e2',
+        type: 'character-status',
+        characterId: 'char-1',
+        attribute: 'status',
+        value: 'injured',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e3',
+        type: 'item-location',
+        itemId: 'item-1',
+        holderId: 'char-1',
+        locationId: null,
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e4',
+        type: 'item-state',
+        itemId: 'item-1',
+        attribute: 'state',
+        value: 'sealed',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e5',
+        type: 'task-create',
+        taskId: 'task-1',
+        description: 'Find the key',
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+      {
+        id: 'e6',
+        type: 'task-resolve',
+        taskId: 'task-1',
+        chapterIndex: 2,
+        source: 'chapter',
+      },
+    ])
+
+    const state = projectStoryStateFromMemory(memory, {
+      characterLocations: { 'char-1': 'room-1', legacy: 'old-room' },
+      characterStatus: {},
+      keyItemsLocation: {},
+      keyItemsState: {},
+      activePlots: ['legacy plot'],
+      revealedSecrets: [],
+      pendingTasks: [],
+      currentScene: 'legacy scene',
+      storyTime: 'legacy time',
+      canonicalFacts: [
+        {
+          id: 'fact-1',
+          subject: 'legacy',
+          attribute: 'status',
+          value: 'kept',
+          establishedIn: 0,
+          confidence: 'high',
+          source: 'chapter_text',
+        },
+      ],
+    })
+
+    expect(state.characterLocations).toEqual({ 'char-1': 'room-2', legacy: 'old-room' })
+    expect(state.characterStatus['char-1']).toBe('injured')
+    expect(state.keyItemsLocation['item-1']).toBe('char-1')
+    expect(state.keyItemsState['item-1']).toBe('sealed')
+    expect(state.pendingTasks[0]).toMatchObject({
+      id: 'task-1',
+      description: 'Find the key',
+      createdChapter: 2,
+      status: 'done',
+    })
+    expect(state.activePlots).toEqual(['legacy plot'])
+    expect(state.canonicalFacts?.[0]?.id).toBe('fact-1')
   })
 })
 

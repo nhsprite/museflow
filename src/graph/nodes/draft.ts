@@ -2,7 +2,7 @@ import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { ChapterAgentInput } from '../../agents/types.js'
 import { getChapterAgent } from '../agent-factory.js'
-import { writeChapterContent, readChapterContent } from '../../storage/filesystem/writer.js'
+import { writeStagedChapterContent, readChapterContent } from '../../storage/filesystem/writer.js'
 import { createChapterMeta } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { formatChapterOutlineForAgent } from './planning.js'
@@ -105,7 +105,7 @@ export async function draft_chapter(
     throw new Error(`第 ${chapterIndex + 1} 章起草后校验失败：${validation.error}`)
   }
 
-  await writeChapterContent(state.story.outputDir, chapterIndex + 1, content)
+  await writeStagedChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const newChapter = createChapterMeta(state.story.id, chapterIndex + 1, {
     outline: outlineItem?.description || null,

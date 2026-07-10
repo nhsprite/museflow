@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 const runOneChapterMock = vi.fn()
+const updateStoryRuntimeStatusMock = vi.fn().mockResolvedValue(undefined)
 const resolveBlockingConflictsMock = vi.fn()
 const isBlockingConflictErrorMock = vi.fn()
 const testTempDir = join(tmpdir(), `museflow-rewrite-feedback-${randomUUID().slice(0, 8)}`)
@@ -58,6 +59,7 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
 vi.mock('../../src/core/runner.js', () => ({
   getState: vi.fn().mockResolvedValue(initialState),
   runOneChapter: runOneChapterMock,
+  updateStoryRuntimeStatus: updateStoryRuntimeStatusMock,
 }))
 
 vi.mock('../../src/cli/utils/conflict-resolver.js', () => ({

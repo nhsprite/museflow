@@ -1,5 +1,4 @@
-import { updateStoryStatus } from '../../storage/meta/stores/story.js'
-import { runOneChapter } from '../../core/runner.js'
+import { runOneChapter, updateStoryRuntimeStatus } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { withSpinner } from '../utils/spinner.js'
 import { requireStoryState } from '../utils/story-loader.js'
@@ -21,7 +20,7 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
 
   if (shouldFreezeLockStory(story, state)) {
     if (state.currentChapterIndex >= state.totalChapters && story.status !== 'freeze') {
-      updateStoryStatus(storyId, 'freeze')
+      await updateStoryRuntimeStatus(storyId, 'freeze')
     }
     printFrozenStoryMessage(story, state, storyId)
     return
@@ -67,7 +66,7 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
 
 async function handleContinue(storyId: string, userResponse?: boolean): Promise<void> {
   const updateStatus = (status: StoryStatus) => {
-    updateStoryStatus(storyId, status)
+    return updateStoryRuntimeStatus(storyId, status)
   }
 
   try {
@@ -118,16 +117,16 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
     }
 
     if (currentChapter >= totalChapters) {
-      updateStatus('freeze')
+      await updateStatus('freeze')
       console.log('\n[MuseFlow] 全部章节撰写完成！')
     } else if (!result.rewriteRequested) {
-      updateStatus('writing')
+      await updateStatus('writing')
     }
 
     console.log('\n[MuseFlow] 使用 "museflow status" 查看进度')
   } catch (err) {
     console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
-    updateStatus('error')
+    await updateStatus('error')
     process.exit(1)
   }
 }

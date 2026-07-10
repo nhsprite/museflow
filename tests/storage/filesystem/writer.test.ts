@@ -6,9 +6,12 @@ import { join } from 'node:path'
 
 import {
   listChapterFiles,
+  promoteStagedChapterContent,
   readChapterContent,
+  readChapterContentForRun,
   writeChapterContent,
   writeOutlineContent,
+  writeStagedChapterContent,
 } from '../../../src/storage/filesystem/writer.ts'
 
 describe('filesystem writer', () => {
@@ -28,6 +31,37 @@ describe('filesystem writer', () => {
     expect(existsSync(join(outputDir, 'chapters', 'chapter_2.md'))).toBe(true)
     expect(await readChapterContent(outputDir, 2)).toBe('# Chapter 2')
     expect(await listChapterFiles(outputDir)).toEqual([2])
+  })
+
+  it('keeps staged chapter content out of committed chapter reads and listings until promoted', async () => {
+    const baseDir = await mkdtemp(join(tmpdir(), 'museflow-writer-staged-'))
+    const outputDir = join(baseDir, 'staged-story')
+    createdDirs.push(baseDir)
+
+    await writeChapterContent(outputDir, 2, '# Old Chapter 2')
+    await writeStagedChapterContent(outputDir, 2, '# Draft Chapter 2')
+
+    expect(await readChapterContent(outputDir, 2)).toBe('# Old Chapter 2')
+    expect(await readChapterContentForRun(outputDir, 2)).toBe('# Draft Chapter 2')
+    expect(await listChapterFiles(outputDir)).toEqual([2])
+
+    await expect(promoteStagedChapterContent(outputDir, 2)).resolves.toBe(true)
+
+    expect(await readChapterContent(outputDir, 2)).toBe('# Draft Chapter 2')
+    expect(await readChapterContentForRun(outputDir, 2)).toBe('# Draft Chapter 2')
+    expect(await listChapterFiles(outputDir)).toEqual([2])
+  })
+
+  it('does not count staged-only chapter content as a committed chapter file', async () => {
+    const baseDir = await mkdtemp(join(tmpdir(), 'museflow-writer-staged-only-'))
+    const outputDir = join(baseDir, 'staged-only-story')
+    createdDirs.push(baseDir)
+
+    await writeStagedChapterContent(outputDir, 3, '# Draft Chapter 3')
+
+    expect(await readChapterContent(outputDir, 3)).toBeNull()
+    expect(await readChapterContentForRun(outputDir, 3)).toBe('# Draft Chapter 3')
+    expect(await listChapterFiles(outputDir)).toEqual([])
   })
 
   it('writes outline as markdown to outline.md', async () => {

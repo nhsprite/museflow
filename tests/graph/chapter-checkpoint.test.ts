@@ -136,11 +136,17 @@ describe('chapter-level checkpoints', () => {
 
       await writeFile(join(checkpointDir, 'checkpoint_1.json'), JSON.stringify({}), 'utf-8')
       await writeFile(join(checkpointDir, 'pending_writes.json'), JSON.stringify([]), 'utf-8')
+      await writeFile(
+        join(checkpointDir, 'latest.json'),
+        JSON.stringify({ checkpointId: 'checkpoint_1' }),
+        'utf-8'
+      )
 
       await service.pruneIntermediateCheckpoints()
 
       const remaining = await readdir(checkpointDir)
       expect(remaining).toContain('pending_writes.json')
+      expect(remaining).toContain('latest.json')
       expect(remaining).not.toContain('checkpoint_1.json')
     })
   })

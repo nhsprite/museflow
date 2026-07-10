@@ -9,7 +9,9 @@ import type { RuntimeContext } from '../../src/core/context.js'
 const saveChapterCheckpoint = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const writeChapterContent = vi.fn().mockResolvedValue(undefined)
+const writeStagedChapterContent = vi.fn().mockResolvedValue(undefined)
 const readChapterContent = vi.fn().mockResolvedValue('old chapter content')
+const readChapterContentForRun = vi.fn().mockResolvedValue('old chapter content')
 let mockChapterContentValue =
   'rewritten chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600)
 
@@ -93,7 +95,9 @@ vi.mock('../../src/agents/index.js', () => ({
 
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeChapterContent,
+  writeStagedChapterContent,
   readChapterContent,
+  readChapterContentForRun,
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),
 }))
@@ -179,6 +183,7 @@ describe('rewrite flow regression', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     readChapterContent.mockResolvedValue('old chapter content')
+    readChapterContentForRun.mockResolvedValue('old chapter content')
   })
 
   it('rewrites the current chapter using existing chapter content', async () => {
@@ -193,7 +198,7 @@ describe('rewrite flow regression', () => {
     expect(draftResult.rewriteApproved).toBeUndefined()
     expect(draftResult.pendingIssues).toBeUndefined()
     expect(readChapterContent).toHaveBeenCalledWith(tempDir, 1)
-    expect(writeChapterContent).toHaveBeenCalledWith(
+    expect(writeStagedChapterContent).toHaveBeenCalledWith(
       tempDir,
       1,
       `# 第1章 Chapter 1\n\n${mockChapterContentValue}`
@@ -283,7 +288,7 @@ describe('finalize_chapter guard against empty file', () => {
   })
 
   it('throws error when chapter file does not exist (returns null)', async () => {
-    readChapterContent.mockResolvedValue(null)
+    readChapterContentForRun.mockResolvedValue(null)
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
@@ -296,7 +301,7 @@ describe('finalize_chapter guard against empty file', () => {
   })
 
   it('throws error when chapter file is empty string', async () => {
-    readChapterContent.mockResolvedValue('')
+    readChapterContentForRun.mockResolvedValue('')
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
@@ -309,7 +314,7 @@ describe('finalize_chapter guard against empty file', () => {
   })
 
   it('throws error when chapter file is only whitespace', async () => {
-    readChapterContent.mockResolvedValue('   \n\t  ')
+    readChapterContentForRun.mockResolvedValue('   \n\t  ')
 
     const { finalize_chapter } = await import('../../src/graph/nodes/finalization.js')
 
@@ -325,7 +330,7 @@ describe('finalize_chapter guard against empty file', () => {
 describe('finalize_chapter summary failure guard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    readChapterContent.mockResolvedValue('chapter content')
+    readChapterContentForRun.mockResolvedValue('chapter content')
   })
 
   it('does not advance the chapter when summary extraction fails', async () => {
@@ -362,7 +367,7 @@ describe('finalize_chapter summary failure guard', () => {
 describe('finalize_chapter ages pending tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    readChapterContent.mockResolvedValue('chapter content')
+    readChapterContentForRun.mockResolvedValue('chapter content')
     getStoryState.mockReturnValue(null)
   })
 
@@ -434,7 +439,7 @@ describe('finalize_chapter ages pending tasks', () => {
 describe('detect_foreshadowing preserves current-chapter foreshadows', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    readChapterContent.mockResolvedValue('old chapter content')
+    readChapterContentForRun.mockResolvedValue('old chapter content')
   })
 
   it('keeps a foreshadow created in the current chapter for future fulfillment', async () => {

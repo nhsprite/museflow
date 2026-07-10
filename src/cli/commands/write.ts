@@ -1,5 +1,9 @@
-import { updateStoryStatus } from '../../storage/meta/stores/story.js'
-import { runOneChapter, getState, type RunOneChapterOptions } from '../../core/runner.js'
+import {
+  runOneChapter,
+  getState,
+  updateStoryRuntimeStatus,
+  type RunOneChapterOptions,
+} from '../../core/runner.js'
 import type { StoryStatus, Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -42,7 +46,7 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
 
   if (shouldFreezeLockStory(story, state) || startChapterIndex >= state.totalChapters) {
     if (startChapterIndex >= state.totalChapters && story.status !== 'freeze') {
-      updateStoryStatus(storyId, 'freeze')
+      await updateStoryRuntimeStatus(storyId, 'freeze')
     }
     printFrozenStoryMessage(story, state, storyId, startChapterIndex)
     return
@@ -117,7 +121,7 @@ async function executeWrite(
   if (!state) return
 
   const updateStatus = (status: StoryStatus) => {
-    updateStoryStatus(storyId, status)
+    return updateStoryRuntimeStatus(storyId, status)
   }
 
   const chapterIndex = startChapterIndex
@@ -165,11 +169,11 @@ async function executeWrite(
     }
 
     if (result.currentChapterIndex >= result.totalChapters) {
-      updateStatus('freeze')
+      await updateStatus('freeze')
       return
     }
 
-    updateStatus('writing')
+    await updateStatus('writing')
 
     const writtenIndex = result.currentChapterIndex - 1
     const errors = result.pendingIssues.filter((i) => i.severity === 'error')
@@ -207,7 +211,7 @@ async function executeWrite(
     console.error('可以运行以下命令重试：')
     console.error(`   museflow rewrite ${storyId}`)
     console.error('')
-    updateStatus('error')
+    await updateStatus('error')
     process.exit(1)
   }
 }

@@ -3,7 +3,7 @@ import type { ReducedGraphState } from '../state.js'
 import type { ForeshadowingAgentInput, ConsistencyAgentInput } from '../../agents/types.js'
 import { getForeshadowingAgent, getConsistencyAgent } from '../agent-factory.js'
 import { generateId } from '../../utils/id.js'
-import { readChapterContent } from '../../storage/filesystem/writer.js'
+import { readChapterContent, readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { buildConsistencyOutlineContext } from './planning.js'
 import { countChineseWords } from '../../utils/text.js'
@@ -207,7 +207,7 @@ export async function validate_chapter(
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
   const chapterIndex = state.currentChapterIndex
-  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const content = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
 
   if (content === null) {
     return {
@@ -299,7 +299,7 @@ export async function detect_foreshadowing(
 
   if (!chapter) return {}
 
-  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const content = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
   const worldContent = state.world?.content
 
   const currentChapter = chapterIndex + 1
@@ -342,7 +342,7 @@ export async function detect_continuity(
 
   const [previousContent, currentContent] = await Promise.all([
     readChapterContent(state.story.outputDir, chapterIndex),
-    readChapterContent(state.story.outputDir, chapterIndex + 1),
+    readChapterContentForRun(state.story.outputDir, chapterIndex + 1),
   ])
   if (!previousContent || !currentContent) return {}
 
@@ -372,7 +372,7 @@ export async function detect_consistency(
 
   if (!chapter) return {}
 
-  const content = await readChapterContent(state.story.outputDir, chapterIndex + 1)
+  const content = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
   const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
   const supersededFacts = state.storyState?.supersededFacts ?? []
