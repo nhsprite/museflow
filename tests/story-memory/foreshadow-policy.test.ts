@@ -9,6 +9,7 @@ import {
 import type { ForeshadowItem } from '../../src/types/foreshadow.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 import type { StoryMemory } from '../../src/types/story-memory.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../src/utils/chapter-planning.js'
 
 function item(overrides: Partial<ForeshadowItem> = {}): ForeshadowItem {
   return {
@@ -94,6 +95,25 @@ describe('foreshadow deadline policy', () => {
     ])
   })
 
+  it('keeps ordinary boundary blocking uncapped', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'due-a': memoryForeshadow('due-a', null, true, 2),
+        'due-b': memoryForeshadow('due-b', null, true, 2),
+        'due-c': memoryForeshadow('due-c', null, true, 2),
+        'due-d': memoryForeshadow('due-d', null, true, 2),
+      },
+    }
+
+    expect(getBoundaryBlockingForeshadows(memory, 2, false)).toEqual([
+      'due-a',
+      'due-b',
+      'due-c',
+      'due-d',
+    ])
+  })
+
   it('orders and caps due required foreshadows using structured fields', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
@@ -137,6 +157,21 @@ describe('foreshadow deadline policy', () => {
     expect(selectForeshadowsForChapter(memory, 5, 2.9, false)).toEqual(['first', 'second'])
   })
 
+  it('normalizes non-finite scheduling capacities to one', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        first: memoryForeshadow('first', null, true, 3),
+        second: memoryForeshadow('second', null, true, 4),
+        third: memoryForeshadow('third', null, true, 5),
+      },
+    }
+
+    for (const capacity of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(selectForeshadowsForChapter(memory, 5, capacity, false)).toEqual(['first'])
+    }
+  })
+
   it('includes every valid required unresolved foreshadow in final-act scheduling', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
@@ -173,6 +208,29 @@ describe('foreshadow deadline policy', () => {
       'z-finite',
       'a-unscheduled',
     ])
+  })
+
+  it('orders equal-priority IDs by locale-independent code units', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        accentedLower: memoryForeshadow('éclair', null, true, 5),
+        asciiLower: memoryForeshadow('apple', null, true, 5),
+        asciiUpper: memoryForeshadow('Zoo', null, true, 5),
+        accentedUpper: memoryForeshadow('Äther', null, true, 5),
+      },
+    }
+
+    expect(getRequiredForeshadowsForScheduling(memory, 5, false).map((entry) => entry.id)).toEqual([
+      'Zoo',
+      'apple',
+      'Äther',
+      'éclair',
+    ])
+  })
+
+  it('defaults per-chapter foreshadow scheduling capacity to three', () => {
+    expect(DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowMaxFulfillmentsPerChapter).toBe(3)
   })
 })
 

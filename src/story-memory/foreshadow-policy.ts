@@ -123,7 +123,7 @@ export function getRequiredForeshadowsForScheduling(
       return (
         (leftDeadline ?? 0) - (rightDeadline ?? 0) ||
         left.introducedIn - right.introducedIn ||
-        left.id.localeCompare(right.id)
+        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
       )
     })
 }
@@ -134,7 +134,7 @@ export function selectForeshadowsForChapter(
   capacity: number,
   includeAllRequired: boolean
 ): ForeshadowId[] {
-  const normalizedCapacity = Math.max(1, Math.floor(capacity))
+  const normalizedCapacity = Number.isFinite(capacity) ? Math.max(1, Math.floor(capacity)) : 1
   return getRequiredForeshadowsForScheduling(memory, chapterNumber, includeAllRequired)
     .slice(0, normalizedCapacity)
     .map((foreshadow) => foreshadow.id)
