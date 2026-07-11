@@ -1,7 +1,11 @@
 import type { ActArc, KeyBeat, StoryArc } from '../types/outline.js'
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import type { StoryMemory } from '../types/story-memory.js'
-import { getBoundaryBlockingForeshadows } from '../story-memory/foreshadow-policy.js'
+import {
+  getBoundaryBlockingForeshadows,
+  getRequiredForeshadowsForScheduling,
+  normalizeForeshadowCapacity,
+} from '../story-memory/foreshadow-policy.js'
 import { logger } from './logger.js'
 
 export function getActForChapter(
@@ -203,11 +207,37 @@ function estimateBeatCapacityThroughActEnd(
   return capacity
 }
 
+function calculateForeshadowCapacityEndChapter(
+  storyArc: StoryArc,
+  act: ActArc,
+  currentChapterNumber: number,
+  memory: StoryMemory,
+  capacity: number
+): number {
+  const normalizedCapacity = normalizeForeshadowCapacity(capacity)
+  const finalActIndex = storyArc.acts.at(-1)?.index
+  const includeAllRequired = act.index === finalActIndex
+  let candidateEnd = act.endChapter
+
+  while (true) {
+    const blockingCount = getRequiredForeshadowsForScheduling(
+      memory,
+      candidateEnd,
+      includeAllRequired
+    ).length
+    const availableCapacity = (candidateEnd - currentChapterNumber + 1) * normalizedCapacity
+    const missingCapacity = blockingCount - availableCapacity
+    if (missingCapacity <= 0) return candidateEnd
+    candidateEnd += Math.ceil(missingCapacity / normalizedCapacity)
+  }
+}
+
 export function proposeActBoundaryAdjustments(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
   currentChapterIndex: number,
-  storyMemory?: StoryMemory | null
+  storyMemory?: StoryMemory | null,
+  foreshadowCapacity = Number.MAX_SAFE_INTEGER
 ): ActBoundaryProposal[] {
   const proposals: ActBoundaryProposal[] = []
   const currentAct = getActForChapter(storyArc, currentChapterIndex)
@@ -228,13 +258,27 @@ export function proposeActBoundaryAdjustments(
     progress.pending
   )
 
-  if (progress.pending.length > beatCapacity) {
-    const extension = Math.min(2, progress.pending.length)
-    const proposedEnd = currentAct.endChapter + extension
+  const beatExtensionEnd =
+    progress.pending.length > beatCapacity
+      ? currentAct.endChapter + Math.min(2, progress.pending.length)
+      : currentAct.endChapter
+  const foreshadowExtensionEnd = storyMemory
+    ? calculateForeshadowCapacityEndChapter(
+        storyArc,
+        currentAct,
+        currentChapterIndex + 1,
+        storyMemory,
+        foreshadowCapacity
+      )
+    : currentAct.endChapter
+  const proposedExtensionEnd = Math.max(beatExtensionEnd, foreshadowExtensionEnd)
+
+  if (proposedExtensionEnd > currentAct.endChapter) {
+    const extension = proposedExtensionEnd - currentAct.endChapter
     proposals.push({
       actIndex: currentAct.index,
-      proposedEndChapter: proposedEnd,
-      reason: `第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${progress.pending.length} 个 mandatory beats 未消费，建议延长 ${extension} 章。`,
+      proposedEndChapter: proposedExtensionEnd,
+      reason: `第 ${currentAct.index} 幕的剩余容量不足以处理全部结构化义务，建议延长 ${extension} 章。`,
     })
   } else if (progress.pending.length === 0 && chaptersRemaining > 0) {
     const reduction = Math.min(chaptersRemaining, 2)

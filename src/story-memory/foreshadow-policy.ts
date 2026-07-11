@@ -128,13 +128,17 @@ export function getRequiredForeshadowsForScheduling(
     })
 }
 
+export function normalizeForeshadowCapacity(capacity: number): number {
+  return Number.isFinite(capacity) ? Math.max(1, Math.floor(capacity)) : 1
+}
+
 export function selectForeshadowsForChapter(
   memory: StoryMemory,
   chapterNumber: number,
   capacity: number,
   includeAllRequired: boolean
 ): ForeshadowId[] {
-  const normalizedCapacity = Number.isFinite(capacity) ? Math.max(1, Math.floor(capacity)) : 1
+  const normalizedCapacity = normalizeForeshadowCapacity(capacity)
   return getRequiredForeshadowsForScheduling(memory, chapterNumber, includeAllRequired)
     .slice(0, normalizedCapacity)
     .map((foreshadow) => foreshadow.id)

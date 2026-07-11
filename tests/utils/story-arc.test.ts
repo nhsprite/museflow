@@ -47,6 +47,24 @@ function memoryWithForeshadow(overrides: Partial<StoryMemory['foreshadows'][stri
   }
 }
 
+function memoryWithDueForeshadows(count: number): StoryMemory {
+  const memory = createEmptyStoryMemory()
+  for (let index = 0; index < count; index++) {
+    const id = `fs-${String(index).padStart(2, '0')}`
+    memory.foreshadows[id] = {
+      id,
+      text: id,
+      kind: 'plot',
+      introducedIn: 0,
+      expectedFulfillChapter: 5,
+      fulfilledIn: null,
+      required: true,
+      beatId: null,
+    }
+  }
+  return memory
+}
+
 function makeStoryArc(): StoryArc {
   return {
     totalChapters: 20,
@@ -177,6 +195,88 @@ describe('story-arc utilities', () => {
     expect(proposals).toHaveLength(1)
     expect(proposals[0]?.actIndex).toBe(1)
     expect(proposals[0]?.proposedEndChapter).toBeGreaterThan(5)
+  })
+
+  it('extends a one-chapter boundary by three chapters for eleven due clues at capacity three', () => {
+    const proposals = proposeActBoundaryAdjustments(
+      makeStoryArc(),
+      completedActProgress,
+      4,
+      memoryWithDueForeshadows(11),
+      3
+    )
+
+    expect(proposals).toEqual([expect.objectContaining({ actIndex: 1, proposedEndChapter: 8 })])
+  })
+
+  it('uses the greater of beat and foreshadow extension instead of adding them', () => {
+    const arc: StoryArc = {
+      totalChapters: 5,
+      acts: [{ ...makeStoryArc().acts[0]!, endChapter: 5, mandatoryBeats: ['a', 'b', 'c'] }],
+      keyBeats: [],
+    }
+    const proposals = proposeActBoundaryAdjustments(
+      arc,
+      { 1: { consumed: [], pending: ['a', 'b', 'c'] } },
+      4,
+      memoryWithDueForeshadows(7),
+      3
+    )
+
+    expect(proposals).toEqual([expect.objectContaining({ proposedEndChapter: 7 })])
+  })
+
+  it('recalculates capacity when an extension crosses another explicit deadline', () => {
+    const memory = memoryWithDueForeshadows(4)
+    for (let index = 0; index < 4; index++) {
+      const id = `future-${index}`
+      memory.foreshadows[id] = {
+        id,
+        text: id,
+        kind: 'plot',
+        introducedIn: 0,
+        expectedFulfillChapter: 6,
+        fulfilledIn: null,
+        required: true,
+        beatId: null,
+      }
+    }
+
+    const proposals = proposeActBoundaryAdjustments(
+      makeStoryArc(),
+      completedActProgress,
+      4,
+      memory,
+      3
+    )
+
+    expect(proposals[0]?.proposedEndChapter).toBe(7)
+  })
+
+  it('includes unscheduled and future finite obligations in final-act capacity', () => {
+    const memory = memoryWithDueForeshadows(1)
+    memory.foreshadows.future = {
+      ...memory.foreshadows['fs-00']!,
+      id: 'future',
+      text: 'future',
+      expectedFulfillChapter: 30,
+    }
+    memory.foreshadows.unscheduled = {
+      ...memory.foreshadows['fs-00']!,
+      id: 'unscheduled',
+      text: 'unscheduled',
+      expectedFulfillChapter: null,
+    }
+
+    const proposals = proposeActBoundaryAdjustments(
+      makeStoryArc(),
+      { 4: { consumed: ['最终对决'], pending: [] } },
+      19,
+      memory,
+      1
+    )
+
+    expect(proposals).toEqual([expect.objectContaining({ actIndex: 4, proposedEndChapter: 22 })])
   })
 
   it('proposes reduction when all beats consumed before boundary', () => {
