@@ -10,6 +10,7 @@ import {
 } from './prompts/consistency-prompt.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { normalizeIssues } from '../utils/agent-output.js'
+import { classifyForeshadows } from '../story-memory/foreshadow-policy.js'
 
 export class ConsistencyAgent extends BaseAgent<ConsistencyAgentInput> {
   constructor(provider: ModelProvider) {
@@ -20,15 +21,8 @@ export class ConsistencyAgent extends BaseAgent<ConsistencyAgentInput> {
     const chapterIndex = zeroBasedChapterIndex + 1
     const existingForeshadows = state.foreshadowStack || []
     const activeForeshadows = existingForeshadows.filter((f) => !f.fulfilledChapter)
-    const overdueForeshadows = activeForeshadows.filter(
-      (f) => chapterIndex > f.expectedFulfillChapter + 1
-    )
-    const mustFulfillForeshadows = activeForeshadows.filter(
-      (f) =>
-        !f.fulfilledChapter &&
-        chapterIndex >= f.expectedFulfillChapter &&
-        chapterIndex <= f.expectedFulfillChapter + 1
-    )
+    const { overdueRequired: overdueForeshadows, dueRequired: mustFulfillForeshadows } =
+      classifyForeshadows(activeForeshadows, chapterIndex)
 
     const characterWhitelistSection = buildCharacterWhitelistSection({
       charactersList: state.charactersList,

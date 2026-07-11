@@ -108,6 +108,9 @@ describe('SummaryAgent prompt', () => {
       chapterSummaries: [],
     })
     const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
+    expect(userMessage).toContain(
+      'expectedFulfillChapter 必须是严格晚于本章的 1-based 整数章节号'
+    )
     expect(userMessage).toContain('<chapter_summary>')
     expect(userMessage).toContain('<chapter_handoff>')
     expect(userMessage).toContain('<story_events>')

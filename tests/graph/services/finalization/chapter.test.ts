@@ -340,6 +340,42 @@ describe('finalizeChapter', () => {
     expect(result.foreshadowStack).toEqual([])
   })
 
+  it('projects StoryMemory chapter indexes to one-based foreshadow item chapters', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: { chapterSummary: '摘要', storyEvents: [] },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+    const state = buildState(tmpDir, {
+      storyMemory: {
+        version: '1',
+        lastChapterIndex: 0,
+        entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+        events: [],
+        foreshadows: {
+          'fs-1': {
+            id: 'fs-1',
+            text: '已回收伏笔',
+            kind: null,
+            introducedIn: 0,
+            expectedFulfillChapter: 3,
+            fulfilledIn: 0,
+            required: true,
+            beatId: null,
+          },
+        },
+        beats: {},
+        tasks: {},
+      },
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.foreshadowStack?.[0]?.createdAtChapter).toBe(1)
+    expect(result.foreshadowStack?.[0]?.fulfilledChapter).toBe(1)
+  })
+
   it('consumes mandatory beats from draftChapterEvents without prose-based judgment', async () => {
     const state = buildState(tmpDir, {
       draftChapterEvents: [

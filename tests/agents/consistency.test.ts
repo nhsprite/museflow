@@ -51,6 +51,51 @@ describe('ConsistencyAgent time anchor', () => {
   })
 })
 
+describe('ConsistencyAgent foreshadow deadlines', () => {
+  it('keeps optional overdue foreshadows out of mandatory deadline sections', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 20,
+      world: '',
+      characters: '【主角】',
+      outline: '第10章：推进',
+      chapterContent: '正文。',
+      chapterIndex: 9,
+      chapterSummaries: [],
+      storyState: '',
+      foreshadowStack: [
+        {
+          id: 'fs-required',
+          text: '必需旧伏笔',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+        {
+          id: 'fs-optional',
+          text: '可选环境细节',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: false,
+          required: false,
+        },
+      ],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    const overdueSection = userMessage.match(/<overdue>([\s\S]*?)<\/overdue>/)?.[1] ?? ''
+    expect(overdueSection).toContain('必需旧伏笔')
+    expect(overdueSection).not.toContain('可选环境细节')
+  })
+})
+
 describe('ConsistencyAgent outline-authorized facts', () => {
   it('includes outline-authorized facts in prompt', () => {
     const agent = new TestableConsistencyAgent(createMockProvider())

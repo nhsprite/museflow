@@ -263,6 +263,27 @@ describe('chapter report generation', () => {
     expect(result.chapterReport!.foreshadowsFulfilled).toBe(1)
   })
 
+  it('does not count optional or invalid deadlines as overdue', async () => {
+    const state = buildState(tmpDir, {
+      foreshadowStack: [
+        {
+          id: 'fs-optional-invalid',
+          text: '可选环境细节',
+          expectedFulfillChapter: -1,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: false,
+          required: false,
+        },
+      ],
+    })
+
+    const result = await finalize_chapter(createMockContext(), state)
+
+    expect(result.chapterReport!.foreshadowsOverdue).toBe(0)
+  })
+
   it('updates actProgress with verified beats only', async () => {
     const state = buildState(tmpDir, {
       outline: [

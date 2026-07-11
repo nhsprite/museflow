@@ -55,6 +55,50 @@ describe('ChapterAgent chapter numbering', () => {
     expect(messages[1]?.content).not.toContain('第 0 章')
   })
 
+  it('keeps optional overdue foreshadows out of the mandatory overdue section', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 20,
+      world: '',
+      characters: '【主角】',
+      outline: '第10章：推进',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 9,
+      chapterSummaries: [],
+      foreshadowStack: [
+        {
+          id: 'fs-required',
+          text: '必需旧伏笔',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+        {
+          id: 'fs-optional',
+          text: '可选环境细节',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: false,
+          required: false,
+        },
+      ],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    const overdueSection = userMessage.match(/<overdue>([\s\S]*?)<\/overdue>/)?.[1] ?? ''
+    expect(overdueSection).toContain('必需旧伏笔')
+    expect(overdueSection).not.toContain('可选环境细节')
+    expect(userMessage).toContain('expected 必须是严格晚于本章的 1-based 整数章节号')
+  })
+
   it('includes issue suggestions in rewrite prompts', () => {
     const agent = new TestableChapterAgent(createMockProvider())
 

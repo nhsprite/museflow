@@ -23,7 +23,7 @@ import type {
 import type { ChapterHandoff } from '../../../types/story-state.js'
 import type { ForeshadowItem } from '../../../types/foreshadow.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
-import { getForeshadowAlerts } from '../../../types/foreshadow.js'
+import { classifyForeshadows } from '../../../story-memory/foreshadow-policy.js'
 import { generateId } from '../../../utils/id.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
 import { buildEffectiveCharactersList } from '../../utils/characters.js'
@@ -237,16 +237,16 @@ function foreshadowMemoryToItem(
     text: memory.text,
     expectedFulfillChapter: memory.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER,
     createdAt: 0,
-    createdAtChapter: memory.introducedIn,
-    status: memory.fulfilledIn ? 'recalled' : 'planted',
+    createdAtChapter: memory.introducedIn + 1,
+    status: memory.fulfilledIn !== null ? 'recalled' : 'planted',
     isExplicit: true,
     required: memory.required,
   }
   if (memory.kind) {
     item.kind = memory.kind
   }
-  if (memory.fulfilledIn) {
-    item.fulfilledChapter = memory.fulfilledIn
+  if (memory.fulfilledIn !== null) {
+    item.fulfilledChapter = memory.fulfilledIn + 1
   }
   if (memory.beatId) {
     item.beatId = memory.beatId
@@ -766,14 +766,16 @@ function buildChapterReport(
 
   report.stateCorrections = buildStateCorrections(updatedStoryState)
 
-  const alerts = getForeshadowAlerts(state.foreshadowStack, chapterIndex + 1)
   report.foreshadowsPlanted = state.foreshadowStack.filter(
     (f) => f.createdAtChapter === chapterIndex + 1
   ).length
   report.foreshadowsFulfilled = state.foreshadowStack.filter(
     (f) => f.fulfilledChapter === chapterIndex + 1
   ).length
-  report.foreshadowsOverdue = alerts.filter((a) => a.level === 'overdue').length
+  report.foreshadowsOverdue = classifyForeshadows(
+    state.foreshadowStack,
+    chapterIndex + 1
+  ).overdueRequired.length
 
   report.convergence = inferConvergence(state)
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ModelProvider } from '../../src/model/provider.ts'
+import type { ForeshadowingAgentInput } from '../../src/agents/types.ts'
 
 function createMockProvider(chatResponse?: string): ModelProvider {
   return {
@@ -27,6 +28,10 @@ vi.mock('../../src/genres/registry.js', () => ({
 class TestableForeshadowingAgent
   extends (await import('../../src/agents/foreshadowing.ts')).ForeshadowingAgent
 {
+  public exposePrompt(state: ForeshadowingAgentInput) {
+    return this.buildPrompt(state)
+  }
+
   public exposeProcessOutput(
     output: { success: boolean; data?: unknown; error?: string },
     chapterIndex: number,
@@ -43,6 +48,47 @@ class TestableForeshadowingAgent
     )
   }
 }
+
+describe('ForeshadowingAgent prompt', () => {
+  it('keeps optional overdue foreshadows out of mandatory deadline sections', () => {
+    const agent = new TestableForeshadowingAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 20,
+      chapterIndex: 9,
+      chapterContent: '正文。',
+      chapterSummaries: [],
+      foreshadowStack: [
+        {
+          id: 'fs-required',
+          text: '必需旧伏笔',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+        {
+          id: 'fs-optional',
+          text: '可选环境细节',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: false,
+          required: false,
+        },
+      ],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    const overdueSection = userMessage.match(/<overdue>([\s\S]*?)<\/overdue>/)?.[1] ?? ''
+    expect(overdueSection).toContain('必需旧伏笔')
+    expect(overdueSection).not.toContain('可选环境细节')
+  })
+})
 
 describe('ForeshadowingAgent processOutput', () => {
   it('uses genre-specific planning config when genre is provided', () => {

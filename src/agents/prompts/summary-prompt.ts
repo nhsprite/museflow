@@ -87,6 +87,7 @@ ${STATE_AUTHORITY_RULES}
   <requirement>所有 ID（characterId、itemId、locationId、beatId、foreshadowId、taskId 等）必须使用 outline 中的精确 ID，不得 invent 新 ID。</requirement>
   <requirement>事件必须基于本章正文中明确发生的事实，禁止编造、推测或引入正文未出现的内容。</requirement>
   <requirement>foreshadow-introduce 的 text 必须是本章正文中实际出现的暗示描述，不得写未来揭示或后续剧情。</requirement>
+  <requirement>foreshadow-introduce 的 expectedFulfillChapter 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 null。</requirement>
   <requirement>只输出本章新发生或状态发生变化的事件；未变化的状态不要重复输出。</requirement>
 </event_rules>
 

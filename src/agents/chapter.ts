@@ -24,6 +24,7 @@ import {
   CHAPTER_TITLE_ONLY_PATTERN,
 } from '../utils/chapter-content-validation.js'
 import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
+import { classifyForeshadows } from '../story-memory/foreshadow-policy.js'
 
 export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   // Note: currentChapterIndex is stored as instance state because BaseAgent.parse
@@ -106,17 +107,13 @@ ${state.issues.map((issue, i) => `${i + 1}. [${issue.type}] ${issue.description}
     const currentChapterIndex = (state.chapterIndex ?? 0) + 1
     const activeForeshadows = state.foreshadowStack?.filter((f) => !f.fulfilledChapter) ?? []
 
-    const overdueForeshadows = activeForeshadows.filter(
-      (f) => currentChapterIndex > f.expectedFulfillChapter + 1
-    )
-    const urgentForeshadows = activeForeshadows.filter(
-      (f) =>
-        currentChapterIndex >= f.expectedFulfillChapter - 1 &&
-        currentChapterIndex <= f.expectedFulfillChapter + 1
-    )
-    const normalForeshadows = activeForeshadows.filter(
-      (f) => currentChapterIndex < f.expectedFulfillChapter - 1
-    )
+    const {
+      overdueRequired: overdueForeshadows,
+      dueRequired: urgentForeshadows,
+      normalRequired,
+      optional,
+    } = classifyForeshadows(activeForeshadows, currentChapterIndex)
+    const normalForeshadows = [...normalRequired, ...optional]
 
     const foreshadowSection =
       activeForeshadows.length > 0

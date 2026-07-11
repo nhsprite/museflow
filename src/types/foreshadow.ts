@@ -1,4 +1,5 @@
 import type { BeatId, ForeshadowId, ForeshadowKind } from './story-memory.js'
+import { classifyForeshadows } from '../story-memory/foreshadow-policy.js'
 
 export type ForeshadowStatus = 'planted' | 'hinted' | 'shown' | 'recalled'
 
@@ -29,17 +30,16 @@ export function getForeshadowAlerts(
   stack: ForeshadowItem[],
   currentChapter: number
 ): ForeshadowAlert[] {
-  return stack
-    .filter((item) => !item.fulfilledChapter)
-    .map((item) => {
-      let level: ForeshadowAlertLevel = 'normal'
-      if (currentChapter > item.expectedFulfillChapter + 1) {
-        level = 'overdue'
-      } else if (currentChapter >= item.expectedFulfillChapter - 1) {
-        level = 'urgent'
-      }
-      return { item, level, currentChapter }
-    })
+  const buckets = classifyForeshadows(stack, currentChapter)
+  return [
+    ...buckets.overdueRequired.map((item) => ({ item, level: 'overdue' as const, currentChapter })),
+    ...buckets.dueRequired.map((item) => ({ item, level: 'urgent' as const, currentChapter })),
+    ...[...buckets.normalRequired, ...buckets.optional].map((item) => ({
+      item,
+      level: 'normal' as const,
+      currentChapter,
+    })),
+  ]
     .sort((a, b) => {
       const levelOrder = { overdue: 0, urgent: 1, normal: 2 }
       return levelOrder[a.level] - levelOrder[b.level]

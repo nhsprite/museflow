@@ -1,4 +1,5 @@
 import { renderTemplate } from '../../utils/template.js'
+import { classifyForeshadows } from '../../story-memory/foreshadow-policy.js'
 
 const FORESHADOWING_SYSTEM_PROMPT =
   '<role>你是一位擅长埋伏笔和制造悬念的作家，擅长在叙述中埋下不引人注意但回味无穷的线索。</role>'
@@ -92,27 +93,15 @@ export function buildForeshadowingUserPrompt(
   const noNewThreshold = Math.max(3, Math.floor(totalChapters * planningConfig.closingPhaseRatio))
   const isClosingPhase = currentChapter > totalChapters - noNewThreshold
 
-  const overdueForeshadows = existingForeshadows.filter(
-    (f) => !f.fulfilledChapter && currentChapter > f.expectedFulfillChapter + 1
-  )
-  const mustFulfillForeshadows = existingForeshadows.filter(
-    (f) =>
-      !f.fulfilledChapter &&
-      currentChapter >= f.expectedFulfillChapter &&
-      currentChapter <= f.expectedFulfillChapter + 1
-  )
-  const urgentForeshadows = existingForeshadows.filter(
-    (f) =>
-      !f.fulfilledChapter &&
-      currentChapter >= f.expectedFulfillChapter - 1 &&
-      currentChapter < f.expectedFulfillChapter
-  )
-  const normalForeshadows = existingForeshadows.filter(
-    (f) => !f.fulfilledChapter && currentChapter < f.expectedFulfillChapter - 1
-  )
+  const {
+    overdueRequired: overdueForeshadows,
+    dueRequired: mustFulfillForeshadows,
+    normalRequired: normalForeshadows,
+    optional: optionalForeshadows,
+  } = classifyForeshadows(existingForeshadows, currentChapter)
 
   const closingPhaseInstruction = isClosingPhase
-    ? `当前已进入收尾阶段（第 ${currentChapter}/${totalChapters} 章，剩余 ${totalChapters - currentChapter} 章）。**禁止埋下新的伏笔**。所有未回收的伏笔必须在本章或剩余章节内回收完毕。new_foreshadows 必须返回空数组 []。`
+    ? `当前已进入收尾阶段（第 ${currentChapter}/${totalChapters} 章，剩余 ${totalChapters - currentChapter} 章）。**禁止埋下新的伏笔**。所有未回收的必需伏笔必须在本章或剩余章节内回收完毕。new_foreshadows 必须返回空数组 []。`
     : '请先检查回收，再考虑埋下新伏笔。如果已有大量未回收伏笔，应优先回收而非新增。'
 
   const existingForeshadowsSection = `${
@@ -142,19 +131,19 @@ export function buildForeshadowingUserPrompt(
       : ''
   }
   ${
-    urgentForeshadows.length > 0
-      ? `
-  <urgent>
-    ${urgentForeshadows.map((f, i) => `    <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${currentChapter}">${f.text}</item>`).join('\n')}
-  </urgent>`
-      : ''
-  }
-  ${
     normalForeshadows.length > 0
       ? `
   <normal>
     ${normalForeshadows.map((f, i) => `    <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${currentChapter}">${f.text}</item>`).join('\n')}
   </normal>`
+      : ''
+  }
+  ${
+    optionalForeshadows.length > 0
+      ? `
+  <optional>
+    ${optionalForeshadows.map((f, i) => `    <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${currentChapter}">${f.text}</item>`).join('\n')}
+  </optional>`
       : ''
   }`
 
