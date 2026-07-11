@@ -18,6 +18,7 @@ import type { ModelProvider } from '../../src/model/provider.js'
 import { logger } from '../../src/utils/logger.js'
 import { readChapterContent } from '../../src/storage/filesystem/writer.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import type { ForeshadowMemory, StoryEvent } from '../../src/types/story-memory.js'
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-${randomUUID().slice(0, 8)}`)
 
@@ -101,52 +102,98 @@ const baseState: ReducedGraphState = {
   autoFixAttempts: 0,
 }
 
-function stateWithBoundaryForeshadow(
+function createCompleteChapterPlan(overrides: Partial<ChapterPlan> = {}): ChapterPlan {
+  return {
+    chapterIndex: 1,
+    sections: [],
+    timeline: [],
+    outlineCheck: [],
+    expectedEvents: [],
+    claimedMandatoryBeatIds: [],
+    claimedBeatIds: [],
+    fulfilledForeshadowIds: [],
+    introducedForeshadowIds: [],
+    resolvedTaskIds: [],
+    createdTaskIds: [],
+    ...overrides,
+  }
+}
+
+function createForeshadowFulfillEvent(foreshadowId: string, chapterIndex: number): StoryEvent {
+  return {
+    id: `event-${foreshadowId}`,
+    type: 'foreshadow-fulfill',
+    chapterIndex,
+    source: 'outline',
+    foreshadowId,
+  }
+}
+
+function createRequiredForeshadow(
+  id: string,
+  expectedFulfillChapter: number | null,
+  introducedIn = 0
+): ForeshadowMemory {
+  return {
+    id,
+    text: `structured clue ${id}`,
+    kind: 'plot',
+    introducedIn,
+    expectedFulfillChapter,
+    fulfilledIn: null,
+    required: true,
+    beatId: null,
+  }
+}
+
+function stateWithScheduledForeshadows(
+  chapterIndex: number,
   description: string,
-  expectedFulfillChapter: number | null = 3
+  foreshadows: ForeshadowMemory[]
 ): ReducedGraphState {
   return {
     ...baseState,
-    currentChapterIndex: 2,
+    currentChapterIndex: chapterIndex,
     totalChapters: 4,
     story: { ...baseState.story, totalChapters: 4 },
     storyArc: {
       totalChapters: 4,
       acts: [
-        { ...storyArc.acts[0]!, endChapter: 3 },
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: '第一幕',
+          theme: '建立',
+          function: '推进',
+          mandatoryBeats: [],
+        },
         {
           index: 2,
           startChapter: 4,
           endChapter: 4,
           title: '第二幕',
-          theme: '推进',
-          function: '进入下一阶段',
+          theme: '收束',
+          function: '结束',
           mandatoryBeats: [],
         },
       ],
       keyBeats: [],
     },
     outline: [
-      { number: 1, title: '启程', description: '主角启程。' },
-      { number: 2, title: '受阻', description: '主角受阻。' },
-      { number: 3, title: '', description },
-      { number: 4, title: '新幕', description: '进入下一阶段。' },
+      { number: 1, title: '第一章', description: '第一章既有大纲。' },
+      { number: 2, title: '第二章', description: chapterIndex === 1 ? description : '第二章。' },
+      { number: 3, title: '第三章', description: chapterIndex === 2 ? description : '第三章。' },
+      { number: 4, title: '第四章', description: chapterIndex === 3 ? description : '第四章。' },
     ],
+    actProgress: {
+      1: { consumed: [], pending: [] },
+      2: { consumed: [], pending: [] },
+    },
     chapters: [null, null, null, null],
     storyMemory: {
       ...createEmptyStoryMemory(),
-      foreshadows: {
-        'fs-due': {
-          id: 'fs-due',
-          text: '一项尚未解释的结构化线索',
-          kind: 'plot',
-          introducedIn: 0,
-          expectedFulfillChapter,
-          fulfilledIn: null,
-          required: true,
-          beatId: 'beat-1',
-        },
-      },
+      foreshadows: Object.fromEntries(foreshadows.map((foreshadow) => [foreshadow.id, foreshadow])),
     },
   }
 }
@@ -195,7 +242,34 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
   })
 
-  it('retries JIT outline generation when a boundary obligation is omitted', async () => {
+  it('schedules a due foreshadow on an ordinary non-boundary chapter', async () => {
+    const state = stateWithScheduledForeshadows(1, '', [createRequiredForeshadow('fs-due', 2)])
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '回收线索',
+        description: '在核心事件内回收既有线索。',
+        fulfilledForeshadowIds: ['fs-due'],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-due'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 1, createMockProvider())
+
+    expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-due'])
+    const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      verifiedConstraints?: string[]
+    }
+    expect(jitInput.verifiedConstraints?.join('\n')).toContain('fs-due')
+  })
+
+  it('retries JIT outline generation when a scheduled obligation is omitted', async () => {
     chapterOutlineRunMock
       .mockResolvedValueOnce({
         success: true,
@@ -214,11 +288,15 @@ describe('expandOutlineForChapter', () => {
         },
       })
     planChapterWithOverrideMock.mockResolvedValue({
-      chapterPlan: { sections: [], fulfilledForeshadowIds: ['fs-due'] },
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: ['fs-due'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-due', 2)],
+      }),
     })
 
     const result = await expandOutlineForChapter(
-      stateWithBoundaryForeshadow(''),
+      stateWithScheduledForeshadows(2, '', [createRequiredForeshadow('fs-due', 3)]),
       2,
       createMockProvider()
     )
@@ -231,40 +309,271 @@ describe('expandOutlineForChapter', () => {
     expect(retryInput.verifiedConstraints?.join('\n')).toContain('fs-due')
   })
 
-  it('passes boundary obligations to planning when an outline already exists', async () => {
+  it('passes bounded scheduled IDs to planning when an outline already exists', async () => {
+    const scheduledState = stateWithScheduledForeshadows(1, '既有大纲。', [
+      createRequiredForeshadow('fs-a', 2),
+      createRequiredForeshadow('fs-b', 2),
+      createRequiredForeshadow('fs-c', 2),
+      createRequiredForeshadow('fs-d', 2),
+    ])
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 1 ? { ...item, fulfilledForeshadowIds: ['fs-d'] } : item
+      ),
+    }
     planChapterWithOverrideMock.mockResolvedValue({
-      chapterPlan: { sections: [], fulfilledForeshadowIds: ['fs-due'] },
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-a', 'fs-b', 'fs-c'],
+        expectedEvents: ['fs-a', 'fs-b', 'fs-c'].map((id) => createForeshadowFulfillEvent(id, 1)),
+      }),
     })
 
-    await expandOutlineForChapter(
-      stateWithBoundaryForeshadow('幕末既有大纲。'),
-      2,
-      createMockProvider()
-    )
+    await expandOutlineForChapter(state, 1, createMockProvider())
 
     expect(chapterOutlineRunMock).not.toHaveBeenCalled()
     const planState = planChapterWithOverrideMock.mock.calls[0]![1] as ReducedGraphState
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
-    expect(formattedOutline).toContain('fs-due')
+    expect(formattedOutline).toContain('fs-a, fs-b, fs-c')
+    expect(formattedOutline).not.toContain('fs-d')
     expect(planState.verifiedConstraints).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'generic',
-          text: expect.stringContaining('fs-due'),
+          text: expect.stringContaining('fs-a'),
         }),
       ])
     )
   })
 
-  it('does not create an act-boundary obligation for an unscheduled foreshadow', async () => {
-    await expandOutlineForChapter(
-      stateWithBoundaryForeshadow('幕末既有大纲。', null),
-      2,
-      createMockProvider()
-    )
+  it('excludes unscheduled clues in an ordinary act and includes future/null clues in the final act', async () => {
+    const ordinaryState = stateWithScheduledForeshadows(1, '既有大纲。', [
+      createRequiredForeshadow('fs-due', 2),
+      createRequiredForeshadow('fs-future', 4),
+      createRequiredForeshadow('fs-null', null),
+    ])
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-due'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
+      }),
+    })
 
+    await expandOutlineForChapter(ordinaryState, 1, createMockProvider())
+
+    const ordinaryOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
+    expect(ordinaryOutline).toContain('fs-due')
+    expect(ordinaryOutline).not.toContain('fs-future')
+    expect(ordinaryOutline).not.toContain('fs-null')
+
+    const finalActState = stateWithScheduledForeshadows(3, '终幕既有大纲。', [
+      createRequiredForeshadow('fs-future', 6),
+      createRequiredForeshadow('fs-null', null),
+    ])
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 3,
+        fulfilledForeshadowIds: ['fs-future', 'fs-null'],
+        expectedEvents: ['fs-future', 'fs-null'].map((id) => createForeshadowFulfillEvent(id, 3)),
+      }),
+    })
+
+    await expandOutlineForChapter(finalActState, 3, createMockProvider())
+
+    const finalOutline = planChapterWithOverrideMock.mock.calls[1]![2] as string
+    expect(finalOutline).toContain('fs-future')
+    expect(finalOutline).toContain('fs-null')
+  })
+
+  it('throws the exact bounded scheduling error after all JIT attempts omit a selected ID', async () => {
+    const state = stateWithScheduledForeshadows(1, '', [createRequiredForeshadow('fs-due', 2)])
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '遗漏版本',
+        description: '没有声明线索回收。',
+        fulfilledForeshadowIds: [],
+      },
+    })
+
+    try {
+      await expect(expandOutlineForChapter(state, 1, createMockProvider())).rejects.toThrow(
+        '第 2 章即时大纲连续 3 次遗漏伏笔义务：fs-due（单章容量 3）'
+      )
+      expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[MuseFlow] 第 2 章即时大纲第 1/3 次遗漏伏笔义务：fs-due'
+      )
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[MuseFlow] 第 2 章即时大纲第 3/3 次遗漏伏笔义务：fs-due'
+      )
+      expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('replans when a declaration is present but its expected event is missing', async () => {
+    const state = stateWithScheduledForeshadows(1, '既有大纲。', [
+      createRequiredForeshadow('fs-due', 2),
+    ])
+    planChapterWithOverrideMock
+      .mockResolvedValueOnce({
+        chapterPlan: createCompleteChapterPlan({
+          chapterIndex: 1,
+          fulfilledForeshadowIds: ['fs-due'],
+        }),
+      })
+      .mockResolvedValueOnce({
+        chapterPlan: createCompleteChapterPlan({
+          chapterIndex: 1,
+          fulfilledForeshadowIds: ['fs-due'],
+          expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
+        }),
+      })
+
+    const result = await expandOutlineForChapter(state, 1, createMockProvider())
+
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
+    expect(result.chapterPlan.expectedEvents).toEqual([createForeshadowFulfillEvent('fs-due', 1)])
+    const correctionState = planChapterWithOverrideMock.mock.calls[1]![1] as ReducedGraphState
+    const correctionText = correctionState.verifiedConstraints?.map((item) => item.text).join('\n')
+    expect(correctionText).toContain('expectedEvents')
+    expect(correctionText).toContain('fs-due')
+  })
+
+  it('extends a boundary by three chapters for eleven due IDs and schedules only the first three', async () => {
+    const foreshadowIds = Array.from(
+      { length: 11 },
+      (_, index) => `fs-${String(index + 1).padStart(2, '0')}`
+    )
+    const state = stateWithScheduledForeshadows(
+      2,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    const scheduledIds = foreshadowIds.slice(0, 3)
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '批次回收',
+        description: '本章完成容量内的第一批线索回收。',
+        fulfilledForeshadowIds: [...scheduledIds, foreshadowIds[3]!],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: [...scheduledIds, foreshadowIds[3]!],
+        expectedEvents: [...scheduledIds, foreshadowIds[3]!].map((id) =>
+          createForeshadowFulfillEvent(id, 2)
+        ),
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
+      [1, 6],
+      [7, 7],
+    ])
+    expect(result.totalChapters).toBe(7)
+    expect(result.story?.totalChapters).toBe(7)
+    expect(result.outline).toHaveLength(7)
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual(scheduledIds)
+    expect(result.chapterPlan.fulfilledForeshadowIds).toEqual(scheduledIds)
+    expect(
+      result.chapterPlan.expectedEvents
+        .filter((event) => event.type === 'foreshadow-fulfill')
+        .map((event) => event.foreshadowId)
+    ).toEqual(scheduledIds)
+    const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      verifiedConstraints?: string[]
+    }
+    const jitConstraints = jitInput.verifiedConstraints?.join('\n') ?? ''
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
-    expect(formattedOutline).not.toContain('fs-due')
+    for (const id of scheduledIds) expect(jitConstraints).toContain(id)
+    for (const id of scheduledIds) expect(formattedOutline).toContain(id)
+    for (const id of foreshadowIds.slice(3)) {
+      expect(jitConstraints).not.toContain(id)
+      expect(formattedOutline).not.toContain(id)
+    }
+  })
+
+  it('rejects a time-anchor replan that drops a scheduled fulfillment event', async () => {
+    const state = stateWithScheduledForeshadows(1, '既有大纲。', [
+      createRequiredForeshadow('fs-due', 2),
+    ])
+    const initiallyValidEvidence = createCompleteChapterPlan({
+      chapterIndex: 1,
+      fulfilledForeshadowIds: ['fs-due'],
+      expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
+      chapterTimeAnchor: '错误承接',
+    })
+    const droppedEvent = createCompleteChapterPlan({
+      chapterIndex: 1,
+      fulfilledForeshadowIds: ['fs-due'],
+      chapterTimeAnchor: '修正承接',
+    })
+    planChapterWithOverrideMock
+      .mockResolvedValueOnce({ chapterPlan: initiallyValidEvidence })
+      .mockResolvedValueOnce({ chapterPlan: droppedEvent })
+    vi.mocked(readChapterContent).mockResolvedValueOnce('上一章正文。')
+    vi.mocked(contextJudge.batchValidateTimeAnchors).mockResolvedValueOnce([
+      { valid: false, reason: '时间锚点不一致' },
+    ])
+
+    await expect(expandOutlineForChapter(state, 1, createMockProvider())).rejects.toThrow(
+      '第 2 章时间锚点重规划遗漏已调度伏笔义务：fulfilledForeshadowIds：（无遗漏）；expectedEvents.foreshadow-fulfill：fs-due'
+    )
+  })
+
+  it('rejects a budget replan that drops a scheduled declaration', async () => {
+    const state = stateWithScheduledForeshadows(1, '既有大纲。', [
+      createRequiredForeshadow('fs-due', 2),
+    ])
+    const sections: ChapterPlan['sections'] = [
+      {
+        title: '核心事件',
+        summary: '推进核心事件',
+        wordCount: 1000,
+        events: ['核心事件'],
+        characters: ['主角'],
+        timeMark: '当前',
+      },
+      {
+        title: '偏离事件',
+        summary: '偏离大纲重心',
+        wordCount: 2000,
+        events: ['偏离事件'],
+        characters: ['主角'],
+        timeMark: '稍后',
+      },
+    ]
+    const initiallyValidEvidence = createCompleteChapterPlan({
+      chapterIndex: 1,
+      sections,
+      outlineCheck: [{ requirement: '核心事件', fulfilled: true, section: '核心事件' }],
+      fulfilledForeshadowIds: ['fs-due'],
+      expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
+    })
+    const droppedDeclaration = createCompleteChapterPlan({
+      chapterIndex: 1,
+      sections,
+      outlineCheck: [{ requirement: '核心事件', fulfilled: true, section: '核心事件' }],
+      expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
+    })
+    planChapterWithOverrideMock
+      .mockResolvedValueOnce({ chapterPlan: initiallyValidEvidence })
+      .mockResolvedValueOnce({ chapterPlan: droppedDeclaration })
+    mockChatStructured.mockResolvedValue({ results: [true, false] })
+
+    await expect(expandOutlineForChapter(state, 1, createMockProvider())).rejects.toThrow(
+      '第 2 章预算重规划遗漏已调度伏笔义务：fulfilledForeshadowIds：fs-due；expectedEvents.foreshadow-fulfill：（无遗漏）'
+    )
   })
 
   it('passes the previous chapter ending into JIT outline generation', async () => {
