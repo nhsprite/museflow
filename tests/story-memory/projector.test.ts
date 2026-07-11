@@ -360,6 +360,22 @@ describe('applyEvents immutability', () => {
 })
 
 describe('projectMemory foreshadows', () => {
+  it('does not materialize a foreshadow whose deadline is not after its introduction chapter', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e-invalid',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-invalid',
+        expectedFulfillChapter: 0,
+        chapterIndex: 9,
+        source: 'chapter',
+      },
+    ])
+
+    expect(next.events).toHaveLength(1)
+    expect(next.foreshadows['f-invalid']).toBeUndefined()
+  })
+
   it('tracks foreshadow introduction and fulfillment', () => {
     const memory = createEmptyStoryMemory()
     const next = applyEvents(memory, [

@@ -12,6 +12,7 @@ import type {
 import type { StoryArc } from '../types/outline.js'
 import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
+import { isValidForeshadowDeadline } from './foreshadow-policy.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
   return {
@@ -242,6 +243,9 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
 
   for (const event of events) {
     if (event.type === 'foreshadow-introduce') {
+      if (!isValidForeshadowDeadline(event.chapterIndex, event.expectedFulfillChapter)) {
+        continue
+      }
       const existing = foreshadows[event.foreshadowId]
       foreshadows[event.foreshadowId] = {
         ...existing,
