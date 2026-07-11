@@ -130,11 +130,12 @@ describe('chapter-level checkpoints', () => {
       expect(remaining).not.toContain('checkpoint_2.json')
     })
 
-    it('keeps pending_writes.json when pruning', async () => {
+    it('keeps pending writes and the checkpoint referenced by latest.json when pruning', async () => {
       const service = createCheckpointService(testOutputDir)
       const checkpointDir = join(testOutputDir, 'checkpoints')
 
       await writeFile(join(checkpointDir, 'checkpoint_1.json'), JSON.stringify({}), 'utf-8')
+      await writeFile(join(checkpointDir, 'checkpoint_old.json'), JSON.stringify({}), 'utf-8')
       await writeFile(join(checkpointDir, 'pending_writes.json'), JSON.stringify([]), 'utf-8')
       await writeFile(
         join(checkpointDir, 'latest.json'),
@@ -147,7 +148,8 @@ describe('chapter-level checkpoints', () => {
       const remaining = await readdir(checkpointDir)
       expect(remaining).toContain('pending_writes.json')
       expect(remaining).toContain('latest.json')
-      expect(remaining).not.toContain('checkpoint_1.json')
+      expect(remaining).toContain('checkpoint_1.json')
+      expect(remaining).not.toContain('checkpoint_old.json')
     })
   })
 })

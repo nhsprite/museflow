@@ -197,7 +197,7 @@ describe('StoryCheckpointService', () => {
     expect(markers.map((m) => m.chapterNumber)).toEqual([1, 2, 10])
   })
 
-  it('prunes intermediate checkpoints while keeping markers', async () => {
+  it('prunes intermediate checkpoints while keeping markers and the latest target', async () => {
     const saver = new JsonCheckpointer()
     const cp1 = makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z')
     const cp2 = makeCheckpoint('cp-2', '2024-01-01T00:00:01.000Z')
@@ -220,7 +220,12 @@ describe('StoryCheckpointService', () => {
     await service.pruneIntermediateCheckpoints()
 
     expect(existsSync(join(outputDir, 'checkpoints', 'cp-1.json'))).toBe(true)
-    expect(existsSync(join(outputDir, 'checkpoints', 'cp-2.json'))).toBe(false)
+    expect(existsSync(join(outputDir, 'checkpoints', 'cp-2.json'))).toBe(true)
+
+    const latest = await saver.getTuple({
+      configurable: { thread_id: TEST_STORY_ID, outputDir },
+    })
+    expect(latest?.checkpoint.id).toBe('cp-2')
   })
 
   it('updateLatestState writes a valid UUID checkpoint id and updates latest pointer', async () => {

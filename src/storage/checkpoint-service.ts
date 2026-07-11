@@ -33,6 +33,10 @@ export class StoryCheckpointService {
     return join(this.getCheckpointDir(), 'chapter_markers.json')
   }
 
+  private getLatestPath(): string {
+    return join(this.getCheckpointDir(), 'latest.json')
+  }
+
   private getReportsDir(): string {
     return join(this.outputDir, 'reports')
   }
@@ -55,6 +59,17 @@ export class StoryCheckpointService {
   private async saveMarkers(markers: Record<number, string>): Promise<void> {
     ensureDir(this.getCheckpointDir())
     writeFileAtomic(this.getMarkersPath(), JSON.stringify(markers, null, 2))
+  }
+
+  private loadLatestCheckpointId(): string | undefined {
+    const path = this.getLatestPath()
+    if (!existsSync(path)) return undefined
+    try {
+      const value = JSON.parse(readFileSync(path, 'utf-8')) as { checkpointId?: unknown }
+      return typeof value.checkpointId === 'string' ? value.checkpointId : undefined
+    } catch {
+      return undefined
+    }
   }
 
   async saveChapterMarker(chapterNumber: number, checkpointId: string): Promise<void> {
@@ -85,6 +100,10 @@ export class StoryCheckpointService {
 
     const markers = await this.loadMarkers()
     const preservedIds = new Set(Object.values(markers))
+    const latestCheckpointId = this.loadLatestCheckpointId()
+    if (latestCheckpointId) {
+      preservedIds.add(latestCheckpointId)
+    }
 
     const files = readdirSync(dir).filter(
       (f) =>
@@ -101,7 +120,7 @@ export class StoryCheckpointService {
     }
 
     logger.debug(
-      `Pruned ${toDelete.length} intermediate checkpoints, kept ${preservedIds.size} chapter markers`
+      `Pruned ${toDelete.length} intermediate checkpoints, kept ${preservedIds.size} protected checkpoints`
     )
   }
 
