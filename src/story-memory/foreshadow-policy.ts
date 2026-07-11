@@ -114,11 +114,14 @@ export function getRequiredForeshadowsForScheduling(
       )
     })
     .sort((left, right) => {
-      const leftDeadline = left.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER
-      const rightDeadline = right.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER
+      const leftDeadline = left.expectedFulfillChapter
+      const rightDeadline = right.expectedFulfillChapter
+
+      if (leftDeadline === null && rightDeadline !== null) return 1
+      if (leftDeadline !== null && rightDeadline === null) return -1
 
       return (
-        leftDeadline - rightDeadline ||
+        (leftDeadline ?? 0) - (rightDeadline ?? 0) ||
         left.introducedIn - right.introducedIn ||
         left.id.localeCompare(right.id)
       )

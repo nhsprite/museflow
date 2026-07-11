@@ -156,6 +156,24 @@ describe('foreshadow deadline policy', () => {
       'unscheduled',
     ])
   })
+
+  it('orders an unscheduled foreshadow after the largest finite deadline', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        unscheduled: { ...memoryForeshadow('a-unscheduled', null, true, null), introducedIn: 0 },
+        finite: {
+          ...memoryForeshadow('z-finite', null, true, Number.MAX_SAFE_INTEGER),
+          introducedIn: 5,
+        },
+      },
+    }
+
+    expect(getRequiredForeshadowsForScheduling(memory, 20, true).map((entry) => entry.id)).toEqual([
+      'z-finite',
+      'a-unscheduled',
+    ])
+  })
 })
 
 function memoryForeshadow(
