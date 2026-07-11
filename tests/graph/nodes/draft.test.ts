@@ -144,19 +144,20 @@ describe('draft_chapter output validation', () => {
         chapterPlan: null,
       } as unknown as ReducedGraphState
       const updatedOutline = [{ number: 1, title: '即时标题', description: '即时生成描述' }]
+      const expandedChapterPlan = {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      }
       vi.mocked(expandOutlineForChapter).mockResolvedValueOnce({
-        chapterPlan: {
-          chapterIndex: 0,
-          sections: [],
-          timeline: [],
-          outlineCheck: [],
-          expectedEvents: [],
-          claimedBeatIds: [],
-          fulfilledForeshadowIds: [],
-          introducedForeshadowIds: [],
-          resolvedTaskIds: [],
-          createdTaskIds: [],
-        },
+        chapterPlan: expandedChapterPlan,
         boundaryHints: [],
         pendingIssues: [],
         outline: updatedOutline,
@@ -174,6 +175,7 @@ describe('draft_chapter output validation', () => {
 
       expect(written.startsWith('# 第1章 即时标题')).toBe(true)
       expect(result.chapters?.[0]?.outline).toBe('即时生成描述')
+      expect(result.chapterPlan).toEqual(expandedChapterPlan)
     }
   )
 
