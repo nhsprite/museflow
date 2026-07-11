@@ -102,8 +102,10 @@ blockingCount(E) <= perChapterCapacity * (E - currentChapterNumber + 1)
 ```
 
 For a non-final act, `blockingCount(E)` counts finite required unresolved
-foreshadows with `expectedFulfillChapter <= E`. For the final act it also counts
-unscheduled required unresolved foreshadows. Start with the existing act end;
+foreshadows with `expectedFulfillChapter <= E`. For the final act it counts
+every valid required unresolved foreshadow, including finite deadlines after
+`E` and unscheduled entries, because story-end validation blocks all of them.
+Start with the existing act end;
 when capacity is insufficient, extend by the missing number of chapter slots,
 recalculate `blockingCount` at the new candidate end, and repeat until the
 inequality holds. This fixed-point calculation prevents a proposed extension
