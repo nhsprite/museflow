@@ -1,6 +1,5 @@
 import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { ForeshadowId, StoryEvent, StoryMemory } from '../types/story-memory.js'
-import type { StoryArc } from '../types/outline.js'
 
 type ForeshadowIntroduceEvent = Extract<StoryEvent, { type: 'foreshadow-introduce' }>
 
@@ -80,17 +79,10 @@ export function partitionInvalidForeshadowIntroductions(events: StoryEvent[]): {
 
 export function getBoundaryBlockingForeshadows(
   memory: StoryMemory,
-  storyArc: StoryArc | null | undefined,
-  actIndex: number,
+  boundaryChapter: number,
   isStoryEnd: boolean
 ): ForeshadowId[] {
   const blocking: ForeshadowId[] = []
-  const keyBeatDeadlineByForeshadow = new Map<ForeshadowId, number>()
-  for (const keyBeat of storyArc?.keyBeats ?? []) {
-    if (keyBeat.foreshadowId) {
-      keyBeatDeadlineByForeshadow.set(keyBeat.foreshadowId, keyBeat.deadlineAct)
-    }
-  }
 
   for (const foreshadow of Object.values(memory.foreshadows)) {
     if (
@@ -101,19 +93,11 @@ export function getBoundaryBlockingForeshadows(
       continue
     }
 
-    if (isStoryEnd) {
-      blocking.push(foreshadow.id)
-      continue
-    }
-
-    const memoryBeat = foreshadow.beatId ? memory.beats[foreshadow.beatId] : undefined
-    const keyBeatDeadline = keyBeatDeadlineByForeshadow.get(foreshadow.id)
-    const belongsToClosedAct =
-      (memoryBeat !== undefined &&
-        (memoryBeat.actIndex <= actIndex || memoryBeat.deadlineAct <= actIndex)) ||
-      (keyBeatDeadline !== undefined && keyBeatDeadline <= actIndex)
-
-    if (belongsToClosedAct) {
+    if (
+      isStoryEnd ||
+      (foreshadow.expectedFulfillChapter !== null &&
+        foreshadow.expectedFulfillChapter <= boundaryChapter)
+    ) {
       blocking.push(foreshadow.id)
     }
   }
