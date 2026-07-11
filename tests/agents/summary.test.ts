@@ -108,15 +108,62 @@ describe('SummaryAgent prompt', () => {
       chapterSummaries: [],
     })
     const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
-    expect(userMessage).toContain(
-      'expectedFulfillChapter 必须是严格晚于本章的 1-based 整数章节号'
-    )
+    expect(userMessage).toContain('expectedFulfillChapter 必须是严格晚于本章的 1-based 整数章节号')
     expect(userMessage).toContain('<chapter_summary>')
     expect(userMessage).toContain('<chapter_handoff>')
     expect(userMessage).toContain('<story_events>')
     expect(userMessage).toContain('character-location')
     expect(userMessage).toContain('plot-advance')
     expect(userMessage).toContain('task-create')
+  })
+
+  it('exposes exact planned foreshadow fulfillment IDs with an evidence warning', () => {
+    const agent = new TestableSummaryAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterContent: '正文明确回收了先前埋下的线索。',
+      chapterTitle: 'Test',
+      chapterIndex: 5,
+      foreshadowStack: [
+        {
+          id: 'fs-planned-1',
+          text: '先前埋下的线索',
+          expectedFulfillChapter: 6,
+          createdAt: 0,
+          createdAtChapter: 2,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+      ],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
+    expect(userMessage).toContain('<planned_foreshadow_fulfillments>')
+    expect(userMessage).toContain('- [fs-planned-1] 先前埋下的线索')
+    expect(userMessage).toContain('明确的段落证据')
+    expect(userMessage).toContain('方括号中的精确 ID（不含方括号）')
+    expect(userMessage).toContain('未回收则不得编造')
+  })
+
+  it('omits the planned foreshadow fulfillment section when no targets are provided', () => {
+    const agent = new TestableSummaryAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterContent: 'test content',
+      chapterTitle: 'Test',
+      chapterIndex: 5,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
+    expect(userMessage).not.toContain('<planned_foreshadow_fulfillments>')
   })
 
   it('extracts chapterSummary and storyEvents from structured output', async () => {

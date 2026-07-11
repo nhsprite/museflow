@@ -346,6 +346,13 @@ export async function finalizeChapter(
           ? currentOutline.claimedBeats
           : getPendingMandatoryBeats(state, chapterIndex)
       const claimedMandatoryBeatIds = currentOutline?.claimedMandatoryBeatIds ?? []
+      const plannedForeshadows =
+        state.chapterPlan?.chapterIndex === chapterIndex
+          ? state.chapterPlan.fulfilledForeshadowIds.flatMap((id) => {
+              const memory = updatedStoryMemory.foreshadows[id]
+              return memory ? [foreshadowMemoryToItem(memory)] : []
+            })
+          : []
       const summaryState: SummaryAgentInput = {
         idea: state.idea,
         genre: state.genre,
@@ -354,6 +361,7 @@ export async function finalizeChapter(
         charactersList: effectiveCharacters,
         outlineCharacters,
         establishedCharacters,
+        foreshadowStack: plannedForeshadows,
         ...(currentOutline?.title ? { chapterTitle: currentOutline.title } : {}),
         chapterIndex,
         ...(beatsToVerify.length > 0 ? { claimedBeats: beatsToVerify } : {}),

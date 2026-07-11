@@ -8,6 +8,7 @@ import {
   buildSummarySystemPrompt,
   buildSummaryUserPrompt,
   buildClaimedBeatsSection,
+  buildPlannedForeshadowsSection,
   buildCharacterWhitelistSection,
 } from './prompts/summary-prompt.js'
 import { parseJsonFromLLM } from '../utils/json.js'
@@ -112,6 +113,7 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
           state.claimedBeats ?? [],
           state.claimedMandatoryBeatIds ?? []
         ),
+        plannedForeshadowsSection: buildPlannedForeshadowsSection(state.foreshadowStack ?? []),
         whitelistSection,
       },
       {

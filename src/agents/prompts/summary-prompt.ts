@@ -1,4 +1,5 @@
 import { renderTemplate } from '../../utils/template.js'
+import type { ForeshadowItem } from '../../types/foreshadow.js'
 import {
   OFFICIAL_CHARACTER_RULES,
   STATE_AUTHORITY_RULES,
@@ -32,6 +33,17 @@ ${lines.join('\n')}
 </claimed_beats>`
 }
 
+export function buildPlannedForeshadowsSection(foreshadows: ForeshadowItem[]): string {
+  if (foreshadows.length === 0) return ''
+  const lines = foreshadows.map((foreshadow) => `- [${foreshadow.id}] ${foreshadow.text}`)
+  return `<planned_foreshadow_fulfillments>
+本章规划尝试回收的伏笔：
+${lines.join('\n')}
+
+只有已完成章节正文明确完成回收且有明确的段落证据时，才可输出对应的 foreshadow-fulfill；foreshadowId 必须逐字使用列表方括号中的精确 ID（不含方括号）；未回收则不得编造事件。
+</planned_foreshadow_fulfillments>`
+}
+
 const SUMMARY_USER_PROMPT_TEMPLATE = `<task>
   请分析以下章节内容，输出本章摘要和结构化事件。
 </task>
@@ -42,6 +54,8 @@ const SUMMARY_USER_PROMPT_TEMPLATE = `<task>
 </chapter_info>
 
 {claimedBeatsSection}
+
+{plannedForeshadowsSection}
 
 <chapter_content>
   {chapterContent}
@@ -126,6 +140,7 @@ ${STATE_AUTHORITY_RULES}
 
 export interface SummaryPromptSections {
   claimedBeatsSection: string
+  plannedForeshadowsSection: string
   whitelistSection: string
 }
 
