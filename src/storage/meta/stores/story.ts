@@ -29,6 +29,10 @@ export function createStory(input: StoryCreateInput): Story {
     updatedAt: now,
   }
 
+  if (input.synopsis) {
+    storyMeta.synopsis = input.synopsis
+  }
+
   if (input.worldDirection) {
     storyMeta.worldDirection = input.worldDirection
   }

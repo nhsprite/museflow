@@ -27,11 +27,13 @@ function createMockProvider(): ModelProvider {
 
 describe('title-selector', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mockChat.mockReset()
+    mockChatStructured.mockReset()
     mockChatStructured.mockResolvedValue({
       options: [
         {
           title: '《逆天改命》',
+          synopsis: '少年在灵气衰退的中土大陆中发现失落秘法，被卷入宗门秘宝之争。',
           worldDirection: {
             powerSystem: '凡境→灵境→仙境',
             coreConflict: '资源争夺、宗门秘宝',
@@ -40,6 +42,7 @@ describe('title-selector', () => {
         },
         {
           title: '《凡人之躯》',
+          synopsis: '出身偏远山村的凡人以肉身破局，在阶级固化的王朝中争取修行之路。',
           worldDirection: {
             powerSystem: '炼体、炼气、炼神三阶段',
             coreConflict: '人与天斗、阶级固化',
@@ -48,6 +51,7 @@ describe('title-selector', () => {
         },
         {
           title: '《破妄之剑》',
+          synopsis: '年轻剑修从剑冢禁地寻得破妄之机，在正邪与师门旧怨间重塑剑道。',
           worldDirection: {
             powerSystem: '剑修为尊；剑意凝兵',
             coreConflict: '正邪两道、师门恩怨',
@@ -89,6 +93,8 @@ describe('title-selector', () => {
 
       const firstOption = options[0]
       expect(firstOption).toHaveProperty('title')
+      expect(firstOption).toHaveProperty('synopsis')
+      expect(firstOption.synopsis).toContain('少年')
       expect(firstOption).toHaveProperty('worldDirection')
       expect(firstOption.worldDirection).toHaveProperty('powerSystem')
       expect(firstOption.worldDirection).toHaveProperty('coreConflict')
@@ -109,6 +115,50 @@ describe('title-selector', () => {
       expect(firstOption!.worldDirection.powerSystem).toContain('凡境')
     })
 
+    it('retries when AI returns title options without generated synopsis', async () => {
+      mockChatStructured
+        .mockResolvedValueOnce({
+          options: [
+            {
+              title: '《选项一》',
+              worldDirection: { coreConflict: '冲突一', worldFeatures: ['元素一'] },
+            },
+            {
+              title: '《选项二》',
+              worldDirection: { coreConflict: '冲突二', worldFeatures: ['元素二'] },
+            },
+            {
+              title: '《选项三》',
+              worldDirection: { coreConflict: '冲突三', worldFeatures: ['元素三'] },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          options: [
+            {
+              title: '《选项一》',
+              synopsis: '候选一的新书简介。',
+              worldDirection: { coreConflict: '冲突一', worldFeatures: ['元素一'] },
+            },
+            {
+              title: '《选项二》',
+              synopsis: '候选二的新书简介。',
+              worldDirection: { coreConflict: '冲突二', worldFeatures: ['元素二'] },
+            },
+            {
+              title: '《选项三》',
+              synopsis: '候选三的新书简介。',
+              worldDirection: { coreConflict: '冲突三', worldFeatures: ['元素三'] },
+            },
+          ],
+        })
+
+      const options = await generateTitleOptions(createMockProvider(), 'idea', 'default', 10)
+
+      expect(options[0]?.synopsis).toBe('候选一的新书简介。')
+      expect(mockChatStructured).toHaveBeenCalledTimes(2)
+    })
+
     it('retries when AI returns fewer than 3 options', async () => {
       mockChatStructured
         .mockResolvedValueOnce({
@@ -123,14 +173,17 @@ describe('title-selector', () => {
           options: [
             {
               title: '《选项一》',
+              synopsis: '选项一的新书简介。',
               worldDirection: { coreConflict: '冲突一', worldFeatures: ['元素一'] },
             },
             {
               title: '《选项二》',
+              synopsis: '选项二的新书简介。',
               worldDirection: { coreConflict: '冲突二', worldFeatures: ['元素二'] },
             },
             {
               title: '《选项三》',
+              synopsis: '选项三的新书简介。',
               worldDirection: { coreConflict: '冲突三', worldFeatures: ['元素三'] },
             },
           ],

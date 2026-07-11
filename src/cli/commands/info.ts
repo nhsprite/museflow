@@ -24,7 +24,10 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
   console.log('='.repeat(50))
   console.log(`ID: ${story.id}`)
   console.log(`标题: ${story.title || '(未设置)'}`)
-  console.log(`简介: ${story.idea}`)
+  console.log(`简介: ${story.synopsis || story.idea}`)
+  if (story.synopsis) {
+    console.log(`原始想法: ${story.idea}`)
+  }
   console.log('')
   console.log('元数据:')
   console.log(`  题材: ${story.genre} ${genre ? `(${genre.displayName})` : ''}`)

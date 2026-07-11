@@ -27,7 +27,7 @@ export async function list(): Promise<void> {
     console.log('')
     console.log(`  📖 ${story.title || '(未命名)'}`)
     console.log(`     ID:       ${story.id}`)
-    console.log(`     简介:     ${story.idea}`)
+    console.log(`     简介:     ${story.synopsis || story.idea}`)
     console.log(`     题材:     ${story.genre}`)
     console.log(`     进度:     ${currentChapter}/${totalChapters} (${progress}%)`)
     console.log(`     状态:     ${story.status}`)

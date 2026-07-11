@@ -105,7 +105,10 @@ export async function exportStory(storyId: string, _options: ExportOptions): Pro
 
   lines.push(story.title)
   lines.push('')
-  lines.push(`简介: ${story.idea}`)
+  lines.push(`简介: ${story.synopsis || story.idea}`)
+  if (story.synopsis) {
+    lines.push(`原始想法: ${story.idea}`)
+  }
   lines.push(`题材: ${story.genre}`)
   lines.push(`章节数: ${chapterNumbers.length}`)
   lines.push('')

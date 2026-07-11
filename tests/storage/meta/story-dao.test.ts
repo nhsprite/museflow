@@ -34,6 +34,7 @@ describe('story DAO', () => {
     const story = createStory({
       title: 'Hello 世界!!! / test',
       idea: 'test idea',
+      synopsis: 'AI generated synopsis',
       genre: 'fantasy',
       totalChapters: 10,
     })
@@ -41,6 +42,7 @@ describe('story DAO', () => {
     expect(story.id).toBeDefined()
     expect(story.title).toBe('Hello 世界!!! / test')
     expect(story.idea).toBe('test idea')
+    expect(story.synopsis).toBe('AI generated synopsis')
     expect(story.genre).toBe('fantasy')
     expect(story.totalChapters).toBe(10)
     expect(story.status).toBe('init')
@@ -50,6 +52,7 @@ describe('story DAO', () => {
     expect(loaded).not.toBeNull()
     expect(loaded?.title).toBe('Hello 世界!!! / test')
     expect(loaded?.idea).toBe('test idea')
+    expect(loaded?.synopsis).toBe('AI generated synopsis')
     expect(loaded?.outputDir).toBe(story.outputDir)
   })
 

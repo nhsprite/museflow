@@ -12,18 +12,22 @@ const mockChatStructured = vi.fn(async <T>(): Promise<T> => {
     options: [
       {
         title: '候选书名一',
+        synopsis: '候选书名一的新书简介。',
         worldDirection: { coreConflict: '冲突一', worldFeatures: ['特征A', '特征B'] },
       },
       {
         title: '候选书名二',
+        synopsis: '候选书名二的新书简介。',
         worldDirection: { coreConflict: '冲突二', worldFeatures: ['特征C', '特征D'] },
       },
       {
         title: '候选书名三',
+        synopsis: '候选书名三的新书简介。',
         worldDirection: { coreConflict: '冲突三', worldFeatures: ['特征E', '特征F'] },
       },
       {
         title: '候选书名四',
+        synopsis: '候选书名四的新书简介。',
         worldDirection: { coreConflict: '冲突四', worldFeatures: ['特征G', '特征H'] },
       },
     ],
@@ -144,6 +148,7 @@ describe('CLI end-to-end integration', () => {
       expect(existsSync(metaPath)).toBe(true)
       const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
       expect(meta.story.title).toBe('候选书名一')
+      expect(meta.story.synopsis).toBe('候选书名一的新书简介。')
       expect(meta.world).not.toBeNull()
       expect(meta.characters.length).toBeGreaterThanOrEqual(1)
       expect(meta.outline).toHaveLength(3)

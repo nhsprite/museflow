@@ -24,6 +24,7 @@ export interface Story {
   title: string
   worldDirection?: WorldDirection
   idea: string
+  synopsis?: string
   genre: string
   totalChapters: number
   status: StoryStatus
@@ -37,6 +38,7 @@ export interface StoryCreateInput {
   title?: string
   worldDirection?: WorldDirection
   idea: string
+  synopsis?: string
   genre: string
   totalChapters: number
   provider?: ModelConfig['provider']

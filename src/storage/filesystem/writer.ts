@@ -221,6 +221,7 @@ interface StoryBibleStory {
   id: string
   title: string
   idea: string
+  synopsis?: string
   genre: string
   worldDirection?: StoryBibleWorldDirection
 }
@@ -239,7 +240,10 @@ export async function writeStoryBible(
   // Header
   lines.push(`# ${story.title || '故事圣经'}`)
   lines.push('')
-  lines.push(`> *一句话简介：${story.idea || ''}*`)
+  lines.push(`> *新书简介：${story.synopsis || story.idea || ''}*`)
+  if (story.synopsis) {
+    lines.push(`> *原始想法：${story.idea || ''}*`)
+  }
   lines.push('')
   lines.push('---')
   lines.push('')

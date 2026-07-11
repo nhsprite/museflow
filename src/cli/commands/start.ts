@@ -86,6 +86,9 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
   }
 
   console.log(`\n[MuseFlow] 已选择：${selectedOption.title}\n`)
+  if (selectedOption.synopsis) {
+    console.log(`[MuseFlow] 新书简介：${selectedOption.synopsis}\n`)
+  }
 
   const resolvedProvider: ModelConfig['provider'] =
     provider === 'minimax' || provider === 'local'
@@ -98,6 +101,7 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     totalChapters: chapters,
     provider: resolvedProvider,
     title: selectedOption.title,
+    ...(selectedOption.synopsis ? { synopsis: selectedOption.synopsis } : {}),
     worldDirection: selectedOption.worldDirection,
   })
 
@@ -131,6 +135,10 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
 
     if (result.story.title) {
       console.log(`[MuseFlow] 书名: ${result.story.title}\n`)
+    }
+
+    if (result.story.synopsis) {
+      console.log(`[MuseFlow] 简介: ${result.story.synopsis}\n`)
     }
 
     if (result.characters.length > 0) {

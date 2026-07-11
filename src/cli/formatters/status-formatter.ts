@@ -67,7 +67,7 @@ export function printStatusHeader(): void {
 
 export function printStoryInfo(story: Story): void {
   console.log(`ID: ${story.id}`)
-  console.log(`简介: ${story.idea}`)
+  console.log(`简介: ${story.synopsis || story.idea}`)
   console.log(`状态: ${story.status}`)
   console.log('')
 }

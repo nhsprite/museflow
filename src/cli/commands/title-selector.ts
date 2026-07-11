@@ -5,6 +5,7 @@ import type { WorldDirection } from '../../types/story.js'
 
 export interface TitleOption {
   title: string
+  synopsis?: string
   worldDirection: WorldDirection
 }
 
@@ -19,6 +20,10 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
         type: 'object',
         properties: {
           title: { type: 'string', description: '书名，要新颖、有吸引力、符合题材' },
+          synopsis: {
+            type: 'string',
+            description: '新书简介，2-4句，概括主角处境、核心冲突、主要看点和叙事承诺',
+          },
           worldDirection: {
             type: 'object',
             properties: {
@@ -43,7 +48,7 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
             required: ['coreConflict', 'worldFeatures'],
           },
         },
-        required: ['title', 'worldDirection'],
+        required: ['title', 'synopsis', 'worldDirection'],
       },
       description: '3-5个不同的候选方案',
     },
@@ -60,6 +65,7 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
 要求：
 - 书名要新颖、有吸引力、符合题材
 - 世界观方向要各有特色，角度不同
+- synopsis 是新书简介，需用 2-4 句概括主角处境、核心冲突、主要看点和叙事承诺；不要复述用户输入，也不要剧透结局
 - 候选书名应使用不同的核心意象和修辞风格，避免多个选项重复使用同一字或同类比喻
 - coreConflict 点出核心矛盾
 - worldFeatures 列出 2-4 个独特的世界观元素
@@ -75,6 +81,19 @@ function getGenreConstraints(genre: string): string {
   }
 
   return `题材约束：这是${displayName}题材，请确保世界观和冲突符合该题材的典型特征。`
+}
+
+function hasCompleteTitleOptions(value: unknown): value is TitleOption[] {
+  if (!Array.isArray(value) || value.length < 3) return false
+  return value.every(
+    (option) =>
+      option &&
+      typeof option === 'object' &&
+      typeof (option as TitleOption).title === 'string' &&
+      typeof (option as TitleOption).synopsis === 'string' &&
+      (option as TitleOption).synopsis!.trim().length > 0 &&
+      Boolean((option as TitleOption).worldDirection)
+  )
 }
 
 export async function generateTitleOptions(
@@ -102,26 +121,36 @@ export async function generateTitleOptions(
 
   const MAX_RETRIES = 2
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const parsed = await provider.chatStructured!<{ options: TitleOption[] }>(
+    const parsed = await provider.chatStructured!<{ options?: unknown }>(
       messages,
       TITLE_OPTION_SCHEMA,
       0.8
     )
 
-    if (Array.isArray(parsed.options) && parsed.options.length >= 3) {
+    if (hasCompleteTitleOptions(parsed.options)) {
       return parsed.options
     }
 
     if (attempt < MAX_RETRIES) {
+      const optionCount = Array.isArray(parsed.options) ? parsed.options.length : 0
+      const missingSynopsisCount = Array.isArray(parsed.options)
+        ? parsed.options.filter(
+            (option: unknown) =>
+              !option ||
+              typeof option !== 'object' ||
+              typeof (option as TitleOption).synopsis !== 'string' ||
+              !(option as TitleOption).synopsis!.trim()
+          ).length
+        : 0
       messages.push({
         role: 'user' as const,
-        content: `上一次的方案数量不足（仅 ${Array.isArray(parsed.options) ? parsed.options.length : 0} 个）。请严格按照要求返回 3-5 个不同的候选书名和世界方向，不要省略。`,
+        content: `上一次的方案不完整：候选数量 ${optionCount} 个，缺少新书简介的候选 ${missingSynopsisCount} 个。请严格按照要求返回 3-5 个不同的候选书名、新书简介和世界方向，不要省略 synopsis。`,
       })
     }
   }
 
   throw new Error(
-    'AI 返回的标题选项数量不足：多次尝试后仍少于 3 个。请检查模型是否支持结构化输出，或稍后重试。'
+    'AI 返回的标题选项数量不足或缺少新书简介：多次尝试后仍未满足要求。请检查模型是否支持结构化输出，或稍后重试。'
   )
 }
 
@@ -169,5 +198,6 @@ function formatOptionForDisplay(option: TitleOption, number: number, _genre?: st
   const isEmptyPowerSystem =
     !powerSystem || powerSystem === '无' || option.worldDirection.hasPowerSystem === false
   const powerLine = !isEmptyPowerSystem ? `规则体系：${powerSystem} | ` : ''
-  return `${number}. ${option.title} | ${powerLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
+  const synopsisLine = option.synopsis?.trim() ? `简介：${option.synopsis.trim()} | ` : ''
+  return `${number}. ${option.title} | ${synopsisLine}${powerLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
 }

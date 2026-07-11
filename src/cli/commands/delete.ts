@@ -17,7 +17,7 @@ export async function del(storyId: string, options?: DeleteOptions): Promise<voi
   if (!options?.force) {
     console.log(`[MuseFlow] 即将删除书籍: ${story.title || '(未命名)'}`)
     console.log(`  ID: ${story.id}`)
-    console.log(`  简介: ${story.idea}`)
+    console.log(`  简介: ${story.synopsis || story.idea}`)
     console.log(`  路径: ${story.outputDir}`)
     console.log('')
     console.log('⚠️  此操作不可撤销！')
