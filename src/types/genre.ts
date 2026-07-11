@@ -45,6 +45,8 @@ export interface ChapterPlanningConfig {
   foreshadowMaxFulfillDistance: number
   /** 同时保留的未回收伏笔最大数量 */
   foreshadowMaxStackSize: number
+  /** 单章最多主动回收的 required 伏笔数量 */
+  foreshadowMaxFulfillmentsPerChapter: number
   /** 进入收尾阶段前剩余章节比例 */
   closingPhaseRatio: number
   /** 错误级问题最大连续重写次数 */

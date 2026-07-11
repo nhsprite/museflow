@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyForeshadows,
   getBoundaryBlockingForeshadows,
+  getRequiredForeshadowsForScheduling,
   isValidForeshadowDeadline,
+  selectForeshadowsForChapter,
 } from '../../src/story-memory/foreshadow-policy.js'
 import type { ForeshadowItem } from '../../src/types/foreshadow.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
@@ -89,6 +91,69 @@ describe('foreshadow deadline policy', () => {
       'fs-act-1',
       'fs-act-2',
       'fs-unbound',
+    ])
+  })
+
+  it('orders and caps due required foreshadows using structured fields', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        later: memoryForeshadow('later', null, true, 8),
+        'same-b': { ...memoryForeshadow('same-b', null, true, 6), introducedIn: 2 },
+        'same-a': { ...memoryForeshadow('same-a', null, true, 6), introducedIn: 2 },
+        earlier: { ...memoryForeshadow('earlier', null, true, 6), introducedIn: 1 },
+        future: memoryForeshadow('future', null, true, 9),
+        unscheduled: memoryForeshadow('unscheduled', null, true, null),
+        optional: memoryForeshadow('optional', null, false, 5),
+        fulfilled: { ...memoryForeshadow('fulfilled', null, true, 5), fulfilledIn: 4 },
+        invalid: { ...memoryForeshadow('invalid', null, true, 1), introducedIn: 0 },
+      },
+    }
+
+    expect(getRequiredForeshadowsForScheduling(memory, 8, false).map((entry) => entry.id)).toEqual([
+      'earlier',
+      'same-a',
+      'same-b',
+      'later',
+    ])
+    expect(selectForeshadowsForChapter(memory, 8, 3, false)).toEqual([
+      'earlier',
+      'same-a',
+      'same-b',
+    ])
+  })
+
+  it('normalizes per-chapter scheduling capacity to a positive integer', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        first: memoryForeshadow('first', null, true, 3),
+        second: memoryForeshadow('second', null, true, 4),
+        third: memoryForeshadow('third', null, true, 5),
+      },
+    }
+
+    expect(selectForeshadowsForChapter(memory, 5, 0, false)).toEqual(['first'])
+    expect(selectForeshadowsForChapter(memory, 5, 2.9, false)).toEqual(['first', 'second'])
+  })
+
+  it('includes every valid required unresolved foreshadow in final-act scheduling', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        due: memoryForeshadow('due', null, true, 3),
+        future: memoryForeshadow('future', null, true, 30),
+        unscheduled: memoryForeshadow('unscheduled', null, true, null),
+        optional: memoryForeshadow('optional', null, false, null),
+        fulfilled: { ...memoryForeshadow('fulfilled', null, true, 4), fulfilledIn: 3 },
+        invalid: { ...memoryForeshadow('invalid', null, true, 1), introducedIn: 0 },
+      },
+    }
+
+    expect(getRequiredForeshadowsForScheduling(memory, 20, true).map((entry) => entry.id)).toEqual([
+      'due',
+      'future',
+      'unscheduled',
     ])
   })
 })

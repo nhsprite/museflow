@@ -1,5 +1,10 @@
 import type { ForeshadowItem } from '../types/foreshadow.js'
-import type { ForeshadowId, StoryEvent, StoryMemory } from '../types/story-memory.js'
+import type {
+  ForeshadowId,
+  ForeshadowMemory,
+  StoryEvent,
+  StoryMemory,
+} from '../types/story-memory.js'
 
 type ForeshadowIntroduceEvent = Extract<StoryEvent, { type: 'foreshadow-introduce' }>
 
@@ -82,25 +87,52 @@ export function getBoundaryBlockingForeshadows(
   boundaryChapter: number,
   isStoryEnd: boolean
 ): ForeshadowId[] {
-  const blocking: ForeshadowId[] = []
+  return getRequiredForeshadowsForScheduling(memory, boundaryChapter, isStoryEnd).map(
+    (foreshadow) => foreshadow.id
+  )
+}
 
-  for (const foreshadow of Object.values(memory.foreshadows)) {
-    if (
-      !foreshadow.required ||
-      foreshadow.fulfilledIn !== null ||
-      !isValidForeshadowDeadline(foreshadow.introducedIn, foreshadow.expectedFulfillChapter)
-    ) {
-      continue
-    }
+export function getRequiredForeshadowsForScheduling(
+  memory: StoryMemory,
+  chapterNumber: number,
+  includeAllRequired: boolean
+): ForeshadowMemory[] {
+  return Object.values(memory.foreshadows)
+    .filter((foreshadow) => {
+      if (
+        !foreshadow.required ||
+        foreshadow.fulfilledIn !== null ||
+        !isValidForeshadowDeadline(foreshadow.introducedIn, foreshadow.expectedFulfillChapter)
+      ) {
+        return false
+      }
 
-    if (
-      isStoryEnd ||
-      (foreshadow.expectedFulfillChapter !== null &&
-        foreshadow.expectedFulfillChapter <= boundaryChapter)
-    ) {
-      blocking.push(foreshadow.id)
-    }
-  }
+      return (
+        includeAllRequired ||
+        (foreshadow.expectedFulfillChapter !== null &&
+          foreshadow.expectedFulfillChapter <= chapterNumber)
+      )
+    })
+    .sort((left, right) => {
+      const leftDeadline = left.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER
+      const rightDeadline = right.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER
 
-  return blocking
+      return (
+        leftDeadline - rightDeadline ||
+        left.introducedIn - right.introducedIn ||
+        left.id.localeCompare(right.id)
+      )
+    })
+}
+
+export function selectForeshadowsForChapter(
+  memory: StoryMemory,
+  chapterNumber: number,
+  capacity: number,
+  includeAllRequired: boolean
+): ForeshadowId[] {
+  const normalizedCapacity = Math.max(1, Math.floor(capacity))
+  return getRequiredForeshadowsForScheduling(memory, chapterNumber, includeAllRequired)
+    .slice(0, normalizedCapacity)
+    .map((foreshadow) => foreshadow.id)
 }
