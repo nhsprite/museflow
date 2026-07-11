@@ -17,9 +17,7 @@ const completedActProgress = {
   1: { consumed: ['主角失去庇护', '反派首次施压'], pending: [] },
 }
 
-function memoryWithForeshadow(
-  overrides: Partial<StoryMemory['foreshadows'][string]>
-): StoryMemory {
+function memoryWithForeshadow(overrides: Partial<StoryMemory['foreshadows'][string]>): StoryMemory {
   return {
     ...createEmptyStoryMemory(),
     foreshadows: {

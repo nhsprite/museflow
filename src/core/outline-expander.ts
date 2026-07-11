@@ -67,10 +67,7 @@ function getProvider(source: ChapterContextSource): ModelProvider {
   return isRuntimeContext(source) ? source.provider : source
 }
 
-function getChapterBoundaryForeshadowIds(
-  state: ReducedGraphState,
-  chapterIndex: number
-): string[] {
+function getChapterBoundaryForeshadowIds(state: ReducedGraphState, chapterIndex: number): string[] {
   if (!state.storyMemory) return []
   const act = getActForChapter(state.storyArc, chapterIndex)
   const chapterNumber = chapterIndex + 1

@@ -688,8 +688,7 @@ export async function finalizeChapter(
   const isActBoundary = finalizedAct !== undefined && chapterIndex + 1 >= finalizedAct.endChapter
   if (isActBoundary || isStoryEnd) {
     const boundaryActIndex =
-      finalizedAct?.index ??
-      Math.max(0, ...(updatedStoryArc?.acts.map((act) => act.index) ?? []))
+      finalizedAct?.index ?? Math.max(0, ...(updatedStoryArc?.acts.map((act) => act.index) ?? []))
     const unresolvedForeshadows = getBoundaryBlockingForeshadows(
       updatedStoryMemory,
       chapterIndex + 1,
