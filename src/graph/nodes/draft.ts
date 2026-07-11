@@ -121,6 +121,7 @@ export async function draft_chapter(
     storyArc: state.storyArc,
     outline: state.outline,
     chapters: newChapters,
+    chapterPlan,
     draftChapterEvents: storyEvents,
   }
 }

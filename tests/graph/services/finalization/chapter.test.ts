@@ -7,7 +7,7 @@ import { createEmptyStoryState } from '@/storage/meta/stores/story-state.js'
 import type { ReducedGraphState } from '@/graph/state.js'
 import type { ModelProvider } from '@/model/provider.js'
 import type { ChapterSession } from '@/core/chapter-generation/routing/types.js'
-import type { StoryEvent } from '@/types/story-memory.js'
+import type { ForeshadowMemory, StoryEvent, StoryMemory } from '@/types/story-memory.js'
 import type { ChapterPlan } from '@/agents/types.js'
 import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/utils/story-arc.js'
 import { logger } from '@/utils/logger.js'
@@ -113,6 +113,38 @@ function buildChapterPlan(overrides: Partial<ChapterPlan> = {}): ChapterPlan {
     resolvedTaskIds: [],
     createdTaskIds: [],
     ...overrides,
+  }
+}
+
+function makeForeshadowMemory(
+  id: string,
+  overrides: Partial<ForeshadowMemory> = {}
+): ForeshadowMemory {
+  return {
+    id,
+    text: `${id} text`,
+    kind: null,
+    introducedIn: 0,
+    expectedFulfillChapter: 2,
+    fulfilledIn: null,
+    required: true,
+    beatId: null,
+    ...overrides,
+  }
+}
+
+function makeStoryMemory(
+  foreshadows: Record<string, ForeshadowMemory> = {},
+  events: StoryEvent[] = []
+): StoryMemory {
+  return {
+    version: '1',
+    lastChapterIndex: 0,
+    entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+    events,
+    foreshadows,
+    beats: {},
+    tasks: {},
   }
 }
 
@@ -333,8 +365,8 @@ describe('finalizeChapter', () => {
     await finalizeChapter(state, createMockProvider())
 
     expect(run).toHaveBeenCalledTimes(1)
-    expect(run.mock.calls[0]?.[0].foreshadowStack).toEqual([
-      expect.objectContaining({ id: 'fs-planned', text: '本章计划回收的线索' }),
+    expect(run.mock.calls[0]?.[0].plannedForeshadowFulfillments).toEqual([
+      { id: 'fs-planned', text: '本章计划回收的线索' },
     ])
   })
 
@@ -375,7 +407,7 @@ describe('finalizeChapter', () => {
 
     await finalizeChapter(state, createMockProvider())
 
-    expect(run.mock.calls[0]?.[0].foreshadowStack).toEqual([])
+    expect(run.mock.calls[0]?.[0].plannedForeshadowFulfillments).toEqual([])
   })
 
   it('applies an evidence-backed planned foreshadow fulfillment from SummaryAgent', async () => {
@@ -476,6 +508,247 @@ describe('finalizeChapter', () => {
     expect(result.storyMemory?.events).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'evt-fulfill-no-evidence' })])
     )
+  })
+
+  it('rejects an evidence-backed unplanned foreshadow fulfillment from SummaryAgent', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-unplanned-fulfill',
+              type: 'foreshadow-fulfill',
+              foreshadowId: 'fs-unplanned',
+              chapterIndex: 0,
+              source: 'chapter',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+    const state = buildState(tmpDir, {
+      chapterPlan: buildChapterPlan({ fulfilledForeshadowIds: ['fs-planned'] }),
+      storyMemory: makeStoryMemory({
+        'fs-planned': makeForeshadowMemory('fs-planned'),
+        'fs-unplanned': makeForeshadowMemory('fs-unplanned'),
+      }),
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.storyMemory?.foreshadows['fs-unplanned']?.fulfilledIn).toBeNull()
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-unplanned-fulfill')).toBe(
+      false
+    )
+  })
+
+  it('rejects SummaryAgent events for a different chapter', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-wrong-chapter',
+              type: 'task-create',
+              taskId: 'task-wrong-chapter',
+              description: 'wrong chapter',
+              chapterIndex: 1,
+              source: 'chapter',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const result = await finalizeChapter(buildState(tmpDir), createMockProvider())
+
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-wrong-chapter')).toBe(false)
+    expect(result.storyMemory?.tasks['task-wrong-chapter']).toBeUndefined()
+  })
+
+  it('rejects SummaryAgent events that do not use chapter source', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-wrong-source',
+              type: 'task-create',
+              taskId: 'task-wrong-source',
+              description: 'wrong source',
+              chapterIndex: 0,
+              source: 'outline',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const result = await finalizeChapter(buildState(tmpDir), createMockProvider())
+
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-wrong-source')).toBe(false)
+    expect(result.storyMemory?.tasks['task-wrong-source']).toBeUndefined()
+  })
+
+  it('does not present or reapply an already-fulfilled stale plan target', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_2.md'),
+      '# 第二章 遇敌\n\n主角继续前行。',
+      'utf-8'
+    )
+    const run = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        chapterSummary: '摘要',
+        storyEvents: [
+          {
+            id: 'evt-stale-reapply',
+            type: 'foreshadow-fulfill',
+            foreshadowId: 'fs-stale',
+            chapterIndex: 1,
+            source: 'chapter',
+            evidence: { paragraphIndex: 1 },
+          },
+        ],
+      },
+    })
+    vi.mocked(getSummaryAgent).mockReturnValue({ run } as unknown as ReturnType<
+      typeof getSummaryAgent
+    >)
+    const historicalEvents: StoryEvent[] = [
+      {
+        id: 'evt-stale-introduce',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-stale',
+        text: '已在前章回收的线索',
+        expectedFulfillChapter: 2,
+        chapterIndex: 0,
+        source: 'chapter',
+        evidence: { paragraphIndex: 1 },
+      },
+      {
+        id: 'evt-stale-fulfilled',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-stale',
+        chapterIndex: 0,
+        source: 'chapter',
+        evidence: { paragraphIndex: 1 },
+      },
+    ]
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 1,
+      chapters: [
+        null,
+        {
+          id: 'ch-2',
+          storyId: 'test-story',
+          number: 2,
+          title: '遇敌',
+          outline: '主角遭遇敌人。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      chapterPlan: buildChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-stale'],
+      }),
+      storyMemory: makeStoryMemory(
+        {
+          'fs-stale': makeForeshadowMemory('fs-stale', {
+            text: '已在前章回收的线索',
+            fulfilledIn: 0,
+          }),
+        },
+        historicalEvents
+      ),
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(run.mock.calls[0]?.[0].plannedForeshadowFulfillments).toEqual([])
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-stale-reapply')).toBe(false)
+    expect(result.storyMemory?.foreshadows['fs-stale']?.fulfilledIn).toBe(0)
+  })
+
+  it('does not present fulfilled targets or duplicate event IDs already emitted by the draft', async () => {
+    const run = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        chapterSummary: '摘要',
+        storyEvents: [
+          {
+            id: 'evt-draft-fulfill',
+            type: 'foreshadow-fulfill',
+            foreshadowId: 'fs-planned',
+            chapterIndex: 0,
+            source: 'chapter',
+            evidence: { paragraphIndex: 1 },
+          },
+          {
+            id: 'evt-draft-task',
+            type: 'task-create',
+            taskId: 'task-summary-duplicate',
+            description: 'summary duplicate',
+            chapterIndex: 0,
+            source: 'chapter',
+            evidence: { paragraphIndex: 1 },
+          },
+        ],
+      },
+    })
+    vi.mocked(getSummaryAgent).mockReturnValue({ run } as unknown as ReturnType<
+      typeof getSummaryAgent
+    >)
+    const draftFulfillment: StoryEvent = {
+      id: 'evt-draft-fulfill',
+      type: 'foreshadow-fulfill',
+      foreshadowId: 'fs-planned',
+      chapterIndex: 0,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const draftTask: StoryEvent = {
+      id: 'evt-draft-task',
+      type: 'task-create',
+      taskId: 'task-draft-original',
+      description: 'draft original',
+      chapterIndex: 0,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const state = buildState(tmpDir, {
+      chapterPlan: buildChapterPlan({ fulfilledForeshadowIds: ['fs-planned'] }),
+      storyMemory: makeStoryMemory({
+        'fs-planned': makeForeshadowMemory('fs-planned'),
+      }),
+      draftChapterEvents: [draftFulfillment, draftTask],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(run.mock.calls[0]?.[0].plannedForeshadowFulfillments).toEqual([])
+    expect(
+      result.storyMemory?.events.filter((event) => event.id === 'evt-draft-fulfill')
+    ).toHaveLength(1)
+    expect(
+      result.storyMemory?.events.filter((event) => event.id === 'evt-draft-task')
+    ).toHaveLength(1)
+    expect(result.storyMemory?.tasks['task-draft-original']).toBeDefined()
+    expect(result.storyMemory?.tasks['task-summary-duplicate']).toBeUndefined()
+    expect(result.storyMemory?.foreshadows['fs-planned']?.fulfilledIn).toBe(0)
   })
 
   it('stores summary chapter handoff on storyState for the next chapter contract', async () => {

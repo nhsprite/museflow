@@ -113,7 +113,9 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
           state.claimedBeats ?? [],
           state.claimedMandatoryBeatIds ?? []
         ),
-        plannedForeshadowsSection: buildPlannedForeshadowsSection(state.foreshadowStack ?? []),
+        plannedForeshadowsSection: buildPlannedForeshadowsSection(
+          state.plannedForeshadowFulfillments ?? []
+        ),
         whitelistSection,
       },
       {

@@ -135,7 +135,10 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
       return {
         success: true,
         content: makeChapterContent(idx),
-        data: { preWriteCheck: 'checked' },
+        data: {
+          preWriteCheck: 'checked',
+          storyEvents: idx === 1 ? chapter2Events.slice(0, 1) : [],
+        },
       }
     }),
   }),
@@ -187,9 +190,9 @@ vi.mock('../../src/core/outline-expander.js', () => ({
         ],
         timeline: [],
         outlineCheck: [],
-        expectedEvents: [],
+        expectedEvents: chapterIndex === 1 ? chapter2Events.slice(0, 1) : [],
         claimedBeatIds: [],
-        fulfilledForeshadowIds: [],
+        fulfilledForeshadowIds: chapterIndex === 1 ? ['fs-locket'] : [],
         introducedForeshadowIds: [],
         resolvedTaskIds: [],
         createdTaskIds: [],

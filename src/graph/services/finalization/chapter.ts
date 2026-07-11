@@ -151,6 +151,24 @@ function filterStoryEventsForEvidence(events: StoryEvent[], chapterContent: stri
   })
 }
 
+function filterSummaryFallbackEvents(
+  events: StoryEvent[],
+  chapterIndex: number,
+  plannedForeshadowIds: ReadonlySet<ForeshadowId>,
+  existingEventIds: ReadonlySet<string>
+): StoryEvent[] {
+  const seenEventIds = new Set(existingEventIds)
+  return events.filter((event) => {
+    if (event.source !== 'chapter' || event.chapterIndex !== chapterIndex) return false
+    if (seenEventIds.has(event.id)) return false
+    if (event.type === 'foreshadow-fulfill' && !plannedForeshadowIds.has(event.foreshadowId)) {
+      return false
+    }
+    seenEventIds.add(event.id)
+    return true
+  })
+}
+
 function ensureChaptersLength(
   chapters: ReducedGraphState['chapters'],
   totalChapters: number
@@ -346,13 +364,17 @@ export async function finalizeChapter(
           ? currentOutline.claimedBeats
           : getPendingMandatoryBeats(state, chapterIndex)
       const claimedMandatoryBeatIds = currentOutline?.claimedMandatoryBeatIds ?? []
-      const plannedForeshadows =
+      const plannedFallbackItems =
         state.chapterPlan?.chapterIndex === chapterIndex
           ? state.chapterPlan.fulfilledForeshadowIds.flatMap((id) => {
               const memory = updatedStoryMemory.foreshadows[id]
-              return memory ? [foreshadowMemoryToItem(memory)] : []
+              return memory && memory.fulfilledIn === null ? [foreshadowMemoryToItem(memory)] : []
             })
           : []
+      const plannedFallbackForeshadows = plannedFallbackItems.map(({ id, text }) => ({ id, text }))
+      const plannedFallbackForeshadowIds = new Set(
+        plannedFallbackForeshadows.map((foreshadow) => foreshadow.id)
+      )
       const summaryState: SummaryAgentInput = {
         idea: state.idea,
         genre: state.genre,
@@ -361,7 +383,7 @@ export async function finalizeChapter(
         charactersList: effectiveCharacters,
         outlineCharacters,
         establishedCharacters,
-        foreshadowStack: plannedForeshadows,
+        plannedForeshadowFulfillments: plannedFallbackForeshadows,
         ...(currentOutline?.title ? { chapterTitle: currentOutline.title } : {}),
         chapterIndex,
         ...(beatsToVerify.length > 0 ? { claimedBeats: beatsToVerify } : {}),
@@ -402,9 +424,14 @@ export async function finalizeChapter(
 
           // SummaryAgent events are a fallback for events the writer missed.
           // For plot-advance, draft events are authoritative; skip duplicates.
-          const summaryEventCandidates = filterStoryEventsForEvidence(
-            filterStoryEventsForStoryArc(summaryData.storyEvents ?? [], state.storyArc),
-            chapterContent
+          const summaryEventCandidates = filterSummaryFallbackEvents(
+            filterStoryEventsForEvidence(
+              filterStoryEventsForStoryArc(summaryData.storyEvents ?? [], state.storyArc),
+              chapterContent
+            ),
+            chapterIndex,
+            plannedFallbackForeshadowIds,
+            new Set(updatedStoryMemory.events.map((event) => event.id))
           )
           const { valid: actualEvents, invalid: invalidSummaryForeshadows } =
             partitionInvalidForeshadowIntroductions(summaryEventCandidates)

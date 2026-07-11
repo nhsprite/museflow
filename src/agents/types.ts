@@ -195,12 +195,13 @@ export type ConsistencyAgentInput = AgentInput &
     chapterSummaries?: string[]
   }
 
-export type SummaryAgentInput = AgentInput &
+export type SummaryAgentInput = Omit<AgentInput, 'foreshadowStack'> &
   Required<Pick<AgentInput, 'chapterContent' | 'chapterIndex' | 'charactersList'>> & {
     chapterTitle?: string
     outlineCharacters?: Character[]
     establishedCharacters?: Character[]
     claimedBeats?: string[]
+    plannedForeshadowFulfillments?: Array<Pick<ForeshadowItem, 'id' | 'text'>>
   }
 
 export type FixAgentInput = AgentInput &
