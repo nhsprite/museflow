@@ -42,6 +42,7 @@ import {
   filterVerifiedConstraintsForChapter,
   renderVerifiedConstraints,
 } from '../utils/verified-constraints.js'
+import { getBoundaryBlockingForeshadows } from '../story-memory/foreshadow-policy.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -64,6 +65,35 @@ function isRuntimeContext(source: ChapterContextSource): source is RuntimeContex
 
 function getProvider(source: ChapterContextSource): ModelProvider {
   return isRuntimeContext(source) ? source.provider : source
+}
+
+function getChapterBoundaryForeshadowIds(
+  state: ReducedGraphState,
+  chapterIndex: number
+): string[] {
+  if (!state.storyMemory) return []
+  const act = getActForChapter(state.storyArc, chapterIndex)
+  const chapterNumber = chapterIndex + 1
+  const isStoryEnd = chapterNumber >= state.totalChapters
+  const isActBoundary = act !== undefined && chapterNumber >= act.endChapter
+  if (!isActBoundary && !isStoryEnd) return []
+  return getBoundaryBlockingForeshadows(state.storyMemory, chapterNumber, isStoryEnd)
+}
+
+function buildBoundaryForeshadowConstraint(state: ReducedGraphState, ids: string[]): string {
+  const lines = ids.map((id) => {
+    const foreshadow = state.storyMemory?.foreshadows[id]
+    return `- ${id}（预期回收章节：${foreshadow?.expectedFulfillChapter ?? '全书结尾'}）：${foreshadow?.text ?? id}`
+  })
+  return `【伏笔边界义务】本章必须回收以下 required 伏笔，并在 fulfilledForeshadowIds 与 foreshadow-fulfill 事件中使用精确 ID：\n${lines.join('\n')}`
+}
+
+function getMissingBoundaryForeshadowIds(
+  fulfilledForeshadowIds: string[] | undefined,
+  boundaryForeshadowIds: string[]
+): string[] {
+  const fulfilled = new Set(fulfilledForeshadowIds ?? [])
+  return boundaryForeshadowIds.filter((id) => !fulfilled.has(id))
 }
 
 const CORE_SECTION_JUDGE_SCHEMA: JsonSchema = {
@@ -339,6 +369,11 @@ async function generateChapterOutlineIfNeeded(
     state.storyArc,
     chapterIndex
   )
+  const boundaryForeshadowIds = getChapterBoundaryForeshadowIds(state, chapterIndex)
+  const boundaryForeshadowConstraint =
+    boundaryForeshadowIds.length > 0
+      ? buildBoundaryForeshadowConstraint(state, boundaryForeshadowIds)
+      : ''
 
   // 计算本章节拍预算，防止幕前期把全部 mandatory beats 一次性消费完
   const currentAct = getActForChapter(state.storyArc, chapterIndex)
@@ -357,6 +392,7 @@ async function generateChapterOutlineIfNeeded(
     const verifiedConstraints = [
       ...renderVerifiedConstraints(baseVerifiedConstraints),
       ...(beatBudgetConstraint ? [beatBudgetConstraint] : []),
+      ...(boundaryForeshadowConstraint ? [boundaryForeshadowConstraint] : []),
       ...correctionConstraints,
     ]
     const previousChapters = [
@@ -394,6 +430,17 @@ async function generateChapterOutlineIfNeeded(
       throw new Error(
         `第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`
       )
+    }
+
+    const missingBoundaryForeshadowIds = getMissingBoundaryForeshadowIds(
+      candidate.fulfilledForeshadowIds,
+      boundaryForeshadowIds
+    )
+    if (missingBoundaryForeshadowIds.length > 0) {
+      correctionConstraints = [
+        `【伏笔边界修正】fulfilledForeshadowIds 遗漏：${missingBoundaryForeshadowIds.join(', ')}。必须把这些精确 ID 纳入本章，并在 description 中安排自然回收。`,
+      ]
+      continue
     }
 
     const filteredClaimedBeatPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
@@ -597,6 +644,11 @@ export async function expandOutlineForChapter(
   }
 
   const nextItem = state.outline[chapterIndex + 1]
+  const boundaryForeshadowIds = getChapterBoundaryForeshadowIds(state, chapterIndex)
+  const boundaryForeshadowConstraint =
+    boundaryForeshadowIds.length > 0
+      ? buildBoundaryForeshadowConstraint(state, boundaryForeshadowIds)
+      : ''
 
   const planningConfig = getChapterPlanningConfig(state.genre)
 
@@ -632,6 +684,7 @@ export async function expandOutlineForChapter(
       : nextBoundaryHint
 
   const declarations = [
+    { label: '【本章必须兑现伏笔】', ids: boundaryForeshadowIds },
     { label: '【本章认领 mandatory beats】', ids: outlineItem.claimedMandatoryBeatIds },
     { label: '【本章认领 key beats】', ids: outlineItem.claimedBeatIds },
     { label: '【本章兑现伏笔】', ids: outlineItem.fulfilledForeshadowIds },
@@ -662,6 +715,12 @@ export async function expandOutlineForChapter(
     state.storyArc,
     chapterIndex
   )
+  if (boundaryForeshadowConstraint) {
+    currentConstraints = [
+      ...currentConstraints,
+      createGenericVerifiedConstraint(boundaryForeshadowConstraint),
+    ]
+  }
   let pendingIssues: Issue[] = []
 
   // 首次生成规划
@@ -680,6 +739,41 @@ export async function expandOutlineForChapter(
 
   if (!chapterPlan) {
     throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
+  }
+
+  const initiallyMissingBoundaryForeshadowIds = getMissingBoundaryForeshadowIds(
+    chapterPlan.fulfilledForeshadowIds,
+    boundaryForeshadowIds
+  )
+  if (initiallyMissingBoundaryForeshadowIds.length > 0) {
+    currentConstraints = [
+      ...currentConstraints,
+      createGenericVerifiedConstraint(
+        `【伏笔边界修正】章节规划的 fulfilledForeshadowIds 遗漏：${initiallyMissingBoundaryForeshadowIds.join(', ')}。必须使用这些精确 ID，并生成对应的 foreshadow-fulfill expected events。`
+      ),
+    ]
+    const planState: ReducedGraphState = {
+      ...state,
+      currentChapterIndex: chapterIndex,
+      verifiedConstraints: currentConstraints,
+      chapterPlan: null,
+    }
+    const planResult = await plan_chapter_with_override(provider, planState, formattedOutline)
+    const replanned = planResult.chapterPlan ?? null
+    if (!replanned) {
+      throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
+    }
+    const stillMissingBoundaryForeshadowIds = getMissingBoundaryForeshadowIds(
+      replanned.fulfilledForeshadowIds,
+      boundaryForeshadowIds
+    )
+    if (stillMissingBoundaryForeshadowIds.length > 0) {
+      throw new Error(
+        `第 ${chapterIndex + 1} 章规划遗漏幕边界伏笔义务：${stillMissingBoundaryForeshadowIds.join(', ')}`
+      )
+    }
+    chapterPlan = replanned
+    state = { ...state, chapterPlan: replanned }
   }
 
   if (chapterIndex > 0) {
@@ -719,6 +813,15 @@ export async function expandOutlineForChapter(
       const planResult = await plan_chapter_with_override(provider, planState, formattedOutline)
       const replanned = planResult.chapterPlan ?? null
       if (!replanned) break
+      const missingBoundaryForeshadowIds = getMissingBoundaryForeshadowIds(
+        replanned.fulfilledForeshadowIds,
+        boundaryForeshadowIds
+      )
+      if (missingBoundaryForeshadowIds.length > 0) {
+        throw new Error(
+          `第 ${chapterIndex + 1} 章规划遗漏幕边界伏笔义务：${missingBoundaryForeshadowIds.join(', ')}`
+        )
+      }
       chapterPlan = replanned
       state = { ...state, chapterPlan: replanned }
     }
@@ -751,6 +854,15 @@ export async function expandOutlineForChapter(
     const planResult = await plan_chapter_with_override(provider, planState, formattedOutline)
     const replanned = planResult.chapterPlan ?? null
     if (!replanned) break
+    const missingBoundaryForeshadowIds = getMissingBoundaryForeshadowIds(
+      replanned.fulfilledForeshadowIds,
+      boundaryForeshadowIds
+    )
+    if (missingBoundaryForeshadowIds.length > 0) {
+      throw new Error(
+        `第 ${chapterIndex + 1} 章规划遗漏幕边界伏笔义务：${missingBoundaryForeshadowIds.join(', ')}`
+      )
+    }
 
     chapterPlan = replanned
     state = { ...state, chapterPlan: replanned }
