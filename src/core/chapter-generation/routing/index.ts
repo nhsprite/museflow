@@ -99,7 +99,8 @@ export async function decideNextStep(
       structured.missingEvents.length > 0 ||
       structured.unexpectedEvents.length > 0 ||
       structured.eventsMissingEvidence.length > 0 ||
-      structured.eventsWithInvalidEvidence.length > 0
+      structured.eventsWithInvalidEvidence.length > 0 ||
+      structured.eventsWithInvalidForeshadowDeadline.length > 0
     if (hasBlocking) {
       const chapterIndex = ctx.session.chapterIndex
       const structuredIssues: Issue[] = []
@@ -128,6 +129,17 @@ export async function decideNextStep(
           severity: 'error',
           description: `声称兑现的伏笔 ${fsId} 未在正文中发生`,
           location: `第 ${chapterIndex + 1} 章`,
+        })
+      }
+      for (const event of structured.eventsWithInvalidForeshadowDeadline) {
+        structuredIssues.push({
+          id: generateId(),
+          type: 'foreshadow_invalid_deadline',
+          severity: 'error',
+          description: `伏笔 ${event.foreshadowId} 的预期回收章节 ${String(event.expectedFulfillChapter)} 必须晚于引入章节 ${event.chapterIndex + 1}`,
+          location: `第 ${chapterIndex + 1} 章`,
+          source: 'foreshadowing',
+          retryStrategy: 'draft',
         })
       }
       for (const event of structured.missingEvents) {

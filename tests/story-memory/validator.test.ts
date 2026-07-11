@@ -137,6 +137,24 @@ describe('validateChapterEvents', () => {
     expect(result.overdueForeshadows).toContain('f-1')
   })
 
+  it('rejects a foreshadow deadline that is not after the introduction chapter', () => {
+    const memory = createEmptyStoryMemory()
+    const plan = createEmptyChapterPlan(9)
+    const invalidEvent = {
+      id: 'e-invalid-deadline',
+      type: 'foreshadow-introduce' as const,
+      foreshadowId: 'f-invalid',
+      expectedFulfillChapter: 0,
+      chapterIndex: 9,
+      source: 'chapter' as const,
+    }
+
+    const result = validateChapterEvents(memory, 9, plan, [invalidEvent])
+
+    expect(result.eventsWithInvalidForeshadowDeadline).toEqual([invalidEvent])
+    expect(result.actualEvents).toEqual([invalidEvent])
+  })
+
   it('detects false foreshadow fulfillment claims', () => {
     const memory = createEmptyStoryMemory()
     const plan = createEmptyChapterPlan(2, {

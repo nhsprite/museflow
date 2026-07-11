@@ -64,6 +64,7 @@ function makeStructuredResult(
     unexpectedEvents: [],
     eventsMissingEvidence: [],
     eventsWithInvalidEvidence: [],
+    eventsWithInvalidForeshadowDeadline: [],
     unfulfilledRequiredForeshadows: [],
     overdueForeshadows: [],
     falseFulfillments: [],
@@ -152,6 +153,57 @@ describe('decideNextStep structured validation routing', () => {
     expect(result.processedIssues).toHaveLength(1)
     expect(result.processedIssues[0]?.type).toBe('foreshadow_false_fulfillment')
     expect(result.processedIssues[0]?.description).toContain('fs-1')
+  })
+
+  it('routes to fix_chapter when a foreshadow introduction has an invalid deadline', async () => {
+    const invalidEvent = {
+      id: 'evt-invalid-deadline',
+      type: 'foreshadow-introduce' as const,
+      foreshadowId: 'fs-invalid',
+      expectedFulfillChapter: 0,
+      chapterIndex: 9,
+      source: 'chapter' as const,
+    }
+    const ctx: RoutingContext = {
+      session: makeSession({ chapterIndex: 9 }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        eventsWithInvalidForeshadowDeadline: [invalidEvent],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('fix')
+    expect(result.processedIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'foreshadow_invalid_deadline',
+          severity: 'error',
+          retryStrategy: 'draft',
+        }),
+      ])
+    )
+  })
+
+  it('keeps overdue required foreshadows non-blocking during an ordinary chapter', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({ chapterIndex: 9 }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        unfulfilledRequiredForeshadows: ['fs-due'],
+        overdueForeshadows: ['fs-overdue'],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).not.toBe('fix')
+    expect(result.processedIssues).toEqual([])
   })
 
   it('routes to fix_chapter when expected events are missing', async () => {

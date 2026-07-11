@@ -19,6 +19,8 @@ export type IssueType =
   | 'state_conflict'
   | 'beat_unproven'
   | 'foreshadow_false_fulfillment'
+  | 'foreshadow_invalid_deadline'
+  | 'foreshadow_boundary_unresolved'
   | 'event_missing'
   | 'event_unexpected'
   | 'event_evidence_missing'

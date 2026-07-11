@@ -2,6 +2,7 @@ import type { StoryMemory, StoryEvent, ForeshadowId, BeatId } from '../types/sto
 import type { ChapterPlan } from '../agents/types.js'
 import { diffEvents } from './diff.js'
 import { applyEvents } from './projector.js'
+import { partitionInvalidForeshadowIntroductions } from './foreshadow-policy.js'
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -10,6 +11,9 @@ export interface StructuredValidationResult {
   unexpectedEvents: StoryEvent[]
   eventsMissingEvidence: StoryEvent[]
   eventsWithInvalidEvidence: StoryEvent[]
+  eventsWithInvalidForeshadowDeadline: Array<
+    Extract<StoryEvent, { type: 'foreshadow-introduce' }>
+  >
 
   unfulfilledRequiredForeshadows: ForeshadowId[]
   overdueForeshadows: ForeshadowId[]
@@ -47,35 +51,38 @@ export function validateChapterEvents(
     chapterActual,
     options
   )
-  const effectiveMemory = applyNewChapterEvents(memory, validEvents)
+  const { valid: acceptedEvents, invalid: invalidDeadlineEvents } =
+    partitionInvalidForeshadowIntroductions(validEvents)
+  const effectiveMemory = applyNewChapterEvents(memory, acceptedEvents)
 
-  const { missing, unexpected } = diffEvents(chapterExpected, validEvents)
+  const { missing, unexpected } = diffEvents(chapterExpected, acceptedEvents)
 
   const unfulfilledRequiredForeshadows: ForeshadowId[] = []
   const overdueForeshadows: ForeshadowId[] = []
   const falseFulfillments: ForeshadowId[] = []
+  const currentChapter = chapterIndex + 1
 
   for (const fs of Object.values(effectiveMemory.foreshadows)) {
     if (
       fs.required &&
       !fs.fulfilledIn &&
-      fs.expectedFulfillChapter &&
-      chapterIndex > fs.expectedFulfillChapter
+      fs.expectedFulfillChapter !== null &&
+      currentChapter > fs.expectedFulfillChapter
     ) {
       overdueForeshadows.push(fs.id)
     }
     if (
       fs.required &&
       !fs.fulfilledIn &&
-      fs.expectedFulfillChapter &&
-      chapterIndex >= fs.expectedFulfillChapter
+      fs.expectedFulfillChapter !== null &&
+      currentChapter >= fs.expectedFulfillChapter
     ) {
       unfulfilledRequiredForeshadows.push(fs.id)
     }
   }
 
   for (const id of plan.fulfilledForeshadowIds ?? []) {
-    const actualFulfilled = validEvents.some(
+    const actualFulfilled = acceptedEvents.some(
       (e) => e.type === 'foreshadow-fulfill' && e.foreshadowId === id
     )
     if (!actualFulfilled) {
@@ -107,12 +114,13 @@ export function validateChapterEvents(
     unexpectedEvents: unexpected,
     eventsMissingEvidence: missingEvidence,
     eventsWithInvalidEvidence: invalidEvidence,
+    eventsWithInvalidForeshadowDeadline: invalidDeadlineEvents,
     unfulfilledRequiredForeshadows,
     overdueForeshadows,
     falseFulfillments,
     unclaimedMandatoryBeats,
     claimedButUnprovenBeats,
-    stateConflicts: detectStateConflicts(validEvents),
+    stateConflicts: detectStateConflicts(acceptedEvents),
   }
 }
 
