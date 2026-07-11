@@ -207,16 +207,33 @@ function estimateBeatCapacityThroughActEnd(
   return capacity
 }
 
-function calculateForeshadowCapacityEndChapter(
+interface ForeshadowCapacitySizing {
+  endChapter: number
+  requiredCount: number
+  existingSlots: number
+  capacityPerChapter: number
+}
+
+function assertSafeChapterNumber(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${label}必须是正安全整数，实际为 ${String(value)}`)
+  }
+}
+
+function calculateForeshadowCapacitySizing(
   storyArc: StoryArc,
   act: ActArc,
   currentChapterNumber: number,
   memory: StoryMemory,
   capacity: number
-): number {
+): ForeshadowCapacitySizing {
+  assertSafeChapterNumber(currentChapterNumber, '当前章节号')
+  assertSafeChapterNumber(act.endChapter, `第 ${act.index} 幕结束章节`)
+
   const normalizedCapacity = normalizeForeshadowCapacity(capacity)
   const finalActIndex = storyArc.acts.at(-1)?.index
   const includeAllRequired = act.index === finalActIndex
+  const existingSlots = act.endChapter - currentChapterNumber + 1
   let candidateEnd = act.endChapter
 
   while (true) {
@@ -225,10 +242,24 @@ function calculateForeshadowCapacityEndChapter(
       candidateEnd,
       includeAllRequired
     ).length
-    const availableCapacity = (candidateEnd - currentChapterNumber + 1) * normalizedCapacity
-    const missingCapacity = blockingCount - availableCapacity
-    if (missingCapacity <= 0) return candidateEnd
-    candidateEnd += Math.ceil(missingCapacity / normalizedCapacity)
+    const availableSlots = candidateEnd - currentChapterNumber + 1
+    const requiredSlots = Math.ceil(blockingCount / normalizedCapacity)
+    if (requiredSlots <= availableSlots) {
+      return {
+        endChapter: candidateEnd,
+        requiredCount: blockingCount,
+        existingSlots,
+        capacityPerChapter: normalizedCapacity,
+      }
+    }
+
+    const nextCandidateEnd = currentChapterNumber + requiredSlots - 1
+    if (!Number.isSafeInteger(nextCandidateEnd) || nextCandidateEnd <= candidateEnd) {
+      throw new RangeError(
+        `第 ${act.index} 幕伏笔容量计算无法以安全整数推进：${candidateEnd} -> ${String(nextCandidateEnd)}`
+      )
+    }
+    candidateEnd = nextCandidateEnd
   }
 }
 
@@ -244,43 +275,54 @@ export function proposeActBoundaryAdjustments(
   if (!currentAct) return proposals
 
   const chaptersRemaining = currentAct.endChapter - (currentChapterIndex + 1)
-  // 只在幕边界附近触发建议
-  if (chaptersRemaining > 2 || chaptersRemaining < 0) return proposals
+  const nearBoundary = chaptersRemaining >= 0 && chaptersRemaining <= 2
 
   const progress = actProgress[currentAct.index] ?? {
     consumed: [],
     pending: [...currentAct.mandatoryBeats],
   }
 
-  const beatCapacity = estimateBeatCapacityThroughActEnd(
-    currentAct,
-    currentChapterIndex,
-    progress.pending
-  )
+  const beatCapacity = nearBoundary
+    ? estimateBeatCapacityThroughActEnd(currentAct, currentChapterIndex, progress.pending)
+    : progress.pending.length
 
   const beatExtensionEnd =
-    progress.pending.length > beatCapacity
+    nearBoundary && progress.pending.length > beatCapacity
       ? currentAct.endChapter + Math.min(2, progress.pending.length)
       : currentAct.endChapter
-  const foreshadowExtensionEnd = storyMemory
-    ? calculateForeshadowCapacityEndChapter(
+  const foreshadowSizing = storyMemory
+    ? calculateForeshadowCapacitySizing(
         storyArc,
         currentAct,
         currentChapterIndex + 1,
         storyMemory,
         foreshadowCapacity
       )
-    : currentAct.endChapter
-  const proposedExtensionEnd = Math.max(beatExtensionEnd, foreshadowExtensionEnd)
+    : undefined
+  const proposedExtensionEnd = Math.max(
+    beatExtensionEnd,
+    foreshadowSizing?.endChapter ?? currentAct.endChapter
+  )
 
   if (proposedExtensionEnd > currentAct.endChapter) {
     const extension = proposedExtensionEnd - currentAct.endChapter
+    const causes: string[] = []
+    if (beatExtensionEnd > currentAct.endChapter) {
+      causes.push(
+        `${progress.pending.length} 个 mandatory beats，当前边界前可处理 ${beatCapacity} 个，需延长至第 ${beatExtensionEnd} 章`
+      )
+    }
+    if (foreshadowSizing && foreshadowSizing.endChapter > currentAct.endChapter) {
+      causes.push(
+        `${foreshadowSizing.requiredCount} 个 required 未回收伏笔，当前 ${foreshadowSizing.existingSlots} 个章节槽位 × 每章 ${foreshadowSizing.capacityPerChapter} 个 = ${foreshadowSizing.existingSlots * foreshadowSizing.capacityPerChapter} 个容量，需延长至第 ${foreshadowSizing.endChapter} 章`
+      )
+    }
     proposals.push({
       actIndex: currentAct.index,
       proposedEndChapter: proposedExtensionEnd,
-      reason: `第 ${currentAct.index} 幕的剩余容量不足以处理全部结构化义务，建议延长 ${extension} 章。`,
+      reason: `第 ${currentAct.index} 幕容量不足：${causes.join('；')}；建议延长 ${extension} 章至第 ${proposedExtensionEnd} 章。`,
     })
-  } else if (progress.pending.length === 0 && chaptersRemaining > 0) {
+  } else if (nearBoundary && progress.pending.length === 0 && chaptersRemaining > 0) {
     const reduction = Math.min(chaptersRemaining, 2)
     const proposedEnd = currentAct.endChapter - reduction
     const blockingForeshadows = storyMemory
@@ -452,51 +494,43 @@ export function applyActBoundaryAdjustment(
   )
   const remainingGlobalExtension = globalExtensionCap - alreadyGloballyExtendedBy
 
-  if (isExtension && remainingCumulativeExtension <= 0) {
+  const availableAutomaticExtension = Math.max(
+    0,
+    Math.min(AUTO_ADJUST_MAX_EXTENSION, remainingCumulativeExtension, remainingGlobalExtension)
+  )
+  if (isExtension && rawDelta > availableAutomaticExtension) {
+    const bindingLimits: string[] = []
+    if (rawDelta > AUTO_ADJUST_MAX_EXTENSION) bindingLimits.push('单次自动延长上限')
+    if (rawDelta > remainingCumulativeExtension) bindingLimits.push('单幕累计自动延长上限')
+    if (rawDelta > remainingGlobalExtension) bindingLimits.push('全书累计自动延长上限')
     return {
       storyArc,
       applied: false,
       requiresManualResolution: true,
-      reason: `第 ${proposal.actIndex} 幕已达到累计自动延长上限（${AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION} 章），需要重写当前章节消费 pending beats，或人工调整大纲/幕边界。`,
+      reason: `${bindingLimits.join('、')}不足：请求延长 ${rawDelta} 章，但可用自动延长额度仅 ${availableAutomaticExtension} 章。该调整未部分应用，请人工调整幕边界或重新平衡结构。建议依据：${proposal.reason}`,
     }
   }
 
-  if (isExtension && remainingGlobalExtension <= 0) {
-    return {
-      storyArc,
-      applied: false,
-      requiresManualResolution: true,
-      reason: `全书累计自动延长上限（${globalExtensionCap} 章）已用尽，需要重写当前章节消费 pending beats，或进行全书结构再平衡。`,
-    }
-  }
-
-  const cappedDelta = isExtension
-    ? Math.min(
-        rawDelta,
-        AUTO_ADJUST_MAX_EXTENSION,
-        remainingCumulativeExtension,
-        remainingGlobalExtension
-      )
-    : Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
-  const cappedProposedEnd = isExtension
-    ? currentAct.endChapter + cappedDelta
-    : currentAct.endChapter - cappedDelta
+  const appliedDelta = isExtension ? rawDelta : Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
+  const adjustedEndChapter = isExtension
+    ? currentAct.endChapter + appliedDelta
+    : currentAct.endChapter - appliedDelta
 
   const validation = validateActBoundaryAdjustment(
     storyArc,
     proposal.actIndex,
-    cappedProposedEnd,
+    adjustedEndChapter,
     currentChapterIndex
   )
   if (!validation.valid) {
     return { storyArc, applied: false, ...(validation.reason ? { reason: validation.reason } : {}) }
   }
 
-  const shiftedStoryArc = applyActBoundaryShift(storyArc, proposal.actIndex, cappedProposedEnd)
+  const shiftedStoryArc = applyActBoundaryShift(storyArc, proposal.actIndex, adjustedEndChapter)
   const newActs = shiftedStoryArc.acts.map((act) => {
     if (act.index !== proposal.actIndex) return act
 
-    const totalExtendedChapters = Math.max(0, cappedProposedEnd - originalEndChapter)
+    const totalExtendedChapters = Math.max(0, adjustedEndChapter - originalEndChapter)
     if (totalExtendedChapters > 0) {
       return {
         ...act,
@@ -516,7 +550,7 @@ export function applyActBoundaryAdjustment(
   if (isExtension) {
     nextStoryArc.autoBoundaryAdjustment = {
       originalTotalChapters,
-      totalExtendedChapters: alreadyGloballyExtendedBy + cappedDelta,
+      totalExtendedChapters: alreadyGloballyExtendedBy + appliedDelta,
     }
   } else if (storyArc.autoBoundaryAdjustment) {
     const totalExtendedChapters = Math.max(0, shiftedStoryArc.totalChapters - originalTotalChapters)
@@ -531,7 +565,7 @@ export function applyActBoundaryAdjustment(
   return {
     storyArc: nextStoryArc,
     applied: true,
-    reason: `已自动将第 ${proposal.actIndex} 幕结束章节从 ${currentAct.endChapter} 调整到 ${cappedProposedEnd}`,
+    reason: `已自动将第 ${proposal.actIndex} 幕结束章节从 ${currentAct.endChapter} 调整到 ${adjustedEndChapter}`,
   }
 }
 

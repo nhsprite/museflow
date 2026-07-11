@@ -207,6 +207,26 @@ describe('story-arc utilities', () => {
     )
 
     expect(proposals).toEqual([expect.objectContaining({ actIndex: 1, proposedEndChapter: 8 })])
+    expect(proposals[0]?.reason).toContain('11 个 required')
+    expect(proposals[0]?.reason).toContain('1 个章节槽位')
+    expect(proposals[0]?.reason).toContain('每章 3 个')
+  })
+
+  it('extends for foreshadow capacity even when the current chapter is far from the boundary', () => {
+    const arc: StoryArc = {
+      totalChapters: 10,
+      acts: [{ ...makeStoryArc().acts[0]!, endChapter: 10 }],
+      keyBeats: [],
+    }
+    const proposals = proposeActBoundaryAdjustments(
+      arc,
+      completedActProgress,
+      4,
+      memoryWithDueForeshadows(20),
+      3
+    )
+
+    expect(proposals).toEqual([expect.objectContaining({ proposedEndChapter: 11 })])
   })
 
   it('uses the greater of beat and foreshadow extension instead of adding them', () => {
@@ -224,6 +244,8 @@ describe('story-arc utilities', () => {
     )
 
     expect(proposals).toEqual([expect.objectContaining({ proposedEndChapter: 7 })])
+    expect(proposals[0]?.reason).toContain('3 个 mandatory beats')
+    expect(proposals[0]?.reason).toContain('7 个 required')
   })
 
   it('recalculates capacity when an extension crosses another explicit deadline', () => {
@@ -277,6 +299,24 @@ describe('story-arc utilities', () => {
     )
 
     expect(proposals).toEqual([expect.objectContaining({ actIndex: 4, proposedEndChapter: 22 })])
+  })
+
+  it('fails explicitly when a corrupt act boundary is not a safe integer', () => {
+    const storyArc = makeStoryArc()
+    storyArc.acts[0] = {
+      ...storyArc.acts[0]!,
+      endChapter: Number.MAX_SAFE_INTEGER + 1,
+    }
+
+    expect(() =>
+      proposeActBoundaryAdjustments(
+        storyArc,
+        completedActProgress,
+        4,
+        memoryWithDueForeshadows(1),
+        3
+      )
+    ).toThrowError('安全整数')
   })
 
   it('proposes reduction when all beats consumed before boundary', () => {
@@ -441,23 +481,50 @@ describe('story-arc utilities', () => {
       expect(result.storyArc.acts[1]?.startChapter).toBe(5)
     })
 
-    it('caps extension to 3 chapters', () => {
+    it('rejects an extension beyond the automatic limit without partially applying it', () => {
       const storyArc = makeStoryArc()
       const proposal = { actIndex: 1, proposedEndChapter: 10, reason: 'test' }
       const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
 
-      expect(result.applied).toBe(true)
-      expect(result.storyArc.acts[0]?.endChapter).toBe(8)
+      expect(result.applied).toBe(false)
+      expect(result.requiresManualResolution).toBe(true)
+      expect(result.storyArc).toEqual(storyArc)
+      expect(result.reason).toContain('请求延长 5 章')
+      expect(result.reason).toContain('可用自动延长额度仅 3 章')
     })
 
-    it('caps automatic extension while preserving following act lengths', () => {
+    it('does not shift following acts when the requested extension exceeds the limit', () => {
       const storyArc = makeStoryArc()
       const proposal = { actIndex: 1, proposedEndChapter: 10, reason: 'test' }
       const result = applyActBoundaryAdjustment(storyArc, proposal, 3)
 
+      expect(result.applied).toBe(false)
       expect(result.storyArc.acts.map((act) => act.endChapter - act.startChapter + 1)).toEqual([
-        8, 5, 5, 5,
+        5, 5, 5, 5,
       ])
+    })
+
+    it('rejects a capacity proposal that exceeds automatic limits instead of under-sizing it', () => {
+      const storyArc = makeStoryArc()
+      const proposal = proposeActBoundaryAdjustments(
+        storyArc,
+        completedActProgress,
+        4,
+        memoryWithDueForeshadows(14),
+        3
+      )[0]!
+
+      expect(proposal.proposedEndChapter).toBe(9)
+
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 4)
+
+      expect(result.applied).toBe(false)
+      expect(result.requiresManualResolution).toBe(true)
+      expect(result.storyArc).toEqual(storyArc)
+      expect(result.reason).toContain('请求延长 4 章')
+      expect(result.reason).toContain('可用自动延长额度仅 3 章')
+      expect(result.reason).toContain(proposal.reason)
+      expect(result.reason).not.toContain('pending beats')
     })
 
     it('blocks repeated automatic extension beyond the cumulative act budget', () => {
