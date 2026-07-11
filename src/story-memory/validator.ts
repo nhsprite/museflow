@@ -11,9 +11,7 @@ export interface StructuredValidationResult {
   unexpectedEvents: StoryEvent[]
   eventsMissingEvidence: StoryEvent[]
   eventsWithInvalidEvidence: StoryEvent[]
-  eventsWithInvalidForeshadowDeadline: Array<
-    Extract<StoryEvent, { type: 'foreshadow-introduce' }>
-  >
+  eventsWithInvalidForeshadowDeadline?: Array<Extract<StoryEvent, { type: 'foreshadow-introduce' }>>
 
   unfulfilledRequiredForeshadows: ForeshadowId[]
   overdueForeshadows: ForeshadowId[]

@@ -92,6 +92,7 @@ export async function decideNextStep(
 
   const structured = ctx.structuredValidationResult
   if (structured) {
+    const invalidForeshadowDeadlineEvents = structured.eventsWithInvalidForeshadowDeadline ?? []
     const hasBlocking =
       structured.stateConflicts.length > 0 ||
       structured.falseFulfillments.length > 0 ||
@@ -100,7 +101,7 @@ export async function decideNextStep(
       structured.unexpectedEvents.length > 0 ||
       structured.eventsMissingEvidence.length > 0 ||
       structured.eventsWithInvalidEvidence.length > 0 ||
-      structured.eventsWithInvalidForeshadowDeadline.length > 0
+      invalidForeshadowDeadlineEvents.length > 0
     if (hasBlocking) {
       const chapterIndex = ctx.session.chapterIndex
       const structuredIssues: Issue[] = []
@@ -131,7 +132,7 @@ export async function decideNextStep(
           location: `第 ${chapterIndex + 1} 章`,
         })
       }
-      for (const event of structured.eventsWithInvalidForeshadowDeadline) {
+      for (const event of invalidForeshadowDeadlineEvents) {
         structuredIssues.push({
           id: generateId(),
           type: 'foreshadow_invalid_deadline',

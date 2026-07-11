@@ -206,6 +206,23 @@ describe('decideNextStep structured validation routing', () => {
     expect(result.processedIssues).toEqual([])
   })
 
+  it('treats the invalid-deadline field as empty when resuming a legacy checkpoint', async () => {
+    const currentResult = makeStructuredResult()
+    const { eventsWithInvalidForeshadowDeadline: _newField, ...legacyResult } = currentResult
+    const ctx: RoutingContext = {
+      session: makeSession({ chapterIndex: 10 }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: false,
+      structuredValidationResult: legacyResult as StructuredValidationResult,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('draft')
+    expect(result.processedIssues).toEqual([])
+  })
+
   it('routes to fix_chapter when expected events are missing', async () => {
     const ctx: RoutingContext = {
       session: makeSession(),
