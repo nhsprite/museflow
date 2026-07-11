@@ -272,6 +272,26 @@ describe('expandOutlineForChapter', () => {
     expect(result.chapterPlan.expectedEvents).toEqual([createForeshadowFulfillEvent('fs-due', 1)])
   })
 
+  it('preserves legacy plan fulfillment evidence when story memory is null', async () => {
+    const legacyPlan = createCompleteChapterPlan({
+      chapterIndex: 1,
+      fulfilledForeshadowIds: ['legacy-foreshadow'],
+      expectedEvents: [createForeshadowFulfillEvent('legacy-foreshadow', 1)],
+    })
+
+    const result = await expandOutlineForChapter(
+      { ...baseState, storyMemory: null, chapterPlan: legacyPlan },
+      1,
+      createMockProvider()
+    )
+
+    expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+    expect(result.chapterPlan.fulfilledForeshadowIds).toEqual(['legacy-foreshadow'])
+    expect(result.chapterPlan.expectedEvents).toEqual([
+      createForeshadowFulfillEvent('legacy-foreshadow', 1),
+    ])
+  })
+
   it('schedules a due foreshadow on an ordinary non-boundary chapter', async () => {
     const state = stateWithScheduledForeshadows(1, '', [createRequiredForeshadow('fs-due', 2)])
     chapterOutlineRunMock.mockResolvedValueOnce({

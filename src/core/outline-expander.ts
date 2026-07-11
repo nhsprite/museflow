@@ -852,7 +852,7 @@ export async function expandOutlineForChapter(
     throw new Error(`第 ${chapterIndex + 1} 章详细计划生成失败`)
   }
 
-  const enforceScheduledBatch = state.storyMemory !== undefined
+  const enforceScheduledBatch = state.storyMemory != null
   let planEvaluation = evaluateScheduledForeshadowPlanEvidence(
     chapterPlan,
     scheduledForeshadowIds,
