@@ -10,6 +10,7 @@ import type { ChapterSession } from '@/core/chapter-generation/routing/types.js'
 import type { StoryEvent } from '@/types/story-memory.js'
 import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/utils/story-arc.js'
 import { logger } from '@/utils/logger.js'
+import { createEmptyStoryMemory } from '@/story-memory/projector.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -757,6 +758,116 @@ describe('finalizeChapter', () => {
     )
   })
 
+  it('blocks an unresolved required foreshadow linked to the act at its boundary', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '幕末正文。')
+    const state = boundaryState(tmpDir, {
+      foreshadows: {
+        'fs-act-1': testMemoryForeshadow('fs-act-1', 'beat-1'),
+      },
+      beats: {
+        'beat-1': testMemoryBeat('beat-1', 1),
+      },
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'foreshadow_boundary_unresolved',
+          severity: 'error',
+          subject: 'fs-act-1',
+        }),
+      ])
+    )
+  })
+
+  it('does not block optional or future-act foreshadows at the current act boundary', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '幕末正文。')
+    const state = boundaryState(tmpDir, {
+      foreshadows: {
+        'fs-optional': testMemoryForeshadow('fs-optional', 'beat-1', false),
+        'fs-act-2': testMemoryForeshadow('fs-act-2', 'beat-2'),
+      },
+      beats: {
+        'beat-1': testMemoryBeat('beat-1', 1),
+        'beat-2': testMemoryBeat('beat-2', 2),
+      },
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBeFalsy()
+    expect(result.currentChapterIndex).toBe(3)
+  })
+
+  it('blocks every unresolved required foreshadow at story end', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '全书结尾正文。')
+    const base = boundaryState(tmpDir, {
+      foreshadows: {
+        'fs-unbound': testMemoryForeshadow('fs-unbound', null),
+      },
+      beats: {},
+    })
+    const state = buildState(tmpDir, {
+      ...base,
+      totalChapters: 3,
+      story: { ...base.story, totalChapters: 3 },
+      storyArc: base.storyArc ? { ...base.storyArc, totalChapters: 3 } : null,
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'foreshadow_boundary_unresolved',
+          subject: 'fs-unbound',
+        }),
+      ])
+    )
+  })
+
+  it('rejects an invalid foreshadow deadline emitted by the summary agent', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-invalid-deadline',
+              type: 'foreshadow-introduce',
+              foreshadowId: 'fs-invalid',
+              expectedFulfillChapter: 0,
+              chapterIndex: 0,
+              source: 'chapter',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const result = await finalizeChapter(buildState(tmpDir), createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.storyMemory?.foreshadows['fs-invalid']).toBeUndefined()
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'foreshadow_invalid_deadline',
+          subject: 'fs-invalid',
+        }),
+      ])
+    )
+  })
+
   it('does not advance chapter index and requests rewrite when act boundary adjustment requires manual resolution', async () => {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     vi.mocked(proposeActBoundaryAdjustments).mockReturnValueOnce([
@@ -807,3 +918,112 @@ describe('finalizeChapter', () => {
     )
   })
 })
+
+function emptySummaryAgent(): ReturnType<typeof getSummaryAgent> {
+  return {
+    run: vi.fn().mockResolvedValue({
+      success: true,
+      data: { chapterSummary: '摘要', storyEvents: [] },
+    }),
+  } as unknown as ReturnType<typeof getSummaryAgent>
+}
+
+async function writeChapter(outputDir: string, number: number, content: string): Promise<void> {
+  await fs.writeFile(
+    path.join(outputDir, 'chapters', `chapter_${number}.md`),
+    `# 第${number}章\n\n${content}`,
+    'utf-8'
+  )
+}
+
+function boundaryState(
+  outputDir: string,
+  memory: Pick<NonNullable<ReducedGraphState['storyMemory']>, 'foreshadows' | 'beats'>
+): ReducedGraphState {
+  const base = buildState(outputDir)
+  return buildState(outputDir, {
+    currentChapterIndex: 2,
+    totalChapters: 4,
+    story: { ...base.story, totalChapters: 4 },
+    chapters: [
+      null,
+      null,
+      {
+        id: 'ch-3',
+        storyId: 'test-story',
+        number: 3,
+        title: '幕末',
+        outline: '幕末正文。',
+        summary: null,
+        foreshadows: null,
+        status: 'drafting',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ],
+    outline: [
+      { number: 1, title: '一', description: '' },
+      { number: 2, title: '二', description: '' },
+      { number: 3, title: '幕末', description: '幕末正文。' },
+      { number: 4, title: '新幕', description: '' },
+    ],
+    storyArc: {
+      totalChapters: 4,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: '第一幕',
+          theme: '',
+          function: '',
+          mandatoryBeats: [],
+        },
+        {
+          index: 2,
+          startChapter: 4,
+          endChapter: 4,
+          title: '第二幕',
+          theme: '',
+          function: '',
+          mandatoryBeats: [],
+        },
+      ],
+      keyBeats: [],
+    },
+    actProgress: {
+      1: { consumed: [], pending: [] },
+      2: { consumed: [], pending: [] },
+    },
+    storyMemory: {
+      ...createEmptyStoryMemory(),
+      foreshadows: memory.foreshadows,
+      beats: memory.beats,
+    },
+  })
+}
+
+function testMemoryForeshadow(id: string, beatId: string | null, required = true) {
+  return {
+    id,
+    text: id,
+    kind: null,
+    introducedIn: 0,
+    expectedFulfillChapter: 2,
+    fulfilledIn: null,
+    required,
+    beatId,
+  }
+}
+
+function testMemoryBeat(id: string, actIndex: number) {
+  return {
+    id,
+    description: id,
+    actIndex,
+    deadlineAct: actIndex,
+    required: true,
+    claimedIn: null,
+    provenByEventIds: [],
+  }
+}

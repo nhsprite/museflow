@@ -23,7 +23,11 @@ import type {
 import type { ChapterHandoff } from '../../../types/story-state.js'
 import type { ForeshadowItem } from '../../../types/foreshadow.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
-import { classifyForeshadows } from '../../../story-memory/foreshadow-policy.js'
+import {
+  classifyForeshadows,
+  getBoundaryBlockingForeshadows,
+  partitionInvalidForeshadowIntroductions,
+} from '../../../story-memory/foreshadow-policy.js'
 import { generateId } from '../../../utils/id.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
 import { buildEffectiveCharactersList } from '../../utils/characters.js'
@@ -287,14 +291,20 @@ export async function finalizeChapter(
     state.storyMemory ?? createEmptyStoryMemory(),
     state.storyArc
   )
+  const invalidForeshadowDeadlineEvents: Array<
+    Extract<StoryEvent, { type: 'foreshadow-introduce' }>
+  > = []
 
   // Authoritative source of events: the writer already emitted them in the
   // STORY_EVENTS block. Apply them before asking SummaryAgent to avoid losing
   // structured plot-advance events and to skip prose-based guessing.
-  const draftEvents = filterStoryEventsForEvidence(
+  const draftEventCandidates = filterStoryEventsForEvidence(
     filterStoryEventsForStoryArc(state.draftChapterEvents ?? [], state.storyArc),
     chapterContent
   )
+  const { valid: draftEvents, invalid: invalidDraftForeshadows } =
+    partitionInvalidForeshadowIntroductions(draftEventCandidates)
+  invalidForeshadowDeadlineEvents.push(...invalidDraftForeshadows)
   const draftPlotAdvanceBeatIds = new Set(
     draftEvents
       .filter((e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance')
@@ -384,10 +394,13 @@ export async function finalizeChapter(
 
           // SummaryAgent events are a fallback for events the writer missed.
           // For plot-advance, draft events are authoritative; skip duplicates.
-          const actualEvents = filterStoryEventsForEvidence(
+          const summaryEventCandidates = filterStoryEventsForEvidence(
             filterStoryEventsForStoryArc(summaryData.storyEvents ?? [], state.storyArc),
             chapterContent
           )
+          const { valid: actualEvents, invalid: invalidSummaryForeshadows } =
+            partitionInvalidForeshadowIntroductions(summaryEventCandidates)
+          invalidForeshadowDeadlineEvents.push(...invalidSummaryForeshadows)
           const newEvents = actualEvents.filter((event) => {
             if (event.type === 'plot-advance') {
               return !draftPlotAdvanceBeatIds.has(event.beatId)
@@ -567,6 +580,21 @@ export async function finalizeChapter(
   if (beatVerificationIssues && beatVerificationIssues.length > 0) {
     updatedPendingIssues = [...updatedPendingIssues, ...beatVerificationIssues]
   }
+  if (invalidForeshadowDeadlineEvents.length > 0) {
+    updatedPendingIssues = [
+      ...updatedPendingIssues,
+      ...invalidForeshadowDeadlineEvents.map((event) => ({
+        id: `invalid-foreshadow-deadline-${event.id}`,
+        type: 'foreshadow_invalid_deadline' as const,
+        severity: 'error' as const,
+        description: `伏笔 ${event.foreshadowId} 的预期回收章节 ${String(event.expectedFulfillChapter)} 必须晚于引入章节 ${event.chapterIndex + 1}`,
+        subject: event.foreshadowId,
+        location: `第 ${chapterIndex + 1} 章`,
+        source: 'foreshadowing' as const,
+        retryStrategy: 'draft' as const,
+      })),
+    ]
+  }
   updatedPendingIssues = pruneResolvedOutlineCoverageIssues(
     updatedPendingIssues,
     state.storyArc,
@@ -651,6 +679,37 @@ export async function finalizeChapter(
       updatedPendingIssues = [
         ...updatedPendingIssues,
         buildActBoundaryPendingIssue(state.story.id, finalizedAct, finalizedProgress.pending),
+      ]
+    }
+  }
+
+  const isStoryEnd = chapterIndex + 1 >= updatedTotalChapters
+  const isActBoundary = finalizedAct !== undefined && chapterIndex + 1 >= finalizedAct.endChapter
+  if (isActBoundary || isStoryEnd) {
+    const boundaryActIndex =
+      finalizedAct?.index ??
+      Math.max(0, ...(updatedStoryArc?.acts.map((act) => act.index) ?? []))
+    const unresolvedForeshadows = getBoundaryBlockingForeshadows(
+      updatedStoryMemory,
+      updatedStoryArc,
+      boundaryActIndex,
+      isStoryEnd
+    )
+    if (unresolvedForeshadows.length > 0) {
+      updatedPendingIssues = [
+        ...updatedPendingIssues,
+        ...unresolvedForeshadows.map((foreshadowId) => ({
+          id: `foreshadow-boundary-unresolved-${foreshadowId}-${chapterIndex}`,
+          type: 'foreshadow_boundary_unresolved' as const,
+          severity: 'error' as const,
+          description: isStoryEnd
+            ? `全书结尾仍有必需伏笔 ${foreshadowId} 未回收`
+            : `第 ${boundaryActIndex} 幕结束时仍有该幕必需伏笔 ${foreshadowId} 未回收`,
+          subject: foreshadowId,
+          location: `第 ${chapterIndex + 1} 章`,
+          source: 'foreshadowing' as const,
+          retryStrategy: 'draft' as const,
+        })),
       ]
     }
   }
