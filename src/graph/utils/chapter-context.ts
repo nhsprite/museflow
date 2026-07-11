@@ -3,6 +3,7 @@ import type { AgentInput } from '../../agents/types.js'
 import type { Character } from '../../types/character.js'
 import type { ForeshadowItem } from '../../types/foreshadow.js'
 import type { CanonicalFact } from '../../types/story-state.js'
+import type { WritingConstraints } from '../../types/story.js'
 import type { ModelProvider } from '../../model/provider.js'
 import type { RuntimeContext } from '../../core/context.js'
 import { getActForChapter } from '../../utils/story-arc.js'
@@ -88,6 +89,28 @@ export interface ChapterAgentContext {
   canonicalFacts: CanonicalFact[] | undefined
   chapterTimeAnchor?: string
   storyArc: ReducedGraphState['storyArc']
+  writingConstraints?: WritingConstraints
+}
+
+function renderWritingConstraintsForContract(writingConstraints?: WritingConstraints): string[] {
+  if (!writingConstraints) return []
+
+  const lines: string[] = []
+  const chapterOpening = writingConstraints.chapterOpening
+  if (chapterOpening?.required && chapterOpening.instruction.trim()) {
+    lines.push('【全书写作形式硬约束】')
+    lines.push(`- 章节开头形式：${chapterOpening.instruction.trim()}`)
+  }
+
+  const globalRules = writingConstraints.globalRules?.filter((rule) => rule.trim()) ?? []
+  if (globalRules.length > 0) {
+    if (lines.length === 0) lines.push('【全书写作形式硬约束】')
+    for (const rule of globalRules) {
+      lines.push(`- ${rule.trim()}`)
+    }
+  }
+
+  return lines
 }
 
 function buildChapterContract(
@@ -96,6 +119,8 @@ function buildChapterContract(
   reconciledState: NonNullable<ReducedGraphState['storyState']>
 ): string {
   const lines: string[] = ['【章节契约】']
+
+  lines.push(...renderWritingConstraintsForContract(state.story.writingConstraints))
 
   const handoff = reconciledState.chapterHandoff ?? state.storyState?.chapterHandoff
   if (handoff) {
@@ -211,6 +236,9 @@ export async function buildChapterAgentContext(
     canonicalFacts: reconciledState.canonicalFacts,
     ...(chapterTimeAnchor ? { chapterTimeAnchor } : {}),
     storyArc: state.storyArc,
+    ...(state.story.writingConstraints
+      ? { writingConstraints: state.story.writingConstraints }
+      : {}),
   }
 }
 
@@ -241,6 +269,7 @@ export function mergeAgentState(
     ...(base.stateConflicts ? { stateConflicts: base.stateConflicts } : {}),
     ...(base.chapterTimeAnchor ? { chapterTimeAnchor: base.chapterTimeAnchor } : {}),
     ...(base.storyArc ? { storyArc: base.storyArc } : {}),
+    ...(base.writingConstraints ? { writingConstraints: base.writingConstraints } : {}),
     ...extras,
   }
 }

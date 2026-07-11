@@ -90,6 +90,42 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain('建议: 保持六耳猕猴伏法，不要改写为皈依入队')
   })
 
+  it('includes structured writing constraints as mandatory chapter requirements', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+
+    const messages = agent.exposePrompt({
+      idea: '书信体悬疑',
+      genre: 'mystery',
+      totalChapters: 3,
+      world: '近代城镇',
+      characters: '【侦探】主角',
+      outline: '第1章：旧案来信\n侦探收到第一封信并接触案情',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      writingConstraints: {
+        chapterOpening: {
+          type: 'letter',
+          required: true,
+          instruction: '每章在章节标题后必须先写一封信，信后正文才进入案情叙述。',
+        },
+      },
+    } as Required<ChapterAgentInput> & {
+      writingConstraints: {
+        chapterOpening: { type: 'letter'; required: true; instruction: string }
+      }
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('<writing_constraints>')
+    expect(userMessage).toContain('【全书写作形式硬约束】')
+    expect(userMessage).toContain('章节标题之后的第一段必须满足：每章在章节标题后必须先写一封信')
+    expect(userMessage).toContain('PRE_WRITE_CHECK')
+    expect(userMessage).toContain('章节开头形式')
+  })
+
   it('includes canonical fact verification section when storyState is provided', () => {
     const agent = new TestableChapterAgent(createMockProvider())
 

@@ -102,6 +102,9 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     provider: resolvedProvider,
     title: selectedOption.title,
     ...(selectedOption.synopsis ? { synopsis: selectedOption.synopsis } : {}),
+    ...(selectedOption.writingConstraints
+      ? { writingConstraints: selectedOption.writingConstraints }
+      : {}),
     worldDirection: selectedOption.worldDirection,
   })
 

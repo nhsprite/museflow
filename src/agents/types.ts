@@ -3,7 +3,7 @@ import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { Character } from '../types/character.js'
 import type { CanonicalFact } from '../types/story-state.js'
 import type { StoryArc } from '../types/outline.js'
-import type { WorldDirection } from '../types/story.js'
+import type { WorldDirection, WritingConstraints } from '../types/story.js'
 import type { StoryEvent, BeatId, ForeshadowId, TaskId } from '../types/story-memory.js'
 
 export interface ParagraphFix {
@@ -78,6 +78,7 @@ export interface AgentInput {
   totalChapters: number
   title?: string
   worldDirection?: WorldDirection
+  writingConstraints?: WritingConstraints
   world?: string
   characters?: string
   outline?: string

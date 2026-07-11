@@ -226,6 +226,8 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     const factVerificationSection = this.buildFactVerificationSection(state)
     const absoluteConstraintsSection = this.buildAbsoluteConstraints(state)
     const beatMappingSection = this.buildBeatMappingSection(state)
+    const writingConstraintsSection = this.buildWritingConstraintsSection(state)
+    const writingConstraintRows = this.buildWritingConstraintRows(state)
 
     const userContent = buildChapterUserPrompt(
       {
@@ -235,6 +237,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         previousSummary,
         storyStateSection,
         chapterContractSection,
+        writingConstraintsSection,
         stateConflictsSection,
         timeAnchorSection,
         factVerificationSection,
@@ -258,6 +261,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
               `| 规划段落${i + 1} | 章节规划 | ${section.title}: ${section.summary} | （请填写：如何展开） | 第${i + 1}段 |`
           )
           .join('\n'),
+        writingConstraintRows,
         stateConflictsRow: state.stateConflicts
           ? `| 大纲-权威事实冲突 | stateConflicts | 本章存在需要处理的冲突：${state.stateConflicts.replace(/\n/g, '；')} | （请填写：每个冲突选择以谁为准、通过什么角色动作或叙事过渡实现） | （请填写） |`
           : '',
@@ -279,6 +283,56 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
     )
 
     return [this.systemMessage(buildChapterSystemPrompt()), this.userMessage(userContent)]
+  }
+
+  private buildWritingConstraintsSection(state: ChapterAgentInput): string {
+    const writingConstraints = state.writingConstraints
+    if (!writingConstraints) return ''
+
+    const lines: string[] = []
+    const chapterOpening = writingConstraints.chapterOpening
+    if (chapterOpening?.required && chapterOpening.instruction.trim()) {
+      lines.push(
+        `<mandatory>章节标题之后的第一段必须满足：${chapterOpening.instruction.trim()}</mandatory>`
+      )
+      lines.push(
+        '<mandatory>该开头形式属于全书固定叙事框架，不得因本章大纲未重复说明而省略。</mandatory>'
+      )
+    }
+
+    const globalRules = writingConstraints.globalRules?.filter((rule) => rule.trim()) ?? []
+    for (const rule of globalRules) {
+      lines.push(`<mandatory>${rule.trim()}</mandatory>`)
+    }
+
+    if (lines.length === 0) return ''
+
+    return `<writing_constraints>
+<mandatory>【全书写作形式硬约束】</mandatory>
+${lines.join('\n')}
+</writing_constraints>`
+  }
+
+  private buildWritingConstraintRows(state: ChapterAgentInput): string {
+    const writingConstraints = state.writingConstraints
+    if (!writingConstraints) return ''
+
+    const rows: string[] = []
+    const chapterOpening = writingConstraints.chapterOpening
+    if (chapterOpening?.required && chapterOpening.instruction.trim()) {
+      rows.push(
+        `| 章节开头形式 | 全书写作形式硬约束 | 章节标题之后的第一段必须满足：${chapterOpening.instruction.trim()} | （请填写：本章开头如何落实该形式） | 第1段 |`
+      )
+    }
+
+    const globalRules = writingConstraints.globalRules?.filter((rule) => rule.trim()) ?? []
+    globalRules.forEach((rule, index) => {
+      rows.push(
+        `| 全书写作规则${index + 1} | 全书写作形式硬约束 | ${rule.trim()} | （请填写：本章如何落实） | （请填写） |`
+      )
+    })
+
+    return rows.join('\n')
   }
 
   private extractOutlineKeyPoints(description: string): string[] {

@@ -13,6 +13,13 @@ const mockChatStructured = vi.fn(async <T>(): Promise<T> => {
       {
         title: '候选书名一',
         synopsis: '候选书名一的新书简介。',
+        writingConstraints: {
+          chapterOpening: {
+            type: 'letter',
+            required: true,
+            instruction: '每章在章节标题后必须先写一封信，信后正文才进入案情叙述。',
+          },
+        },
         worldDirection: { coreConflict: '冲突一', worldFeatures: ['特征A', '特征B'] },
       },
       {
@@ -149,6 +156,13 @@ describe('CLI end-to-end integration', () => {
       const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
       expect(meta.story.title).toBe('候选书名一')
       expect(meta.story.synopsis).toBe('候选书名一的新书简介。')
+      expect(meta.story.writingConstraints).toEqual({
+        chapterOpening: {
+          type: 'letter',
+          required: true,
+          instruction: '每章在章节标题后必须先写一封信，信后正文才进入案情叙述。',
+        },
+      })
       expect(meta.world).not.toBeNull()
       expect(meta.characters.length).toBeGreaterThanOrEqual(1)
       expect(meta.outline).toHaveLength(3)

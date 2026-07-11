@@ -1,11 +1,12 @@
 import inquirer from 'inquirer'
 import { getGenreSkill } from '../../genres/registry.js'
 import type { JsonSchema, ModelProvider } from '../../model/provider.js'
-import type { WorldDirection } from '../../types/story.js'
+import type { WorldDirection, WritingConstraints } from '../../types/story.js'
 
 export interface TitleOption {
   title: string
   synopsis?: string
+  writingConstraints?: WritingConstraints
   worldDirection: WorldDirection
 }
 
@@ -23,6 +24,34 @@ const TITLE_OPTION_SCHEMA: JsonSchema = {
           synopsis: {
             type: 'string',
             description: '新书简介，2-4句，概括主角处境、核心冲突、主要看点和叙事承诺',
+          },
+          writingConstraints: {
+            type: 'object',
+            description:
+              '从故事概要中提取的全书写作形式硬约束；只有用户明确要求某种叙事形式、章节开头形式或全书写法时填写',
+            properties: {
+              chapterOpening: {
+                type: 'object',
+                properties: {
+                  type: {
+                    type: 'string',
+                    enum: ['letter', 'diary', 'document', 'custom'],
+                    description: '每章开头形式',
+                  },
+                  required: { type: 'boolean', description: '是否为每章必须遵守的硬约束' },
+                  instruction: {
+                    type: 'string',
+                    description: '给章节写作者的具体执行要求',
+                  },
+                },
+                required: ['type', 'required', 'instruction'],
+              },
+              globalRules: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '其他全书层面的写作形式或风格硬约束',
+              },
+            },
           },
           worldDirection: {
             type: 'object',
@@ -66,6 +95,7 @@ const TITLE_SELECTION_PROMPT = `你是一位资深的书名策划师。根据以
 - 书名要新颖、有吸引力、符合题材
 - 世界观方向要各有特色，角度不同
 - synopsis 是新书简介，需用 2-4 句概括主角处境、核心冲突、主要看点和叙事承诺；不要复述用户输入，也不要剧透结局
+- 如果故事概要中明确提出全书写作形式要求（例如每章开头形式、嵌套叙事形式、固定叙述框架），必须提取到 writingConstraints；没有明确要求时可以省略 writingConstraints
 - 候选书名应使用不同的核心意象和修辞风格，避免多个选项重复使用同一字或同类比喻
 - coreConflict 点出核心矛盾
 - worldFeatures 列出 2-4 个独特的世界观元素
@@ -199,5 +229,12 @@ function formatOptionForDisplay(option: TitleOption, number: number, _genre?: st
     !powerSystem || powerSystem === '无' || option.worldDirection.hasPowerSystem === false
   const powerLine = !isEmptyPowerSystem ? `规则体系：${powerSystem} | ` : ''
   const synopsisLine = option.synopsis?.trim() ? `简介：${option.synopsis.trim()} | ` : ''
-  return `${number}. ${option.title} | ${synopsisLine}${powerLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
+  const chapterOpeningInstruction =
+    option.writingConstraints?.chapterOpening?.required === true
+      ? option.writingConstraints.chapterOpening.instruction.trim()
+      : ''
+  const writingConstraintsLine = chapterOpeningInstruction
+    ? `写作形式：${chapterOpeningInstruction} | `
+    : ''
+  return `${number}. ${option.title} | ${synopsisLine}${writingConstraintsLine}${powerLine}核心冲突：${option.worldDirection.coreConflict} | 世界观特色：${features}`
 }

@@ -267,6 +267,32 @@ describe('title-selector', () => {
       expect(question?.choices?.[0]?.name).toContain('规则体系：凡境→灵境→仙境')
     })
 
+    it('displays structured writing constraints when present', async () => {
+      const options: TitleOption[] = [
+        {
+          title: '《死者来信》',
+          synopsis: '每封信都引出一桩旧案。',
+          writingConstraints: {
+            chapterOpening: {
+              type: 'letter',
+              required: true,
+              instruction: '每章在章节标题后必须先写一封信。',
+            },
+          },
+          worldDirection: {
+            coreConflict: '死者书信与迟到审判',
+            worldFeatures: ['书信体嵌套叙事', '旧案重审'],
+          },
+        },
+      ]
+
+      await selectTitleOption(options, 'mystery')
+
+      const promptArg = vi.mocked(inquirer.default.prompt).mock.calls[0]?.[0]
+      const question = promptArg?.[0]
+      expect(question?.choices?.[0]?.name).toContain('写作形式：每章在章节标题后必须先写一封信。')
+    })
+
     it('hides power system line when powerSystem is empty or starts with "无体系"', async () => {
       const options: TitleOption[] = [
         {

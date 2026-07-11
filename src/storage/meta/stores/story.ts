@@ -33,6 +33,10 @@ export function createStory(input: StoryCreateInput): Story {
     storyMeta.synopsis = input.synopsis
   }
 
+  if (input.writingConstraints) {
+    storyMeta.writingConstraints = input.writingConstraints
+  }
+
   if (input.worldDirection) {
     storyMeta.worldDirection = input.worldDirection
   }

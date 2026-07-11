@@ -65,6 +65,8 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 {chapterContractSection}
 
+{writingConstraintsSection}
+
 {stateConflictsSection}
 
 {timeAnchorSection}
@@ -108,6 +110,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 |--------|------|----------|-------------|----------|
 {outlineKeyPointsRows}
 {planSectionsRows}
+{writingConstraintRows}
 {stateConflictsRow}
 | 关键台词 | 大纲 | （如有大纲要求的台词，请列出） | （请填写：由谁说、在什么场景说） | （请填写） |
 | 事实核查 | 权威事实 | 本章涉及的事实是否已核对？ | （请填写：核对结果） | （请填写） |
@@ -195,6 +198,7 @@ export interface ChapterPromptSections {
   previousSummary: string
   storyStateSection: string
   chapterContractSection: string
+  writingConstraintsSection: string
   stateConflictsSection: string
   timeAnchorSection: string
   factVerificationSection: string
@@ -208,6 +212,7 @@ export interface ChapterPromptSections {
   existingChapterSection: string
   outlineKeyPointsRows: string
   planSectionsRows: string
+  writingConstraintRows: string
   stateConflictsRow: string
 }
 
