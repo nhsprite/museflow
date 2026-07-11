@@ -60,8 +60,10 @@ Add `foreshadowMaxFulfillmentsPerChapter` to `ChapterPlanningConfig`.
 - Values used by scheduling must be normalized to a positive integer.
 
 The limit applies only to required unresolved foreshadows selected for active
-fulfillment. Optional, already fulfilled, invalid-deadline, and unscheduled
-foreshadows do not consume this capacity.
+fulfillment. Optional, already fulfilled, and invalid-deadline foreshadows do
+not consume this capacity. Unscheduled required foreshadows do not consume
+ordinary-act capacity, but they do consume final-act capacity because story-end
+validation requires every required foreshadow to be resolved.
 
 ## Structured Scheduling Policy
 
@@ -81,7 +83,9 @@ Sort candidates deterministically by:
 
 The per-chapter scheduler selects the first
 `foreshadowMaxFulfillmentsPerChapter` IDs. This selection runs for every
-chapter, not only act boundaries and story end.
+chapter, not only act boundaries and story end. In the final act, unscheduled
+required foreshadows join the candidate pool after finite-deadline candidates,
+so story-end obligations are drained before the final boundary.
 
 `getBoundaryBlockingForeshadows` remains an uncapped boundary invariant. It
 continues to return every due required unresolved ID at an ordinary act
@@ -90,13 +94,21 @@ boundary, and every required unresolved ID at story end.
 ## Capacity-aware Act Extension
 
 Before generating a JIT outline, calculate the current act's available chapter
-capacity, including the current chapter. For the due backlog:
+capacity, including the current chapter. Find the smallest candidate end
+chapter `E` that satisfies:
 
 ```
-requiredChapterCount = ceil(dueCount / perChapterCapacity)
-availableChapterCount = currentAct.endChapter - currentChapterNumber + 1
-requiredExtension = max(0, requiredChapterCount - availableChapterCount)
+blockingCount(E) <= perChapterCapacity * (E - currentChapterNumber + 1)
 ```
+
+For a non-final act, `blockingCount(E)` counts finite required unresolved
+foreshadows with `expectedFulfillChapter <= E`. For the final act it also counts
+unscheduled required unresolved foreshadows. Start with the existing act end;
+when capacity is insufficient, extend by the missing number of chapter slots,
+recalculate `blockingCount` at the new candidate end, and repeat until the
+inequality holds. This fixed-point calculation prevents a proposed extension
+from accidentally crossing additional deadlines without reserving capacity for
+them.
 
 Calculate the existing mandatory-beat extension independently. If both beats
 and foreshadows need additional chapters, use the greater extension rather than
