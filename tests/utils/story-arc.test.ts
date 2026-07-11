@@ -10,6 +10,44 @@ import {
   calculateBeatBudget,
 } from '../../src/utils/story-arc.js'
 import type { StoryArc } from '../../src/types/outline.js'
+import type { StoryMemory } from '../../src/types/story-memory.js'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+
+const completedActProgress = {
+  1: { consumed: ['主角失去庇护', '反派首次施压'], pending: [] },
+}
+
+function memoryWithForeshadow(
+  overrides: Partial<StoryMemory['foreshadows'][string]>
+): StoryMemory {
+  return {
+    ...createEmptyStoryMemory(),
+    foreshadows: {
+      'fs-act1': {
+        id: 'fs-act1',
+        text: '一枚旧邮票',
+        kind: 'object_foreshadow',
+        introducedIn: 1,
+        expectedFulfillChapter: 4,
+        fulfilledIn: null,
+        required: true,
+        beatId: 'beat-act1',
+        ...overrides,
+      },
+    },
+    beats: {
+      'beat-act1': {
+        id: 'beat-act1',
+        description: '旧邮票关联节拍',
+        actIndex: 1,
+        deadlineAct: 1,
+        required: true,
+        claimedIn: null,
+        provenByEventIds: [],
+      },
+    },
+  }
+}
 
 function makeStoryArc(): StoryArc {
   return {
@@ -153,6 +191,28 @@ describe('story-arc utilities', () => {
     expect(proposals).toHaveLength(1)
     expect(proposals[0]?.actIndex).toBe(1)
     expect(proposals[0]?.proposedEndChapter).toBeLessThan(5)
+  })
+
+  it('does not reduce past a required deadline due by the candidate end', () => {
+    const proposals = proposeActBoundaryAdjustments(
+      makeStoryArc(),
+      completedActProgress,
+      3,
+      memoryWithForeshadow({ expectedFulfillChapter: 4 })
+    )
+
+    expect(proposals).toHaveLength(0)
+  })
+
+  it('may reduce when a clue is due after the candidate end', () => {
+    const proposals = proposeActBoundaryAdjustments(
+      makeStoryArc(),
+      completedActProgress,
+      3,
+      memoryWithForeshadow({ expectedFulfillChapter: 5 })
+    )
+
+    expect(proposals).toEqual([expect.objectContaining({ proposedEndChapter: 4 })])
   })
 
   it('does not propose adjustment far from boundary', () => {

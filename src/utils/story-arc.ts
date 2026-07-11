@@ -1,6 +1,7 @@
 import type { ActArc, KeyBeat, StoryArc } from '../types/outline.js'
 import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import type { StoryMemory } from '../types/story-memory.js'
+import { getBoundaryBlockingForeshadows } from '../story-memory/foreshadow-policy.js'
 import { logger } from './logger.js'
 
 export function getActForChapter(
@@ -205,7 +206,8 @@ function estimateBeatCapacityThroughActEnd(
 export function proposeActBoundaryAdjustments(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
-  currentChapterIndex: number
+  currentChapterIndex: number,
+  storyMemory?: StoryMemory | null
 ): ActBoundaryProposal[] {
   const proposals: ActBoundaryProposal[] = []
   const currentAct = getActForChapter(storyArc, currentChapterIndex)
@@ -237,14 +239,23 @@ export function proposeActBoundaryAdjustments(
   } else if (progress.pending.length === 0 && chaptersRemaining > 0) {
     const reduction = Math.min(chaptersRemaining, 2)
     const proposedEnd = currentAct.endChapter - reduction
-    const prevAct = storyArc.acts.find((a) => a.index === currentAct.index - 1)
-    const minEnd = Math.max(prevAct ? prevAct.endChapter + 1 : 1, currentChapterIndex + 1)
-    if (proposedEnd >= minEnd) {
-      proposals.push({
-        actIndex: currentAct.index,
-        proposedEndChapter: proposedEnd,
-        reason: `第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，但所有 mandatory beats 已消费，建议提前 ${reduction} 章结束。`,
-      })
+    const blockingForeshadows = storyMemory
+      ? getBoundaryBlockingForeshadows(storyMemory, proposedEnd, false)
+      : []
+    if (blockingForeshadows.length > 0) {
+      logger.warn(
+        `[MuseFlow] 第 ${currentAct.index} 幕虽已消费全部 mandatory beats，但仍有 ${blockingForeshadows.length} 个 required 伏笔需在候选边界前回收，禁止自动缩短幕边界。`
+      )
+    } else {
+      const prevAct = storyArc.acts.find((a) => a.index === currentAct.index - 1)
+      const minEnd = Math.max(prevAct ? prevAct.endChapter + 1 : 1, currentChapterIndex + 1)
+      if (proposedEnd >= minEnd) {
+        proposals.push({
+          actIndex: currentAct.index,
+          proposedEndChapter: proposedEnd,
+          reason: `第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，但所有 mandatory beats 已消费，建议提前 ${reduction} 章结束。`,
+        })
+      }
     }
   }
 

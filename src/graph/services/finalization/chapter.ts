@@ -618,7 +618,8 @@ export async function finalizeChapter(
     boundaryProposals = proposeActBoundaryAdjustments(
       state.storyArc,
       updatedActProgress,
-      chapterIndex
+      chapterIndex,
+      updatedStoryMemory
     )
     if (boundaryProposals.length > 0) {
       const config = loadConfig()
@@ -691,8 +692,7 @@ export async function finalizeChapter(
       Math.max(0, ...(updatedStoryArc?.acts.map((act) => act.index) ?? []))
     const unresolvedForeshadows = getBoundaryBlockingForeshadows(
       updatedStoryMemory,
-      updatedStoryArc,
-      boundaryActIndex,
+      chapterIndex + 1,
       isStoryEnd
     )
     if (unresolvedForeshadows.length > 0) {

@@ -758,12 +758,12 @@ describe('finalizeChapter', () => {
     )
   })
 
-  it('blocks an unresolved required foreshadow linked to the act at its boundary', async () => {
+  it('blocks an unresolved required foreshadow due by the act-end chapter', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
     await writeChapter(tmpDir, 3, '幕末正文。')
     const state = boundaryState(tmpDir, {
       foreshadows: {
-        'fs-act-1': testMemoryForeshadow('fs-act-1', 'beat-1'),
+        'fs-due': testMemoryForeshadow('fs-due', 'beat-1', true, 3),
       },
       beats: {
         'beat-1': testMemoryBeat('beat-1', 1),
@@ -778,23 +778,23 @@ describe('finalizeChapter', () => {
         expect.objectContaining({
           type: 'foreshadow_boundary_unresolved',
           severity: 'error',
-          subject: 'fs-act-1',
+          subject: 'fs-due',
         }),
       ])
     )
   })
 
-  it('does not block optional or future-act foreshadows at the current act boundary', async () => {
+  it('does not infer an act deadline from beat association', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
     await writeChapter(tmpDir, 3, '幕末正文。')
     const state = boundaryState(tmpDir, {
       foreshadows: {
-        'fs-optional': testMemoryForeshadow('fs-optional', 'beat-1', false),
-        'fs-act-2': testMemoryForeshadow('fs-act-2', 'beat-2'),
+        'fs-future': testMemoryForeshadow('fs-future', 'beat-1', true, 5),
+        'fs-unscheduled': testMemoryForeshadow('fs-unscheduled', 'beat-1', true, null),
+        'fs-optional': testMemoryForeshadow('fs-optional', 'beat-1', false, 3),
       },
       beats: {
         'beat-1': testMemoryBeat('beat-1', 1),
-        'beat-2': testMemoryBeat('beat-2', 2),
       },
     })
 
@@ -809,7 +809,7 @@ describe('finalizeChapter', () => {
     await writeChapter(tmpDir, 3, '全书结尾正文。')
     const base = boundaryState(tmpDir, {
       foreshadows: {
-        'fs-unbound': testMemoryForeshadow('fs-unbound', null),
+        'fs-unbound': testMemoryForeshadow('fs-unbound', null, true, null),
       },
       beats: {},
     })
@@ -1003,13 +1003,18 @@ function boundaryState(
   })
 }
 
-function testMemoryForeshadow(id: string, beatId: string | null, required = true) {
+function testMemoryForeshadow(
+  id: string,
+  beatId: string | null,
+  required = true,
+  expectedFulfillChapter: number | null = 2
+) {
   return {
     id,
     text: id,
     kind: null,
     introducedIn: 0,
-    expectedFulfillChapter: 2,
+    expectedFulfillChapter,
     fulfilledIn: null,
     required,
     beatId,
