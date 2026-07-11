@@ -382,6 +382,35 @@ describe('projectMemory foreshadows', () => {
     expect(next.foreshadows['f-1']?.fulfilledIn).toBe(4)
   })
 
+  it('preserves foreshadow introduction metadata from structured events', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-1',
+        text: '门后的争执声暗示某个尚未公开的约定',
+        kind: 'dialogue_hint',
+        required: false,
+        beatId: 'A1-M2',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+    ])
+
+    expect(next.foreshadows['f-1']).toMatchObject({
+      id: 'f-1',
+      text: '门后的争执声暗示某个尚未公开的约定',
+      kind: 'dialogue_hint',
+      required: false,
+      beatId: 'A1-M2',
+      expectedFulfillChapter: 5,
+      introducedIn: 1,
+      fulfilledIn: null,
+    })
+  })
+
   it('handles fulfillment before introduction defensively', () => {
     const memory = createEmptyStoryMemory()
     const next = applyEvents(memory, [

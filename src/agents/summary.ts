@@ -12,6 +12,7 @@ import {
 } from './prompts/summary-prompt.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import type { StoryEvent } from '../types/story-memory.js'
+import type { ChapterHandoff } from '../types/story-state.js'
 
 const SUMMARY_EVENT_TYPES = [
   'character-location',
@@ -75,6 +76,24 @@ function isStoryEvent(e: unknown): e is StoryEvent {
   }
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isChapterHandoff(value: unknown): value is ChapterHandoff {
+  if (!value || typeof value !== 'object') return false
+  const handoff = value as Record<string, unknown>
+  return (
+    typeof handoff.chapterNumber === 'number' &&
+    typeof handoff.endScene === 'string' &&
+    typeof handoff.endTime === 'string' &&
+    isStringArray(handoff.charactersPresent) &&
+    typeof handoff.lastAction === 'string' &&
+    isStringArray(handoff.openQuestions) &&
+    (!('requiredNextOpening' in handoff) || typeof handoff.requiredNextOpening === 'string')
+  )
+}
+
 export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
   constructor(provider: ModelProvider) {
     super(provider, 0.3)
@@ -108,10 +127,22 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
 
   protected parse(content: string): AgentOutput {
     const summaryMatch = content.match(/<chapter_summary>([\s\S]*?)<\/chapter_summary>/i)
+    const handoffMatch = content.match(/<chapter_handoff>([\s\S]*?)<\/chapter_handoff>/i)
     const eventsMatch = content.match(/<story_events>([\s\S]*?)<\/story_events>/i)
 
     const chapterSummary = summaryMatch?.[1]?.trim() ?? ''
+    const handoffText = handoffMatch?.[1]?.trim()
     const eventsText = eventsMatch?.[1]?.trim() ?? '[]'
+
+    let chapterHandoff: ChapterHandoff | undefined
+    if (handoffText) {
+      const parsedHandoff = parseJsonFromLLM<unknown>(handoffText)
+      if (parsedHandoff.success && isChapterHandoff(parsedHandoff.data)) {
+        chapterHandoff = parsedHandoff.data
+      } else {
+        logger.warn('[MuseFlow] SummaryAgent 忽略了无效 chapter_handoff')
+      }
+    }
 
     let storyEvents: StoryEvent[] = []
     const parsedEvents = parseJsonFromLLM<unknown[]>(eventsText)
@@ -126,7 +157,11 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
 
     return {
       success: true,
-      data: { storyEvents, chapterSummary },
+      data: {
+        storyEvents,
+        chapterSummary,
+        ...(chapterHandoff ? { chapterHandoff } : {}),
+      },
     }
   }
 }

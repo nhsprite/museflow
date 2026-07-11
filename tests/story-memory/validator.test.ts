@@ -41,6 +41,83 @@ describe('validateChapterEvents', () => {
     expect(result.missingEvents).toHaveLength(1)
   })
 
+  it('requires paragraph evidence for actual story events when chapter content is provided', () => {
+    const memory = createEmptyStoryMemory()
+    const plan = createEmptyChapterPlan(1)
+    const actualEvents = [
+      {
+        id: 'e1',
+        type: 'character-location' as const,
+        characterId: 'c-1',
+        locationId: 'l-1',
+        chapterIndex: 1,
+        source: 'chapter' as const,
+      },
+    ]
+
+    const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+      chapterContent: '# 第一章\n\n角色走进教室。',
+      requireEvidence: true,
+    })
+
+    expect(result.eventsMissingEvidence).toHaveLength(1)
+    expect(result.eventsMissingEvidence[0]?.id).toBe('e1')
+  })
+
+  it('rejects paragraph evidence that points outside the chapter content', () => {
+    const memory = createEmptyStoryMemory()
+    const plan = createEmptyChapterPlan(1, {
+      claimedBeatIds: ['beat-1'],
+    })
+    const actualEvents = [
+      {
+        id: 'e1',
+        type: 'plot-advance' as const,
+        plotId: 'plot-1',
+        beatId: 'beat-1',
+        chapterIndex: 1,
+        source: 'chapter' as const,
+        evidence: { paragraphIndex: 3 },
+      },
+    ]
+
+    const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+      chapterContent: '# 第一章\n\n角色走进教室。',
+      requireEvidence: true,
+    })
+
+    expect(result.eventsWithInvalidEvidence).toHaveLength(1)
+    expect(result.eventsWithInvalidEvidence[0]?.id).toBe('e1')
+    expect(result.claimedButUnprovenBeats).toContain('beat-1')
+  })
+
+  it('uses evidenced current chapter events as proof for claimed beats', () => {
+    const memory = createEmptyStoryMemory()
+    const plan = createEmptyChapterPlan(1, {
+      claimedBeatIds: ['beat-1'],
+    })
+    const actualEvents = [
+      {
+        id: 'e1',
+        type: 'plot-advance' as const,
+        plotId: 'plot-1',
+        beatId: 'beat-1',
+        chapterIndex: 1,
+        source: 'chapter' as const,
+        evidence: { paragraphIndex: 1 },
+      },
+    ]
+
+    const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+      chapterContent: '# 第一章\n\n角色终于离开。',
+      requireEvidence: true,
+    })
+
+    expect(result.eventsMissingEvidence).toEqual([])
+    expect(result.eventsWithInvalidEvidence).toEqual([])
+    expect(result.claimedButUnprovenBeats).toEqual([])
+  })
+
   it('detects overdue required foreshadow', () => {
     let memory = createEmptyStoryMemory()
     memory = applyEvents(memory, [

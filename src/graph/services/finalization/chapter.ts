@@ -20,6 +20,7 @@ import type {
   TaskId,
   BeatId,
 } from '../../../types/story-memory.js'
+import type { ChapterHandoff } from '../../../types/story-state.js'
 import type { ForeshadowItem } from '../../../types/foreshadow.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import { getForeshadowAlerts } from '../../../types/foreshadow.js'
@@ -55,6 +56,7 @@ import {
   pruneResolvedOutlineCoverageIssues,
   updateActProgress,
 } from './act-progress.js'
+import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
 import {
   findMandatoryBeatById,
   getMandatoryBeatEntries,
@@ -132,6 +134,19 @@ function filterStoryEventsForStoryArc(
   return events.filter((event) => event.type !== 'plot-advance' || validBeatIds.has(event.beatId))
 }
 
+function filterStoryEventsForEvidence(events: StoryEvent[], chapterContent: string): StoryEvent[] {
+  const paragraphCount = countEvidenceParagraphs(chapterContent)
+  return events.filter((event) => {
+    const evidence = event.evidence
+    return (
+      !!evidence &&
+      Number.isInteger(evidence.paragraphIndex) &&
+      evidence.paragraphIndex >= 1 &&
+      evidence.paragraphIndex <= paragraphCount
+    )
+  })
+}
+
 function ensureChaptersLength(
   chapters: ReducedGraphState['chapters'],
   totalChapters: number
@@ -164,9 +179,29 @@ function buildActBoundaryPendingIssue(storyId: string, act: ActArc, pendingBeats
   }
 }
 
-function isSummaryData(
-  data: unknown
-): data is { storyEvents?: StoryEvent[]; chapterSummary?: string } {
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isChapterHandoff(value: unknown): value is ChapterHandoff {
+  if (!value || typeof value !== 'object') return false
+  const handoff = value as Record<string, unknown>
+  return (
+    typeof handoff.chapterNumber === 'number' &&
+    typeof handoff.endScene === 'string' &&
+    typeof handoff.endTime === 'string' &&
+    isStringArray(handoff.charactersPresent) &&
+    typeof handoff.lastAction === 'string' &&
+    isStringArray(handoff.openQuestions) &&
+    (!('requiredNextOpening' in handoff) || typeof handoff.requiredNextOpening === 'string')
+  )
+}
+
+function isSummaryData(data: unknown): data is {
+  storyEvents?: StoryEvent[]
+  chapterSummary?: string
+  chapterHandoff?: ChapterHandoff
+} {
   return (
     typeof data === 'object' && data !== null && ('storyEvents' in data || 'chapterSummary' in data)
   )
@@ -207,6 +242,9 @@ function foreshadowMemoryToItem(
     isExplicit: true,
     required: memory.required,
   }
+  if (memory.kind) {
+    item.kind = memory.kind
+  }
   if (memory.fulfilledIn) {
     item.fulfilledChapter = memory.fulfilledIn
   }
@@ -244,6 +282,7 @@ export async function finalizeChapter(
   }
 
   let updatedStoryState = state.storyState
+  const hasInputStoryMemory = state.storyMemory !== null && state.storyMemory !== undefined
   let updatedStoryMemory = ensureBeatsHaveActIndex(
     state.storyMemory ?? createEmptyStoryMemory(),
     state.storyArc
@@ -252,7 +291,10 @@ export async function finalizeChapter(
   // Authoritative source of events: the writer already emitted them in the
   // STORY_EVENTS block. Apply them before asking SummaryAgent to avoid losing
   // structured plot-advance events and to skip prose-based guessing.
-  const draftEvents = filterStoryEventsForStoryArc(state.draftChapterEvents ?? [], state.storyArc)
+  const draftEvents = filterStoryEventsForEvidence(
+    filterStoryEventsForStoryArc(state.draftChapterEvents ?? [], state.storyArc),
+    chapterContent
+  )
   const draftPlotAdvanceBeatIds = new Set(
     draftEvents
       .filter((e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance')
@@ -333,12 +375,18 @@ export async function finalizeChapter(
           updatedChapter = { ...updatedChapter, summary }
           updatedChapters[chapterIndex] = updatedChapter
           summarySuccess = true
+          if (isChapterHandoff(summaryData.chapterHandoff) && updatedStoryState) {
+            updatedStoryState = {
+              ...updatedStoryState,
+              chapterHandoff: summaryData.chapterHandoff,
+            }
+          }
 
           // SummaryAgent events are a fallback for events the writer missed.
           // For plot-advance, draft events are authoritative; skip duplicates.
-          const actualEvents = filterStoryEventsForStoryArc(
-            summaryData.storyEvents ?? [],
-            state.storyArc
+          const actualEvents = filterStoryEventsForEvidence(
+            filterStoryEventsForStoryArc(summaryData.storyEvents ?? [], state.storyArc),
+            chapterContent
           )
           const newEvents = actualEvents.filter((event) => {
             if (event.type === 'plot-advance') {
@@ -412,7 +460,7 @@ export async function finalizeChapter(
   if (updatedStoryMemory) {
     const memoryForeshadows = Object.values(updatedStoryMemory.foreshadows)
     updatedForeshadowStack =
-      memoryForeshadows.length > 0
+      hasInputStoryMemory || memoryForeshadows.length > 0
         ? memoryForeshadows.map(foreshadowMemoryToItem)
         : state.foreshadowStack
     const activeForeshadows = getActiveForeshadows(updatedStoryMemory)

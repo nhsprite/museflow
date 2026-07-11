@@ -3,6 +3,19 @@ export type ForeshadowId = string
 export type BeatId = string
 export type TaskId = string
 export type EventId = string
+export type ForeshadowKind =
+  | 'character_arc'
+  | 'environmental_detail'
+  | 'dialogue_hint'
+  | 'object_foreshadow'
+  | 'inner_conflict'
+  | 'plot'
+  | 'other'
+
+export interface StoryEventEvidence {
+  /** 1-based prose paragraph index in CHAPTER_CONTENT, excluding markdown headings. */
+  paragraphIndex: number
+}
 
 export interface StoryMemory {
   version: '1'
@@ -24,6 +37,7 @@ interface BaseEvent {
   id: EventId
   chapterIndex: number
   source: 'outline' | 'chapter'
+  evidence?: StoryEventEvidence
 }
 
 export type StoryEvent =
@@ -74,6 +88,10 @@ export interface ForeshadowIntroduceEvent extends BaseEvent {
   type: 'foreshadow-introduce'
   foreshadowId: ForeshadowId
   expectedFulfillChapter: number | null
+  text?: string
+  kind?: ForeshadowKind
+  required?: boolean
+  beatId?: BeatId | null
 }
 
 export interface ForeshadowFulfillEvent extends BaseEvent {
@@ -130,6 +148,7 @@ export interface PlotMemory {
 export interface ForeshadowMemory {
   id: ForeshadowId
   text: string
+  kind: ForeshadowKind | null
   introducedIn: number
   expectedFulfillChapter: number | null
   fulfilledIn: number | null

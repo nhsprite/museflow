@@ -62,6 +62,8 @@ function makeStructuredResult(
     actualEvents: [],
     missingEvents: [],
     unexpectedEvents: [],
+    eventsMissingEvidence: [],
+    eventsWithInvalidEvidence: [],
     unfulfilledRequiredForeshadows: [],
     overdueForeshadows: [],
     falseFulfillments: [],
@@ -150,6 +152,72 @@ describe('decideNextStep structured validation routing', () => {
     expect(result.processedIssues).toHaveLength(1)
     expect(result.processedIssues[0]?.type).toBe('foreshadow_false_fulfillment')
     expect(result.processedIssues[0]?.description).toContain('fs-1')
+  })
+
+  it('routes to fix_chapter when expected events are missing', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession(),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: false,
+      structuredValidationResult: makeStructuredResult({
+        missingEvents: [
+          {
+            id: 'evt-expected',
+            type: 'character-location',
+            characterId: 'c-1',
+            locationId: 'l-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('fix')
+    expect(result.processedIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'event_missing',
+          severity: 'error',
+        }),
+      ])
+    )
+  })
+
+  it('routes to fix_chapter when story events lack evidence', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession(),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: false,
+      structuredValidationResult: makeStructuredResult({
+        eventsMissingEvidence: [
+          {
+            id: 'evt-no-evidence',
+            type: 'plot-advance',
+            plotId: 'plot-1',
+            beatId: 'beat-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('fix')
+    expect(result.processedIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'event_evidence_missing',
+          severity: 'error',
+        }),
+      ])
+    )
   })
 
   it('merges structured issues with existing pending issues', async () => {

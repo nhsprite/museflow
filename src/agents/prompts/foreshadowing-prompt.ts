@@ -61,7 +61,7 @@ const FORESHADOWING_USER_PROMPT_TEMPLATE = `<instruction>
     "new_foreshadows": [
       {
         "text": "伏笔文本内容",
-        "foreshadow_type": "character_destiny|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict",
+        "foreshadow_type": "character_arc|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict",
         "expected_fulfill_chapter": 数字,
         "confidence": "high|medium|low"
       }

@@ -109,6 +109,7 @@ describe('SummaryAgent prompt', () => {
     })
     const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain('<chapter_summary>')
+    expect(userMessage).toContain('<chapter_handoff>')
     expect(userMessage).toContain('<story_events>')
     expect(userMessage).toContain('character-location')
     expect(userMessage).toContain('plot-advance')
@@ -122,8 +123,8 @@ describe('SummaryAgent prompt', () => {
 
 <story_events>
 [
-  { "id": "evt-1", "type": "character-location", "characterId": "c-1", "locationId": "l-1", "chapterIndex": 1, "source": "chapter" },
-  { "id": "evt-2", "type": "plot-advance", "plotId": "p-1", "beatId": "A1-B1", "chapterIndex": 1, "source": "chapter" }
+  { "id": "evt-1", "type": "character-location", "characterId": "c-1", "locationId": "l-1", "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 1 } },
+  { "id": "evt-2", "type": "plot-advance", "plotId": "p-1", "beatId": "A1-B1", "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 1 } }
 ]
 </story_events>`
     const agent = new TestableSummaryAgent(createMockProvider(response))
@@ -145,6 +146,52 @@ describe('SummaryAgent prompt', () => {
     expect(result.data?.storyEvents).toHaveLength(2)
   })
 
+  it('extracts chapter handoff from structured output', async () => {
+    const response = `<chapter_summary>
+主角停在楼梯口，听见门后的低声争执。
+</chapter_summary>
+
+<chapter_handoff>
+{
+  "chapterNumber": 3,
+  "endScene": "教学楼楼梯口",
+  "endTime": "傍晚",
+  "charactersPresent": ["char-1"],
+  "lastAction": "主角停在楼梯口，准备推门",
+  "openQuestions": ["门后的争执对象尚未确认"],
+  "requiredNextOpening": "下一章从主角推门前的停顿承接"
+}
+</chapter_handoff>
+
+<story_events>
+[]
+</story_events>`
+    const agent = new TestableSummaryAgent(createMockProvider(response))
+
+    const result = await agent.run({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterContent: '主角停在楼梯口，听见门后的低声争执。',
+      chapterTitle: '门后',
+      chapterIndex: 2,
+      charactersList: [],
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.chapterHandoff).toEqual({
+      chapterNumber: 3,
+      endScene: '教学楼楼梯口',
+      endTime: '傍晚',
+      charactersPresent: ['char-1'],
+      lastAction: '主角停在楼梯口，准备推门',
+      openQuestions: ['门后的争执对象尚未确认'],
+      requiredNextOpening: '下一章从主角推门前的停顿承接',
+    })
+  })
+
   it('filters invalid story events from structured output', async () => {
     const response = `<chapter_summary>
 主角抵达京城。
@@ -152,7 +199,7 @@ describe('SummaryAgent prompt', () => {
 
 <story_events>
 [
-  { "id": "evt-1", "type": "character-location", "characterId": "c-1", "locationId": "l-1", "chapterIndex": 1, "source": "chapter" },
+  { "id": "evt-1", "type": "character-location", "characterId": "c-1", "locationId": "l-1", "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 1 } },
   { "id": "evt-2", "type": "invalid-type", "chapterIndex": 1, "source": "chapter" }
 ]
 </story_events>`

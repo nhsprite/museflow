@@ -1,4 +1,4 @@
-import type { BeatId, ForeshadowId } from './story-memory.js'
+import type { BeatId, ForeshadowId, ForeshadowKind } from './story-memory.js'
 
 export type ForeshadowStatus = 'planted' | 'hinted' | 'shown' | 'recalled'
 
@@ -14,6 +14,7 @@ export interface ForeshadowItem {
   source?: 'content' | 'outline' | 'manual'
   required: boolean
   beatId?: BeatId
+  kind?: ForeshadowKind
 }
 
 export type ForeshadowAlertLevel = 'overdue' | 'urgent' | 'normal'

@@ -135,18 +135,18 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 如果本章没有任何事实变化，可以输出空区块（只保留标记），但不得省略该区块。
 
-每条事件使用以下格式之一，并严格使用大纲/规划中给定的精确 ID：
-- character-location: <characterId> -> <locationId>
-- character-status: <characterId> / <attribute> -> <value>
-- item-location: <itemId> -> <holderId>
-- item-state: <itemId> / <attribute> -> <value>
-- plot-advance: <plotId> / <beatId>
-- foreshadow-introduce: <foreshadowId> (expectedFulfillChapter)
-- foreshadow-fulfill: <foreshadowId>
-- task-resolve: <taskId>
-- task-create: <taskId> / <description>
+每条事件使用以下格式之一，并严格使用大纲/规划中给定的精确 ID；每条事件末尾必须追加正文段落证据 @pN，其中 N 是 CHAPTER_CONTENT 中非标题正文段落的 1-based 序号：
+- character-location: <characterId> -> <locationId> @pN
+- character-status: <characterId> / <attribute> -> <value> @pN
+- item-location: <itemId> -> <holderId> @pN
+- item-state: <itemId> / <attribute> -> <value> @pN
+- plot-advance: <plotId> / <beatId> @pN
+- foreshadow-introduce: <foreshadowId> / expected=<expectedFulfillChapter|none> / kind=<character_arc|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict|plot|other> / required=<true|false> / beat=<beatId|none> / text=<伏笔可读描述> @pN
+- foreshadow-fulfill: <foreshadowId> @pN
+- task-resolve: <taskId> @pN
+- task-create: <taskId> / <description> @pN
 
-<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符。</important>
+<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符。没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容。</important>
 </content>
 </story_events_section>
 
@@ -184,7 +184,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
 </content>
 </chapter_content_section>
 
-请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === CHAPTER_CONTENT === 部分。
+请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === STORY_EVENTS === 部分，最后输出 === CHAPTER_CONTENT === 部分。
 </output_format>
 </task>`
 
@@ -273,7 +273,7 @@ export function buildBeatMappingSection(actIndex: number, entries: BeatMappingEn
 <content>
 第 ${actIndex} 幕的 mandatory beats 已分配稳定 ID。在 === STORY_EVENTS === 区块中，每推进一个节拍，必须输出：
 
-- plot-advance: act-${actIndex} / <beatId>
+- plot-advance: act-${actIndex} / <beatId> @pN
 
 其中 &lt;beatId&gt; 必须严格使用下方列表中的 ID，不得使用描述文本或自造 ID。
 

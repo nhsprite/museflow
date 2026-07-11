@@ -47,6 +47,7 @@ const chapter1Events: StoryEvent[] = [
     expectedFulfillChapter: 2,
     chapterIndex: 0,
     source: 'chapter',
+    evidence: { paragraphIndex: 1 },
   },
   {
     id: 'evt-beat-1',
@@ -55,6 +56,7 @@ const chapter1Events: StoryEvent[] = [
     beatId: 'beat-1',
     chapterIndex: 0,
     source: 'chapter',
+    evidence: { paragraphIndex: 1 },
   },
 ]
 
@@ -65,6 +67,7 @@ const chapter2Events: StoryEvent[] = [
     foreshadowId: 'fs-locket',
     chapterIndex: 1,
     source: 'chapter',
+    evidence: { paragraphIndex: 1 },
   },
   {
     id: 'evt-beat-2',
@@ -73,6 +76,7 @@ const chapter2Events: StoryEvent[] = [
     beatId: 'beat-2',
     chapterIndex: 1,
     source: 'chapter',
+    evidence: { paragraphIndex: 1 },
   },
 ]
 

@@ -8,6 +8,8 @@ export interface StructuredValidationResult {
   actualEvents: StoryEvent[]
   missingEvents: StoryEvent[]
   unexpectedEvents: StoryEvent[]
+  eventsMissingEvidence: StoryEvent[]
+  eventsWithInvalidEvidence: StoryEvent[]
 
   unfulfilledRequiredForeshadows: ForeshadowId[]
   overdueForeshadows: ForeshadowId[]
@@ -27,17 +29,27 @@ export interface StateConflict {
   description: string
 }
 
+export interface ChapterEventValidationOptions {
+  chapterContent?: string
+  requireEvidence?: boolean
+}
+
 export function validateChapterEvents(
   memory: StoryMemory,
   chapterIndex: number,
   plan: ChapterPlan,
-  actualEvents: StoryEvent[]
+  actualEvents: StoryEvent[],
+  options: ChapterEventValidationOptions = {}
 ): StructuredValidationResult {
   const chapterActual = actualEvents.filter((e) => e.chapterIndex === chapterIndex)
   const chapterExpected = (plan.expectedEvents ?? []).filter((e) => e.chapterIndex === chapterIndex)
-  const effectiveMemory = applyNewChapterEvents(memory, chapterActual)
+  const { validEvents, missingEvidence, invalidEvidence } = filterEventsByEvidence(
+    chapterActual,
+    options
+  )
+  const effectiveMemory = applyNewChapterEvents(memory, validEvents)
 
-  const { missing, unexpected } = diffEvents(chapterExpected, chapterActual)
+  const { missing, unexpected } = diffEvents(chapterExpected, validEvents)
 
   const unfulfilledRequiredForeshadows: ForeshadowId[] = []
   const overdueForeshadows: ForeshadowId[] = []
@@ -63,7 +75,7 @@ export function validateChapterEvents(
   }
 
   for (const id of plan.fulfilledForeshadowIds ?? []) {
-    const actualFulfilled = chapterActual.some(
+    const actualFulfilled = validEvents.some(
       (e) => e.type === 'foreshadow-fulfill' && e.foreshadowId === id
     )
     if (!actualFulfilled) {
@@ -93,13 +105,59 @@ export function validateChapterEvents(
     actualEvents: chapterActual,
     missingEvents: missing,
     unexpectedEvents: unexpected,
+    eventsMissingEvidence: missingEvidence,
+    eventsWithInvalidEvidence: invalidEvidence,
     unfulfilledRequiredForeshadows,
     overdueForeshadows,
     falseFulfillments,
     unclaimedMandatoryBeats,
     claimedButUnprovenBeats,
-    stateConflicts: detectStateConflicts(chapterActual),
+    stateConflicts: detectStateConflicts(validEvents),
   }
+}
+
+function filterEventsByEvidence(
+  events: StoryEvent[],
+  options: ChapterEventValidationOptions
+): {
+  validEvents: StoryEvent[]
+  missingEvidence: StoryEvent[]
+  invalidEvidence: StoryEvent[]
+} {
+  if (!options.requireEvidence) {
+    return { validEvents: events, missingEvidence: [], invalidEvidence: [] }
+  }
+
+  const paragraphCount = countEvidenceParagraphs(options.chapterContent ?? '')
+  const validEvents: StoryEvent[] = []
+  const missingEvidence: StoryEvent[] = []
+  const invalidEvidence: StoryEvent[] = []
+
+  for (const event of events) {
+    const evidence = event.evidence
+    if (!evidence) {
+      missingEvidence.push(event)
+      continue
+    }
+    if (
+      !Number.isInteger(evidence.paragraphIndex) ||
+      evidence.paragraphIndex < 1 ||
+      evidence.paragraphIndex > paragraphCount
+    ) {
+      invalidEvidence.push(event)
+      continue
+    }
+    validEvents.push(event)
+  }
+
+  return { validEvents, missingEvidence, invalidEvidence }
+}
+
+export function countEvidenceParagraphs(chapterContent: string): number {
+  return chapterContent
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0 && !/^#{1,6}\s/.test(paragraph)).length
 }
 
 function applyNewChapterEvents(memory: StoryMemory, chapterActual: StoryEvent[]): StoryMemory {

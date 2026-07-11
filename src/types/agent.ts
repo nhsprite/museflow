@@ -19,6 +19,10 @@ export type IssueType =
   | 'state_conflict'
   | 'beat_unproven'
   | 'foreshadow_false_fulfillment'
+  | 'event_missing'
+  | 'event_unexpected'
+  | 'event_evidence_missing'
+  | 'event_evidence_invalid'
 
 export type IssueSource =
   | 'word_count'

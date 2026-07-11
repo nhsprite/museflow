@@ -32,6 +32,7 @@ function createBaseSummaryAgent() {
             beatId: 'beat-1',
             chapterIndex: 0,
             source: 'chapter',
+            evidence: { paragraphIndex: 1 },
           },
           {
             id: 'evt-2',
@@ -40,6 +41,7 @@ function createBaseSummaryAgent() {
             description: '主角需要找到失散的同伴。',
             chapterIndex: 0,
             source: 'chapter',
+            evidence: { paragraphIndex: 1 },
           },
         ],
       },
@@ -238,6 +240,106 @@ describe('finalizeChapter', () => {
     expect(result.currentChapterIndex).toBe(1)
   })
 
+  it('does not apply summary candidate events without paragraph evidence', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角离开家乡，踏上旅途。',
+          storyEvents: [
+            {
+              id: 'evt-no-evidence',
+              type: 'plot-advance',
+              plotId: 'plot-1',
+              beatId: 'beat-1',
+              chapterIndex: 0,
+              source: 'chapter',
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const state = buildState(tmpDir)
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-no-evidence')).toBe(false)
+    expect(result.storyMemory?.beats['beat-1']?.provenByEventIds).toEqual([])
+    expect(result.actProgress?.[1]?.consumed).not.toContain('主角离开家乡')
+  })
+
+  it('stores summary chapter handoff on storyState for the next chapter contract', async () => {
+    const chapterHandoff = {
+      chapterNumber: 1,
+      endScene: '村口',
+      endTime: '黄昏',
+      charactersPresent: ['char-1'],
+      lastAction: '主角回头看了一眼故乡',
+      openQuestions: ['旅途方向仍未确定'],
+      requiredNextOpening: '下一章应从主角离开村口后的路上承接',
+    }
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角离开家乡，踏上旅途。',
+          chapterHandoff,
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const state = buildState(tmpDir)
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.storyState?.chapterHandoff).toEqual(chapterHandoff)
+  })
+
+  it('uses StoryMemory as the foreshadow source of truth during finalization', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角离开家乡，踏上旅途。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const state = buildState(tmpDir, {
+      storyMemory: {
+        version: '1',
+        lastChapterIndex: 0,
+        entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+        events: [],
+        foreshadows: {},
+        beats: {},
+        tasks: {},
+      },
+      foreshadowStack: [
+        {
+          id: 'semantic-only',
+          text: '语义检测提出但未进入结构化事件账本的候选伏笔',
+          expectedFulfillChapter: 3,
+          createdAt: 1,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: false,
+          required: true,
+        },
+      ],
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.foreshadowStack).toEqual([])
+  })
+
   it('consumes mandatory beats from draftChapterEvents without prose-based judgment', async () => {
     const state = buildState(tmpDir, {
       draftChapterEvents: [
@@ -248,6 +350,7 @@ describe('finalizeChapter', () => {
           beatId: 'beat-1',
           chapterIndex: 0,
           source: 'chapter',
+          evidence: { paragraphIndex: 1 },
         } as StoryEvent,
       ],
     })
@@ -375,6 +478,7 @@ describe('finalizeChapter', () => {
           beatId: 'beat-1（补充说明）',
           chapterIndex: 0,
           source: 'chapter',
+          evidence: { paragraphIndex: 1 },
         } as StoryEvent,
       ],
     })

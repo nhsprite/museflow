@@ -39,6 +39,18 @@ describe('parseStoryEventsBlock', () => {
     expect(events[0]?.type).toBe('plot-advance')
   })
 
+  it('parses paragraph evidence markers on story events', () => {
+    const text = `=== STORY_EVENTS ===
+- plot-advance: p-1 / a1-b1 @p2
+=== CHAPTER_CONTENT ===
+第一段。
+
+第二段。`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.evidence).toEqual({ paragraphIndex: 2 })
+  })
+
   it('parses character-status events', () => {
     const text = `=== STORY_EVENTS ===
 - character-status: c-1 / health -> injured
@@ -67,6 +79,25 @@ describe('parseStoryEventsBlock', () => {
     const events = parseStoryEventsBlock(text, 1)
     expect(events).toHaveLength(1)
     expect(events[0]?.type).toBe('foreshadow-introduce')
+  })
+
+  it('parses rich foreshadow-introduce metadata', () => {
+    const text = `=== STORY_EVENTS ===
+- foreshadow-introduce: f-1 / expected=5 / kind=character_arc / required=false / beat=A1-M2 / text=角色A在场景A中的迟疑暗示后续选择 @p1
+=== CHAPTER_CONTENT ===
+角色A在场景A中短暂停顿。`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: 'foreshadow-introduce',
+      foreshadowId: 'f-1',
+      expectedFulfillChapter: 5,
+      kind: 'character_arc',
+      required: false,
+      beatId: 'A1-M2',
+      text: '角色A在场景A中的迟疑暗示后续选择',
+      evidence: { paragraphIndex: 1 },
+    })
   })
 
   it('parses task-create and task-resolve events', () => {

@@ -75,9 +75,8 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
       if (item.fulfilledChapter) return item
 
       const isFulfilled = fulfilledIds.has(item.id) || fulfilledIds.has(String(index + 1))
-      const isOverdue = currentChapter > item.expectedFulfillChapter + 1
 
-      if (isFulfilled || isOverdue) {
+      if (isFulfilled) {
         return { ...item, fulfilledChapter: currentChapter } as ForeshadowItem
       }
 

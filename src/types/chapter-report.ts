@@ -115,6 +115,10 @@ export function createEmptyIssueSummary(): ChapterIssueSummary {
       state_conflict: 0,
       beat_unproven: 0,
       foreshadow_false_fulfillment: 0,
+      event_missing: 0,
+      event_unexpected: 0,
+      event_evidence_missing: 0,
+      event_evidence_invalid: 0,
     },
   }
 }

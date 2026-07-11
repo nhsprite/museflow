@@ -472,7 +472,8 @@ export async function validate_chapter_comprehensive(
   mergePendingIssues(consistencyUpdates)
 
   const hasBlockingErrors = workingState.pendingIssues.some((issue) => issue.severity === 'error')
-  if (detectedForeshadowStack && !hasBlockingErrors) {
+  const canApplySemanticForeshadowStack = !workingState.storyMemory
+  if (detectedForeshadowStack && !hasBlockingErrors && canApplySemanticForeshadowStack) {
     workingState = {
       ...workingState,
       foreshadowStack: detectedForeshadowStack,

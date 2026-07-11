@@ -95,7 +95,11 @@ export async function decideNextStep(
     const hasBlocking =
       structured.stateConflicts.length > 0 ||
       structured.falseFulfillments.length > 0 ||
-      structured.claimedButUnprovenBeats.length > 0
+      structured.claimedButUnprovenBeats.length > 0 ||
+      structured.missingEvents.length > 0 ||
+      structured.unexpectedEvents.length > 0 ||
+      structured.eventsMissingEvidence.length > 0 ||
+      structured.eventsWithInvalidEvidence.length > 0
     if (hasBlocking) {
       const chapterIndex = ctx.session.chapterIndex
       const structuredIssues: Issue[] = []
@@ -124,6 +128,50 @@ export async function decideNextStep(
           severity: 'error',
           description: `声称兑现的伏笔 ${fsId} 未在正文中发生`,
           location: `第 ${chapterIndex + 1} 章`,
+        })
+      }
+      for (const event of structured.missingEvents) {
+        structuredIssues.push({
+          id: generateId(),
+          type: 'event_missing',
+          severity: 'error',
+          description: `章节规划要求的结构化事件 ${event.id}（${event.type}）未在正文 STORY_EVENTS 中验证到`,
+          location: `第 ${chapterIndex + 1} 章`,
+          source: 'outline_compliance',
+          retryStrategy: 'draft',
+        })
+      }
+      for (const event of structured.unexpectedEvents) {
+        structuredIssues.push({
+          id: generateId(),
+          type: 'event_unexpected',
+          severity: 'error',
+          description: `正文 STORY_EVENTS 声明了未由章节规划授权的结构化事件 ${event.id}（${event.type}）`,
+          location: `第 ${chapterIndex + 1} 章`,
+          source: 'outline_compliance',
+          retryStrategy: 'draft',
+        })
+      }
+      for (const event of structured.eventsMissingEvidence) {
+        structuredIssues.push({
+          id: generateId(),
+          type: 'event_evidence_missing',
+          severity: 'error',
+          description: `结构化事件 ${event.id}（${event.type}）缺少正文段落证据，不能写入 StoryMemory`,
+          location: `第 ${chapterIndex + 1} 章`,
+          source: 'outline_compliance',
+          retryStrategy: 'draft',
+        })
+      }
+      for (const event of structured.eventsWithInvalidEvidence) {
+        structuredIssues.push({
+          id: generateId(),
+          type: 'event_evidence_invalid',
+          severity: 'error',
+          description: `结构化事件 ${event.id}（${event.type}）引用了不存在的正文段落证据`,
+          location: `第 ${chapterIndex + 1} 章`,
+          source: 'outline_compliance',
+          retryStrategy: 'draft',
         })
       }
       return {

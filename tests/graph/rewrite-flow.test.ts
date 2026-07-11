@@ -17,6 +17,9 @@ let mockChapterContentValue =
 
 const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [true] }))
 const mockChatStructured = vi.fn().mockResolvedValue({ results: [true] })
+const foreshadowProcessOutput = vi.fn(
+  (_output: never, _chapterIndex: number, existingStack: never[]) => existingStack
+)
 
 function createMockProvider(): ModelProvider {
   return {
@@ -81,10 +84,17 @@ vi.mock('../../src/agents/index.js', () => ({
       }
     }
     processOutput(_output: never, _chapterIndex: number, existingStack: never[]) {
-      return existingStack
+      return foreshadowProcessOutput(_output, _chapterIndex, existingStack)
     }
   },
-  ConsistencyAgent: class {},
+  ConsistencyAgent: class {
+    async run() {
+      return { success: true, data: [] }
+    }
+    async processOutput() {
+      return []
+    }
+  },
   SummaryAgent: class {
     async run() {
       return { success: false, error: 'summary failed' }
@@ -152,6 +162,10 @@ let tempDir: string
 let baseState: ReducedGraphState
 
 beforeEach(() => {
+  vi.clearAllMocks()
+  foreshadowProcessOutput.mockImplementation(
+    (_output: never, _chapterIndex: number, existingStack: never[]) => existingStack
+  )
   tempDir = mkdtempSync(join(tmpdir(), 'museflow-rewrite-'))
   baseState = {
     story: { id: 'story-1', title: 'Story', outputDir: tempDir },
@@ -438,7 +452,6 @@ describe('finalize_chapter ages pending tasks', () => {
 
 describe('detect_foreshadowing preserves current-chapter foreshadows', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
     readChapterContentForRun.mockResolvedValue('old chapter content')
   })
 
@@ -477,5 +490,68 @@ describe('detect_foreshadowing preserves current-chapter foreshadows', () => {
 
     expect(result.foreshadowStack).toHaveLength(1)
     expect(result.foreshadowStack?.[0]?.text).toBe(currentChapterForeshadow.text)
+  })
+})
+
+describe('validate_chapter_comprehensive foreshadow authority', () => {
+  beforeEach(() => {
+    readChapterContentForRun.mockResolvedValue('字'.repeat(3000))
+  })
+
+  it('does not persist semantic foreshadow candidates when StoryMemory is present', async () => {
+    const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
+    foreshadowProcessOutput.mockReturnValueOnce([
+      {
+        id: 'semantic-only',
+        text: '语义检测提出但未进入结构化事件账本的候选伏笔',
+        expectedFulfillChapter: 3,
+        createdAtChapter: 1,
+        createdAt: 1,
+        status: 'planted',
+        isExplicit: false,
+        required: true,
+      },
+    ])
+
+    const result = await validate_chapter_comprehensive(createMockContext(), {
+      ...baseState,
+      chapters: [
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: 'Chapter 1',
+          outline: 'Desc 1',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      storyState: {
+        characterLocations: {},
+        characterStatus: {},
+        keyItemsLocation: {},
+        keyItemsState: {},
+        activePlots: [],
+        revealedSecrets: [],
+        pendingTasks: [],
+        currentScene: '',
+        storyTime: '',
+        canonicalFacts: [],
+      },
+      storyMemory: {
+        version: '1',
+        lastChapterIndex: 0,
+        entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+        events: [],
+        foreshadows: {},
+        beats: {},
+        tasks: {},
+      },
+    } as never)
+
+    expect(result.foreshadowStack).toBeUndefined()
   })
 })

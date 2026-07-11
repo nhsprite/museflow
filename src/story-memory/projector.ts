@@ -246,18 +246,20 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
       foreshadows[event.foreshadowId] = {
         ...existing,
         id: event.foreshadowId,
+        text: event.text ?? existing?.text ?? event.foreshadowId,
+        kind: event.kind ?? existing?.kind ?? null,
         introducedIn: event.chapterIndex,
         expectedFulfillChapter: event.expectedFulfillChapter,
         fulfilledIn: existing?.fulfilledIn ?? null,
-        required: existing?.required ?? true,
-        beatId: existing?.beatId ?? null,
-        text: existing?.text ?? event.foreshadowId,
+        required: event.required ?? existing?.required ?? true,
+        beatId: event.beatId ?? existing?.beatId ?? null,
       }
     } else if (event.type === 'foreshadow-fulfill') {
       const existing = foreshadows[event.foreshadowId]
       foreshadows[event.foreshadowId] = {
         id: event.foreshadowId,
         text: existing?.text ?? event.foreshadowId,
+        kind: existing?.kind ?? null,
         introducedIn: existing?.introducedIn ?? event.chapterIndex,
         expectedFulfillChapter: existing?.expectedFulfillChapter ?? null,
         fulfilledIn: event.chapterIndex,

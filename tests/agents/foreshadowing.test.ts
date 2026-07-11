@@ -91,4 +91,37 @@ describe('ForeshadowingAgent processOutput', () => {
     )
     expect(stack).toBe(existing)
   })
+
+  it('does not automatically fulfill overdue foreshadows without model evidence', () => {
+    const agent = new TestableForeshadowingAgent(createMockProvider())
+    const existing = [
+      {
+        id: 'fs-overdue',
+        text: '一条必须由正文显式回收的旧伏笔',
+        expectedFulfillChapter: 2,
+        createdAtChapter: 1,
+        createdAt: 1,
+        status: 'planted',
+        isExplicit: false,
+        required: true,
+      },
+    ]
+
+    const stack = agent.exposeProcessOutput(
+      {
+        success: true,
+        data: {
+          new_foreshadows: [],
+          fulfilled_foreshadows: [],
+          overdue_foreshadows: ['fs-overdue'],
+        },
+      },
+      4,
+      existing,
+      '',
+      'default'
+    )
+
+    expect(stack[0]?.fulfilledChapter).toBeUndefined()
+  })
 })
