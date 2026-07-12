@@ -136,6 +136,7 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
      - 事件类型包括：character-location、character-status、item-location、item-state、plot-advance、foreshadow-introduce、foreshadow-fulfill、task-resolve、task-create。
      - foreshadow-introduce 事件必须包含 text、kind、required、expectedFulfillChapter；若与某个节拍绑定，填写 beatId，否则 beatId 为 null。
      - 每个事件的 source 固定为 "chapter"。
+     - expectedEvents 中的所有事件都由本章产生，其内部零基章节索引固定为 {chapterIndex}；不得填写展示章节号 {displayChapterNumber} 或其他章节索引。
      - 如果本章没有某类事件，对应字段的数组为空。
      - 同时输出 claimedMandatoryBeatIds、claimedBeatIds、fulfilledForeshadowIds、introducedForeshadowIds、resolvedTaskIds、createdTaskIds 六个结构化声明数组；无对应内容时输出空数组。
      - claimedMandatoryBeatIds 必须使用大纲上下文中提供的 mandatory beat ID（如 A2-M3）；claimedBeatIds 只用于全局 keyBeat ID（如 A2-B3），不得混用。
@@ -188,7 +189,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
       "type": "character-location",
       "characterId": "c-1",
       "locationId": "l-1",
-      "chapterIndex": 1,
+      "chapterIndex": {chapterIndex},
       "source": "chapter"
     }
   ],
@@ -225,6 +226,7 @@ export interface ChapterPlannerPromptSections {
 }
 
 export interface ChapterPlannerPromptVariables {
+  chapterIndex: number
   displayChapterNumber: string | number
   outline: string
   world: string
@@ -356,6 +358,7 @@ export function buildChapterPlannerUserPrompt(
   }
 
   const vars: ChapterPlannerPromptVariables = {
+    chapterIndex,
     displayChapterNumber,
     outline: state.outline || '',
     world: state.world || '（尚未构建）',

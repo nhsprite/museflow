@@ -376,6 +376,26 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(data.resolvedTaskIds).toEqual(['t-1'])
     expect(data.createdTaskIds).toEqual([])
   })
+
+  it('renders the authoritative zero-based event chapter index', () => {
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 50,
+      world: '',
+      characters: '',
+      outline: '第26章：底稿',
+      previousChapters: '',
+      chapterIndex: 25,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const prompt = messages[1]?.content ?? ''
+    expect(prompt).toContain('内部零基章节索引固定为 25')
+    expect(prompt).toContain('"chapterIndex": 25')
+  })
 })
 
 describe('ChapterPlannerAgent JSON repair', () => {

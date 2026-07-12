@@ -1,5 +1,5 @@
 import type { ReducedGraphState } from '../state.js'
-import type { ChapterPlannerAgentInput } from '../../agents/types.js'
+import type { ChapterPlan, ChapterPlannerAgentInput } from '../../agents/types.js'
 import { getChapterPlannerAgent } from '../agent-factory.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
@@ -35,7 +35,7 @@ async function runPlanChapter(
     )
   }
 
-  const chapterPlan: import('../../agents/chapter-planner.js').ChapterPlan = {
+  const parsedPlan: ChapterPlan = {
     expectedEvents: [],
     claimedMandatoryBeatIds: [],
     claimedBeatIds: [],
@@ -48,6 +48,13 @@ async function runPlanChapter(
     outlineCheck: [],
     ...output.data,
     chapterIndex: chapterIndex,
+  }
+  const chapterPlan: ChapterPlan = {
+    ...parsedPlan,
+    expectedEvents: parsedPlan.expectedEvents.map((event) => ({
+      ...event,
+      chapterIndex,
+    })),
   }
 
   return { chapterPlan }
