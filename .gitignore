@@ -25,6 +25,7 @@ output/
 # IDE
 .vscode/
 .idea/
+.codegraph/
 
 # OS
 .DS_Store
