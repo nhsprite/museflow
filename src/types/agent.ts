@@ -55,9 +55,9 @@ export interface Issue {
   source?: IssueSource
   retryStrategy?: RetryStrategy
   /** 冲突类 issue 的实际值（来自正文/权威事实） */
-  actualValue?: string
+  actualValue?: string | null
   /** 冲突类 issue 的期望值（来自大纲/规划） */
-  expectedValue?: string
+  expectedValue?: string | null
   /** 冲突类 issue 的属性维度，用于 reconcile UI 展示 */
   conflictAttribute?: string
 }

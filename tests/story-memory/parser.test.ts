@@ -14,6 +14,26 @@ describe('parseStoryEventsBlock', () => {
     expect(events[1]?.type).toBe('foreshadow-fulfill')
   })
 
+  it('normalizes null/none tokens in character-location events', () => {
+    const text = `=== STORY_EVENTS ===
+- character-location: c-zhoushifu -> null
+- character-location: c-laowu -> none
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 2)
+    expect(events).toHaveLength(2)
+    expect(events[0]).toMatchObject({
+      type: 'character-location',
+      characterId: 'c-zhoushifu',
+      locationId: null,
+    })
+    expect(events[1]).toMatchObject({
+      type: 'character-location',
+      characterId: 'c-laowu',
+      locationId: null,
+    })
+  })
+
   it('returns empty array when block is missing', () => {
     const events = parseStoryEventsBlock('正文', 1)
     expect(events).toHaveLength(0)
@@ -255,6 +275,21 @@ describe('parseStoryFinalStateBlock', () => {
     const declarations = parseStoryFinalStateBlock(text)
     expect(declarations).toEqual([
       { entityId: 'c-linxuan', attribute: 'location', value: 'loc-temple' },
+    ])
+  })
+
+  it('normalizes null/none tokens in location final-state declarations', () => {
+    const text = `=== STORY_FINAL_STATE ===
+[
+  {"entityId": "c-zhoushifu", "attribute": "location", "value": "null"},
+  {"entityId": "c-laowu", "attribute": "location", "value": "none"},
+  {"entityId": "c-yezhiqiu", "attribute": "location", "value": null}
+]`
+    const declarations = parseStoryFinalStateBlock(text)
+    expect(declarations).toEqual([
+      { entityId: 'c-zhoushifu', attribute: 'location', value: null },
+      { entityId: 'c-laowu', attribute: 'location', value: null },
+      { entityId: 'c-yezhiqiu', attribute: 'location', value: null },
     ])
   })
 })

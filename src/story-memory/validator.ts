@@ -35,7 +35,7 @@ export interface StructuredValidationResult {
 export interface FinalStateMismatch {
   entityId: string
   attribute: FinalStateAttribute
-  declaredValue: string
+  declaredValue: string | null
   actualValue: string | null
 }
 

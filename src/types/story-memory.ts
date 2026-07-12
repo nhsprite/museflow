@@ -21,13 +21,14 @@ export type FinalStateAttribute = 'location' | 'status'
 
 /**
  * Structured chapter-end final-state declaration emitted by the draft agent in
- * the STORY_FINAL_STATE block. `value` must be an entity id (location) or an
- * enum value (status); prose is rejected at parse time.
+ * the STORY_FINAL_STATE block. For `location` attributes `value` may be an
+ * entity id or `null` (off-screen / no fixed location); for `status` it must
+ * be an enum value; prose is rejected at parse time.
  */
 export interface ChapterFinalStateDeclaration {
   entityId: EntityId
   attribute: FinalStateAttribute
-  value: string
+  value: string | null
 }
 
 export interface StoryMemory {

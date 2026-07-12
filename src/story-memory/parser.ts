@@ -113,31 +113,40 @@ function parseFinalStateDeclaration(entry: unknown): ChapterFinalStateDeclaratio
     typeof entityId !== 'string' ||
     !isMachineId(entityId) ||
     typeof attribute !== 'string' ||
-    !FINAL_STATE_ATTRIBUTES.includes(attribute as FinalStateAttribute) ||
-    typeof value !== 'string' ||
-    value.trim().length === 0 ||
-    value.length > 100
+    !FINAL_STATE_ATTRIBUTES.includes(attribute as FinalStateAttribute)
   ) {
     logger.warn(`[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目: ${JSON.stringify(entry)}`)
     return null
   }
-  // location values must be structured ids; status values mirror the
-  // corresponding event value verbatim (short label or established status
-  // phrase), so only location is id-gated.
-  if (attribute === 'location' && !isMachineId(value)) {
+
+  // Normalize nullable tokens for location attributes; status must remain a
+  // non-empty string (the verbatim event value).
+  let normalizedValue: string | null
+  if (attribute === 'location' && (value === null || value === 'null' || value === 'none')) {
+    normalizedValue = null
+  } else if (typeof value === 'string' && value.trim().length > 0 && value.length <= 100) {
+    normalizedValue = value.trim()
+  } else {
+    logger.warn(`[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目: ${JSON.stringify(entry)}`)
+    return null
+  }
+
+  // location values must be structured ids or null; status values mirror the
+  // corresponding event value verbatim, so only location is id-gated.
+  if (attribute === 'location' && normalizedValue !== null && !isMachineId(normalizedValue)) {
     logger.warn(
-      `[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目（location 值必须为结构化 ID）: ${JSON.stringify(entry)}`
+      `[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目（location 值必须为结构化 ID 或 null）: ${JSON.stringify(entry)}`
     )
     return null
   }
   // status values must be the event value itself, not a "key=value" concatenation.
-  if (attribute === 'status' && value.includes('=')) {
+  if (attribute === 'status' && normalizedValue !== null && normalizedValue.includes('=')) {
     logger.warn(
       `[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目（status 值禁止写成 attribute=value，应只写事件值本身）: ${JSON.stringify(entry)}`
     )
     return null
   }
-  return { entityId, attribute: attribute as FinalStateAttribute, value: value.trim() }
+  return { entityId, attribute: attribute as FinalStateAttribute, value: normalizedValue }
 }
 
 function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
@@ -145,12 +154,14 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const charLoc = eventLine.match(/^-\s*character-location:\s*(\S+)\s*->\s*(\S+)$/)
   if (charLoc) {
+    const locationId = parseNullableId(charLoc[2])
+    if (locationId === undefined) return null
     return withEvidence(
       {
         id: generateId('evt'),
         type: 'character-location',
         characterId: charLoc[1]!,
-        locationId: charLoc[2]!,
+        locationId,
         chapterIndex,
         source: 'chapter',
       },
