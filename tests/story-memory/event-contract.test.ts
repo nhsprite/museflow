@@ -1,0 +1,194 @@
+import { describe, expect, it } from 'vitest'
+import {
+  normalizeStoryEvent,
+  normalizeStoryEvents,
+} from '../../src/story-memory/event-contract.js'
+
+describe('normalizeStoryEvent', () => {
+  it('rejects strict item-location events without an explicit holder field', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-1',
+        type: 'item-location',
+        itemId: 'item-1',
+        locationId: 'loc-1',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      { chapterIndex: 0, mode: 'strict' }
+    )
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toContain('holderId')
+  })
+
+  it('rejects state-only item-state events', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-2',
+        type: 'item-state',
+        itemId: 'item-1',
+        state: 'closed',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      { chapterIndex: 0, mode: 'strict' }
+    )
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toContain('attribute')
+  })
+
+  it('normalizes a legacy item location with a location but no holder', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-legacy',
+        type: 'item-location',
+        itemId: 'item-1',
+        locationId: 'loc-1',
+        chapterIndex: 26,
+      },
+      { chapterIndex: 25, mode: 'legacy' }
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      normalized: true,
+      event: {
+        id: 'evt-legacy',
+        type: 'item-location',
+        itemId: 'item-1',
+        holderId: null,
+        locationId: 'loc-1',
+        chapterIndex: 25,
+        source: 'chapter',
+      },
+    })
+  })
+
+  it('does not guess an attribute for a legacy state-only item event', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-legacy-state',
+        type: 'item-state',
+        itemId: 'item-1',
+        state: 'closed',
+        chapterIndex: 0,
+      },
+      { chapterIndex: 0, mode: 'legacy' }
+    )
+
+    expect(result.ok).toBe(false)
+  })
+
+  it.each([
+    {
+      id: 'evt-character-location',
+      type: 'character-location',
+      characterId: 'character-1',
+      locationId: 'location-1',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-character-status',
+      type: 'character-status',
+      characterId: 'character-1',
+      attribute: 'mood',
+      value: 'calm',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-item-location',
+      type: 'item-location',
+      itemId: 'item-1',
+      holderId: null,
+      locationId: 'location-1',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-item-state',
+      type: 'item-state',
+      itemId: 'item-1',
+      attribute: 'sealed',
+      value: true,
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-plot',
+      type: 'plot-advance',
+      plotId: 'plot-1',
+      beatId: 'beat-1',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-foreshadow-introduce',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'foreshadow-1',
+      expectedFulfillChapter: 3,
+      text: 'A visible clue',
+      kind: 'object_foreshadow',
+      required: true,
+      beatId: 'beat-1',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-foreshadow-fulfill',
+      type: 'foreshadow-fulfill',
+      foreshadowId: 'foreshadow-1',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-task-create',
+      type: 'task-create',
+      taskId: 'task-1',
+      description: 'Check the archive',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+    {
+      id: 'evt-task-resolve',
+      type: 'task-resolve',
+      taskId: 'task-1',
+      chapterIndex: 0,
+      source: 'chapter',
+    },
+  ])('accepts a valid $type event', (event) => {
+    const result = normalizeStoryEvent(event, { chapterIndex: 0, mode: 'strict' })
+
+    expect(result).toEqual({ ok: true, event, normalized: false })
+  })
+
+  it('reports every invalid event without admitting partial objects', () => {
+    const result = normalizeStoryEvents(
+      [
+        {
+          id: 'evt-valid',
+          type: 'task-resolve',
+          taskId: 'task-1',
+          chapterIndex: 0,
+          source: 'chapter',
+        },
+        {
+          id: 'evt-invalid',
+          type: 'item-state',
+          itemId: 'item-1',
+          chapterIndex: 0,
+          source: 'chapter',
+        },
+      ],
+      { chapterIndex: 0, mode: 'strict' }
+    )
+
+    expect(result.events).toHaveLength(1)
+    expect(result.invalid).toEqual([
+      { index: 1, reason: 'item-state.attribute must be a non-empty string' },
+    ])
+  })
+})
