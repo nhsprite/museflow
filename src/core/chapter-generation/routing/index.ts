@@ -10,7 +10,11 @@ import { applyIssuePolicy } from './issue-policy.js'
 import { applyRewritePolicy } from './rewrite-policy.js'
 import { classifyIssues, decideRepairApproach } from './fix-policy.js'
 import { issueFingerprint } from '../../../utils/issue-deduplication.js'
-import { buildStructuredIssues, replaceStructuredIssues } from './structured-issues.js'
+import {
+  buildStructuredIssues,
+  replaceStructuredIssues,
+  STRUCTURED_ISSUE_TYPES,
+} from './structured-issues.js'
 
 export * from './types.js'
 
@@ -263,6 +267,18 @@ export async function decideNextStep(
   if (retryStrategy === 'fix') {
     return {
       step: { kind: 'fix', patchableIssues: remainingErrors },
+      sessionUpdate: {
+        errorRewriteAttempts: session.errorRewriteAttempts + 1,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
+      processedIssues: policyResult.issues,
+      newConstraints: policyResult.newConstraints,
+    }
+  }
+
+  if (remainingErrors.some((issue) => STRUCTURED_ISSUE_TYPES.has(issue.type))) {
+    return {
+      step: { kind: 'draft', discardPlan: false, feedbackIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
         issueFingerprintHistory: nextFingerprintHistory,

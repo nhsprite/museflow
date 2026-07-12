@@ -47,9 +47,11 @@ export async function draft_chapter(
   }
   const outlineItem = state.outline[chapterIndex]
 
+  const isRetryDraft =
+    state.rewriteApproved || (state.session?.errorRewriteAttempts ?? 0) > 0
   const mergedIssues = [
     ...(outlinePendingIssues ?? []),
-    ...(state.rewriteApproved ? (state.pendingIssues ?? []) : []),
+    ...(isRetryDraft ? (state.pendingIssues ?? []) : []),
   ]
 
   const existingContent = state.rewriteApproved

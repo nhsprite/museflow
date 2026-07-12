@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { ModelProvider } from '../../src/model/provider.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { RuntimeContext } from '../../src/core/context.js'
+import type { StoryEvent } from '../../src/types/story-memory.js'
 
 const saveChapterCheckpoint = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
@@ -14,6 +15,8 @@ const readChapterContent = vi.fn().mockResolvedValue('old chapter content')
 const readChapterContentForRun = vi.fn().mockResolvedValue('old chapter content')
 let mockChapterContentValue =
   'rewritten chapter content ' + '主角走在路上，心中思绪万千。'.repeat(600)
+let mockStoryEventsValue: StoryEvent[] = []
+const chapterRunInputs: Array<Record<string, unknown>> = []
 
 const mockChat = vi.fn(async (): Promise<string> => JSON.stringify({ results: [true] }))
 const mockChatStructured = vi.fn().mockResolvedValue({ results: [true] })
@@ -47,8 +50,13 @@ vi.mock('../../src/agents/index.js', () => ({
   OutlineAgent: class {},
   HighLevelOutlineAgent: class {},
   ChapterAgent: class {
-    async run() {
-      return { content: mockChapterContentValue }
+    async run(state: Record<string, unknown>) {
+      chapterRunInputs.push(state)
+      return {
+        success: true,
+        content: mockChapterContentValue,
+        data: { storyEvents: mockStoryEventsValue },
+      }
     }
   },
   ChapterPlannerAgent: class {
@@ -163,6 +171,8 @@ let baseState: ReducedGraphState
 
 beforeEach(() => {
   vi.clearAllMocks()
+  chapterRunInputs.length = 0
+  mockStoryEventsValue = []
   foreshadowProcessOutput.mockImplementation(
     (_output: never, _chapterIndex: number, existingStack: never[]) => existingStack
   )
@@ -218,6 +228,78 @@ describe('rewrite flow regression', () => {
       `# 第1章 Chapter 1\n\n${mockChapterContentValue}`
     )
     expect(draftResult.chapters?.[0]?.status).toBe('drafting')
+  })
+
+  it('feeds structured validation errors into a fresh draft that replaces story events', async () => {
+    const { converge_and_decide } = await import('../../src/graph/nodes/chapter-orchestration.js')
+    const { draft_chapter } = await import('../../src/graph/nodes/draft.js')
+    const expectedEvent: StoryEvent = {
+      id: 'evt-expected',
+      type: 'item-location',
+      itemId: 'item-1',
+      holderId: null,
+      locationId: 'loc-1',
+      chapterIndex: 0,
+      source: 'chapter',
+    }
+    mockStoryEventsValue = [{ ...expectedEvent, id: 'evt-actual' }]
+    const state = {
+      ...baseState,
+      chapterPlan: {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [expectedEvent],
+        claimedMandatoryBeatIds: [],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
+      session: {
+        chapterIndex: 0,
+        rewriteAttempts: 0,
+        errorRewriteAttempts: 0,
+        autoFixAttempts: 0,
+        previousIssues: [],
+        previousRawErrorCount: 0,
+        routingDecision: undefined,
+        forceStructuralRewrite: false,
+        rewriteApproved: false,
+        issueFingerprintHistory: [],
+      },
+      structuredValidationResult: {
+        expectedEvents: [expectedEvent],
+        actualEvents: [],
+        missingEvents: [expectedEvent],
+        unexpectedEvents: [],
+        eventsMissingEvidence: [],
+        eventsWithInvalidEvidence: [],
+        eventsWithInvalidForeshadowDeadline: [],
+        unfulfilledRequiredForeshadows: [],
+        overdueForeshadows: [],
+        falseFulfillments: [],
+        unclaimedMandatoryBeats: [],
+        claimedButUnprovenBeats: [],
+        stateConflicts: [],
+      },
+    } as ReducedGraphState
+
+    const decision = await converge_and_decide(createMockContext(), state)
+    expect(decision.session?.routingDecision).toBe('draft_chapter')
+    expect(decision.session?.errorRewriteAttempts).toBe(1)
+
+    const draftResult = await draft_chapter(createMockContext(), {
+      ...state,
+      ...decision,
+    } as ReducedGraphState)
+
+    expect(chapterRunInputs.at(-1)?.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'event_missing' })])
+    )
+    expect(draftResult.draftChapterEvents).toEqual(mockStoryEventsValue)
   })
 
   it('logs the completed chapter number instead of the next chapter number', async () => {
