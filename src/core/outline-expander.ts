@@ -46,6 +46,7 @@ import {
   normalizeForeshadowCapacity,
   selectForeshadowsForChapter,
 } from '../story-memory/foreshadow-policy.js'
+import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -68,6 +69,28 @@ function isRuntimeContext(source: ChapterContextSource): source is RuntimeContex
 
 function getProvider(source: ChapterContextSource): ModelProvider {
   return isRuntimeContext(source) ? source.provider : source
+}
+
+function normalizeReusableChapterPlan(
+  plan: ChapterPlan,
+  chapterIndex: number
+): ChapterPlan | null {
+  const result = normalizeStoryEvents(Array.isArray(plan.expectedEvents) ? plan.expectedEvents : [], {
+    chapterIndex,
+    mode: 'legacy',
+  })
+  if (result.invalid.length > 0) {
+    const first = result.invalid[0]!
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章既有规划的 expectedEvents[${first.index}] 无法安全兼容：${first.reason}，将重新规划`
+    )
+    return null
+  }
+  return {
+    ...plan,
+    chapterIndex,
+    expectedEvents: result.events,
+  }
 }
 
 function getScheduledForeshadowIds(state: ReducedGraphState, chapterIndex: number): string[] {
@@ -819,7 +842,9 @@ export async function expandOutlineForChapter(
     .join('\n')
 
   let chapterPlan: ChapterPlan | null =
-    state.chapterPlan?.chapterIndex === chapterIndex ? state.chapterPlan : null
+    state.chapterPlan?.chapterIndex === chapterIndex
+      ? normalizeReusableChapterPlan(state.chapterPlan, chapterIndex)
+      : null
   let currentConstraints = filterVerifiedConstraintsForChapter(
     state.verifiedConstraints,
     state.storyArc,

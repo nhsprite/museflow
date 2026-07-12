@@ -292,6 +292,46 @@ describe('expandOutlineForChapter', () => {
     ])
   })
 
+  it('replans a resumed chapter whose legacy event cannot be normalized safely', async () => {
+    const legacyPlan = createCompleteChapterPlan({
+      chapterIndex: 1,
+      expectedEvents: [
+        {
+          id: 'evt-legacy-state',
+          type: 'item-state',
+          itemId: 'item-1',
+          state: 'closed',
+          chapterIndex: 1,
+          source: 'chapter',
+        } as unknown as StoryEvent,
+      ],
+    })
+    const replacementPlan = createCompleteChapterPlan({
+      chapterIndex: 1,
+      expectedEvents: [
+        {
+          id: 'evt-replacement-state',
+          type: 'item-state',
+          itemId: 'item-1',
+          attribute: 'sealed',
+          value: true,
+          chapterIndex: 1,
+          source: 'chapter',
+        },
+      ],
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({ chapterPlan: replacementPlan })
+
+    const result = await expandOutlineForChapter(
+      { ...baseState, storyMemory: null, chapterPlan: legacyPlan },
+      1,
+      createMockProvider()
+    )
+
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+    expect(result.chapterPlan).toEqual(replacementPlan)
+  })
+
   it('schedules a due foreshadow on an ordinary non-boundary chapter', async () => {
     const state = stateWithScheduledForeshadows(1, '', [createRequiredForeshadow('fs-due', 2)])
     chapterOutlineRunMock.mockResolvedValueOnce({

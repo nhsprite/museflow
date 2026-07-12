@@ -2,10 +2,10 @@ import type { ModelProvider } from '../model/provider.js'
 import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentOutput } from './base.js'
 import type { ChapterPlannerAgentInput, ChapterPlan } from './types.js'
-import type { StoryEvent } from '../types/story-memory.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { parseJsonFromLLM } from '../utils/json.js'
+import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 import {
   DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MIN,
   DEFAULT_CHAPTER_PLANNING_WORD_COUNT_MAX,
@@ -17,31 +17,16 @@ import {
 
 export { type ChapterPlan } from './types.js'
 
-const STORY_EVENT_TYPES = [
-  'character-location',
-  'character-status',
-  'item-location',
-  'item-state',
-  'plot-advance',
-  'foreshadow-introduce',
-  'foreshadow-fulfill',
-  'task-create',
-  'task-resolve',
-] as const
-
-function isStoryEvent(e: unknown): e is StoryEvent {
-  if (!e || typeof e !== 'object') return false
-  const event = e as Record<string, unknown>
-  if (typeof event.id !== 'string') return false
-  if (typeof event.type !== 'string') return false
-  if (typeof event.chapterIndex !== 'number') return false
-  if ('source' in event && event.source !== 'chapter' && event.source !== 'outline') return false
-  return (STORY_EVENT_TYPES as readonly string[]).includes(event.type)
-}
-
 export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
+  private currentChapterIndex = 0
+
   constructor(provider: ModelProvider) {
     super(provider, 0.3)
+  }
+
+  async run(state: ChapterPlannerAgentInput): Promise<AgentOutput> {
+    this.currentChapterIndex = state.chapterIndex ?? 0
+    return super.run(state)
   }
 
   protected buildPrompt(state: ChapterPlannerAgentInput): import('../model/provider.js').Message[] {
@@ -95,13 +80,17 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
         logger.warn(`  - ${u.requirement}`)
       }
     }
-    const expectedEvents = Array.isArray(data.expectedEvents)
-      ? data.expectedEvents.filter(isStoryEvent)
-      : []
-    if (data.expectedEvents && expectedEvents.length < data.expectedEvents.length) {
-      logger.warn(
-        `[MuseFlow] 过滤了 ${data.expectedEvents.length - expectedEvents.length} 个无效 expectedEvents`
-      )
+    const rawExpectedEvents = Array.isArray(data.expectedEvents) ? data.expectedEvents : []
+    const normalizedEvents = normalizeStoryEvents(rawExpectedEvents, {
+      chapterIndex: this.currentChapterIndex,
+      mode: 'strict',
+    })
+    if (normalizedEvents.invalid.length > 0) {
+      const first = normalizedEvents.invalid[0]!
+      return {
+        success: false,
+        error: `expectedEvents[${first.index}] 格式错误：${first.reason}`,
+      }
     }
 
     const plan: ChapterPlan = {
@@ -109,7 +98,7 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
       sections: data.sections,
       timeline: data.timeline,
       outlineCheck: data.outlineCheck,
-      expectedEvents,
+      expectedEvents: normalizedEvents.events,
       claimedMandatoryBeatIds: data.claimedMandatoryBeatIds ?? [],
       claimedBeatIds: data.claimedBeatIds ?? [],
       fulfilledForeshadowIds: data.fulfilledForeshadowIds ?? [],

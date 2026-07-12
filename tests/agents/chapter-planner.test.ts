@@ -377,6 +377,42 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(data.createdTaskIds).toEqual([])
   })
 
+  it('rejects expected events whose subtype fields are incomplete', async () => {
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-1',
+            type: 'item-state',
+            itemId: 'item-1',
+            state: 'closed',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+      })
+    )
+
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const output = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 1,
+      outline: '第1章：主角检查物品',
+      previousChapters: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    expect(output.success).toBe(false)
+    expect(output.error).toContain('expectedEvents[0]')
+    expect(output.error).toContain('item-state.attribute')
+  })
+
   it('renders the authoritative zero-based event chapter index', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
     const messages = agent.exposePrompt({

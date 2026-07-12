@@ -27,12 +27,32 @@ async function runPlanChapter(
     ...(verifiedConstraints.length > 0 ? { verifiedConstraints } : {}),
   }) as ChapterPlannerAgentInput
 
-  const output = await agent.run(agentState)
+  let output: Awaited<ReturnType<typeof agent.run>> | undefined
+  let lastError = '无法生成章节规划。请检查模型输出或重试。'
 
-  if (!output.success || !output.data) {
-    throw new Error(
-      `第 ${chapterIndex + 1} 章规划失败：${output.error || '无法生成章节规划。请检查模型输出或重试。'}`
-    )
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const retryState: ChapterPlannerAgentInput =
+      attempt === 0
+        ? agentState
+        : {
+            ...agentState,
+            issues: [
+              ...(agentState.issues ?? []),
+              {
+                id: `planner-event-contract-${chapterIndex}`,
+                type: 'outline_invalid',
+                severity: 'error',
+                description: lastError,
+              },
+            ],
+          }
+    output = await agent.run(retryState)
+    if (output.success && output.data) break
+    lastError = output.error ?? lastError
+  }
+
+  if (!output?.success || !output.data) {
+    throw new Error(`第 ${chapterIndex + 1} 章规划失败：${lastError}`)
   }
 
   const parsedPlan: ChapterPlan = {

@@ -74,4 +74,56 @@ describe('plan_chapter_with_override', () => {
       },
     ])
   })
+
+  it('retries once with structured feedback when planner output is invalid', async () => {
+    plannerRun
+      .mockResolvedValueOnce({
+        success: false,
+        error: 'expectedEvents[0] 格式错误：item-state.attribute must be a non-empty string',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          sections: [],
+          timeline: [],
+          outlineCheck: [],
+          expectedEvents: [],
+        },
+      })
+
+    const result = await plan_chapter_with_override(
+      createMockProvider(),
+      buildState(),
+      '第26章：底稿'
+    )
+
+    expect(plannerRun).toHaveBeenCalledTimes(2)
+    expect(plannerRun.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        issues: [
+          expect.objectContaining({
+            type: 'outline_invalid',
+            severity: 'error',
+            description:
+              'expectedEvents[0] 格式错误：item-state.attribute must be a non-empty string',
+          }),
+        ],
+      })
+    )
+    expect(result.chapterPlan?.expectedEvents).toEqual([])
+  })
+
+  it('stops after two invalid planner outputs', async () => {
+    plannerRun.mockResolvedValue({
+      success: false,
+      error: 'expectedEvents[0] 格式错误：item-location.holderId is required',
+    })
+
+    await expect(
+      plan_chapter_with_override(createMockProvider(), buildState(), '第26章：底稿')
+    ).rejects.toThrow(
+      '第 26 章规划失败：expectedEvents[0] 格式错误：item-location.holderId is required'
+    )
+    expect(plannerRun).toHaveBeenCalledTimes(2)
+  })
 })
