@@ -1,5 +1,4 @@
 import type { Issue } from '../../../types/agent.js'
-import { generateId } from '../../../utils/id.js'
 import type {
   FixPolicyDeps,
   IssuePolicyDeps,
@@ -11,6 +10,7 @@ import { applyIssuePolicy } from './issue-policy.js'
 import { applyRewritePolicy } from './rewrite-policy.js'
 import { classifyIssues, decideRepairApproach } from './fix-policy.js'
 import { issueFingerprint } from '../../../utils/issue-deduplication.js'
+import { buildStructuredIssues, replaceStructuredIssues } from './structured-issues.js'
 
 export * from './types.js'
 
@@ -88,113 +88,14 @@ export async function decideNextStep(
   const session = ctx.session
   const config = deps.issuePolicy.planningConfig
 
-  const { issues: processedIssues } = await applyIssuePolicy(ctx.pendingIssues, deps.issuePolicy)
-
-  const structured = ctx.structuredValidationResult
-  if (structured) {
-    const invalidForeshadowDeadlineEvents = structured.eventsWithInvalidForeshadowDeadline ?? []
-    const hasBlocking =
-      structured.stateConflicts.length > 0 ||
-      structured.falseFulfillments.length > 0 ||
-      structured.claimedButUnprovenBeats.length > 0 ||
-      structured.missingEvents.length > 0 ||
-      structured.unexpectedEvents.length > 0 ||
-      structured.eventsMissingEvidence.length > 0 ||
-      structured.eventsWithInvalidEvidence.length > 0 ||
-      invalidForeshadowDeadlineEvents.length > 0
-    if (hasBlocking) {
-      const chapterIndex = ctx.session.chapterIndex
-      const structuredIssues: Issue[] = []
-      for (const conflict of structured.stateConflicts) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'state_conflict',
-          severity: 'error',
-          description: conflict.description,
-          location: `第 ${chapterIndex + 1} 章`,
-        })
-      }
-      for (const beatId of structured.claimedButUnprovenBeats) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'beat_unproven',
-          severity: 'error',
-          description: `认领的节拍 ${beatId} 未在正文中找到对应事件`,
-          location: `第 ${chapterIndex + 1} 章`,
-        })
-      }
-      for (const fsId of structured.falseFulfillments) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'foreshadow_false_fulfillment',
-          severity: 'error',
-          description: `声称兑现的伏笔 ${fsId} 未在正文中发生`,
-          location: `第 ${chapterIndex + 1} 章`,
-        })
-      }
-      for (const event of invalidForeshadowDeadlineEvents) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'foreshadow_invalid_deadline',
-          severity: 'error',
-          description: `伏笔 ${event.foreshadowId} 的预期回收章节 ${String(event.expectedFulfillChapter)} 必须晚于引入章节 ${event.chapterIndex + 1}`,
-          location: `第 ${chapterIndex + 1} 章`,
-          source: 'foreshadowing',
-          retryStrategy: 'draft',
-        })
-      }
-      for (const event of structured.missingEvents) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'event_missing',
-          severity: 'error',
-          description: `章节规划要求的结构化事件 ${event.id}（${event.type}）未在正文 STORY_EVENTS 中验证到`,
-          location: `第 ${chapterIndex + 1} 章`,
-          source: 'outline_compliance',
-          retryStrategy: 'draft',
-        })
-      }
-      for (const event of structured.unexpectedEvents) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'event_unexpected',
-          severity: 'error',
-          description: `正文 STORY_EVENTS 声明了未由章节规划授权的结构化事件 ${event.id}（${event.type}）`,
-          location: `第 ${chapterIndex + 1} 章`,
-          source: 'outline_compliance',
-          retryStrategy: 'draft',
-        })
-      }
-      for (const event of structured.eventsMissingEvidence) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'event_evidence_missing',
-          severity: 'error',
-          description: `结构化事件 ${event.id}（${event.type}）缺少正文段落证据，不能写入 StoryMemory`,
-          location: `第 ${chapterIndex + 1} 章`,
-          source: 'outline_compliance',
-          retryStrategy: 'draft',
-        })
-      }
-      for (const event of structured.eventsWithInvalidEvidence) {
-        structuredIssues.push({
-          id: generateId(),
-          type: 'event_evidence_invalid',
-          severity: 'error',
-          description: `结构化事件 ${event.id}（${event.type}）引用了不存在的正文段落证据`,
-          location: `第 ${chapterIndex + 1} 章`,
-          source: 'outline_compliance',
-          retryStrategy: 'draft',
-        })
-      }
-      return {
-        step: { kind: 'fix' as const, patchableIssues: structuredIssues },
-        sessionUpdate: {},
-        processedIssues: [...processedIssues, ...structuredIssues],
-        newConstraints: [],
-      }
-    }
-  }
+  const freshStructuredIssues = buildStructuredIssues(
+    ctx.structuredValidationResult,
+    ctx.session.chapterIndex
+  )
+  const currentIssues = ctx.structuredValidationResult
+    ? replaceStructuredIssues(ctx.pendingIssues, freshStructuredIssues)
+    : ctx.pendingIssues
+  const { issues: processedIssues } = await applyIssuePolicy(currentIssues, deps.issuePolicy)
 
   const policyResult = await applyRewritePolicy(session, processedIssues, deps.rewritePolicy)
 
