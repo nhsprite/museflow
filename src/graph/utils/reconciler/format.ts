@@ -1,6 +1,7 @@
-import type { StoryState, PendingTask } from '../../../types/story-state.js'
+import type { StoryState, PendingTask, CanonicalFact } from '../../../types/story-state.js'
 import type { StoryMemory } from '../../../types/story-memory.js'
 import { canonicalizeItemName } from '../../../utils/items.js'
+import { findActiveCanonicalFact } from '../../../utils/canonical-facts.js'
 
 /** formatStoryState 渲染上限：避免长篇后期 prompt 无界膨胀。数组均按时间升序追加，保留最新若干条。 */
 export const MAX_RENDERED_REVEALED_SECRETS = 20
@@ -90,6 +91,33 @@ export function findMatchingKeys(record: Record<string, string>, subject: string
   return keys
 }
 
+/**
+ * 单个权威事实段的渲染规格：标题、候选事实（调用方预过滤）、截断条数与逐条行格式。
+ */
+export interface CanonicalFactsSectionSpec {
+  title: string
+  facts: CanonicalFact[]
+  limit: number
+  formatFact: (fact: CanonicalFact) => string[]
+}
+
+/**
+ * 权威事实段渲染原语：取最后 limit 条 → 非空则输出标题 → 逐条按 formatFact 渲染。
+ * 截断条数、标题、顺序与行格式均由调用方通过 spec 控制。
+ */
+export function formatCanonicalFactsSections(specs: CanonicalFactsSectionSpec[]): string[] {
+  const lines: string[] = []
+  for (const spec of specs) {
+    const sliced = spec.facts.slice(-spec.limit)
+    if (sliced.length === 0) continue
+    lines.push(spec.title)
+    for (const fact of sliced) {
+      lines.push(...spec.formatFact(fact))
+    }
+  }
+  return lines
+}
+
 export function formatCanonicalItemEntries(
   entries: Record<string, string>,
   sectionTitle: string
@@ -129,21 +157,9 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
 
   // 位置投影与权威事实的优先级：某实体存在 active 的 canonicalFact（attribute=location）时，
   // 其位置以【权威事实】段为准，投影条目跳过，避免同一实体两个矛盾位置同时渲染。
-  const canonicalLocationSubjects = new Set(
-    (storyState.canonicalFacts ?? [])
-      .filter((fact) => fact.retiredIn === undefined && fact.attribute === 'location')
-      .map((fact) => fact.subject)
-  )
-  const hasCanonicalLocation = (key: string): boolean => {
-    if (canonicalLocationSubjects.size === 0) return false
-    if (canonicalLocationSubjects.has(key)) return true
-    const canonicalKey = canonicalizeItemName(key)
-    if (canonicalKey.length === 0) return false
-    for (const subject of canonicalLocationSubjects) {
-      if (canonicalizeItemName(subject) === canonicalKey) return true
-    }
-    return false
-  }
+  // key 对齐保留 canonicalizeItemName 兼容（历史数据存在带装饰括号的中文名 key）。
+  const hasCanonicalLocation = (key: string): boolean =>
+    findActiveCanonicalFact(storyState, key, 'location', { alignItemNames: true }) !== undefined
 
   const locations = Object.entries(storyState.characterLocations).filter(
     ([char]) => !hasCanonicalLocation(char)
@@ -220,21 +236,29 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
     }
   }
 
-  const activeCanonicalFacts = (storyState.canonicalFacts ?? [])
-    .filter((fact) => fact.retiredIn === undefined)
-    .slice(-MAX_RENDERED_CANONICAL_FACTS)
-  if (activeCanonicalFacts.length > 0) {
-    lines.push('【权威事实】')
-    for (const fact of activeCanonicalFacts) {
-      const tierMarker = fact.source === 'outline_inference' ? '（大纲推断，提示级，正文优先）' : ''
-      lines.push(
-        `  - [${fact.subject}] ${fact.attribute}: ${fact.value} (第${fact.establishedIn + 1}章确立)${tierMarker}`
-      )
-      for (const old of fact.supersedes ?? []) {
-        lines.push(`    覆盖第${old.chapter + 1}章: ${old.oldValue}`)
-      }
-    }
-  }
+  const activeCanonicalFacts = (storyState.canonicalFacts ?? []).filter(
+    (fact) => fact.retiredIn === undefined
+  )
+  lines.push(
+    ...formatCanonicalFactsSections([
+      {
+        title: '【权威事实】',
+        facts: activeCanonicalFacts,
+        limit: MAX_RENDERED_CANONICAL_FACTS,
+        formatFact: (fact) => {
+          const tierMarker =
+            fact.source === 'outline_inference' ? '（大纲推断，提示级，正文优先）' : ''
+          const factLines = [
+            `  - [${fact.subject}] ${fact.attribute}: ${fact.value} (第${fact.establishedIn + 1}章确立)${tierMarker}`,
+          ]
+          for (const old of fact.supersedes ?? []) {
+            factLines.push(`    覆盖第${old.chapter + 1}章: ${old.oldValue}`)
+          }
+          return factLines
+        },
+      },
+    ])
+  )
 
   if (storyState.currentScene) {
     lines.push(`【当前场景】${storyState.currentScene}`)

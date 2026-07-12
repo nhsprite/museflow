@@ -282,7 +282,6 @@ export function applyRewriteCleanup(
     outline,
     storyMemory,
     storyState,
-    chapterSummaries: state.chapterSummaries.slice(0, targetChapterIndex),
     foreshadowStack,
     timeline,
   }

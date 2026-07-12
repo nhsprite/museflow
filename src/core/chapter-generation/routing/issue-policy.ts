@@ -1,15 +1,16 @@
 import type { Issue } from '../../../types/agent.js'
 import type { IssuePolicyDeps, IssuePolicyResult } from './types.js'
-import { deduplicateByRule, ruleBasedFingerprint } from '../../../utils/issue-deduplication.js'
+import { deduplicateByRule } from '../../../utils/issue-deduplication.js'
+import { generateIssueFingerprint } from '../../../utils/context-judge.js'
 
 export async function calculateIssueSetSimilarity(
   prev: Issue[],
   curr: Issue[],
-  issueFingerprint?: (issue: Issue) => Promise<string>
+  issueFingerprint?: (issue: Issue) => Promise<string> | string
 ): Promise<number> {
   if (prev.length === 0 || curr.length === 0) return 0
 
-  const fingerprintFn = issueFingerprint ?? (async (issue) => ruleBasedFingerprint(issue))
+  const fingerprintFn = issueFingerprint ?? ((issue: Issue) => generateIssueFingerprint(issue))
 
   const prevFps = await Promise.all(prev.map(fingerprintFn))
   const currFps = await Promise.all(curr.map(fingerprintFn))

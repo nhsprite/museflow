@@ -3,6 +3,7 @@ import type { ReducedGraphState } from '../state.js'
 import { getFixAgent } from '../agent-factory.js'
 import { readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
+import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 import { buildPreviousChapterEndingContext } from '../utils/chapter-window.js'
 import { buildCharacterFactTimeline } from '../utils/reconciler/index.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
@@ -43,7 +44,7 @@ export async function fix_chapter(
   // 让 fix 能感知章节衔接处的语气与未闭合线索。
   const previousChapterEnding = await buildPreviousChapterEndingContext(state, chapterIndex)
   const previousChapters = [
-    buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+    buildLayeredSummaries(selectChapterSummaries(state.chapters, chapterIndex), chapterIndex),
     previousChapterEnding,
   ]
     .filter(Boolean)

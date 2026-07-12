@@ -1,6 +1,16 @@
 import type { Issue } from '../../types/agent.js'
-import type { ModelProvider } from '../../model/provider.js'
-import { batchClassifyIssues, type IssueClassification } from '../../utils/context-judge.js'
+
+export interface IssueClassification {
+  isStructural: boolean
+  isCrossChapter: boolean
+  isTaskConsistency: boolean
+  isItemLocationConflict: boolean
+  isInventedCharacter: boolean
+  isOutlineStateConflict: boolean
+  isLocal: boolean
+  isStateCorruption: boolean
+  isInterpretive: boolean
+}
 
 function issueDimensionIs(issue: Issue, dimension: string): boolean {
   return issue.dimension === dimension
@@ -65,66 +75,22 @@ export function classifyIssueByRule(issue: Issue): IssueClassification {
   }
 }
 
-async function classifySingleIssue(
-  provider: ModelProvider | undefined,
-  issue: Issue,
-  preferLLM = false
-): Promise<IssueClassification> {
-  const ruleResult = classifyIssueByRule(issue)
-
-  if (!preferLLM || !provider) {
-    return ruleResult
-  }
-
-  try {
-    const results = await batchClassifyIssues(provider, [issue])
-    return results[0] ?? ruleResult
-  } catch {
-    return ruleResult
-  }
+export function isTaskConsistencyIssue(issue: Issue): boolean {
+  return classifyIssueByRule(issue).isTaskConsistency
 }
 
-export async function isTaskConsistencyIssue(
-  provider: ModelProvider | undefined,
-  issue: Issue,
-  preferLLM = false
-): Promise<boolean> {
-  const classification = await classifySingleIssue(provider, issue, preferLLM)
-  return classification.isTaskConsistency
+export function isStructuralIssue(issue: Issue): boolean {
+  return classifyIssueByRule(issue).isStructural
 }
 
-export async function isStructuralIssue(
-  provider: ModelProvider | undefined,
-  issue: Issue,
-  preferLLM = false
-): Promise<boolean> {
-  const classification = await classifySingleIssue(provider, issue, preferLLM)
-  return classification.isStructural
+export function isLocalIssue(issue: Issue): boolean {
+  return classifyIssueByRule(issue).isLocal
 }
 
-export async function isLocalIssue(
-  provider: ModelProvider | undefined,
-  issue: Issue,
-  preferLLM = false
-): Promise<boolean> {
-  const classification = await classifySingleIssue(provider, issue, preferLLM)
-  return classification.isLocal
+export function isStateCorruptionIssue(issue: Issue): boolean {
+  return classifyIssueByRule(issue).isStateCorruption
 }
 
-export async function isStateCorruptionIssue(
-  provider: ModelProvider | undefined,
-  issue: Issue,
-  preferLLM = false
-): Promise<boolean> {
-  const classification = await classifySingleIssue(provider, issue, preferLLM)
-  return classification.isStateCorruption
-}
-
-export async function isInterpretiveIssue(
-  provider: ModelProvider | undefined,
-  issue: Issue,
-  preferLLM = false
-): Promise<boolean> {
-  const classification = await classifySingleIssue(provider, issue, preferLLM)
-  return classification.isInterpretive
+export function isInterpretiveIssue(issue: Issue): boolean {
+  return classifyIssueByRule(issue).isInterpretive
 }

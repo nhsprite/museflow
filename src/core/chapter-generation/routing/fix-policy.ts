@@ -11,9 +11,9 @@ export interface IssueClassificationSummary {
 
 export async function classifyIssues(
   issues: Issue[],
-  isStructuralIssue: (issue: Issue) => Promise<boolean> | boolean,
-  isLocalIssue: (issue: Issue) => Promise<boolean> | boolean,
-  isTaskConsistencyIssue: (issue: Issue) => Promise<boolean> | boolean
+  isStructuralIssue: (issue: Issue) => boolean,
+  isLocalIssue: (issue: Issue) => boolean,
+  isTaskConsistencyIssue: (issue: Issue) => boolean
 ): Promise<IssueClassificationSummary> {
   const errorIssues = issues.filter((i) => i.severity === 'error')
   if (errorIssues.length === 0) {

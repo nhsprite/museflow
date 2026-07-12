@@ -247,28 +247,6 @@ export class StoryCheckpointService {
     writeFileAtomic(path, JSON.stringify(report, null, 2))
     logger.info(`[MuseFlow] 阻断报告已保存: ${path}`)
   }
-
-  async listBlockingReports(): Promise<BlockingReport[]> {
-    const dir = this.getReportsDir()
-    if (!existsSync(dir)) return []
-
-    const files = readdirSync(dir).filter((f) => f.startsWith('blocking_') && f.endsWith('.json'))
-    const reports: BlockingReport[] = []
-    for (const file of files) {
-      try {
-        const raw = readFileSync(join(dir, file), 'utf-8')
-        reports.push(JSON.parse(raw) as BlockingReport)
-      } catch {
-        logger.warn(`[MuseFlow] 无法读取阻断报告: ${file}`)
-      }
-    }
-    return reports.sort((a, b) => b.createdAt - a.createdAt)
-  }
-
-  async getLatestBlockingReport(): Promise<BlockingReport | null> {
-    const reports = await this.listBlockingReports()
-    return reports[0] ?? null
-  }
 }
 
 export function createCheckpointService(

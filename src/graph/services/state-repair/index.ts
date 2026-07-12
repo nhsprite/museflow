@@ -11,6 +11,7 @@ import {
 } from '../../../model/provider.js'
 import { generateId } from '../../../utils/id.js'
 import { createEmptyStoryState } from '../../../storage/meta/stores/story-state.js'
+import { resolveEntityAttribute } from '../../../utils/canonical-facts.js'
 import { mergeStoryState } from '../../utils/reconciler/state-merge.js'
 import { formatStoryState } from '../../utils/reconciler/format.js'
 
@@ -87,33 +88,6 @@ function collectKnownEntityIds(memory: StoryMemory): Set<string> {
 }
 
 /**
- * 读取 subject + attribute 的当前记录值：active canonicalFact 优先，
- * 其次是对应的结构化投影（location/status/holder）。
- */
-function currentRecordedValue(
-  storyState: StoryState,
-  subject: string,
-  attribute: FactAttribute
-): string | undefined {
-  const activeFact = (storyState.canonicalFacts ?? []).find(
-    (f) => f.subject === subject && f.attribute === attribute && f.retiredIn === undefined
-  )
-  if (activeFact) return activeFact.value
-
-  if (attribute === 'location') {
-    return storyState.characterLocations[subject] ?? storyState.keyItemsLocation[subject]
-  }
-  if (attribute === 'status') {
-    return storyState.characterStatus[subject] ?? storyState.keyItemsState[subject]
-  }
-  if (attribute === 'holder') {
-    // story-memory 将物品 holderId 投影到 keyItemsLocation。
-    return storyState.keyItemsLocation[subject]
-  }
-  return undefined
-}
-
-/**
  * 对单条提案做严格结构化校验（精确相等 / 枚举 / 已知 id 集合，不做任何模糊文本匹配）。
  */
 export function validateStateRepairProposal(
@@ -153,7 +127,7 @@ export function validateStateRepairProposal(
     }
   }
 
-  const recorded = currentRecordedValue(ctx.storyState, subject, attribute)
+  const recorded = resolveEntityAttribute(ctx.storyState, subject, attribute)
   if (recorded === undefined) {
     return { accepted: false, attribute, reason: `${subject}/${attribute} 当前无记录值可核对` }
   }

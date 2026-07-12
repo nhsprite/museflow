@@ -12,6 +12,7 @@ import {
   DEFAULT_CHAPTER_WORD_COUNT_MAX,
 } from '../../types/genre.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
+import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 import { charactersToString } from '../utils/characters.js'
 import type { RuntimeContext } from '../../core/context.js'
 import {
@@ -21,6 +22,7 @@ import {
   type ModelProvider,
 } from '../../model/provider.js'
 import type { Issue, IssueSource, RetryStrategy } from '../../types/agent.js'
+import { inferRetryStrategy } from '../../utils/retry-strategy.js'
 import {
   extractChapterEndingSnippet,
   extractChapterOpeningSnippet,
@@ -181,17 +183,6 @@ export function tagIssueSource(
     source,
     retryStrategy,
   }
-}
-
-export function inferRetryStrategy(issue: Issue): RetryStrategy {
-  if (issue.type === 'word_count') return 'fix'
-  if (issue.type === 'outline_violation' || issue.type === 'outline_deviation') return 'draft'
-  if (issue.dimension === 'quality') return 'fix'
-  if (issue.dimension === 'foreshadowing') return 'draft'
-  if (issue.dimension === 'outline') return 'draft'
-  if (issue.dimension === 'character_knowledge' || issue.dimension === 'dialogue') return 'draft'
-  if (issue.type === 'state_corruption') return 'manual'
-  return 'draft'
 }
 
 /**
@@ -389,7 +380,7 @@ export async function detect_consistency(
   const agentState: ConsistencyAgentInput = mergeAgentState(baseContext, {
     outline: buildConsistencyOutlineContext(state, chapterIndex),
     chapterContent: content ?? '',
-    chapterSummaries: state.chapterSummaries,
+    chapterSummaries: selectChapterSummaries(state.chapters, chapterIndex),
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
     ...(state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
   }) as ConsistencyAgentInput
@@ -470,8 +461,11 @@ export async function validate_chapter_comprehensive(
   }
 
   const consistencyBaseState = workingState
-  const foreshadowUpdates = await detect_foreshadowing(context, workingState)
-  const detectedForeshadowStack = foreshadowUpdates.foreshadowStack
+  // 语义伏笔检测结果仅在无 StoryMemory 时才会被应用；
+  // StoryMemory 存在时跳过检测，避免每轮浪费一次结果必然被丢弃的 LLM 调用。
+  const detectedForeshadowStack = workingState.storyMemory
+    ? undefined
+    : (await detect_foreshadowing(context, workingState)).foreshadowStack
 
   const consistencyUpdates = await detect_consistency(context, consistencyBaseState)
   mergePendingIssues(consistencyUpdates)

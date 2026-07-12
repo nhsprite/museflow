@@ -4,6 +4,7 @@ import { getChapterPlannerAgent } from '../agent-factory.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
+import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 import type { ModelProvider } from '../../model/provider.js'
 import { renderVerifiedConstraints } from '../../utils/verified-constraints.js'
 
@@ -20,7 +21,7 @@ async function runPlanChapter(
 
   const agentState: ChapterPlannerAgentInput = mergeAgentState(baseContext, {
     outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
-    chapterSummaries: state.chapterSummaries,
+    chapterSummaries: selectChapterSummaries(state.chapters, chapterIndex),
     ...(state.pendingIssues && state.pendingIssues.length > 0
       ? { issues: state.pendingIssues }
       : {}),

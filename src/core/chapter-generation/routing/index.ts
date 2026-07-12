@@ -9,7 +9,7 @@ import type {
 import { applyIssuePolicy } from './issue-policy.js'
 import { applyRewritePolicy } from './rewrite-policy.js'
 import { classifyIssues, decideRepairApproach } from './fix-policy.js'
-import { issueFingerprint } from '../../../utils/issue-deduplication.js'
+import { generateIssueFingerprint } from '../../../utils/context-judge.js'
 import { hasPatchableIssues } from '../../../graph/services/fix/decision.js'
 import {
   buildStructuredIssues,
@@ -23,17 +23,14 @@ export interface RoutingDeps {
   issuePolicy: IssuePolicyDeps
   rewritePolicy: RewritePolicyDeps
   fixPolicy: FixPolicyDeps
-  isStructuralIssue: (issue: Issue) => Promise<boolean> | boolean
-  isLocalIssue: (issue: Issue) => Promise<boolean> | boolean
-  isTaskConsistencyIssue: (issue: Issue) => Promise<boolean> | boolean
-  /** 用于停滞检测的 issue 指纹函数；未提供时回退到无 provider 的规则指纹。 */
-  fingerprintIssue?: (issue: Issue) => Promise<string>
+  isStructuralIssue: (issue: Issue) => boolean
+  isLocalIssue: (issue: Issue) => boolean
+  isTaskConsistencyIssue: (issue: Issue) => boolean
+  /** 用于停滞检测的 issue 指纹函数；未提供时使用规则指纹。 */
+  fingerprintIssue?: (issue: Issue) => Promise<string> | string
 }
 
-function allIssuesMatch(
-  issues: Issue[],
-  predicate: (issue: Issue) => Promise<boolean> | boolean
-): Promise<boolean> {
+function allIssuesMatch(issues: Issue[], predicate: (issue: Issue) => boolean): Promise<boolean> {
   if (issues.length === 0) return Promise.resolve(false)
   return Promise.all(issues.map(predicate)).then((results) => results.every(Boolean))
 }
@@ -95,7 +92,7 @@ export async function decideNextStep(
   const remainingErrors = policyResult.issues.filter((i) => i.severity === 'error')
 
   const fingerprintIssue =
-    deps.fingerprintIssue ?? ((issue: Issue) => issueFingerprint(undefined, issue))
+    deps.fingerprintIssue ?? ((issue: Issue) => generateIssueFingerprint(issue))
   const currentErrorFingerprints = await Promise.all(remainingErrors.map(fingerprintIssue))
 
   const nextFingerprintHistory = [...session.issueFingerprintHistory, currentErrorFingerprints]

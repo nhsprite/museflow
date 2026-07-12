@@ -9,7 +9,6 @@ import type {
 type ForeshadowIntroduceEvent = Extract<StoryEvent, { type: 'foreshadow-introduce' }>
 
 export interface ForeshadowBuckets {
-  invalid: ForeshadowItem[]
   overdueRequired: ForeshadowItem[]
   dueRequired: ForeshadowItem[]
   normalRequired: ForeshadowItem[]
@@ -32,7 +31,6 @@ export function classifyForeshadows(
   currentChapter: number
 ): ForeshadowBuckets {
   const buckets: ForeshadowBuckets = {
-    invalid: [],
     overdueRequired: [],
     dueRequired: [],
     normalRequired: [],
@@ -41,13 +39,9 @@ export function classifyForeshadows(
 
   for (const item of stack) {
     if (item.fulfilledChapter !== undefined) continue
+    if (!isValidForeshadowDeadline(item.createdAtChapter, item.expectedFulfillChapter)) continue
 
-    if (
-      !Number.isInteger(item.expectedFulfillChapter) ||
-      item.expectedFulfillChapter <= item.createdAtChapter
-    ) {
-      buckets.invalid.push(item)
-    } else if (!item.required) {
+    if (!item.required) {
       buckets.optional.push(item)
     } else if (currentChapter > item.expectedFulfillChapter + 1) {
       buckets.overdueRequired.push(item)

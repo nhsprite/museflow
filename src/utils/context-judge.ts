@@ -246,97 +246,6 @@ export async function batchJudgePositiveFeedback(
   )
 }
 
-export interface IssueClassification {
-  isStructural: boolean
-  isCrossChapter: boolean
-  isTaskConsistency: boolean
-  isItemLocationConflict: boolean
-  isInventedCharacter: boolean
-  isOutlineStateConflict: boolean
-  isLocal: boolean
-  isStateCorruption: boolean
-  isInterpretive: boolean
-}
-
-export async function batchClassifyIssues(
-  provider: ModelProvider,
-  issues: Issue[]
-): Promise<IssueClassification[]> {
-  const schema: JsonSchema = {
-    type: 'object',
-    properties: {
-      results: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            isStructural: { type: 'boolean' },
-            isCrossChapter: { type: 'boolean' },
-            isTaskConsistency: { type: 'boolean' },
-            isItemLocationConflict: { type: 'boolean' },
-            isInventedCharacter: { type: 'boolean' },
-            isOutlineStateConflict: { type: 'boolean' },
-            isLocal: { type: 'boolean' },
-            isStateCorruption: { type: 'boolean' },
-            isInterpretive: { type: 'boolean' },
-          },
-          required: [
-            'isStructural',
-            'isCrossChapter',
-            'isTaskConsistency',
-            'isItemLocationConflict',
-            'isInventedCharacter',
-            'isOutlineStateConflict',
-            'isLocal',
-            'isStateCorruption',
-            'isInterpretive',
-          ],
-        },
-      },
-    },
-    required: ['results'],
-  }
-
-  const defaultClassification: IssueClassification = {
-    // 分类失败时保守地视为结构性问题，避免漏掉需要重写的严重一致性错误。
-    isStructural: true,
-    isCrossChapter: false,
-    isTaskConsistency: false,
-    isItemLocationConflict: false,
-    isInventedCharacter: false,
-    isOutlineStateConflict: false,
-    isLocal: false,
-    isStateCorruption: false,
-    isInterpretive: false,
-  }
-
-  const items = issues.map(
-    (issue) =>
-      `type=${issue.type}, severity=${issue.severity}, description=${issue.description}${issue.location ? `, location=${issue.location}` : ''}`
-  )
-
-  return batchJudge(
-    provider,
-    `你是小说质量检查 issue 分类助手。对每个 issue，判断以下标签：
-- isStructural: 是否结构性问题（涉及故事骨架层面）。
-- isCrossChapter: 是否涉及前章知识/跨章一致性。
-- isTaskConsistency: 是否涉及前章遗留差事未执行或处理不当。
-- isItemLocationConflict: 是否涉及物品位置矛盾。
-- isInventedCharacter: 是否涉及虚构/非官方角色。
-- isOutlineStateConflict: 是否涉及大纲状态/canonical fact 冲突。
-- isLocal: 是否是 severity=error 且非结构性问题（由 isStructural 推导即可）。
-- isStateCorruption: 是否为物品位置冲突、虚构角色、或大纲状态冲突之一。
-- isInterpretive: 是否属于主观性或表达层面的问题，这类问题在最后阶段可安全降级为 warning。
-
-注意：isLocal 在 isStructural 为 false 且 severity 为 error 时为 true。isStateCorruption 在 isItemLocationConflict、isInventedCharacter、isOutlineStateConflict 任意一个为 true 时为 true。
-
-只输出 JSON {"results": [{...}, ...]}，顺序与输入一致。`,
-    items,
-    schema,
-    defaultClassification
-  )
-}
-
 /**
  * 对 issue 元数据（description）做确定性哈希，用于生成跨轮稳定的指纹。
  * 这是机器可读元数据的哈希，不是对 prose 的语义匹配。
@@ -361,35 +270,9 @@ export function generateIssueFingerprint(issue: Issue): string {
   if (location) {
     return `${issue.type}:${dimension}:${location}:${hashIssueDescription(issue.description)}`
   }
-  // No subject or location available; mark as generic so callers can decide to use LLM fallback.
-  // 使用 description 的确定性哈希而非每轮重新生成的 issue.id，保证跨轮指纹稳定。
+  // No subject or location available: 泛化指纹以 description 哈希兜底，
+  // 使用确定性哈希而非每轮重新生成的 issue.id，保证跨轮指纹稳定。
   return `${issue.type}:${dimension}:__generic__:${hashIssueDescription(issue.description)}`
-}
-
-export async function batchGenerateIssueFingerprints(
-  provider: ModelProvider,
-  issues: Issue[]
-): Promise<string[]> {
-  const schema: JsonSchema = {
-    type: 'object',
-    properties: {
-      results: { type: 'array', items: { type: 'string' } },
-    },
-    required: ['results'],
-  }
-
-  const items = issues.map(
-    (issue) =>
-      `type=${issue.type}, description=${issue.description}${issue.location ? `, location=${issue.location}` : ''}`
-  )
-
-  return batchJudge(
-    provider,
-    `你是 issue 去重助手。对每个 issue，生成一个稳定的语义指纹字符串。指纹应忽略表述差异，保留核心问题本质；不同措辞描述的同一问题应生成相同或相近指纹。指纹应只包含核心实体和关系，不要太长。只输出 JSON {"results": ["指纹1", "指纹2", ...]}，顺序与输入一致。`,
-    items,
-    schema,
-    ''
-  )
 }
 
 export async function batchJudgeTaskRelevance(

@@ -295,7 +295,6 @@ export async function finalizeChapter(
   let updatedChapter = existingChapter ? { ...existingChapter } : null
   let updatedOutline = [...state.outline]
   let updatedChapters = [...state.chapters]
-  let updatedChapterSummaries = [...state.chapterSummaries]
 
   const chapterContent = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
   if (chapterContent === null || chapterContent.trim().length === 0) {
@@ -524,10 +523,6 @@ export async function finalizeChapter(
         }
       }
     }
-
-    if (summary && !updatedChapterSummaries.includes(summary)) {
-      updatedChapterSummaries = [...updatedChapterSummaries, summary]
-    }
   }
 
   const planningConfig = getChapterPlanningConfig(state.genre)
@@ -666,7 +661,6 @@ export async function finalizeChapter(
     ...state,
     outline: updatedOutline,
     chapters: updatedChapters,
-    chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
     storyMemory: updatedStoryMemory,
     foreshadowStack: updatedForeshadowStack,
@@ -883,7 +877,6 @@ export async function finalizeChapter(
     totalChapters: updatedTotalChapters,
     outline: updatedOutline,
     chapters: updatedChapters,
-    chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
     storyMemory: updatedStoryMemory,
     foreshadowStack: updatedForeshadowStack,
@@ -910,7 +903,6 @@ export async function finalizeChapter(
     totalChapters: updatedTotalChapters,
     currentChapterIndex: nextIndex,
     chapters: updatedChapters,
-    chapterSummaries: updatedChapterSummaries,
     storyState: updatedStoryState,
     storyMemory: updatedStoryMemory,
     foreshadowStack: updatedForeshadowStack,

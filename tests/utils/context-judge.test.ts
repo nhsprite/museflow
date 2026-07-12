@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ModelProvider } from '../../src/model/provider.ts'
 import {
   batchJudgeTaskRelevance,
-  batchClassifyIssues,
   generateIssueFingerprint,
   batchValidateTimeAnchors,
 } from '../../src/utils/context-judge.js'
@@ -96,12 +95,9 @@ describe('context-judge robustness', () => {
       }),
     } as unknown as ModelProvider
 
-    const issues = [
-      { id: '1', type: 'consistency' as const, severity: 'error' as const, description: 'desc' },
-    ]
-    const classifications = await batchClassifyIssues(provider, issues)
-    expect(classifications).toHaveLength(1)
-    expect(classifications[0].isStructural).toBe(true)
+    const items = [{ taskDescription: 'task1', outlineDescription: 'outline' }]
+    const relevance = await batchJudgeTaskRelevance(provider, items)
+    expect(relevance).toEqual([false])
   })
 
   it('returns full batch result when successful', async () => {

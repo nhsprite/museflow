@@ -580,20 +580,8 @@ describe('validate_chapter_comprehensive foreshadow authority', () => {
     readChapterContentForRun.mockResolvedValue('字'.repeat(3000))
   })
 
-  it('does not persist semantic foreshadow candidates when StoryMemory is present', async () => {
+  it('skips semantic foreshadow detection when StoryMemory is present', async () => {
     const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
-    foreshadowProcessOutput.mockReturnValueOnce([
-      {
-        id: 'semantic-only',
-        text: '语义检测提出但未进入结构化事件账本的候选伏笔',
-        expectedFulfillChapter: 3,
-        createdAtChapter: 1,
-        createdAt: 1,
-        status: 'planted',
-        isExplicit: false,
-        required: true,
-      },
-    ])
 
     const result = await validate_chapter_comprehensive(createMockContext(), {
       ...baseState,
@@ -634,6 +622,7 @@ describe('validate_chapter_comprehensive foreshadow authority', () => {
       },
     } as never)
 
+    expect(foreshadowProcessOutput).not.toHaveBeenCalled()
     expect(result.foreshadowStack).toBeUndefined()
   })
 })

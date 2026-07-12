@@ -15,6 +15,7 @@ import type { ChapterSession } from '../../../src/core/chapter-generation/routin
 import type { ModelProvider } from '../../../src/model/provider.js'
 import type { RuntimeContext } from '../../../src/core/context.js'
 import { JsonCheckpointer } from '../../../src/graph/checkpointer.js'
+import { generateIssueFingerprint } from '../../../src/utils/context-judge.js'
 
 const testTempDir = join(tmpdir(), `museflow-chapter-orchestration-${randomUUID().slice(0, 8)}`)
 
@@ -39,23 +40,12 @@ vi.mock('../../../src/utils/logger.js', () => ({
 }))
 
 vi.mock('../../../src/core/chapter-generation/issue-classifier.js', () => ({
-  isStructuralIssue: vi.fn().mockResolvedValue(false),
-  isLocalIssue: vi.fn().mockResolvedValue(false),
-  isTaskConsistencyIssue: vi.fn().mockResolvedValue(false),
-  isStateCorruptionIssue: vi.fn().mockResolvedValue(false),
-  isInterpretiveIssue: vi.fn().mockResolvedValue(false),
+  isStructuralIssue: vi.fn().mockReturnValue(false),
+  isLocalIssue: vi.fn().mockReturnValue(false),
+  isTaskConsistencyIssue: vi.fn().mockReturnValue(false),
+  isStateCorruptionIssue: vi.fn().mockReturnValue(false),
+  isInterpretiveIssue: vi.fn().mockReturnValue(false),
 }))
-
-vi.mock('../../../src/utils/issue-deduplication.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/utils/issue-deduplication.js')>()
-  return {
-    ...actual,
-    deduplicateIssuesSemantically: vi
-      .fn()
-      .mockImplementation(async (_provider: unknown, issues: unknown[]) => issues),
-    issueFingerprint: vi.fn().mockResolvedValue('fingerprint'),
-  }
-})
 
 function createMockProvider(): ModelProvider {
   return { chat: vi.fn(), chatStructured: vi.fn().mockResolvedValue({}) }
@@ -154,11 +144,11 @@ describe('converge_and_decide', () => {
       isStateCorruptionIssue,
       isInterpretiveIssue,
     } = await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isStructuralIssue).mockResolvedValue(false)
-    vi.mocked(isLocalIssue).mockResolvedValue(false)
-    vi.mocked(isTaskConsistencyIssue).mockResolvedValue(false)
-    vi.mocked(isStateCorruptionIssue).mockResolvedValue(false)
-    vi.mocked(isInterpretiveIssue).mockResolvedValue(false)
+    vi.mocked(isStructuralIssue).mockReturnValue(false)
+    vi.mocked(isLocalIssue).mockReturnValue(false)
+    vi.mocked(isTaskConsistencyIssue).mockReturnValue(false)
+    vi.mocked(isStateCorruptionIssue).mockReturnValue(false)
+    vi.mocked(isInterpretiveIssue).mockReturnValue(false)
   })
 
   it('finalizes when there are no errors and a chapter file already exists', async () => {
@@ -185,8 +175,8 @@ describe('converge_and_decide', () => {
   it('routes to fix_chapter for local consistency errors when rewrite is approved', async () => {
     const { isLocalIssue, isStructuralIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isLocalIssue).mockResolvedValue(true)
-    vi.mocked(isStructuralIssue).mockResolvedValue(false)
+    vi.mocked(isLocalIssue).mockReturnValue(true)
+    vi.mocked(isStructuralIssue).mockReturnValue(false)
 
     const pendingIssues: Issue[] = [
       { id: '1', type: 'consistency', severity: 'error', description: '局部时间顺序不一致' },
@@ -203,8 +193,8 @@ describe('converge_and_decide', () => {
   it('routes to draft_chapter and discards the plan for structural errors', async () => {
     const { isStructuralIssue, isLocalIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isStructuralIssue).mockResolvedValue(true)
-    vi.mocked(isLocalIssue).mockResolvedValue(false)
+    vi.mocked(isStructuralIssue).mockReturnValue(true)
+    vi.mocked(isLocalIssue).mockReturnValue(false)
 
     const pendingIssues: Issue[] = [
       { id: '1', type: 'consistency', severity: 'error', description: '整体情节与大纲严重偏离' },
@@ -221,7 +211,7 @@ describe('converge_and_decide', () => {
   it('routes to repair_state on the first all-state-corruption rewrite round', async () => {
     const { isStateCorruptionIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+    vi.mocked(isStateCorruptionIssue).mockReturnValue(true)
 
     const pendingIssues: Issue[] = [
       { id: '1', type: 'consistency', severity: 'error', description: '上游状态污染' },
@@ -247,7 +237,7 @@ describe('converge_and_decide', () => {
   it('requests rewrite after max error rewrite attempts', async () => {
     const { isStateCorruptionIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+    vi.mocked(isStateCorruptionIssue).mockReturnValue(true)
 
     const pendingIssues: Issue[] = [
       { id: '1', type: 'consistency', severity: 'error', description: '上游状态污染' },
@@ -272,7 +262,7 @@ describe('converge_and_decide', () => {
   it('stops rewrite loop early when issues are highly similar and involve state corruption', async () => {
     const { isStateCorruptionIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+    vi.mocked(isStateCorruptionIssue).mockReturnValue(true)
 
     const pendingIssues: Issue[] = [
       { id: '1', type: 'state_corruption', severity: 'error', description: '大纲与权威事实冲突' },
@@ -298,7 +288,7 @@ describe('converge_and_decide', () => {
   it('does not suggest unavailable reconcile commands in state-corruption blocking reports', async () => {
     const { isStateCorruptionIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+    vi.mocked(isStateCorruptionIssue).mockReturnValue(true)
 
     const pendingIssues: Issue[] = [
       {
@@ -329,17 +319,15 @@ describe('converge_and_decide', () => {
   })
 
   it('detects rewrite loop stall and requests rewrite with a blocking report', async () => {
-    const { issueFingerprint } = await import('../../../src/utils/issue-deduplication.js')
-    vi.mocked(issueFingerprint).mockResolvedValue('stalled-fingerprint')
-
     const pendingIssues: Issue[] = [
       { id: '1', type: 'consistency', severity: 'error', description: 'persistent contradiction' },
     ]
+    const fingerprint = generateIssueFingerprint(pendingIssues[0]!)
     const state = buildBaseState({
       session: {
         rewriteApproved: true,
         errorRewriteAttempts: 2,
-        issueFingerprintHistory: [['stalled-fingerprint'], ['stalled-fingerprint']],
+        issueFingerprintHistory: [[fingerprint], [fingerprint]],
       },
       pendingIssues,
     })
@@ -354,9 +342,6 @@ describe('converge_and_decide', () => {
   })
 
   it('deduplicates repeated issues in blocking report', async () => {
-    const { issueFingerprint } = await import('../../../src/utils/issue-deduplication.js')
-    vi.mocked(issueFingerprint).mockResolvedValue('stalled-fingerprint')
-
     const pendingIssues: Issue[] = [
       {
         id: '1',
@@ -380,11 +365,12 @@ describe('converge_and_decide', () => {
         subject: '同一对象',
       },
     ]
+    const fingerprint = generateIssueFingerprint(pendingIssues[0]!)
     const state = buildBaseState({
       session: {
         rewriteApproved: true,
         errorRewriteAttempts: 2,
-        issueFingerprintHistory: [['stalled-fingerprint'], ['stalled-fingerprint']],
+        issueFingerprintHistory: [[fingerprint], [fingerprint]],
       },
       pendingIssues,
     })
@@ -459,8 +445,8 @@ describe('converge_and_decide', () => {
   it('does not auto-fix warnings when errors still exist', async () => {
     const { isLocalIssue, isStructuralIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isLocalIssue).mockResolvedValue(true)
-    vi.mocked(isStructuralIssue).mockResolvedValue(false)
+    vi.mocked(isLocalIssue).mockReturnValue(true)
+    vi.mocked(isStructuralIssue).mockReturnValue(false)
 
     const warning: Issue = {
       id: 'w1',
@@ -490,7 +476,7 @@ describe('converge_and_decide', () => {
   it('writes back previousIssues and previousRawErrorCount for the next round', async () => {
     const { isLocalIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
-    vi.mocked(isLocalIssue).mockResolvedValue(true)
+    vi.mocked(isLocalIssue).mockReturnValue(true)
 
     const pendingIssues: Issue[] = [
       { id: 'e1', type: 'consistency', severity: 'error', description: '时间顺序不一致' },

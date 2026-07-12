@@ -1,6 +1,6 @@
 import type { Issue } from '../../../types/agent.js'
 import type { RewritePolicyDeps, RewritePolicyResult, ChapterSession } from './types.js'
-import { ruleBasedFingerprint } from '../../../utils/issue-deduplication.js'
+import { generateIssueFingerprint } from '../../../utils/context-judge.js'
 
 function buildConstraintFromIssue(issue: Issue): string {
   return `[${issue.type}] ${issue.description}${
@@ -11,7 +11,7 @@ function buildConstraintFromIssue(issue: Issue): string {
 async function buildVerifiedConstraints(
   previousIssues: Issue[],
   currentIssues: Issue[],
-  isInterpretiveIssue: (issue: Issue) => Promise<boolean> | boolean,
+  isInterpretiveIssue: (issue: Issue) => boolean,
   maxConstraints: number,
   log?: (level: 'info' | 'warn' | 'error', message: string, ...meta: unknown[]) => void
 ): Promise<{ constraints: string[]; resolvedCount: number }> {
@@ -19,9 +19,9 @@ async function buildVerifiedConstraints(
   for (const prev of previousIssues) {
     if (prev.severity !== 'error') continue
     if (await isInterpretiveIssue(prev)) continue
-    const prevFingerprint = ruleBasedFingerprint(prev)
+    const prevFingerprint = generateIssueFingerprint(prev)
     const stillPresent = currentIssues.some(
-      (curr) => ruleBasedFingerprint(curr) === prevFingerprint
+      (curr) => generateIssueFingerprint(curr) === prevFingerprint
     )
     if (!stillPresent) {
       resolvedIssues.push(prev)

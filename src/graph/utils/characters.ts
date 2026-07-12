@@ -2,6 +2,7 @@ import type { ReducedGraphState } from '../state.js'
 import type { Character } from '../../types/character.js'
 import { extractOutlineCharacters, mergeCharacterLists } from '../../utils/outline-characters.js'
 import { extractEstablishedCharacters } from '../../utils/established-characters.js'
+import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 
 export function charactersToString(characters: Character[]): string {
   return characters
@@ -27,7 +28,7 @@ export function buildEffectiveCharactersList(
   const outline = extractOutlineCharacters(state.outline, chapterIndex)
   const outlineMerged = mergeCharacterLists(official, outline)
   const established = extractEstablishedCharacters(
-    state.chapterSummaries ?? [],
+    selectChapterSummaries(state.chapters, chapterIndex),
     state.storyState
   ).filter((ec) => !outlineMerged.some((c) => c.name === ec.name))
   const merged = [...outlineMerged, ...established]

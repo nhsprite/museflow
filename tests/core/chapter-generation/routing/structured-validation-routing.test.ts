@@ -45,11 +45,7 @@ function makeDeps(overrides: Partial<RoutingDeps> = {}): RoutingDeps {
       isInterpretiveIssue: () => false,
       isStateCorruptionIssue: () => false,
     },
-    fixPolicy: {
-      planningConfig,
-      splitIntoParagraphs: () => [],
-      findAffectedParagraphs: () => [],
-    },
+    fixPolicy: {},
     isStructuralIssue: () => false,
     isLocalIssue: () => false,
     isTaskConsistencyIssue: () => false,

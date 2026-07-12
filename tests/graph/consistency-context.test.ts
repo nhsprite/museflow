@@ -279,7 +279,7 @@ describe('detect_consistency validation context', () => {
     expect(result.foreshadowStack).toBeUndefined()
   })
 
-  it('keeps summary timeline prose unchanged while providing canonical facts separately', async () => {
+  it('keeps summary prose in previousChapters while providing canonical facts separately', async () => {
     const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 
     const state = buildBaseState()
@@ -296,51 +296,37 @@ describe('detect_consistency validation context', () => {
       createdAt: 0,
       updatedAt: 0,
     }
-    state.chapterSummaries = [
-      JSON.stringify({
-        characters: [],
-        characterFacts: [
-          {
-            character: '旁白',
-            facts: [{ text: '木之灵物位于东方灵河旧址', importance: 'critical' }],
-          },
-        ],
-        keyEvents: [],
-        locations: [],
-        keyItems: [],
-        activePlots: [],
-        mood: '',
-      }),
-      JSON.stringify({
-        characters: [],
-        characterFacts: [
-          {
-            character: '旁白',
-            facts: [{ text: '木之灵物被转移到昆仑山', importance: 'critical' }],
-          },
-        ],
-        keyEvents: [],
-        locations: [],
-        keyItems: [],
-        activePlots: [],
-        mood: '',
-      }),
-    ]
+    state.chapters[0]!.summary = '第1章摘要：林黛玉在东方灵河旧址暂住'
+    state.chapters[1] = {
+      id: 'chapter-2',
+      storyId: 'story-1',
+      number: 2,
+      title: null,
+      outline: null,
+      summary: '第2章摘要：林黛玉抵达昆仑山',
+      foreshadows: null,
+      status: 'done',
+      createdAt: 0,
+      updatedAt: 0,
+    }
     state.storyState.canonicalFacts = [
       {
         id: 'cf1',
-        subject: '木之灵物',
-        attribute: '所在位置',
+        subject: '林黛玉',
+        attribute: 'location',
         value: '昆仑山',
         establishedIn: 1,
-        supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
       },
     ]
 
     await detect_consistency(createMockContext(), state)
     expect(capturedStoryState).toContain('【权威事实】')
     expect(capturedStoryState).toContain('昆仑山')
-    expect(capturedTimelineSnapshot).toContain('东方灵河旧址')
+    // 摘要散文原样进入 previousChapters；timeline 只来自结构化权威事实，
+    // 不再从摘要二次提取。
+    expect(capturedPreviousChapters).toContain('东方灵河旧址')
+    expect(capturedTimelineSnapshot).toContain('昆仑山')
+    expect(capturedTimelineSnapshot).not.toContain('东方灵河旧址')
   })
 
   it('passes authoritative story state instead of only the reconciled state', async () => {
@@ -536,7 +522,6 @@ describe('detect_consistency validation context', () => {
       },
       null,
     ]
-    state.chapterSummaries = ['第一章摘要']
     readChapterContentMock.mockImplementation(async (_outputDir: string, chapterNumber: number) => {
       if (chapterNumber === 1) {
         return [

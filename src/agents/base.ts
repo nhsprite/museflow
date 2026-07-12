@@ -54,4 +54,4 @@ export abstract class BaseAgent<TInput extends AgentInput> {
   protected abstract parse(content: string): AgentOutput
 }
 
-export type { AgentOutput, ParagraphFix, SentenceFix, ChapterPlan } from './types.js'
+export type { AgentOutput, SentenceFix } from './types.js'

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   mergeStoryState,
-  filterSupersededFactsFromTimeline,
-  filterSupersededEventsFromTimeline,
   buildCanonicalFactTimeline,
   buildCharacterFactTimeline,
   buildKeyEventsTimeline,
@@ -203,70 +201,6 @@ describe('mergeStoryState', () => {
     expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺', '血封信笺（柏字残画）'])
     expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
     expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('苏半城妆台抽屉附近')
-  })
-})
-
-describe('filterSupersededFactsFromTimeline', () => {
-  it('does not remove facts by matching superseded old-value prose', () => {
-    const entries = [
-      { character: '旁白', facts: ['木之灵物位于东方灵河旧址'] },
-      { character: '主角', facts: ['主角决定前往昆仑山'] },
-    ]
-    const canonicalFacts = [
-      {
-        id: 'cf1',
-        subject: '木之灵物',
-        attribute: 'location',
-        value: '昆仑山',
-        establishedIn: 2,
-        supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
-      },
-    ]
-
-    const filtered = filterSupersededFactsFromTimeline(entries, canonicalFacts)
-    expect(filtered).toEqual(entries)
-  })
-
-  it('keeps all facts when no canonical facts exist', () => {
-    const entries = [{ character: '旁白', facts: ['木之灵物位于东方灵河旧址'] }]
-    const filtered = filterSupersededFactsFromTimeline(entries, [])
-    expect(filtered).toHaveLength(1)
-  })
-
-  it('keeps facts that do not match any superseded value', () => {
-    const entries = [{ character: '旁白', facts: ['木之灵物位于东方灵河旧址'] }]
-    const canonicalFacts = [
-      {
-        id: 'cf1',
-        subject: '样本',
-        attribute: 'location',
-        value: '实验室B',
-        establishedIn: 2,
-        supersedes: [{ chapter: 0, oldValue: '实验室A' }],
-      },
-    ]
-
-    const filtered = filterSupersededFactsFromTimeline(entries, canonicalFacts)
-    expect(filtered).toHaveLength(1)
-  })
-})
-
-describe('filterSupersededEventsFromTimeline', () => {
-  it('does not remove key events by matching superseded old-value prose', () => {
-    const events = ['木之灵物在东方灵河旧址被发现', '主角启程前往昆仑山']
-    const canonicalFacts = [
-      {
-        id: 'cf1',
-        subject: '木之灵物',
-        attribute: 'location',
-        value: '昆仑山',
-        establishedIn: 2,
-        supersedes: [{ chapter: 0, oldValue: '东方灵河旧址' }],
-      },
-    ]
-
-    const filtered = filterSupersededEventsFromTimeline(events, canonicalFacts)
-    expect(filtered).toEqual(events)
   })
 })
 

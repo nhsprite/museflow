@@ -5,7 +5,7 @@ function buildSummaries(summary: string): string[] {
   return [summary]
 }
 
-describe('buildLayeredSummaries legacy text truncation', () => {
+describe('buildLayeredSummaries prose truncation', () => {
   it('truncates medium summaries at sentence boundaries instead of mid-sentence', () => {
     // distance 5 => medium（限额 100 字）
     const firstSentence = `${'风'.repeat(79)}。`

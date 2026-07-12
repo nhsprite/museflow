@@ -1,41 +1,25 @@
-import { describe, expect, it, vi } from 'vitest'
-import {
-  deduplicateByRule,
-  deduplicateIssuesSemantically,
-  issueFingerprint,
-  ruleBasedFingerprint,
-} from '../../src/utils/issue-deduplication.js'
+import { describe, expect, it } from 'vitest'
+import { deduplicateByRule } from '../../src/utils/issue-deduplication.js'
 import { generateIssueFingerprint } from '../../src/utils/context-judge.js'
 import type { Issue } from '../../src/types/agent.js'
-import type { ModelProvider } from '../../src/model/provider.js'
 
-function createMockProvider(response: string | string[]): ModelProvider {
-  return {
-    chat: vi
-      .fn()
-      .mockResolvedValue(
-        typeof response === 'string'
-          ? JSON.stringify({ results: [response] })
-          : JSON.stringify({ results: response })
-      ),
-  }
-}
-
-describe('ruleBasedFingerprint', () => {
-  it('uses structured fields rather than rephrased descriptions', () => {
+describe('generateIssueFingerprint（统一规则指纹）', () => {
+  it('uses structured subject rather than rephrased descriptions', () => {
     const a: Issue = {
       id: '1',
       type: 'hallucination',
       severity: 'error',
       description: '角色乙不在官方角色列表',
+      subject: '角色乙',
     }
     const b: Issue = {
       id: '2',
       type: 'hallucination',
       severity: 'error',
       description: '角色乙不在官方角色列表中',
+      subject: '角色乙',
     }
-    expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
+    expect(generateIssueFingerprint(a)).toBe(generateIssueFingerprint(b))
   })
 
   it('produces different fingerprints for different structured locations', () => {
@@ -53,7 +37,7 @@ describe('ruleBasedFingerprint', () => {
       description: '角色乙不在官方列表',
       locationRef: { paragraphIndex: 1 },
     }
-    expect(ruleBasedFingerprint(a)).not.toBe(ruleBasedFingerprint(b))
+    expect(generateIssueFingerprint(a)).not.toBe(generateIssueFingerprint(b))
   })
 
   it('ignores natural-language location strings', () => {
@@ -68,13 +52,15 @@ describe('ruleBasedFingerprint', () => {
       id: '2',
       type: 'hallucination',
       severity: 'error',
-      description: '角色乙不在官方列表',
+      description: '角色甲不在官方列表',
       location: '第2段',
     }
-    expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
+    expect(generateIssueFingerprint(a)).toBe(generateIssueFingerprint(b))
   })
 
-  it('ignores numbers in descriptions', () => {
+  it('distinguishes generic fingerprints whose descriptions differ only in numbers', () => {
+    // 新指纹（colon 格式）对无 subject/locationRef 的泛化问题使用 description 哈希，
+    // 不再做数字归一化：措辞不同即视为不同问题。
     const a: Issue = {
       id: '1',
       type: 'quality',
@@ -82,10 +68,11 @@ describe('ruleBasedFingerprint', () => {
       description: '第12章字数不足',
     }
     const b: Issue = { id: '2', type: 'quality', severity: 'warning', description: '第3章字数不足' }
-    expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
+    expect(generateIssueFingerprint(a)).not.toBe(generateIssueFingerprint(b))
   })
 
-  it('does not extract quoted natural-language entities', () => {
+  it('does not normalize quoted natural-language entities in generic fingerprints', () => {
+    // 泛化指纹按 description 原文哈希，「…」与“…”视为不同描述。
     const a: Issue = {
       id: '1',
       type: 'consistency',
@@ -98,7 +85,7 @@ describe('ruleBasedFingerprint', () => {
       severity: 'error',
       description: '“长命锁”不应出现在当铺',
     }
-    expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
+    expect(generateIssueFingerprint(a)).not.toBe(generateIssueFingerprint(b))
   })
 
   it('produces different fingerprints for different subjects', () => {
@@ -116,7 +103,7 @@ describe('ruleBasedFingerprint', () => {
       description: '位置描述前后矛盾',
       subject: '角色乙',
     }
-    expect(ruleBasedFingerprint(a)).not.toBe(ruleBasedFingerprint(b))
+    expect(generateIssueFingerprint(a)).not.toBe(generateIssueFingerprint(b))
   })
 
   it('produces the same fingerprint for the same subject despite rephrasing', () => {
@@ -134,7 +121,7 @@ describe('ruleBasedFingerprint', () => {
       description: '角色甲的位置描写存在出入',
       subject: '角色甲',
     }
-    expect(ruleBasedFingerprint(a)).toBe(ruleBasedFingerprint(b))
+    expect(generateIssueFingerprint(a)).toBe(generateIssueFingerprint(b))
   })
 })
 
@@ -187,7 +174,9 @@ describe('deduplicateByRule', () => {
     expect(deduped[0]!.id).toBe('1')
   })
 
-  it('still folds duplicates sharing a structured locationRef', () => {
+  it('does not fold different descriptions sharing a structured locationRef', () => {
+    // colon 指纹在 locationRef 分支同时包含 description 哈希：
+    // 同一位置但措辞不同的问题视为不同问题，不再折叠。
     const issues: Issue[] = [
       {
         id: '1',
@@ -204,128 +193,28 @@ describe('deduplicateByRule', () => {
         locationRef: { paragraphIndex: 0, sentenceIndex: 1 },
       },
     ]
-    expect(deduplicateByRule(issues)).toHaveLength(1)
-  })
-})
-
-describe('issueFingerprint with provider', () => {
-  it('prefers generateIssueFingerprint over LLM result', async () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'hallucination',
-      severity: 'error',
-      description: '角色甲不在官方列表',
-      dimension: 'character',
-      subject: '角色甲',
-    }
-    const provider = createMockProvider('llm-fingerprint')
-    const fp = await issueFingerprint(provider, issue)
-    expect(fp).toBe(generateIssueFingerprint(issue))
-    expect(provider.chat).not.toHaveBeenCalled()
+    expect(deduplicateByRule(issues)).toHaveLength(2)
   })
 
-  it('falls back to LLM fingerprint when rule fingerprint is generic', async () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'hallucination',
-      severity: 'error',
-      description: '',
-    }
-    const provider = createMockProvider('llm-fingerprint')
-    const fp = await issueFingerprint(provider, issue)
-    expect(fp).toBe('hallucination:llm-fingerprint')
-  })
-
-  it('does not use LLM fallback when locationRef is present without subject', async () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'consistency',
-      severity: 'error',
-      description: 'any text',
-      locationRef: { paragraphIndex: 0, sentenceIndex: 1 },
-    }
-    const provider = createMockProvider('should-not-be-used')
-    const fp = await issueFingerprint(provider, issue)
-    expect(fp).not.toContain('should-not-be-used')
-    expect(fp).toContain('p0s1')
-    expect(provider.chat).not.toHaveBeenCalled()
-  })
-
-  it('falls back to generateIssueFingerprint when provider is undefined', async () => {
-    const issue: Issue = {
-      id: '1',
-      type: 'hallucination',
-      severity: 'error',
-      description: '角色甲不在官方列表',
-    }
-    const fp = await issueFingerprint(undefined, issue)
-    expect(fp).toBe(generateIssueFingerprint(issue))
-  })
-})
-
-describe('deduplicateIssuesSemantically', () => {
-  it('deduplicates by generateIssueFingerprint without provider', async () => {
-    const issues: Issue[] = [
-      {
-        id: '1',
-        type: 'hallucination',
-        severity: 'error',
-        description: '角色乙不在官方角色列表',
-        locationRef: { paragraphIndex: 0 },
-        dimension: 'character',
-        subject: 'unofficial-character',
-      },
-      {
-        id: '2',
-        type: 'hallucination',
-        severity: 'error',
-        description: '角色乙不在官方角色列表中',
-        locationRef: { paragraphIndex: 0 },
-        dimension: 'character',
-        subject: 'unofficial-character',
-      },
-      {
-        id: '3',
-        type: 'hallucination',
-        severity: 'error',
-        description: '角色丙不在官方角色列表',
-        locationRef: { paragraphIndex: 1 },
-        dimension: 'character',
-        subject: 'unofficial-character-c',
-      },
-    ]
-    const deduped = await deduplicateIssuesSemantically(undefined, issues)
-    expect(deduped.length).toBe(2)
-  })
-
-  it('keeps distinct structured locations separate with rule-based fallback', async () => {
+  it('still folds identical issues sharing a structured locationRef', () => {
     const issues: Issue[] = [
       {
         id: '1',
         type: 'consistency',
         severity: 'error',
-        description: '物品甲同时出现在仓库和书房',
-        locationRef: { paragraphIndex: 0 },
+        description: '相同描述',
+        locationRef: { paragraphIndex: 0, sentenceIndex: 1 },
       },
       {
         id: '2',
         type: 'consistency',
         severity: 'error',
-        description: '角色甲在城东却于同一时刻现身城西',
-        locationRef: { paragraphIndex: 1 },
+        description: '相同描述',
+        locationRef: { paragraphIndex: 0, sentenceIndex: 1 },
       },
     ]
-    const deduped = await deduplicateIssuesSemantically(undefined, issues)
-    expect(deduped.length).toBe(2)
-  })
-
-  it('uses LLM fingerprints when provider is available', async () => {
-    const issues: Issue[] = [
-      { id: '1', type: 'hallucination', severity: 'error', description: '角色甲不在官方列表' },
-      { id: '2', type: 'hallucination', severity: 'error', description: '角色乙不在官方列表' },
-    ]
-    const provider = createMockProvider(['fp-a', 'fp-b'])
-    const deduped = await deduplicateIssuesSemantically(provider, issues)
-    expect(deduped.length).toBe(2)
+    const deduped = deduplicateByRule(issues)
+    expect(deduped).toHaveLength(1)
+    expect(deduped[0]!.id).toBe('1')
   })
 })

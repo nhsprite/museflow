@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { tagIssueSource, inferRetryStrategy } from '../../../src/graph/nodes/validation.js'
+import { tagIssueSource } from '../../../src/graph/nodes/validation.js'
+import { inferRetryStrategy } from '../../../src/utils/retry-strategy.js'
 import type { Issue } from '../../../src/types/agent.js'
 
 describe('tagIssueSource', () => {

@@ -446,7 +446,6 @@ describe('applyRewriteCleanup', () => {
 
     const cleaned = applyRewriteCleanup(state, 2)
 
-    expect(cleaned.chapterSummaries).toEqual(['s1', 's2'])
     expect(cleaned.storyState?.pendingTasks?.map((task) => task.id)).toEqual(['t1'])
   })
 })
@@ -474,7 +473,6 @@ describe('prepareRewritePreviewState', () => {
     const cleanup = applyRewriteCleanup(state, 2)
 
     expect(preview.currentChapterIndex).toBe(2)
-    expect(preview.chapterSummaries).toEqual(cleanup.chapterSummaries)
     expect(preview.foreshadowStack).toEqual(cleanup.foreshadowStack)
     expect(preview.timeline).toEqual(cleanup.timeline)
     expect(preview.outline).toEqual(cleanup.outline)

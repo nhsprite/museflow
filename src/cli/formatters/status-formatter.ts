@@ -1,4 +1,4 @@
-import { getForeshadowAlerts, formatForeshadowAlerts } from '../../types/foreshadow.js'
+import { getForeshadowAlerts, formatForeshadowAlerts } from './foreshadow-alerts.js'
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import { buildArcStatus } from '../../utils/story-arc.js'
 import type { Story } from '../../types/story.js'

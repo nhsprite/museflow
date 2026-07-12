@@ -4,6 +4,7 @@ import type { RuntimeContext } from '../../core/context.js'
 import { createEmptyStoryState } from '../../storage/meta/stores/story-state.js'
 import { classifyIssueByRule } from '../../core/chapter-generation/issue-classifier.js'
 import { repairCorruptedState } from '../services/state-repair/index.js'
+import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 
 /**
  * 自动状态修复节点：rewrite 循环中剩余 error 全部为状态污染类且本章尚未
@@ -37,7 +38,7 @@ export async function repair_state(
       issues: stateCorruptionIssues,
       storyState: state.storyState ?? createEmptyStoryState(),
       storyMemory: state.storyMemory,
-      chapterSummaries: state.chapterSummaries,
+      chapterSummaries: selectChapterSummaries(state.chapters, chapterIndex),
       currentChapterIndex: chapterIndex,
     },
     context.provider

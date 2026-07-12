@@ -50,11 +50,6 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     "description.includes('角色遗漏')",
     '关键词重叠',
   ],
-  'src/utils/summary-patch.ts': [
-    'normalizeForMatch',
-    'findSentenceContaining',
-    '.replace(sentence',
-  ],
   'src/utils/issue-deduplication.ts': [
     'STOP_WORDS',
     'extractCanonicalTerms',

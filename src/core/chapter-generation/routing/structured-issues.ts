@@ -1,6 +1,7 @@
 import type { Issue, IssueType } from '../../../types/agent.js'
 import type { StructuredValidationResult } from '../../../story-memory/validator.js'
 import { generateId } from '../../../utils/id.js'
+import { inferRetryStrategy } from '../../../utils/retry-strategy.js'
 
 export const STRUCTURED_ISSUE_TYPES = new Set<IssueType>([
   'state_conflict',
@@ -17,13 +18,13 @@ function structuredError(
   chapterIndex: number,
   issue: Omit<Issue, 'id' | 'severity' | 'location' | 'retryStrategy'>
 ): Issue {
-  return {
+  const base: Issue = {
     ...issue,
     id: generateId(),
     severity: 'error',
     location: `第 ${chapterIndex + 1} 章`,
-    retryStrategy: 'draft',
   }
+  return { ...base, retryStrategy: inferRetryStrategy(base) }
 }
 
 export function buildStructuredIssues(

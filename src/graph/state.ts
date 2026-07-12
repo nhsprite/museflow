@@ -34,7 +34,9 @@ export const GraphState = Annotation.Root({
   currentChapterIndex: Annotation<number>,
   foreshadowStack: Annotation<ForeshadowItem[]>,
   timeline: Annotation<StateSnapshot[] | undefined>,
-  chapterSummaries: Annotation<string[]>,
+  // @deprecated 不再写入/读取：摘要列表由 selectChapterSummaries 从 chapters 现算。
+  // 保留该通道仅为兼容旧 checkpoint 反序列化（channel_values 中的历史键有归属）。
+  chapterSummaries: Annotation<string[] | undefined>,
   pendingIssues: Annotation<Issue[]>,
   rewriteApproved: Annotation<boolean>,
   rewriteRequested: Annotation<boolean>,

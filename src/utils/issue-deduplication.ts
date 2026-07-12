@@ -1,101 +1,15 @@
 import type { Issue } from '../types/agent.js'
-import type { ModelProvider } from '../model/provider.js'
-import { batchGenerateIssueFingerprints, generateIssueFingerprint } from './context-judge.js'
-
-export function ruleBasedFingerprint(issue: Issue): string {
-  return [
-    issue.type,
-    issue.severity,
-    issue.dimension ?? '',
-    issue.source ?? '',
-    issue.retryStrategy ?? '',
-    issue.subject ?? '',
-    formatLocationRef(issue),
-  ].join('|')
-}
-
-function formatLocationRef(issue: Issue): string {
-  const ref = issue.locationRef
-  if (!ref) return ''
-  return `p=${ref.paragraphIndex ?? ''};s=${ref.sentenceIndex ?? ''}`
-}
-
-function isGenericFingerprint(fp: string): boolean {
-  return fp.includes(':__generic__:')
-}
-
-export async function issueFingerprint(
-  provider: ModelProvider | undefined,
-  issue: Issue
-): Promise<string> {
-  const base = generateIssueFingerprint(issue)
-  if (!provider || !isGenericFingerprint(base)) {
-    return base
-  }
-  try {
-    const results = await batchGenerateIssueFingerprints(provider, [issue])
-    const fp = results[0]
-    return fp ? `${issue.type}:${fp}` : base
-  } catch {
-    return base
-  }
-}
-
-export async function deduplicateIssuesSemantically(
-  provider: ModelProvider | undefined,
-  issues: Issue[]
-): Promise<Issue[]> {
-  if (issues.length === 0) {
-    return []
-  }
-
-  const fingerprints = issues.map((issue) => generateIssueFingerprint(issue))
-
-  if (provider) {
-    const genericIndices = fingerprints
-      .map((fp, i) => (isGenericFingerprint(fp) ? i : -1))
-      .filter((i) => i >= 0)
-    if (genericIndices.length > 0) {
-      try {
-        const genericIssues = genericIndices.map((i) => issues[i]!)
-        const llmFingerprints = await batchGenerateIssueFingerprints(provider, genericIssues)
-        for (let j = 0; j < genericIndices.length; j++) {
-          const fp = llmFingerprints[j]
-          const idx = genericIndices[j]!
-          if (fp) {
-            fingerprints[idx] = `${issues[idx]!.type}:${fp}`
-          }
-        }
-      } catch {
-        // Keep rule-based fingerprints on LLM failure.
-      }
-    }
-  }
-
-  const seen = new Map<string, Issue>()
-  const result: Issue[] = []
-  for (let i = 0; i < issues.length; i++) {
-    const issue = issues[i]!
-    const fp = fingerprints[i]!
-    if (!seen.has(fp)) {
-      seen.set(fp, issue)
-      result.push(issue)
-    }
-  }
-  return result
-}
+import { generateIssueFingerprint } from './context-judge.js'
 
 export function deduplicateByRule(issues: Issue[]): Issue[] {
   const seen = new Map<string, Issue>()
   const result: Issue[] = []
   for (const issue of issues) {
-    let key = ruleBasedFingerprint(issue)
-    if (!issue.subject && !issue.locationRef) {
-      // 没有 subject 也没有结构化位置的 issue 无法区分指向对象：
-      // 只对内容完全相同的记录去重，不跨条合并，
-      // 避免把不同角色/物品的同类问题折叠成一条后静默丢弃。
-      key = `${key}|${issue.description}`
-    }
+    // severity 参与去重键：同一指纹的 error 与 warning 不得折叠，
+    // 避免 warning 在前时把未解决的 error 静默丢弃。
+    // 无 subject 且无结构化位置的指纹已含 description 哈希，
+    // 不同措辞的泛化问题不会被跨条合并。
+    const key = `${issue.severity}:${generateIssueFingerprint(issue)}`
     if (!seen.has(key)) {
       seen.set(key, issue)
       result.push(issue)

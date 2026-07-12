@@ -19,6 +19,7 @@ import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import { batchValidateTimeAnchors } from '../utils/context-judge.js'
 import { getChapterOutlineAgent } from '../graph/agent-factory.js'
 import { buildLayeredSummaries } from '../utils/summary-compressor.js'
+import { selectChapterSummaries } from '../utils/chapter-summaries.js'
 import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/reconciler/index.js'
 import { prepareStoryStateForChapterCached } from '../graph/utils/chapter-context.js'
 import { buildPreviousChapterEndingContext } from '../graph/utils/chapter-window.js'
@@ -509,7 +510,7 @@ async function generateChapterOutlineIfNeeded(
       ...correctionConstraints,
     ]
     const previousChapters = [
-      buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+      buildLayeredSummaries(selectChapterSummaries(state.chapters, chapterIndex), chapterIndex),
       await buildPreviousChapterEndingContext(state, chapterIndex),
     ]
       .filter(Boolean)

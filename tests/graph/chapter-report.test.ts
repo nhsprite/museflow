@@ -309,15 +309,14 @@ describe('chapter report generation', () => {
       ],
     })
     const originalOutline = structuredClone(state.outline)
-    const originalChapterSummaries = [...state.chapterSummaries]
     const originalChapter = structuredClone(state.chapters[0])
 
     const result = await finalize_chapter(createMockContext(), state)
 
     expect(result.outline?.[0]?.verifiedBeats).toEqual(['主角离开家乡'])
-    expect(result.chapterSummaries).toEqual(['主角离开家乡，踏上旅途。'])
+    expect(result.chapters?.[0]?.summary).toBe('主角离开家乡，踏上旅途。')
+    expect(result).not.toHaveProperty('chapterSummaries')
     expect(state.outline).toEqual(originalOutline)
-    expect(state.chapterSummaries).toEqual(originalChapterSummaries)
     expect(state.chapters[0]).toEqual(originalChapter)
   })
 

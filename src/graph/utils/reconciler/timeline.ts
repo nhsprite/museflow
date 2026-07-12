@@ -1,51 +1,6 @@
 import type { ReducedGraphState } from '../../state.js'
 import type { CanonicalFact, FactAttribute } from '../../../types/story-state.js'
 import { labelFromFactAttribute } from '../../../types/story-state.js'
-import {
-  filterCharacterFactsByImportance,
-  filterKeyEventsByImportance,
-  getImportanceThreshold,
-  getCompressionLevel,
-} from '../../../utils/summary-compressor.js'
-
-function formatCharacterFactEntries(
-  entries: Array<{ character: string; facts: string[] }>,
-  chapterNum: number
-): string {
-  if (entries.length === 0) return ''
-
-  const lines = [`第${chapterNum}章角色事实：`]
-  for (const entry of entries) {
-    lines.push(`  ${entry.character}：`)
-    for (const fact of entry.facts) {
-      lines.push(`    - ${fact}`)
-    }
-  }
-  return lines.join('\n')
-}
-
-/**
- * These fallback helpers operate on summary free-text. Implementing them would
- * require natural-language substring matching against superseded old values,
- * which violates the "no natural-language string matching for semantics" rule.
- * They remain no-ops; the canonical-facts timeline path above already avoids
- * superseded facts by using structured (subject, attribute, value) records.
- */
-export function filterSupersededFactsFromTimeline(
-  entries: Array<{ character: string; facts: string[] }>,
-  canonicalFacts: CanonicalFact[]
-): Array<{ character: string; facts: string[] }> {
-  void canonicalFacts
-  return entries
-}
-
-export function filterSupersededEventsFromTimeline(
-  events: string[],
-  canonicalFacts: CanonicalFact[]
-): string[] {
-  void canonicalFacts
-  return events
-}
 
 function isFactActiveAt(fact: CanonicalFact, upToChapterIndex: number): boolean {
   if (fact.establishedIn < 0 || fact.establishedIn > upToChapterIndex) return false
@@ -133,41 +88,13 @@ export function buildCharacterFactTimeline(
 ): string {
   const canonicalFacts = state.storyState?.canonicalFacts ?? []
 
-  // 当存在权威事实时，优先从权威事实构建时间线。
-  if (canonicalFacts.length > 0) {
-    const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
-    const result: string[] = []
-    for (const chapterIndex of Array.from(groups.keys()).sort((a, b) => a - b)) {
-      const facts = groups.get(chapterIndex)?.filter((f) => isCharacterFact(f, state.characters))
-      if (!facts || facts.length === 0) continue
-      const chapterNum = chapterIndex + 1
-      result.push(`第${chapterNum}章角色事实：\n${facts.map(formatCanonicalFact).join('\n')}`)
-    }
-    if (result.length > 0) {
-      return result.join('\n\n')
-    }
-  }
-
-  // 回退：从摘要构建（保留旧行为，用于未启用 canonical facts 的场景）。
-  const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
-  if (!summaries.length) return '（暂无历史记录）'
-
+  const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
   const result: string[] = []
-  for (let i = 0; i < summaries.length; i++) {
-    const summary = summaries[i]
-    if (!summary) continue
-
-    const chapterNum = i + 1
-    const level = getCompressionLevel(chapterNum - 1, upToChapterIndex)
-    const threshold = getImportanceThreshold(level)
-
-    const filtered = filterCharacterFactsByImportance(summary, threshold)
-    const withoutSuperseded = filterSupersededFactsFromTimeline(filtered, canonicalFacts)
-    const formatted = formatCharacterFactEntries(withoutSuperseded, chapterNum)
-
-    if (formatted) {
-      result.push(formatted)
-    }
+  for (const chapterIndex of Array.from(groups.keys()).sort((a, b) => a - b)) {
+    const facts = groups.get(chapterIndex)?.filter((f) => isCharacterFact(f, state.characters))
+    if (!facts || facts.length === 0) continue
+    const chapterNum = chapterIndex + 1
+    result.push(`第${chapterNum}章角色事实：\n${facts.map(formatCanonicalFact).join('\n')}`)
   }
 
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'
@@ -176,41 +103,13 @@ export function buildCharacterFactTimeline(
 export function buildKeyEventsTimeline(state: ReducedGraphState, upToChapterIndex: number): string {
   const canonicalFacts = state.storyState?.canonicalFacts ?? []
 
-  // 当存在权威事实时，优先从权威事实构建关键事件时间线。
-  if (canonicalFacts.length > 0) {
-    const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
-    const result: string[] = []
-    for (const chapterIndex of Array.from(groups.keys()).sort((a, b) => a - b)) {
-      const facts = groups.get(chapterIndex)?.filter(isKeyEventFact)
-      if (!facts || facts.length === 0) continue
-      const chapterNum = chapterIndex + 1
-      result.push(`第${chapterNum}章关键事件：\n${facts.map(formatCanonicalFact).join('\n')}`)
-    }
-    if (result.length > 0) {
-      return result.join('\n\n')
-    }
-  }
-
-  // 回退：从摘要构建。
-  const summaries = state.chapterSummaries.slice(0, upToChapterIndex)
-  if (!summaries.length) return '（暂无历史记录）'
-
+  const groups = groupCanonicalFactsByChapter(canonicalFacts, upToChapterIndex)
   const result: string[] = []
-  for (let i = 0; i < summaries.length; i++) {
-    const summary = summaries[i]
-    if (!summary) continue
-
-    const chapterNum = i + 1
-    const level = getCompressionLevel(chapterNum - 1, upToChapterIndex)
-    const threshold = getImportanceThreshold(level)
-
-    const events = filterKeyEventsByImportance(summary, threshold)
-    const withoutSuperseded = filterSupersededEventsFromTimeline(events, canonicalFacts)
-    if (withoutSuperseded.length > 0) {
-      result.push(
-        `第${chapterNum}章关键事件：\n${withoutSuperseded.map((e) => `  - ${e}`).join('\n')}`
-      )
-    }
+  for (const chapterIndex of Array.from(groups.keys()).sort((a, b) => a - b)) {
+    const facts = groups.get(chapterIndex)?.filter(isKeyEventFact)
+    if (!facts || facts.length === 0) continue
+    const chapterNum = chapterIndex + 1
+    result.push(`第${chapterNum}章关键事件：\n${facts.map(formatCanonicalFact).join('\n')}`)
   }
 
   return result.length > 0 ? result.join('\n\n') : '（暂无历史记录）'

@@ -73,15 +73,6 @@ const FORESHADOWING_USER_PROMPT_TEMPLATE = `<instruction>
   如果本章没有发现值得埋下的伏笔，new_foreshadows 返回空数组 []。
 </output_format>`
 
-export interface ForeshadowingPromptVariables {
-  closingPhaseInstruction: string
-  chapterContent: string
-  existingForeshadowsSection: string
-  FORESHADOW_MIN_LENGTH: number
-  FORESHADOW_MIN_FULFILL_DISTANCE: number
-  FORESHADOW_MAX_FULFILL_DISTANCE: number
-}
-
 export function buildForeshadowingUserPrompt(
   state: import('../types.js').ForeshadowingAgentInput,
   planningConfig: import('../../types/genre.js').ChapterPlanningConfig

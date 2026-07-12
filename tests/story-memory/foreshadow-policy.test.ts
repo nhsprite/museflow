@@ -34,12 +34,13 @@ describe('foreshadow deadline policy', () => {
     expect(isValidForeshadowDeadline(9, 11.5)).toBe(false)
   })
 
-  it('separates required overdue, optional, invalid, and fulfilled items', () => {
+  it('separates required overdue, optional, and fulfilled items, skipping invalid deadlines', () => {
     const buckets = classifyForeshadows(
       [
         item({ id: 'required-overdue', expectedFulfillChapter: 5 }),
         item({ id: 'optional-overdue', expectedFulfillChapter: 5, required: false }),
         item({ id: 'invalid', expectedFulfillChapter: 0 }),
+        item({ id: 'next-chapter-deadline', expectedFulfillChapter: 2 }),
         item({ id: 'fulfilled', expectedFulfillChapter: 5, fulfilledChapter: 6 }),
       ],
       10
@@ -47,7 +48,6 @@ describe('foreshadow deadline policy', () => {
 
     expect(buckets.overdueRequired.map((entry) => entry.id)).toEqual(['required-overdue'])
     expect(buckets.optional.map((entry) => entry.id)).toEqual(['optional-overdue'])
-    expect(buckets.invalid.map((entry) => entry.id)).toEqual(['invalid'])
     expect(buckets.dueRequired).toEqual([])
     expect(buckets.normalRequired).toEqual([])
   })

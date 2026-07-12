@@ -996,6 +996,50 @@ describe('formatStoryState', () => {
     expect(text).toContain('item-1：deeper')
     expect(text).not.toContain('[item-1] location: loc-b')
   })
+
+  it('renders the 权威事实 section with exact formatting (snapshot)', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'fact-1',
+          subject: 'item-1',
+          attribute: 'location',
+          value: 'loc-b',
+          establishedIn: 2,
+          confidence: 'high',
+          source: 'chapter_text',
+          supersedes: [{ chapter: 0, oldValue: 'loc-a' }],
+        },
+        {
+          id: 'fact-2',
+          subject: 'c-1',
+          attribute: 'status',
+          value: '受伤',
+          establishedIn: 4,
+          confidence: 'medium',
+          source: 'outline_inference',
+        },
+        {
+          id: 'fact-3',
+          subject: 'c-2',
+          attribute: 'location',
+          value: 'loc-c',
+          establishedIn: 6,
+          retiredIn: 8,
+          confidence: 'high',
+          source: 'state_repair',
+        },
+      ],
+    }
+
+    expect(formatStoryState(state)).toMatchInlineSnapshot(`
+      "【权威事实】
+        - [item-1] location: loc-b (第3章确立)
+          覆盖第1章: loc-a
+        - [c-1] status: 受伤 (第5章确立)（大纲推断，提示级，正文优先）"
+    `)
+  })
 })
 
 describe('prepareStoryStateForChapter', () => {

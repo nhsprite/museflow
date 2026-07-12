@@ -4,12 +4,7 @@ import type { ChapterPlanningConfig } from '../../../types/genre.js'
 import type { StructuredValidationResult } from '../../../story-memory/validator.js'
 
 export type RoutingDecision =
-  | 'draft_chapter'
-  | 'fix_chapter'
-  | 'finalize_chapter'
-  | 'request_rewrite'
-  | 'decide_strategy'
-  | 'repair_state'
+  'draft_chapter' | 'fix_chapter' | 'finalize_chapter' | 'request_rewrite' | 'repair_state'
 
 export type ChapterStep =
   | { kind: 'draft'; discardPlan: boolean; feedbackIssues: Issue[] }
@@ -43,23 +38,20 @@ export interface RoutingContext {
 
 export interface IssuePolicyDeps {
   deduplicateIssues?: (issues: Issue[]) => Promise<Issue[]> | Issue[]
-  isInterpretiveIssue: (issue: Issue) => Promise<boolean> | boolean
+  isInterpretiveIssue: (issue: Issue) => boolean
   planningConfig: ChapterPlanningConfig
   log?: (level: 'info' | 'warn' | 'error', message: string, ...meta: unknown[]) => void
 }
 
 export interface RewritePolicyDeps {
   calculateIssueSetSimilarity: (prev: Issue[], curr: Issue[]) => Promise<number>
-  isInterpretiveIssue: (issue: Issue) => Promise<boolean> | boolean
-  isStateCorruptionIssue: (issue: Issue) => Promise<boolean> | boolean
+  isInterpretiveIssue: (issue: Issue) => boolean
+  isStateCorruptionIssue: (issue: Issue) => boolean
   planningConfig: ChapterPlanningConfig
   log?: (level: 'info' | 'warn' | 'error', message: string, ...meta: unknown[]) => void
 }
 
 export interface FixPolicyDeps {
-  splitIntoParagraphs: (content: string) => string[]
-  findAffectedParagraphs: (paragraphs: string[], issues: Issue[]) => number[]
-  planningConfig: ChapterPlanningConfig
   log?: (level: 'info' | 'warn' | 'error', message: string, ...meta: unknown[]) => void
 }
 

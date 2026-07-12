@@ -1,5 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import * as contextJudge from '../../../src/utils/context-judge.js'
+import { describe, expect, it } from 'vitest'
 import {
   classifyIssueByRule,
   isStateCorruptionIssue,
@@ -9,36 +8,6 @@ import {
   isTaskConsistencyIssue,
 } from '../../../src/core/chapter-generation/issue-classifier.js'
 import type { Issue } from '../../../src/types/agent.js'
-import type { ModelProvider } from '../../../src/model/provider.js'
-
-vi.mock('../../../src/utils/context-judge.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof contextJudge>()
-  return {
-    ...actual,
-    batchClassifyIssues: vi.fn(),
-  }
-})
-
-function createProvider(): ModelProvider {
-  return { chat: vi.fn() }
-}
-
-function baseClassification(
-  overrides: Partial<contextJudge.IssueClassification> = {}
-): contextJudge.IssueClassification {
-  return {
-    isStructural: false,
-    isCrossChapter: false,
-    isTaskConsistency: false,
-    isItemLocationConflict: false,
-    isInventedCharacter: false,
-    isOutlineStateConflict: false,
-    isLocal: false,
-    isStateCorruption: false,
-    isInterpretive: false,
-    ...overrides,
-  }
-}
 
 function makeIssue(
   type: Issue['type'],
@@ -173,84 +142,32 @@ describe('classifyIssueByRule', () => {
   })
 })
 
-describe('issue classifiers default to rule-based classification', () => {
-  beforeEach(() => {
-    vi.mocked(contextJudge.batchClassifyIssues).mockReset()
-  })
-
-  it('does not call LLM for state corruption classification by default', async () => {
+describe('issue classifiers are synchronous projections of classifyIssueByRule', () => {
+  it('isStateCorruptionIssue projects isStateCorruption', () => {
     const issue = makeIssue('state_corruption', 'error', '上游状态被污染')
-    const provider = createProvider()
-    const result = await isStateCorruptionIssue(provider, issue)
-    expect(result).toBe(true)
-    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
+    expect(isStateCorruptionIssue(issue)).toBe(true)
   })
 
-  it('does not call LLM for structural classification by default', async () => {
+  it('isStructuralIssue projects isStructural', () => {
     const issue = makeIssue('outline_violation', 'error', '偏离大纲')
-    const provider = createProvider()
-    const result = await isStructuralIssue(provider, issue)
-    expect(result).toBe(true)
-    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
+    expect(isStructuralIssue(issue)).toBe(true)
   })
 
-  it('does not call LLM for local classification by default', async () => {
+  it('isLocalIssue projects isLocal', () => {
     const issue = makeIssue('consistency', 'error', '段落重复')
     issue.dimension = 'quality'
-    const provider = createProvider()
-    const result = await isLocalIssue(provider, issue)
-    expect(result).toBe(true)
-    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
+    expect(isLocalIssue(issue)).toBe(true)
   })
 
-  it('does not call LLM for interpretive classification by default', async () => {
+  it('isInterpretiveIssue projects isInterpretive', () => {
     const issue = makeIssue('consistency', 'warning', 'structured issue')
     issue.dimension = 'quality'
-    const provider = createProvider()
-    const result = await isInterpretiveIssue(provider, issue)
-    expect(result).toBe(true)
-    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
+    expect(isInterpretiveIssue(issue)).toBe(true)
   })
 
-  it('does not call LLM for task consistency classification by default', async () => {
+  it('isTaskConsistencyIssue projects isTaskConsistency', () => {
     const issue = makeIssue('consistency', 'error', 'structured issue')
     issue.dimension = 'task_consistency'
-    const provider = createProvider()
-    const result = await isTaskConsistencyIssue(provider, issue)
-    expect(result).toBe(true)
-    expect(contextJudge.batchClassifyIssues).not.toHaveBeenCalled()
-  })
-})
-
-describe('issue classifiers support optional LLM复核', () => {
-  beforeEach(() => {
-    vi.mocked(contextJudge.batchClassifyIssues).mockReset()
-  })
-
-  it('calls LLM when preferLLM is true', async () => {
-    const issue = makeIssue('consistency', 'error', '段落重复')
-    issue.dimension = 'quality'
-    const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockResolvedValueOnce([
-      baseClassification({ isLocal: true }),
-    ])
-    const result = await isLocalIssue(provider, issue, true)
-    expect(result).toBe(true)
-    expect(contextJudge.batchClassifyIssues).toHaveBeenCalledWith(provider, [issue])
-  })
-
-  it('falls back to rule result when LLM fails', async () => {
-    const issue = makeIssue('state_corruption', 'error', '上游状态被污染')
-    const provider = createProvider()
-    vi.mocked(contextJudge.batchClassifyIssues).mockRejectedValueOnce(new Error('LLM failed'))
-    const result = await isStateCorruptionIssue(provider, issue, true)
-    expect(result).toBe(true)
-  })
-})
-
-describe('classifiers work without provider', () => {
-  it('returns rule result when provider is undefined', async () => {
-    const issue = makeIssue('state_corruption', 'error', '上游状态被污染')
-    expect(await isStateCorruptionIssue(undefined, issue)).toBe(true)
+    expect(isTaskConsistencyIssue(issue)).toBe(true)
   })
 })

@@ -15,11 +15,7 @@ import {
   isStateCorruptionIssue,
   isInterpretiveIssue,
 } from '../../../core/chapter-generation/issue-classifier.js'
-import {
-  deduplicateIssuesSemantically,
-  issueFingerprint,
-  deduplicateByRule,
-} from '../../../utils/issue-deduplication.js'
+import { deduplicateByRule } from '../../../utils/issue-deduplication.js'
 import {
   decideNextStep,
   type ChapterSession,
@@ -27,24 +23,12 @@ import {
   type RoutingDeps,
 } from '../../../core/chapter-generation/routing/index.js'
 import { calculateIssueSetSimilarity } from '../../../core/chapter-generation/routing/issue-policy.js'
-import type { RoutingDecision, RewriteRoutingConfig } from './types.js'
-import { DEFAULT_REWRITE_ROUTING_CONFIG } from './types.js'
+import type { RoutingDecision } from './types.js'
 import type { RuntimeContext } from '../../../core/context.js'
 import {
   createGenericVerifiedConstraint,
   normalizeVerifiedConstraints,
 } from '../../../utils/verified-constraints.js'
-
-export { DEFAULT_REWRITE_ROUTING_CONFIG }
-
-export function buildRoutingConfig(genre: string): Required<RewriteRoutingConfig> {
-  const planningConfig = getChapterPlanningConfig(genre)
-  return {
-    ...DEFAULT_REWRITE_ROUTING_CONFIG,
-    maxNonErrorIssuesPerType: planningConfig.maxNonErrorIssuesPerType,
-    maxVerifiedConstraints: planningConfig.maxVerifiedConstraints,
-  }
-}
 
 export function buildChapterSession(state: ReducedGraphState): ChapterSession {
   return (
@@ -186,49 +170,34 @@ export function cleanCurrentChapterInferredFacts(state: ReducedGraphState): Stor
 
 export async function convergeAndDecide(
   state: ReducedGraphState,
-  context: RuntimeContext
+  _context: RuntimeContext
 ): Promise<Partial<ReducedGraphState>> {
   const session = buildChapterSession(state)
   const chapterNumber = state.currentChapterIndex + 1
   const existingContent = await readChapterContentForRun(state.story.outputDir, chapterNumber)
   const chapterFileExists = existingContent !== null && existingContent.trim().length > 0
 
-  const config = buildRoutingConfig(state.genre)
-  const preferLLM = config.useLLMForIssueClassification
-
   const routingDeps: RoutingDeps = {
     issuePolicy: {
       planningConfig: getChapterPlanningConfig(state.genre),
-      isInterpretiveIssue: (issue) => isInterpretiveIssue(undefined, issue, preferLLM),
-      deduplicateIssues: async (issues) => {
-        if (config.useLLMForIssueClassification) {
-          return deduplicateIssuesSemantically(context.provider, issues)
-        }
-        // 默认使用规则去重，避免 issue 在多次校验步骤中被重复累积。
-        return deduplicateByRule(issues)
-      },
+      isInterpretiveIssue,
+      // 使用规则去重，避免 issue 在多次校验步骤中被重复累积。
+      deduplicateIssues: (issues) => deduplicateByRule(issues),
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },
     rewritePolicy: {
       planningConfig: getChapterPlanningConfig(state.genre),
-      calculateIssueSetSimilarity: (prev, curr) =>
-        calculateIssueSetSimilarity(prev, curr, async (issue) =>
-          issueFingerprint(context.provider, issue)
-        ),
-      isInterpretiveIssue: (issue) => isInterpretiveIssue(undefined, issue, preferLLM),
-      isStateCorruptionIssue: (issue) => isStateCorruptionIssue(undefined, issue, preferLLM),
+      calculateIssueSetSimilarity: (prev, curr) => calculateIssueSetSimilarity(prev, curr),
+      isInterpretiveIssue,
+      isStateCorruptionIssue,
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },
     fixPolicy: {
-      planningConfig: getChapterPlanningConfig(state.genre),
-      splitIntoParagraphs: () => [],
-      findAffectedParagraphs: () => [],
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },
-    isStructuralIssue: (issue) => isStructuralIssue(undefined, issue, preferLLM),
-    isLocalIssue: (issue) => isLocalIssue(undefined, issue, preferLLM),
-    isTaskConsistencyIssue: (issue) => isTaskConsistencyIssue(undefined, issue, preferLLM),
-    fingerprintIssue: (issue) => issueFingerprint(context.provider, issue),
+    isStructuralIssue,
+    isLocalIssue,
+    isTaskConsistencyIssue,
   }
 
   const ctx: RoutingContext = {

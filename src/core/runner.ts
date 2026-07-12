@@ -84,7 +84,7 @@ export async function runStory(
     currentChapterIndex: 0,
     foreshadowStack: [],
     timeline: undefined,
-    chapterSummaries: [],
+    chapterSummaries: undefined,
     pendingIssues: [],
     rewriteApproved: false,
     rewriteRequested: false,

@@ -8,8 +8,10 @@ import type { ModelProvider } from '../../model/provider.js'
 import type { RuntimeContext } from '../../core/context.js'
 import { getActForChapter } from '../../utils/story-arc.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
+import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 import {
   buildCharacterFactTimeline,
+  formatCanonicalFactsSections,
   formatStoryState,
   prepareStoryStateForChapter,
   type PreparedStoryState,
@@ -172,25 +174,22 @@ function buildChapterContract(
   const activeFacts = (reconciledState.canonicalFacts ?? []).filter(
     (fact) => fact.retiredIn === undefined && fact.confidence !== 'low'
   )
-  const protectedFacts = activeFacts
-    .filter((fact) => fact.source !== 'outline_inference')
-    .slice(-20)
-  if (protectedFacts.length > 0) {
-    lines.push('【受保护权威事实】')
-    for (const fact of protectedFacts) {
-      lines.push(`- [${fact.subject}] ${fact.attribute}: ${fact.value}`)
-    }
-  }
-
-  const outlineInferredFacts = activeFacts
-    .filter((fact) => fact.source === 'outline_inference')
-    .slice(-10)
-  if (outlineInferredFacts.length > 0) {
-    lines.push('【大纲推断事实（提示级，正文/已确立事实优先）】')
-    for (const fact of outlineInferredFacts) {
-      lines.push(`- [${fact.subject}] ${fact.attribute}: ${fact.value}`)
-    }
-  }
+  lines.push(
+    ...formatCanonicalFactsSections([
+      {
+        title: '【受保护权威事实】',
+        facts: activeFacts.filter((fact) => fact.source !== 'outline_inference'),
+        limit: 20,
+        formatFact: (fact) => [`- [${fact.subject}] ${fact.attribute}: ${fact.value}`],
+      },
+      {
+        title: '【大纲推断事实（提示级，正文/已确立事实优先）】',
+        facts: activeFacts.filter((fact) => fact.source === 'outline_inference'),
+        limit: 10,
+        formatFact: (fact) => [`- [${fact.subject}] ${fact.attribute}: ${fact.value}`],
+      },
+    ])
+  )
 
   if (lines.length === 1) return ''
   lines.push(
@@ -212,7 +211,7 @@ export async function buildChapterAgentContext(
     prepareStoryStateForChapterCached(state, chapterIndex, source),
   ])
   const previousChapters = [
-    buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+    buildLayeredSummaries(selectChapterSummaries(state.chapters, chapterIndex), chapterIndex),
     previousChapterEnding,
   ]
     .filter(Boolean)
