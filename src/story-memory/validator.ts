@@ -258,51 +258,14 @@ function finalStateEventValue(event: StoryEvent): string | null {
   }
 }
 
-function detectStateConflicts(events: StoryEvent[]): StateConflict[] {
-  const conflicts: StateConflict[] = []
-  const lastEventByKey = new Map<string, StoryEvent>()
-
-  for (const event of events) {
-    if (!isStateEvent(event)) continue
-    const key = eventKey(event)
-    const previous = lastEventByKey.get(key)
-    if (previous && !eventsEqual(event, previous)) {
-      conflicts.push({
-        entityId: entityIdFromEvent(event),
-        attribute: attributeFromEvent(event),
-        eventA: previous,
-        eventB: event,
-        description: `Conflicting ${event.type} events in same chapter`,
-      })
-    }
-    lastEventByKey.set(key, event)
-  }
-
-  return conflicts
-}
-
-function isStateEvent(event: StoryEvent): boolean {
-  return (
-    event.type === 'character-location' ||
-    event.type === 'character-status' ||
-    event.type === 'item-location' ||
-    event.type === 'item-state'
-  )
-}
-
-function eventKey(event: StoryEvent): string {
-  switch (event.type) {
-    case 'character-location':
-      return `${event.type}:${event.characterId}`
-    case 'character-status':
-      return `${event.type}:${event.characterId}:${event.attribute}`
-    case 'item-location':
-      return `${event.type}:${event.itemId}`
-    case 'item-state':
-      return `${event.type}:${event.itemId}:${event.attribute}`
-    default:
-      return `${event.type}:${event.id}`
-  }
+function detectStateConflicts(_events: StoryEvent[]): StateConflict[] {
+  // Intra-chapter state transitions (e.g. a character moving from A to B to C,
+  // or an item being taken out and later locked back) are normal narrative.
+  // Flagging every sequence of different-valued state events as a conflict
+  // falsely blocks legitimate movement. Final-state declarations and the
+  // missing/unexpected event checks already ensure consistency with the plan.
+  // Therefore we no longer report state-event sequences as conflicts here.
+  return []
 }
 
 function entityIdFromEvent(event: StoryEvent): string {
@@ -315,52 +278,5 @@ function entityIdFromEvent(event: StoryEvent): string {
       return event.itemId
     default:
       return ''
-  }
-}
-
-function attributeFromEvent(event: StoryEvent): string {
-  switch (event.type) {
-    case 'character-status':
-      return event.attribute
-    case 'item-state':
-      return event.attribute
-    default:
-      return 'location'
-  }
-}
-
-function eventsEqual(a: StoryEvent, b: StoryEvent): boolean {
-  if (a.type !== b.type) return false
-
-  switch (a.type) {
-    case 'character-location':
-      return (
-        b.type === 'character-location' &&
-        a.characterId === b.characterId &&
-        a.locationId === b.locationId
-      )
-    case 'character-status':
-      return (
-        b.type === 'character-status' &&
-        a.characterId === b.characterId &&
-        a.attribute === b.attribute &&
-        JSON.stringify(a.value) === JSON.stringify(b.value)
-      )
-    case 'item-location':
-      return (
-        b.type === 'item-location' &&
-        a.itemId === b.itemId &&
-        a.holderId === b.holderId &&
-        a.locationId === b.locationId
-      )
-    case 'item-state':
-      return (
-        b.type === 'item-state' &&
-        a.itemId === b.itemId &&
-        a.attribute === b.attribute &&
-        JSON.stringify(a.value) === JSON.stringify(b.value)
-      )
-    default:
-      return false
   }
 }

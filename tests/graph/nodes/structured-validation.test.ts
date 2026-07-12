@@ -50,7 +50,7 @@ describe('validateChapterStructured', () => {
     expect(result.structuredValidationResult?.missingEvents[0]?.id).toBe('e1')
   })
 
-  it('detects state conflicts in the same chapter', async () => {
+  it('does not flag legitimate intra-chapter movement as state conflict', async () => {
     const plan: ChapterPlan = {
       chapterIndex: 2,
       sections: [],
@@ -88,8 +88,7 @@ describe('validateChapterStructured', () => {
       draftChapterEvents: events,
     } as ReducedGraphState
     const result = await validateChapterStructured(createMockContext(), state)
-    expect(result.structuredValidationResult?.stateConflicts).toHaveLength(1)
-    expect(result.structuredValidationResult?.stateConflicts[0]?.entityId).toBe('c-1')
+    expect(result.structuredValidationResult?.stateConflicts).toHaveLength(0)
   })
 
   it('detects claimed but unproven beats', async () => {

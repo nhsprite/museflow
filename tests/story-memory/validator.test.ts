@@ -173,7 +173,7 @@ describe('validateChapterEvents', () => {
     expect(result.claimedButUnprovenBeats).toContain('a1-b1')
   })
 
-  it('detects state conflicts in same chapter', () => {
+  it('does not flag legitimate intra-chapter movement as state conflict', () => {
     const memory = createEmptyStoryMemory()
     const plan = createEmptyChapterPlan(1)
     const actualEvents = [
@@ -195,7 +195,7 @@ describe('validateChapterEvents', () => {
       },
     ]
     const result = validateChapterEvents(memory, 1, plan, actualEvents)
-    expect(result.stateConflicts).toHaveLength(1)
+    expect(result.stateConflicts).toHaveLength(0)
   })
 
   it('does not report duplicate same-value state events as conflicts', () => {

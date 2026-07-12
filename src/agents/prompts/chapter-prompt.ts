@@ -150,9 +150,16 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 - task-resolve: <taskId> @pN
 - task-create: <taskId> / <description> @pN
 
-<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符。若 chapterPlan.expectedEvents 已提供事件，STORY_EVENTS 必须逐字段复用 chapterPlan.expectedEvents：item-location 的 holderId 与 locationId 必须保持不变，item-state 的 attribute 与 value 必须保持不变；禁止把结构化 ID 改写成自然语言位置或状态描述。没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
+<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符；ID 必须使用机器可读的结构化标识符（如 c-character-id、item-item-id），禁止使用中文名称、描述性短语或自造格式作为 ID 字段的值。</important>
 
-<important>【终态覆盖强制要求】如果本章正文中某实体的位置或状态发生了多次变化（例如先移走又放回、先受伤又痊愈），STORY_EVENTS 中该实体该属性的最后一条事件必须反映章末终态，而不是章中的中间状态。章末的归位、恢复、状态逆转等动作与章中的变化动作同等重要，必须输出对应事件。</important>
+<important>【位置与状态事件区分 - 高频错误】
+  - character-location：角色从一个地点移动到另一个地点（如离开、抵达、回家、出门）。只要角色位置发生改变，就必须使用此类型，不得使用 character-status。
+  - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。"锁回木箱""放入抽屉""贴身携带"等动作都属于位置变化，必须使用 item-location，并将木箱/抽屉/角色等对应 ID 填入 locationId 或 holderId。
+  - item-state：仅用于物品自身属性变化，如破损、开封、浸湿、折叠、密封状态变化、燃烧等，不用于位置变化。
+  - 若 chapterPlan.expectedEvents 已提供事件，STORY_EVENTS 必须逐字段复用：item-location 的 holderId 与 locationId 必须保持不变，item-state 的 attribute 与 value 必须保持不变；禁止把 location 变化改写成 item-state，也禁止把结构化 ID 改写成自然语言位置或状态描述。
+  - 没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
+
+<important>【终态覆盖强制要求】如果本章正文中某实体的位置或状态发生了多次变化（例如先移走又放回、先受伤又痊愈），STORY_EVENTS 中该实体该属性的最后一条事件必须反映章末终态，而不是章中的中间状态。章末的归位、恢复、状态逆转等动作与章中的变化动作同等重要，必须输出对应事件。同一实体在本章内发生多次位置/状态变化属于正常叙事，不会被判为冲突，但所有中间变化与最终归位都必须有对应事件。</important>
 </content>
 </story_events_section>
 
@@ -167,6 +174,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 ]
 
 规则：
+- entityId 必须是机器可读的结构化 ID（如 c-character-id、item-item-id），禁止使用中文名称、描述性短语或自造格式；value 同样必须是结构化 ID，禁止自然语言描述。
 - 只声明本章正文明确引起过位置/状态变化的实体；本章没有任何位置/状态变化时输出空数组 []，但不得省略该区块。
 - attribute 只能是 "location" 或 "status"。location 的 value 必须是地点或持有者的结构化 ID；status 的 value 必须与 STORY_EVENTS 中对应 character-status / item-state 事件的 value 完全一致（短枚举值或既有状态短语均可，禁止临时编造新表述）。
 - location 的 value 禁止自然语言描述，只能是 ID。

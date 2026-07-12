@@ -222,7 +222,7 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain(
       'item-location: <itemId> / holder=<holderId|none> / location=<locationId|none> @pN'
     )
-    expect(userMessage).toContain('必须逐字段复用 chapterPlan.expectedEvents')
+    expect(userMessage).toContain('STORY_EVENTS 必须逐字段复用')
     expect(userMessage).toContain('item-state 的 attribute 与 value')
   })
 
