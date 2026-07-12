@@ -53,6 +53,30 @@ export function extractChapterEndingSnippet(
   return snippet.length > maxChars ? snippet.slice(-maxChars) : snippet
 }
 
+export function extractChapterEndingParagraphs(content: string, count = 2): string[] {
+  const paragraphs = contentParagraphs(content)
+  return paragraphs.slice(-count)
+}
+
+export function hasDuplicateEndingParagraphs(
+  previousContent: string,
+  currentContent: string,
+  count = 2
+): { duplicate: boolean; paragraph?: string } {
+  const previousParagraphs = extractChapterEndingParagraphs(previousContent, count)
+  const currentParagraphs = extractChapterEndingParagraphs(currentContent, count)
+
+  for (const current of currentParagraphs) {
+    for (const previous of previousParagraphs) {
+      if (current === previous && current.length > 0) {
+        return { duplicate: true, paragraph: current }
+      }
+    }
+  }
+
+  return { duplicate: false }
+}
+
 export async function buildPreviousChapterEndingContext(
   state: ReducedGraphState,
   chapterIndex: number

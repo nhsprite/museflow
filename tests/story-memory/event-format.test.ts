@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'vitest'
+import {
+  renderStoryEventLine,
+  renderNullableId,
+  renderEventValue,
+} from '../../src/story-memory/event-format.js'
+import type { StoryEvent } from '../../src/types/story-memory.js'
+
+describe('event-format', () => {
+  describe('renderNullableId', () => {
+    it('renders "none" for null or undefined', () => {
+      expect(renderNullableId(null)).toBe('none')
+      expect(renderNullableId(undefined)).toBe('none')
+    })
+
+    it('renders the id as-is for strings', () => {
+      expect(renderNullableId('loc-1')).toBe('loc-1')
+    })
+  })
+
+  describe('renderEventValue', () => {
+    it('renders "none" for null or undefined', () => {
+      expect(renderEventValue(null)).toBe('none')
+      expect(renderEventValue(undefined)).toBe('none')
+    })
+
+    it('renders strings as-is', () => {
+      expect(renderEventValue('unsealed')).toBe('unsealed')
+    })
+
+    it('renders non-string primitives as JSON', () => {
+      expect(renderEventValue(true)).toBe('true')
+      expect(renderEventValue(42)).toBe('42')
+    })
+  })
+
+  describe('renderStoryEventLine', () => {
+    it('renders character-location', () => {
+      const event: StoryEvent = {
+        id: 'evt-1',
+        type: 'character-location',
+        characterId: 'c-1',
+        locationId: 'loc-1',
+        chapterIndex: 0,
+        source: 'chapter',
+      }
+      expect(renderStoryEventLine(event)).toBe('character-location: c-1 -> loc-1')
+    })
+
+    it('renders item-location with holder and location', () => {
+      const event: StoryEvent = {
+        id: 'evt-1',
+        type: 'item-location',
+        itemId: 'item-1',
+        holderId: 'c-1',
+        locationId: 'loc-1',
+        chapterIndex: 0,
+        source: 'chapter',
+      }
+      expect(renderStoryEventLine(event)).toBe(
+        'item-location: item-1 / holder=c-1 / location=loc-1'
+      )
+    })
+
+    it('renders item-location with null holder and location', () => {
+      const event: StoryEvent = {
+        id: 'evt-1',
+        type: 'item-location',
+        itemId: 'item-1',
+        holderId: null,
+        locationId: null,
+        chapterIndex: 0,
+        source: 'chapter',
+      }
+      expect(renderStoryEventLine(event)).toBe(
+        'item-location: item-1 / holder=none / location=none'
+      )
+    })
+
+    it('renders foreshadow-introduce with all fields', () => {
+      const event: StoryEvent = {
+        id: 'evt-1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-1',
+        expectedFulfillChapter: 5,
+        kind: 'plot',
+        required: true,
+        beatId: 'beat-1',
+        text: 'a hint',
+        chapterIndex: 0,
+        source: 'chapter',
+      }
+      expect(renderStoryEventLine(event)).toBe(
+        'foreshadow-introduce: fs-1 / expected=5 / kind=plot / required=true / beat=beat-1 / text=a hint'
+      )
+    })
+
+    it('renders foreshadow-introduce with null expected and beat', () => {
+      const event: StoryEvent = {
+        id: 'evt-1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-1',
+        expectedFulfillChapter: null,
+        beatId: null,
+        chapterIndex: 0,
+        source: 'chapter',
+      }
+      expect(renderStoryEventLine(event)).toBe(
+        'foreshadow-introduce: fs-1 / expected=none / beat=none'
+      )
+    })
+  })
+})

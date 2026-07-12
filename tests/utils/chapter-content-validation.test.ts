@@ -77,6 +77,30 @@ describe('validateFixedChapterContent', () => {
     expect(result.error).toContain('字数')
   })
 
+  it('allows content within max word count tolerance', async () => {
+    const sentence = '这是用于测试字数容差的一句话。'
+    const content = `# 第四章 王府递帖\n\n${sentence.repeat(55)}`
+    const result = await validateFixedChapterContent(
+      content,
+      { chapterIndex: 3, minWordCount: 10, maxWordCount: 1000, maxWordCountTolerance: 100 },
+      createProvider()
+    )
+    expect(result.valid).toBe(true)
+  })
+
+  it('rejects content beyond max word count tolerance', async () => {
+    const sentence = '这是用于测试字数容差的一句话。'
+    const content = `# 第四章 王府递帖\n\n${sentence.repeat(80)}`
+    const result = await validateFixedChapterContent(
+      content,
+      { chapterIndex: 3, minWordCount: 10, maxWordCount: 1000, maxWordCountTolerance: 100 },
+      createProvider()
+    )
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain('超过上限')
+    expect(result.error).toContain('容差')
+  })
+
   it('rejects revision-plan shaped content', async () => {
     const plan =
       '# 第四章 王府递帖\n\n问题分析：这段情感层次单一。修复建议：应该增加苏半城的哭泣描写。可以加入陆福的安慰。'

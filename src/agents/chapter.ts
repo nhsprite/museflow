@@ -25,6 +25,7 @@ import {
 } from '../utils/chapter-content-validation.js'
 import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
 import { classifyForeshadows } from '../story-memory/foreshadow-policy.js'
+import { renderStoryEventLine } from '../story-memory/event-format.js'
 
 export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   // Note: currentChapterIndex is stored as instance state because BaseAgent.parse
@@ -388,18 +389,22 @@ ${lines.join('\n')}
   private buildExpectedEventsSection(expectedEvents: StoryEvent[] | undefined): string {
     if (!expectedEvents || expectedEvents.length === 0) return ''
 
+    const eventLines = expectedEvents
+      .map((event) => `- ${renderStoryEventLine(event)} @pN`)
+      .join('\n')
+
     return `<expected_events>
 <mandatory>【本章必须输出的结构化事件 - 强制复用】</mandatory>
 以下事件由章节规划（chapterPlan.expectedEvents）明确指定，必须在 === STORY_EVENTS === 区块中逐条输出。
 
 要求：
 - 不得遗漏任何一条；
-- 事件类型、ID、所有字段值必须与下列 JSON 完全一致；
-- 每条事件末尾必须附加正文段落证据 @pN，其中 N 是 CHAPTER_CONTENT 中非标题正文段落的 1-based 序号；
+- 事件类型、ID、所有字段值必须与下列清单完全一致；
+- 每条事件末尾必须附加正文段落证据 @pN，其中 N 是 CHAPTER_CONTENT 中非标题正文段落的 1-based 序号；请直接将下列行复制到 STORY_EVENTS 区块，再把 @pN 替换为对应段落编号；
 - 禁止把 location 事件改写成 state 事件，禁止把 state 事件改写成 location 事件；
 - 如果某事件在正文中没有发生，必须先修改正文让它发生，而不是省略该事件。
 
-${JSON.stringify(expectedEvents, null, 2)}
+${eventLines}
 </expected_events>`
   }
 

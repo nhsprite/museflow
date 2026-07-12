@@ -53,6 +53,8 @@ describe('ChapterAgent chapter numbering', () => {
     expect(messages[1]?.content).toContain('=== CHAPTER_CONTENT ===')
     expect(messages[1]?.content).toContain('破庙惊梦')
     expect(messages[1]?.content).not.toContain('第 0 章')
+    expect(messages[1]?.content).toContain('本章正文总字数应控制在')
+    expect(messages[1]?.content).toContain('允许少量超出（约 10% 以内')
   })
 
   it('keeps optional overdue foreshadows out of the mandatory overdue section', () => {
@@ -278,11 +280,78 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain('【本章必须输出的结构化事件 - 强制复用】')
     expect(userMessage).toContain('evt-character-location')
     expect(userMessage).toContain('evt-item-location')
-    expect(userMessage).toContain('事件类型、ID、所有字段值必须与下列 JSON 完全一致')
+    expect(userMessage).toContain('事件类型、ID、所有字段值必须与下列清单完全一致')
     expect(userMessage).toContain('禁止省略、禁止改写为其他类型、禁止更改任何字段值')
     expect(userMessage).toContain(
       '结构化事件 | chapterPlan.expectedEvents | 本章规划要求输出 2 条结构化事件'
     )
+  })
+
+  it('renders expectedEvents in STORY_EVENTS line format for copy-paste reuse', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 1,
+      world: '',
+      characters: '【主角】',
+      outline: '第1章：移动物品',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      chapterPlan: {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-character-location',
+            type: 'character-location',
+            characterId: 'c-1',
+            locationId: 'loc-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+          {
+            id: 'evt-item-location',
+            type: 'item-location',
+            itemId: 'item-1',
+            holderId: null,
+            locationId: 'loc-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+          {
+            id: 'evt-item-state',
+            type: 'item-state',
+            itemId: 'item-1',
+            attribute: 'sealed',
+            value: 'unsealed',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+        claimedMandatoryBeatIds: [],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    const expectedEventsSection =
+      userMessage.match(/<expected_events>([\s\S]*?)<\/expected_events>/)?.[1] ?? ''
+    expect(expectedEventsSection).toContain('- character-location: c-1 -> loc-1 @pN')
+    expect(expectedEventsSection).toContain(
+      '- item-location: item-1 / holder=none / location=loc-1 @pN'
+    )
+    expect(expectedEventsSection).toContain('- item-state: item-1 / sealed -> unsealed @pN')
+    expect(expectedEventsSection).not.toContain('"type": "character-location"')
   })
 
   it('renders storyState sections exactly once without a duplicate fact verification section', () => {

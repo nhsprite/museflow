@@ -26,6 +26,7 @@ import { inferRetryStrategy } from '../../utils/retry-strategy.js'
 import {
   extractChapterEndingSnippet,
   extractChapterOpeningSnippet,
+  hasDuplicateEndingParagraphs,
 } from '../utils/chapter-window.js'
 import { diffMemorySnapshots } from '../../story-memory/diff.js'
 import { applyEvents } from '../../story-memory/projector.js'
@@ -281,6 +282,24 @@ export async function validate_chapter(
               description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 与上一章 ${prevWordCount} 差异超过50%，请检查章节内容是否完整`,
             },
             'word_count',
+            'draft'
+          )
+        )
+      }
+
+      const duplicateCheck = hasDuplicateEndingParagraphs(prevContent, content, 1)
+      if (duplicateCheck.duplicate) {
+        const preview = duplicateCheck.paragraph?.slice(0, 80) ?? ''
+        newIssues.push(
+          tagIssueSource(
+            {
+              id: generateId(),
+              type: 'consistency' as const,
+              severity: 'error',
+              description: `第 ${chapterIndex + 1} 章结尾与上一章结尾存在重复段落，疑似直接复制：${preview}${preview.length >= 80 ? '……' : ''}`,
+              suggestion: '改写本章结尾，避免与上一章结尾形成完全相同的段落。',
+            },
+            'consistency',
             'draft'
           )
         )

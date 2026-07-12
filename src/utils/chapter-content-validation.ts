@@ -8,6 +8,8 @@ interface ValidationOptions {
   minWordCount?: number
   maxWordCount?: number
   enforceWordCount?: boolean
+  /** 允许超出 maxWordCount 的字数容差（字符数），默认 0 */
+  maxWordCountTolerance?: number
 }
 
 interface ValidationResult {
@@ -172,6 +174,7 @@ export async function validateFixedChapterContent(
     minWordCount = DEFAULT_CHAPTER_WORD_COUNT_MIN,
     maxWordCount = DEFAULT_CHAPTER_WORD_COUNT_MAX,
     enforceWordCount = true,
+    maxWordCountTolerance = 0,
   } = options
 
   if (!rawContent || rawContent.trim().length === 0) {
@@ -201,10 +204,11 @@ export async function validateFixedChapterContent(
       }
     }
 
-    if (maxWordCount !== undefined && wordCount > maxWordCount) {
+    const effectiveMax = maxWordCount + maxWordCountTolerance
+    if (maxWordCount !== undefined && wordCount > effectiveMax) {
       return {
         valid: false,
-        error: `修复后的内容字数 ${wordCount} 超过上限 ${maxWordCount}`,
+        error: `修复后的内容字数 ${wordCount} 超过上限 ${effectiveMax}（含 ${maxWordCountTolerance} 字容差）`,
       }
     }
   }

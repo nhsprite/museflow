@@ -18,6 +18,7 @@ import {
 } from '../../types/genre.js'
 import type { RuntimeContext } from '../../core/context.js'
 import type { StoryEvent, ChapterFinalStateDeclaration } from '../../types/story-memory.js'
+import { completeMissingExpectedEvents } from '../../story-memory/event-completion.js'
 
 export async function draft_chapter(
   context: RuntimeContext,
@@ -94,6 +95,19 @@ export async function draft_chapter(
     title: outlineItem?.title ?? null,
   })
 
+  const completionResult = completeMissingExpectedEvents(
+    content,
+    state.chapterPlan?.expectedEvents ?? [],
+    storyEvents,
+    chapterIndex
+  )
+  if (completionResult.completedCount > 0) {
+    logger.info(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章自动补全 ${completionResult.completedCount} 个缺失的结构化事件`
+    )
+  }
+  content = completionResult.content
+
   const genre = getGenreSkill(state.genre)
   const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
   const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
@@ -102,7 +116,8 @@ export async function draft_chapter(
     chapterIndex,
     minWordCount: min,
     maxWordCount: max,
-    enforceWordCount: false,
+    enforceWordCount: true,
+    maxWordCountTolerance: Math.max(Math.round(max * 0.1), 300),
   })
 
   if (!validation.valid) {
@@ -126,7 +141,7 @@ export async function draft_chapter(
     outline: state.outline,
     chapters: newChapters,
     chapterPlan,
-    draftChapterEvents: storyEvents,
+    draftChapterEvents: completionResult.events,
     chapterFinalStateDeclarations: finalStateDeclarations,
     canonicalFactsDelta: baseContext.reconciledState.canonicalFacts ?? [],
     supersededFactsDelta: baseContext.reconciledState.supersededFacts ?? [],

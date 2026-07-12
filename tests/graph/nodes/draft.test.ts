@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { draft_chapter } from '../../../src/graph/nodes/draft.js'
 import { expandOutlineForChapter } from '../../../src/core/outline-expander.js'
+import { getGenreSkill } from '../../../src/genres/registry.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import { createMockContext } from '../../utils/mock-context.ts'
 
@@ -33,6 +34,13 @@ vi.mock('../../../src/core/outline-expander.js', () => ({
 vi.mock('../../../src/graph/agent-factory.js', () => ({
   getChapterAgent: vi.fn(() => ({
     run: chapterAgentRunMock,
+  })),
+}))
+
+vi.mock('../../../src/genres/registry.js', () => ({
+  getGenreSkill: vi.fn(() => ({
+    chapterWordCountMin: 10,
+    chapterWordCountMax: 100000,
   })),
 }))
 
@@ -80,7 +88,7 @@ describe('draft_chapter output validation', () => {
     expect(written.startsWith('# 第1章 开篇')).toBe(true)
   })
 
-  it('writes overlong generated content so word-count validation can route it', async () => {
+  it('rejects overlong generated content at draft stage', async () => {
     const state = {
       story: { id: 'test', title: 'Test', outputDir: tmpDir },
       idea: 'test',
@@ -107,14 +115,12 @@ describe('draft_chapter output validation', () => {
       success: true,
       content: `# 第1章 开篇\n\n${'超长正文'.repeat(3000)}`,
     })
+    vi.mocked(getGenreSkill).mockReturnValueOnce({
+      chapterWordCountMin: 10,
+      chapterWordCountMax: 5000,
+    } as ReturnType<typeof getGenreSkill>)
 
-    await expect(draft_chapter(createMockContext(), state)).resolves.toBeDefined()
-
-    const written = await fs.readFile(
-      path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
-      'utf8'
-    )
-    expect(written).toContain('超长正文')
+    await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/超过上限/)
   })
 
   it(
@@ -218,6 +224,80 @@ describe('draft_chapter output validation', () => {
       'utf8'
     )
     expect(written.startsWith('# 第16章 第十七页的空白')).toBe(true)
+  })
+
+  it('auto-completes missing expected events in the STORY_EVENTS block', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+    } as unknown as ReducedGraphState
+    vi.mocked(expandOutlineForChapter).mockResolvedValueOnce({
+      chapterPlan: {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-expected',
+            type: 'character-location',
+            characterId: 'c-hero',
+            locationId: 'loc-home',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
+      boundaryHints: [],
+      pendingIssues: [],
+    })
+    chapterAgentRunMock.mockResolvedValueOnce({
+      success: true,
+      content: `=== PRE_WRITE_CHECK ===
+check
+
+=== STORY_EVENTS ===
+
+=== CHAPTER_CONTENT ===
+# 第1章 开篇
+
+主角回到家中。
+
+=== STORY_FINAL_STATE ===
+[]`,
+    })
+
+    const result = await draft_chapter(createMockContext(), state)
+
+    expect(result.draftChapterEvents).toHaveLength(1)
+    expect(result.draftChapterEvents?.[0]).toMatchObject({
+      type: 'character-location',
+      characterId: 'c-hero',
+      locationId: 'loc-home',
+    })
+
+    const written = await fs.readFile(
+      path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
+      'utf8'
+    )
+    expect(written).toContain('character-location: c-hero -> loc-home')
   })
 
   it('returns canonical/superseded facts deltas from the reconciled state', async () => {

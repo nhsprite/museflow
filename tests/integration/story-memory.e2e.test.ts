@@ -36,7 +36,7 @@ function createMockContext(): RuntimeContext {
 function makeChapterContent(chapterIndex: number): string {
   const sentence = '主角走在青石板路上，心中思索着接下来的计划，脚步不由得加快了几分。'
   const body = Array.from({ length: 120 }, () => sentence).join('')
-  return `# 第${chapterIndex + 1}章 测试章节\n\n${body}`
+  return `# 第${chapterIndex + 1}章 测试章节\n\n${body}\n\n第${chapterIndex + 1}章结尾。`
 }
 
 const chapter1Events: StoryEvent[] = [
