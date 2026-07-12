@@ -1097,6 +1097,81 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.claimedBeatIds).toEqual(['beat1-id', 'beat2-id'])
   })
 
+  it('filters out already-proven mandatory beats from planner claims', async () => {
+    const provenBeatId = 'A2-M1'
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 3,
+      story: { ...baseState.story, totalChapters: 3 },
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '上一幕',
+            theme: '收束',
+            function: '处理上一幕尾声',
+            mandatoryBeats: ['opening'],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 3,
+            title: '新幕',
+            theme: '裂变',
+            function: '外部势力干扰核心安排，主角危机浮现',
+            mandatoryBeats: ['already proven beat'],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        { number: 1, title: '旧幕收束', description: '旧幕收束。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '', description: '' },
+      ],
+      actProgress: {
+        1: { consumed: ['opening'], pending: [] },
+        2: { consumed: ['already proven beat'], pending: [] },
+      },
+      chapters: [null, null, null],
+      storyMemory: {
+        ...createEmptyStoryMemory(),
+        beats: {
+          [provenBeatId]: {
+            id: provenBeatId,
+            description: 'already proven beat',
+            actIndex: 2,
+            deadlineAct: 2,
+            required: true,
+            claimedIn: 1,
+            provenByEventIds: ['evt-proven'],
+          },
+        },
+      },
+    }
+
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '重复声称',
+        description: '本章试图重新声称一个已在之前章节被证明的节拍。',
+        introducedCharacters: [],
+        claimedBeats: ['already proven beat'],
+        claimedMandatoryBeatIds: [provenBeatId],
+      },
+    })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[1]?.claimedBeats).toEqual([])
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
+  })
+
   it('throws JIT outline conflicts without parsing conflictReason text for retries', async () => {
     const jitState: ReducedGraphState = {
       ...baseState,

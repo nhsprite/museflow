@@ -318,6 +318,12 @@ function getCurrentActMandatoryBeats(state: ReducedGraphState, chapterIndex: num
   return new Set((currentAct?.mandatoryBeats ?? []).map((beat) => beat.trim()).filter(Boolean))
 }
 
+function isBeatAlreadyProven(state: ReducedGraphState, beatId: string): boolean {
+  const beatMemory = state.storyMemory?.beats[beatId]
+  if (!beatMemory) return false
+  return beatMemory.provenByEventIds.length > 0
+}
+
 function filterClaimedMandatoryBeatPairsToCurrentAct(
   claimedBeats: string[] | undefined,
   claimedMandatoryBeatIds: string[] | undefined,
@@ -339,6 +345,12 @@ function filterClaimedMandatoryBeatPairsToCurrentAct(
     const trimmed = id.trim()
     const lookup = findMandatoryBeatById(state.storyArc, trimmed)
     if (!lookup || lookup.act.index !== currentAct?.index) continue
+    if (isBeatAlreadyProven(state, trimmed)) {
+      logger.info(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章声称的节拍 ${trimmed} 已在之前章节被证明，跳过`
+      )
+      continue
+    }
     addPair(lookup.beat, trimmed)
   }
 
@@ -352,7 +364,12 @@ function filterClaimedMandatoryBeatPairsToCurrentAct(
     const id = currentAct
       ? getMandatoryBeatIdByText(state.storyArc, currentAct.index, trimmed)
       : undefined
-    if (id) addPair(trimmed, id)
+    if (!id) continue
+    if (isBeatAlreadyProven(state, id)) {
+      logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章声称的节拍 ${id} 已在之前章节被证明，跳过`)
+      continue
+    }
+    addPair(trimmed, id)
   }
   return pairs
 }
