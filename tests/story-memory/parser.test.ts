@@ -236,6 +236,16 @@ describe('parseStoryFinalStateBlock', () => {
     ])
   })
 
+  it('drops status values that concatenate attribute and value with "="', () => {
+    const text = `=== STORY_FINAL_STATE ===
+[
+  {"entityId": "i-box", "attribute": "status", "value": "papernote-examined=true"},
+  {"entityId": "i-box", "attribute": "status", "value": "true"}
+]`
+    const declarations = parseStoryFinalStateBlock(text)
+    expect(declarations).toEqual([{ entityId: 'i-box', attribute: 'status', value: 'true' }])
+  })
+
   it('drops declarations that copy placeholder example IDs', () => {
     const text = `=== STORY_FINAL_STATE ===
 [

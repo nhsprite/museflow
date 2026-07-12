@@ -352,6 +352,26 @@ describe('validateChapterEvents', () => {
       expect(result.finalStateMismatches).toEqual([])
     })
 
+    it('validates boolean item-state declarations using the stringified event value', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        {
+          id: 'e1',
+          type: 'item-state' as const,
+          itemId: 'i-box',
+          attribute: 'papernote-examined',
+          value: 'true',
+          chapterIndex: 1,
+          source: 'chapter' as const,
+        },
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [{ entityId: 'i-box', attribute: 'status', value: 'true' }],
+      })
+      expect(result.finalStateMismatches).toEqual([])
+    })
+
     it('returns no mismatches when declarations are absent', () => {
       const memory = createEmptyStoryMemory()
       const plan = createEmptyChapterPlan(1)

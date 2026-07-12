@@ -178,14 +178,16 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 === STORY_FINAL_STATE ===
 [
   {"entityId": "<characterId 或 itemId>", "attribute": "location", "value": "<locationId 或 holderId>"},
-  {"entityId": "<characterId 或 itemId>", "attribute": "status", "value": "<状态枚举值>"}
+  {"entityId": "<characterId 或 itemId>", "attribute": "status", "value": "<事件 value 字段的精确副本>"}
 ]
 
 规则：
-- entityId 必须是机器可读的结构化 ID（如 c-character-id、item-item-id），禁止使用中文名称、描述性短语或自造格式；value 同样必须是结构化 ID，禁止自然语言描述。
+- entityId 必须是机器可读的结构化 ID（如 c-character-id、item-item-id），禁止使用中文名称、描述性短语或自造格式。
 - 只声明本章正文明确引起过位置/状态变化的实体；本章没有任何位置/状态变化时输出空数组 []，但不得省略该区块。
-- attribute 只能是 "location" 或 "status"。location 的 value 必须是地点或持有者的结构化 ID；status 的 value 必须与 STORY_EVENTS 中对应 character-status / item-state 事件的 value 完全一致（短枚举值或既有状态短语均可，禁止临时编造新表述）。
-- location 的 value 禁止自然语言描述，只能是 ID。
+- attribute 只能是 "location" 或 "status"。
+  - location 的 value 必须是地点或持有者的结构化 ID，禁止自然语言描述。
+  - status 的 value 必须是 STORY_EVENTS 中对应 character-status / item-state 事件的 value 字段的精确副本（短枚举值、既有状态短语或 JSON 字面量均可，禁止临时编造新表述）。
+- 【 critical 】status 的 value 只写事件值本身，不要把属性名与值拼接。如果 STORY_EVENTS 中的事件是 \`item-state: <item-id> / <attribute> -> <value>\`，则 STORY_FINAL_STATE 中只能写 \`{"entityId": "<item-id>", "attribute": "status", "value": "<value>"}\`，严禁写成 \`"<attribute>=<value>"\`。
 - 每条声明必须与 STORY_EVENTS 一致：该实体该属性在 STORY_EVENTS 中的最后一条事件的值必须与声明的 value 完全相同。系统会逐条校验：有对应事件但终态值不一致将被判为错误并要求重写本章；声明的实体本章无对应事件时仅记为提示。
 </content>
 </story_final_state_section>

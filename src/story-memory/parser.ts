@@ -130,6 +130,13 @@ function parseFinalStateDeclaration(entry: unknown): ChapterFinalStateDeclaratio
     )
     return null
   }
+  // status values must be the event value itself, not a "key=value" concatenation.
+  if (attribute === 'status' && value.includes('=')) {
+    logger.warn(
+      `[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目（status 值禁止写成 attribute=value，应只写事件值本身）: ${JSON.stringify(entry)}`
+    )
+    return null
+  }
   return { entityId, attribute: attribute as FinalStateAttribute, value: value.trim() }
 }
 
