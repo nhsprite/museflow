@@ -15,6 +15,7 @@ expectedEvents 中每个对象必须严格匹配下列一种完整 JSON 结构�
 - {"id": "evt-id", "type": "task-create", "taskId": "task-id", "description": "description", ${base}}
 
 严格规则：
+- foreshadow-introduce 的 kind 必须是以下枚举值之一：character_arc、environmental_detail、dialogue_hint、object_foreshadow、inner_conflict、plot、other。禁止使用任何其他值。
 - item-location 的 holderId 和 locationId 两个字段都必须出现；每个字段的值只能是权威 ID 字符串或 null，禁止省略，禁止写自然语言位置。
 - item-state 必须同时包含 attribute 和 value，禁止改写为 state 等其他字段。
 - nullable 字段没有适用值时必须显式输出 null，不得省略。

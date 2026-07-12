@@ -140,7 +140,7 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
        1) 不得为全程未移动、状态未变的角色或物品输出位置/状态事件（例如全程在原地熟睡的角色不应有 character-location 事件）；
        2) 不得把本章主场景地点套用到所有出场角色——每个位置事件必须与 section 中描述的具体动作一一对应；
        3) 位置/状态事件的值必须与已有故事记忆一致或体现本章真实变化，禁止编造未在 sections 中出现的移动或状态改变。
-     - foreshadow-introduce 事件必须包含 text、kind、required、expectedFulfillChapter；若与某个节拍绑定，填写 beatId，否则 beatId 为 null。
+     - foreshadow-introduce 事件必须包含 text、kind、required、expectedFulfillChapter；若与某个节拍绑定，填写 beatId，否则 beatId 为 null。其中 kind 必须是以下枚举值之一：character_arc、environmental_detail、dialogue_hint、object_foreshadow、inner_conflict、plot、other。
      - 每个事件的 source 固定为 "chapter"。
      - expectedEvents 中的所有事件都由本章产生，其内部零基章节索引固定为 {chapterIndex}；不得填写展示章节号 {displayChapterNumber} 或其他章节索引。
      - 如果本章没有某类事件，对应字段的数组为空。
