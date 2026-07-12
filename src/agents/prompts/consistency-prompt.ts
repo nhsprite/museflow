@@ -249,7 +249,12 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
   </rule>
 
 <severity_levels>
-  <error>以下严重问题：跨章节的角色知识/对话矛盾、时间线严重矛盾、关键信息前后矛盾、因果关系完全断裂、必须回收的伏笔未回收、伏笔被提前剧透、伏笔回收方向矛盾、结构化状态矛盾、世界规则严重冲突、时代背景严重错误。报 error 前请确认：该问题确实会让读者产生困惑，而不是作者刻意留下的叙事张力或 gradual revelation。</error>
+  <error>以下严重问题：跨章节的角色知识/对话矛盾、时间线严重矛盾、关键信息前后矛盾、因果关系完全断裂、必须回收的伏笔未回收、伏笔被提前剧透、伏笔回收方向矛盾、结构化状态矛盾、世界规则严重冲突、时代背景严重错误。报 error 前必须同时满足：
+  1. 明确指出违反的【权威来源】（canonical fact id、outline 条目、或前文章节号）。
+  2. 给出涉及实体的稳定 id 或名称作为 subject。
+  3. 说明如果不修改，读者会在什么具体情节上产生困惑。
+  4. 确认这不是作者刻意留下的叙事张力或 gradual revelation。
+  缺少以上任何一项，请降级为 warning 或 info。</error>
   <warning>一般性不一致或中等质量问题：细节描述有轻微出入、时间标记不够明确、表述歧义、前面章节缺少铺垫但本章已补充说明、伏笔回收方式可以更好、角色对新信息的反应/联想存在多种解读可能、文笔略显平淡、节奏轻微失衡、个别 AI 腔调。</warning>
   <info>建议性意见：可以加强因果关联、可以补充过渡段落、可以改进伏笔回收的冲击力、可以丰富描写层次。</info>
 </severity_levels>
@@ -266,6 +271,9 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
         "aspect": "time|space|causality|character_knowledge|dialogue|information|foreshadowing|pace|world_integrity|outline|quality",
         "location": "具体位置",
         "locationRef": {"paragraphNumber": 1, "sentenceNumber": 1},
+        "subject": "涉及实体的稳定 id 或名称（角色/物品/地点）。severity=error 时必须填写，便于后续 reconcile 和去重",
+        "source_reference": "该 issue 违反的权威来源：canonical fact id、outline 条目、或前文章节号。severity=error 时必须填写",
+        "reader_confusion": "如果不修改，读者会在什么具体情节上产生困惑。severity=error 时必须填写",
         "suggestion": "具体的修复建议（指明如何修改以消除矛盾）"
       }
     ]

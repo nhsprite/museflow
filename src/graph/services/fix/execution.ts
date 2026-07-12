@@ -15,11 +15,14 @@ import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
 import { formatStoryState, prepareStoryStateForChapter } from '../../utils/reconciler/index.js'
 import { buildEffectiveCharactersList, charactersToString } from '../../utils/characters.js'
 import { splitIntoParagraphs } from '../../utils/text-patching.js'
+import { hasDuplicateEndingParagraphs } from '../../utils/chapter-window.js'
+import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import { generateId } from '../../../utils/id.js'
 import { logger } from '../../../utils/logger.js'
 
 /**
  * 句子/段落级修复的合并产出校验，与 runLegacyFix 的 validateFixedChapterContent 口径一致。
+ * 额外检查修复后内容是否意外复制了上一章结尾，避免局部修复引入跨章断裂。
  */
 async function validateMergedFixContent(
   content: string,
@@ -30,11 +33,30 @@ async function validateMergedFixContent(
   const genre = getGenreSkill(state.genre)
   const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
   const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
-  return validateFixedChapterContent(
+  const baseValidation = await validateFixedChapterContent(
     content,
     { chapterIndex, minWordCount: min, maxWordCount: max, enforceWordCount: false },
     provider
   )
+  if (!baseValidation.valid) {
+    return baseValidation
+  }
+
+  if (chapterIndex > 0) {
+    const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)
+    if (previousContent && previousContent.trim().length > 0) {
+      const duplicateCheck = hasDuplicateEndingParagraphs(previousContent, content, 1)
+      if (duplicateCheck.duplicate) {
+        const preview = duplicateCheck.paragraph?.slice(0, 80) ?? ''
+        return {
+          valid: false,
+          error: `修复后的第 ${chapterIndex + 1} 章结尾与上一章结尾存在重复段落，疑似修复引入的跨章断裂：${preview}${preview.length >= 80 ? '……' : ''}`,
+        }
+      }
+    }
+  }
+
+  return { valid: true }
 }
 
 function buildFixValidationFailureIssue(chapterIndex: number, error: string): Issue {

@@ -1313,28 +1313,24 @@ describe('finalizeChapter', () => {
     )
   })
 
-  it('rejects an invalid foreshadow deadline emitted by the summary agent', async () => {
-    vi.mocked(getSummaryAgent).mockReturnValue({
-      run: vi.fn().mockResolvedValue({
-        success: true,
-        data: {
-          chapterSummary: '摘要',
-          storyEvents: [
-            {
-              id: 'evt-invalid-deadline',
-              type: 'foreshadow-introduce',
-              foreshadowId: 'fs-invalid',
-              expectedFulfillChapter: 0,
-              chapterIndex: 0,
-              source: 'chapter',
-              evidence: { paragraphIndex: 1 },
-            },
-          ],
-        },
-      }),
-    } as unknown as ReturnType<typeof getSummaryAgent>)
+  it('rejects an invalid foreshadow deadline in draft chapter events', async () => {
+    // SummaryAgent 不再被允许补提 foreshadow-introduce，因此将无效 deadline 事件放到
+    // draftChapterEvents 中，验证 finalize 仍能通过结构化校验拒绝它。
+    const state = buildState(tmpDir, {
+      draftChapterEvents: [
+        {
+          id: 'evt-invalid-deadline',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-invalid',
+          expectedFulfillChapter: 0,
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        } as StoryEvent,
+      ],
+    })
 
-    const result = await finalizeChapter(buildState(tmpDir), createMockProvider())
+    const result = await finalizeChapter(state, createMockProvider())
 
     expect(result.rewriteRequested).toBe(true)
     expect(result.storyMemory?.foreshadows['fs-invalid']).toBeUndefined()

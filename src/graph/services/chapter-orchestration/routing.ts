@@ -29,6 +29,8 @@ import {
   createGenericVerifiedConstraint,
   normalizeVerifiedConstraints,
 } from '../../../utils/verified-constraints.js'
+import { resolveEntityAttribute } from '../../../utils/canonical-facts.js'
+import { factAttributeFromLabel } from '../../../types/story-state.js'
 
 export function buildChapterSession(state: ReducedGraphState): ChapterSession {
   return (
@@ -55,6 +57,60 @@ export function mergeSessionUpdate(
   return { session: nextSession }
 }
 
+function inferConflictAttribute(issue: Issue): string | undefined {
+  if (issue.conflictAttribute) return issue.conflictAttribute
+  const dimension = issue.dimension ?? ''
+  if (dimension === 'space' || dimension === 'item_location') return 'location'
+  if (dimension === 'structured_state' || dimension === 'outline_state_conflict') return 'status'
+  if (dimension === 'character_knowledge') return 'known_info'
+  if (dimension === 'dialogue') return 'dialogue'
+  return undefined
+}
+
+function buildBlockingConflict(
+  state: ReducedGraphState,
+  issue: Issue
+): import('../../../types/blocking-report.js').BlockingConflict {
+  const attribute = inferConflictAttribute(issue) ?? issue.dimension ?? issue.type
+  const source: 'outline' | 'canonical' | 'author' =
+    issue.source === 'state_reconciliation' ? 'canonical' : 'outline'
+
+  // 如果 issue 已经携带结构化冲突字段，优先直接使用。
+  if (issue.actualValue !== undefined || issue.expectedValue !== undefined) {
+    return {
+      subject: issue.subject ?? issue.id,
+      attribute,
+      oldValue: issue.actualValue ?? '',
+      newValue: issue.expectedValue ?? '',
+      source,
+    }
+  }
+
+  // 否则尝试从 storyState 读取当前权威值作为 actualValue。
+  const subject = issue.subject
+  const factAttribute = inferConflictAttribute(issue)
+    ? factAttributeFromLabel(inferConflictAttribute(issue)!)
+    : null
+  if (subject && factAttribute && state.storyState) {
+    const actualValue = resolveEntityAttribute(state.storyState, subject, factAttribute)
+    return {
+      subject,
+      attribute,
+      oldValue: actualValue ?? '',
+      newValue: '',
+      source,
+    }
+  }
+
+  return {
+    subject: issue.subject ?? issue.id,
+    attribute,
+    oldValue: '',
+    newValue: '',
+    source,
+  }
+}
+
 function buildBlockingReport(
   state: ReducedGraphState,
   reason: BlockingReason,
@@ -73,14 +129,7 @@ function buildBlockingReport(
         i.type === 'outline_violation' ||
         i.type === 'outline_deviation'
     )
-    .map((issue) => ({
-      subject: issue.id,
-      attribute: issue.dimension ?? issue.type,
-      oldValue: '',
-      newValue: '',
-      source: (issue.source === 'state_reconciliation' ? 'canonical' : 'outline') as
-        'outline' | 'canonical' | 'author',
-    }))
+    .map((issue) => buildBlockingConflict(state, issue))
 
   const suggestedActions: BlockingReport['suggestedActions'] = []
 

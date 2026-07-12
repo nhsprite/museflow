@@ -125,6 +125,9 @@ ${state.chapterContract}
         sentenceIndex?: unknown
         paragraphNumber?: unknown
         sentenceNumber?: unknown
+        subject?: string
+        source_reference?: string
+        reader_confusion?: string
         suggestion?: string
       }>
     }
@@ -134,13 +137,22 @@ ${state.chapterContract}
     }
 
     void canonicalFacts
-    return normalizeIssues(data.issues, 'consistency', this.provider, {
+    const issues = await normalizeIssues(data.issues, 'consistency', this.provider, {
       mapType: (issue) => {
         if (issue.aspect === 'outline') {
           return issue.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'
         }
         return 'consistency'
       },
+    })
+
+    // 强制实施 prompt 约定：severity=error 的 consistency issue 必须携带 subject。
+    // 未携带 subject 的 error 降级为 warning，避免无实体锚定的泛化误报触发 full rewrite。
+    return issues.map((issue) => {
+      if (issue.severity === 'error' && !issue.subject) {
+        return { ...issue, severity: 'warning' as const }
+      }
+      return issue
     })
   }
 }

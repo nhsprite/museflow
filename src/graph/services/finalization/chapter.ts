@@ -155,6 +155,13 @@ function filterStoryEventsForEvidence(events: StoryEvent[], chapterContent: stri
   })
 }
 
+const FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES: ReadonlySet<StoryEvent['type']> = new Set([
+  // 禁止 SummaryAgent 从 prose 中脑补新伏笔；新伏笔必须由 writer 显式埋下。
+  'foreshadow-introduce',
+  // 伏笔 deadline 延长是定稿调度决策，不应由 SummaryAgent 产生。
+  'foreshadow-deadline-extend',
+])
+
 function filterSummaryFallbackEvents(
   events: StoryEvent[],
   chapterIndex: number,
@@ -165,6 +172,9 @@ function filterSummaryFallbackEvents(
   return events.filter((event) => {
     if (event.source !== 'chapter' || event.chapterIndex !== chapterIndex) return false
     if (seenEventIds.has(event.id)) return false
+    // SummaryAgent 作为事件补提 fallback，禁止脑补新伏笔或调度决策类事件；
+    // plot-advance 已通过 filterStoryEventsForStoryArc 校验为已知 beat，允许补提。
+    if (FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES.has(event.type)) return false
     if (event.type === 'foreshadow-fulfill' && !plannedForeshadowIds.has(event.foreshadowId)) {
       return false
     }

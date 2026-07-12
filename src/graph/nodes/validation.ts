@@ -65,6 +65,56 @@ ${characters}
 </characters>`)
   }
 
+  // 优先使用 StoryMemory 中的结构化状态作为连续性判断的事实依据，
+  // 减少 LLM 对 prose 的主观解读空间。
+  const memory = state.storyMemory
+  if (memory) {
+    const characterLocations: string[] = []
+    for (const character of Object.values(memory.entities.characters)) {
+      if (character.locationId) {
+        characterLocations.push(`- ${character.id}: ${character.locationId}`)
+      }
+    }
+    if (characterLocations.length > 0) {
+      sections.push(`<character_locations>
+【上一章结束时角色位置】
+${characterLocations.join('\n')}
+</character_locations>`)
+    }
+
+    const itemLocations: string[] = []
+    for (const item of Object.values(memory.entities.items)) {
+      const holder = item.holderId ? `持有者 ${item.holderId}` : `位置 ${item.locationId ?? '未知'}`
+      itemLocations.push(`- ${item.id}: ${holder}`)
+    }
+    if (itemLocations.length > 0) {
+      sections.push(`<item_locations>
+【上一章结束时关键物品位置/持有者】
+${itemLocations.join('\n')}
+</item_locations>`)
+    }
+
+    const openTasks = Object.values(memory.tasks).filter((task) => task.resolvedIn === null)
+    if (openTasks.length > 0) {
+      sections.push(`<open_tasks>
+【未完成任务】
+${openTasks.map((task) => `- ${task.id}: ${task.description}`).join('\n')}
+</open_tasks>`)
+    }
+
+    const activeForeshadows = Object.values(memory.foreshadows).filter(
+      (fs) => fs.fulfilledIn === null
+    )
+    if (activeForeshadows.length > 0) {
+      sections.push(`<active_foreshadows>
+【未回收伏笔】
+${activeForeshadows
+  .map((fs) => `- ${fs.id}（预期第 ${fs.expectedFulfillChapter ?? '全书结尾'} 章回收）: ${fs.text}`)
+  .join('\n')}
+</active_foreshadows>`)
+    }
+  }
+
   const canonicalFacts = (state.storyState?.canonicalFacts ?? [])
     .filter((fact) => fact.retiredIn === undefined)
     .slice(-20)

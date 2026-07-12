@@ -137,7 +137,7 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
         content: makeChapterContent(idx),
         data: {
           preWriteCheck: 'checked',
-          storyEvents: idx === 1 ? chapter2Events.slice(0, 1) : [],
+          storyEvents: idx === 0 ? chapter1Events : idx === 1 ? chapter2Events : [],
         },
       }
     }),
@@ -160,7 +160,8 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
   getSummaryAgent: () => ({
     run: vi.fn(async (state: { chapterIndex?: number }) => {
       const idx = state.chapterIndex ?? 0
-      const events = idx === 0 ? chapter1Events : idx === 1 ? chapter2Events : []
+      // 新伏笔必须由 writer 显式埋下，SummaryAgent 只做低风险 fallback（如伏笔回收）。
+      const events = idx === 1 ? chapter2Events : []
       return {
         success: true,
         content: `第${idx + 1}章摘要`,
@@ -190,10 +191,11 @@ vi.mock('../../src/core/outline-expander.js', () => ({
         ],
         timeline: [],
         outlineCheck: [],
-        expectedEvents: chapterIndex === 1 ? chapter2Events.slice(0, 1) : [],
+        expectedEvents:
+          chapterIndex === 0 ? chapter1Events : chapterIndex === 1 ? chapter2Events : [],
         claimedBeatIds: [],
         fulfilledForeshadowIds: chapterIndex === 1 ? ['fs-locket'] : [],
-        introducedForeshadowIds: [],
+        introducedForeshadowIds: chapterIndex === 0 ? ['fs-locket'] : [],
         resolvedTaskIds: [],
         createdTaskIds: [],
       } as ChapterPlan,

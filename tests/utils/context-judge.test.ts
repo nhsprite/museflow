@@ -161,7 +161,7 @@ describe('context-judge robustness', () => {
       description: 'any text',
     }
     const fp = generateIssueFingerprint(issue)
-    expect(fp).toContain('hallucination:unknown:__generic__:')
+    expect(fp).toContain('hallucination:unknown:unknown:__generic__:')
     expect(fp).not.toContain('issue-8')
   })
 

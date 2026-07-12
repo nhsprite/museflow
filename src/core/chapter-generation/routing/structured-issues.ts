@@ -108,16 +108,21 @@ export function buildStructuredIssues(
   }
   for (const mismatch of result.finalStateMismatches ?? []) {
     const attributeLabel = mismatch.attribute === 'location' ? '位置' : '状态'
-    issues.push(
-      structuredError(chapterIndex, {
-        type: 'event_missing',
-        description:
-          mismatch.actualValue === null
-            ? `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）未被事件流支撑：本章 STORY_EVENTS 中没有该实体的${attributeLabel}事件`
-            : `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）与事件流不符：该实体最后一条${attributeLabel}事件的值为 ${mismatch.actualValue}`,
-        source: 'outline_compliance',
-      })
-    )
+    const baseIssue: Omit<Issue, 'id' | 'severity' | 'location' | 'retryStrategy'> = {
+      type: 'event_missing',
+      subject: mismatch.entityId,
+      conflictAttribute: mismatch.attribute,
+      expectedValue: mismatch.declaredValue,
+      description:
+        mismatch.actualValue === null
+          ? `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）未被事件流支撑：本章 STORY_EVENTS 中没有该实体的${attributeLabel}事件`
+          : `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）与事件流不符：该实体最后一条${attributeLabel}事件的值为 ${mismatch.actualValue}`,
+      source: 'outline_compliance',
+    }
+    if (mismatch.actualValue !== null) {
+      baseIssue.actualValue = mismatch.actualValue
+    }
+    issues.push(structuredError(chapterIndex, baseIssue))
   }
 
   for (const declaration of result.finalStateUncorroborated ?? []) {

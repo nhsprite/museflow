@@ -8,6 +8,7 @@ export interface RawIssue {
   type?: string
   severity?: string
   description?: string
+  subject?: string
   location?: string
   locationRef?: unknown
   location_ref?: unknown
@@ -60,6 +61,9 @@ export async function normalizeIssues(
         type: mappedType,
         severity,
         description: issue.description || '',
+      }
+      if (issue.subject && typeof issue.subject === 'string' && issue.subject.trim().length > 0) {
+        result.subject = issue.subject.trim()
       }
       if (issue.location) {
         result.location = issue.location

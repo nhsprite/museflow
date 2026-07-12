@@ -31,6 +31,7 @@ import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 import type { Conflict } from '../types/story-state.js'
 import {
   applyActBoundaryAdjustment,
+  buildArcStatus,
   calculateBeatBudget,
   formatActBoundaryAdjustmentCommand,
   getActForChapter,
@@ -307,6 +308,27 @@ async function autoExtendCurrentActBeforeOutline(
     outline: updatedOutline,
     chapters: updatedChapters,
   }
+}
+
+function buildArcStatusConstraint(
+  storyArc: import('../types/outline.js').StoryArc,
+  actProgress: Record<number, { consumed: string[]; pending: string[] }>,
+  chapterIndex: number
+): string | undefined {
+  const arcStatus = buildArcStatus(storyArc, actProgress, chapterIndex)
+  const currentAct = arcStatus.currentAct
+  if (!currentAct) return undefined
+
+  const chaptersRemaining = currentAct.endChapter - (chapterIndex + 1)
+  const pendingCount = arcStatus.beatsPending.length
+
+  if (arcStatus.riskLevel === 'high') {
+    return `【幕边界压力 - 高】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费：${arcStatus.beatsPending.join('、')}。本章规划必须优先推进这些节拍中的至少 1 个，且严禁引入无关过渡场景。`
+  }
+  if (arcStatus.riskLevel === 'medium') {
+    return `【幕边界压力 - 中】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费。本章规划应视情节自然性推进其中 1 个，避免把全部压力留到幕末。`
+  }
+  return undefined
 }
 
 function getCurrentActMandatoryBeats(state: ReducedGraphState, chapterIndex: number): Set<string> {
@@ -861,6 +883,19 @@ export async function expandOutlineForChapter(
       createGenericVerifiedConstraint(scheduledForeshadowConstraint),
     ]
   }
+
+  // 前置幕边界压力提示：当当前幕存在 mandatory beat 消费风险时，提前向规划层注入约束，
+  // 避免到了幕末才发现 pending beats 无法消费完。
+  const arcStatusConstraint = state.storyArc
+    ? buildArcStatusConstraint(state.storyArc, state.actProgress ?? {}, chapterIndex)
+    : undefined
+  if (arcStatusConstraint) {
+    currentConstraints = [
+      ...currentConstraints,
+      createGenericVerifiedConstraint(arcStatusConstraint),
+    ]
+  }
+
   let pendingIssues: Issue[] = []
 
   // 首次生成规划

@@ -260,19 +260,20 @@ function hashIssueDescription(description: string): string {
 
 export function generateIssueFingerprint(issue: Issue): string {
   const dimension = issue.dimension ?? 'unknown'
+  const source = issue.source ?? 'unknown'
   const location = issue.locationRef
     ? `p${issue.locationRef.paragraphIndex ?? -1}s${issue.locationRef.sentenceIndex ?? -1}`
     : ''
 
+  // 优先使用结构化字段生成指纹，减少对 description 自然语言文本的依赖。
   if (issue.subject) {
-    return `${issue.type}:${dimension}:${issue.subject}${location ? ':' + location : ''}`
+    return `${issue.type}:${dimension}:${source}:${issue.subject}${location ? ':' + location : ''}`
   }
   if (location) {
-    return `${issue.type}:${dimension}:${location}:${hashIssueDescription(issue.description)}`
+    return `${issue.type}:${dimension}:${source}:${location}:${hashIssueDescription(issue.description)}`
   }
-  // No subject or location available: 泛化指纹以 description 哈希兜底，
-  // 使用确定性哈希而非每轮重新生成的 issue.id，保证跨轮指纹稳定。
-  return `${issue.type}:${dimension}:__generic__:${hashIssueDescription(issue.description)}`
+  // 无结构化字段时以 description 哈希兜底，保证跨轮指纹稳定。
+  return `${issue.type}:${dimension}:${source}:__generic__:${hashIssueDescription(issue.description)}`
 }
 
 export async function batchJudgeTaskRelevance(
