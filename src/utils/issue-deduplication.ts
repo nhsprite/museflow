@@ -9,6 +9,7 @@ export function ruleBasedFingerprint(issue: Issue): string {
     issue.dimension ?? '',
     issue.source ?? '',
     issue.retryStrategy ?? '',
+    issue.subject ?? '',
     formatLocationRef(issue),
   ].join('|')
 }
@@ -88,7 +89,13 @@ export function deduplicateByRule(issues: Issue[]): Issue[] {
   const seen = new Map<string, Issue>()
   const result: Issue[] = []
   for (const issue of issues) {
-    const key = ruleBasedFingerprint(issue)
+    let key = ruleBasedFingerprint(issue)
+    if (!issue.subject && !issue.locationRef) {
+      // 没有 subject 也没有结构化位置的 issue 无法区分指向对象：
+      // 只对内容完全相同的记录去重，不跨条合并，
+      // 避免把不同角色/物品的同类问题折叠成一条后静默丢弃。
+      key = `${key}|${issue.description}`
+    }
     if (!seen.has(key)) {
       seen.set(key, issue)
       result.push(issue)

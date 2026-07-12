@@ -19,12 +19,18 @@ export function classifyIssueByRule(issue: Issue): IssueClassification {
   const isTaskConsistency =
     issueDimensionIs(issue, 'task_consistency') || issue.type === 'outline_invalid_deadline'
 
+  // structured_state / space 维度的一致性问题通常是状态记录（位置/持有者等
+  // 结构化字段）与已定稿章节正文矛盾，改正文无法解决，按状态污染处理。
+  const isStructuredStateConflict =
+    issueDimensionIs(issue, 'structured_state') || issueDimensionIs(issue, 'space')
+
   const isStateCorruption =
     issue.type === 'state_corruption' ||
     issueDimensionIs(issue, 'state_corruption') ||
     isItemLocationConflict ||
     isInventedCharacter ||
-    isOutlineStateConflict
+    isOutlineStateConflict ||
+    isStructuredStateConflict
 
   const isStructuralType =
     issue.type === 'outline_violation' ||

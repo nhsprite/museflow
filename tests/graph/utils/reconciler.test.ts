@@ -21,7 +21,9 @@ import {
   detectSecretRevealConflicts,
 } from '../../../src/graph/utils/reconciler/index.js'
 import { BlockingConflictError } from '../../../src/utils/errors.js'
+import { createEmptyStoryMemory } from '../../../src/story-memory/projector.js'
 import type { StoryState, Conflict, StateOverride } from '../../../src/types/story-state.js'
+import type { StoryMemory } from '../../../src/types/story-memory.js'
 import type { Character } from '../../../src/types/character.js'
 import type { ModelProvider } from '../../../src/model/provider.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
@@ -814,6 +816,186 @@ describe('formatStoryState', () => {
     expect(text).toContain('锋利')
     expect(text).not.toMatch(/^\s*《长剑》/m)
   })
+
+  function buildEntities(): StoryMemory['entities'] {
+    return {
+      characters: {
+        'c-linxuan': {
+          id: 'c-linxuan',
+          name: '林玄',
+          locationId: null,
+          status: {},
+          introducedIn: 0,
+        },
+      },
+      items: {
+        'i-jade': {
+          id: 'i-jade',
+          name: '通灵宝玉',
+          holderId: null,
+          locationId: null,
+          state: {},
+          introducedIn: 0,
+        },
+      },
+      locations: {
+        'l-temple': { id: 'l-temple', name: '破庙', introducedIn: 0 },
+      },
+      factions: {},
+      plots: {},
+    }
+  }
+
+  it('renders entity IDs as readable 名称（id） labels when entities are provided', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterLocations: { 'c-linxuan': 'l-temple' },
+      characterStatus: { 'c-linxuan': '受伤' },
+      keyItemsLocation: { 'i-jade': 'c-linxuan' },
+      keyItemsState: { 'i-jade': '封印中' },
+    }
+
+    const text = formatStoryState(state, buildEntities())
+
+    expect(text).toContain('林玄（c-linxuan）：破庙（l-temple）')
+    expect(text).toContain('林玄（c-linxuan）：受伤')
+    expect(text).toContain('通灵宝玉（i-jade）：林玄（c-linxuan）')
+    expect(text).toContain('通灵宝玉（i-jade）：封印中')
+  })
+
+  it('keeps unknown IDs and natural-language values as-is', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterLocations: { 'c-stranger': '怀中' },
+      keyItemsLocation: { 长剑: '墙上' },
+    }
+
+    const text = formatStoryState(state, buildEntities())
+
+    expect(text).toContain('c-stranger：怀中')
+    expect(text).toContain('长剑：墙上')
+  })
+
+  it('works without entities for backward compatibility', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterLocations: { 'c-linxuan': 'l-temple' },
+    }
+
+    const text = formatStoryState(state)
+
+    expect(text).toContain('c-linxuan：l-temple')
+  })
+
+  it('caps revealedSecrets and supersededFacts to the most recent entries', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      revealedSecrets: Array.from({ length: 25 }, (_, i) => `秘密${i}`),
+      supersededFacts: Array.from({ length: 25 }, (_, i) => ({
+        subject: `主题${i}`,
+        oldFact: `旧事实${i}`,
+        reason: '测试',
+        chapterIndex: i,
+      })),
+    }
+
+    const text = formatStoryState(state)
+
+    expect(text).toContain('秘密24')
+    expect(text).toContain('秘密5')
+    expect(text).not.toContain('秘密4')
+    expect(text).toContain('旧事实24')
+    expect(text).toContain('旧事实5')
+    expect(text).not.toContain('旧事实4')
+  })
+
+  it('renders only active canonical facts and caps them to the most recent', () => {
+    const facts = Array.from({ length: 25 }, (_, i) => ({
+      id: `cf-${i}`,
+      subject: `事实${i}`,
+      attribute: 'status' as const,
+      value: `值${i}`,
+      establishedIn: i,
+      confidence: 'high' as const,
+      source: 'chapter_text' as const,
+    }))
+    facts[24] = { ...facts[24]!, retiredIn: 30 }
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: facts,
+    }
+
+    const text = formatStoryState(state)
+
+    expect(text).toContain('[事实23]')
+    expect(text).toContain('[事实4]')
+    expect(text).not.toContain('[事实3]')
+    // retired fact must not be rendered
+    expect(text).not.toContain('[事实24]')
+  })
+
+  it('skips projection location entries overridden by an active canonical fact', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterLocations: { 'c-1': 'loc-old', 'c-2': 'loc-a' },
+      keyItemsLocation: { 'item-1': 'deeper', 'item-2': 'loc-a' },
+      canonicalFacts: [
+        {
+          id: 'fact-1',
+          subject: 'item-1',
+          attribute: 'location',
+          value: 'loc-b',
+          establishedIn: 24,
+          confidence: 'high',
+          source: 'state_repair',
+        },
+        {
+          id: 'fact-2',
+          subject: 'c-1',
+          attribute: 'location',
+          value: 'loc-c',
+          establishedIn: 24,
+          confidence: 'high',
+          source: 'state_repair',
+        },
+      ],
+    }
+
+    const text = formatStoryState(state)
+
+    // 有 active 权威位置事实的实体：投影条目跳过，位置由【权威事实】段呈现
+    expect(text).not.toContain('item-1：deeper')
+    expect(text).not.toContain('c-1：loc-old')
+    expect(text).toContain('[item-1] location: loc-b')
+    expect(text).toContain('[c-1] location: loc-c')
+    // 没有权威事实的实体投影照常渲染
+    expect(text).toContain('c-2：loc-a')
+    expect(text).toContain('item-2：loc-a')
+  })
+
+  it('renders the projection again once the canonical location fact is retired', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: { 'item-1': 'deeper' },
+      canonicalFacts: [
+        {
+          id: 'fact-1',
+          subject: 'item-1',
+          attribute: 'location',
+          value: 'loc-b',
+          establishedIn: 24,
+          retiredIn: 30,
+          confidence: 'high',
+          source: 'state_repair',
+        },
+      ],
+    }
+
+    const text = formatStoryState(state)
+
+    expect(text).toContain('item-1：deeper')
+    expect(text).not.toContain('[item-1] location: loc-b')
+  })
 })
 
 describe('prepareStoryStateForChapter', () => {
@@ -1077,8 +1259,8 @@ describe('authorizeOutlineFacts', () => {
           facts: [
             {
               subject: '主角',
-              attribute: 'location',
-              value: '废弃仓库',
+              attribute: 'status',
+              value: '负伤',
               contradictsExisting: false,
             },
             {
@@ -1092,17 +1274,12 @@ describe('authorizeOutlineFacts', () => {
       ),
     } as unknown as ModelProvider
 
-    const result = await authorizeOutlineFacts(
-      state,
-      '主角秘密抵达废弃仓库，与旧部暗桩接头。',
-      4,
-      provider
-    )
+    const result = await authorizeOutlineFacts(state, '主角负伤后与旧部暗桩接头。', 4, provider)
     expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({
       subject: '主角',
-      attribute: 'location',
-      value: '废弃仓库',
+      attribute: 'status',
+      value: '负伤',
       establishedIn: 4,
       source: 'outline_inference',
     })
@@ -1115,13 +1292,8 @@ describe('authorizeOutlineFacts', () => {
     })
   })
 
-  it('skips facts already present in canonical facts', async () => {
-    const state: StoryState = {
-      ...emptyState(),
-      canonicalFacts: [
-        { id: 'f1', subject: '主角', attribute: 'location', value: '废弃仓库', establishedIn: 4 },
-      ],
-    }
+  it('rejects location and holder attributes even when the model returns them', async () => {
+    const state = emptyState()
     const provider = {
       chat: vi.fn(async (): Promise<string> =>
         JSON.stringify({
@@ -1132,12 +1304,133 @@ describe('authorizeOutlineFacts', () => {
               value: '废弃仓库',
               contradictsExisting: false,
             },
+            {
+              subject: '密信',
+              attribute: 'holder',
+              value: '主角',
+              contradictsExisting: false,
+            },
+            {
+              subject: '暗桩',
+              attribute: 'identity',
+              value: '主角旧部',
+              contradictsExisting: false,
+            },
           ],
         })
       ),
     } as unknown as ModelProvider
 
-    const result = await authorizeOutlineFacts(state, '主角在废弃仓库藏身。', 4, provider)
+    const result = await authorizeOutlineFacts(state, '大纲描述', 4, provider)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      subject: '暗桩',
+      attribute: 'identity',
+      value: '主角旧部',
+    })
+  })
+
+  it('rejects facts whose subject is not a known entity id when storyMemory is present', async () => {
+    const memory = createEmptyStoryMemory()
+    memory.entities.characters['c-hero'] = {
+      id: 'c-hero',
+      name: '主角',
+      locationId: null,
+      status: {},
+      introducedIn: 0,
+    }
+    const state: StoryState & { storyMemory: StoryMemory } = {
+      ...emptyState(),
+      storyMemory: memory,
+    }
+    const provider = {
+      chat: vi.fn(async (): Promise<string> =>
+        JSON.stringify({
+          facts: [
+            {
+              subject: 'c-hero',
+              attribute: 'status',
+              value: '负伤',
+              contradictsExisting: false,
+            },
+            {
+              subject: 'c-stranger',
+              attribute: 'identity',
+              value: '旧部',
+              contradictsExisting: false,
+            },
+          ],
+        })
+      ),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(state, '大纲描述', 4, provider)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      subject: 'c-hero',
+      attribute: 'status',
+      value: '负伤',
+    })
+  })
+
+  it('rejects facts conflicting with structured state projections', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterStatus: { 主角: '健康' },
+    }
+    const provider = {
+      chat: vi.fn(async (): Promise<string> =>
+        JSON.stringify({
+          facts: [
+            {
+              subject: '主角',
+              attribute: 'status',
+              value: '负伤',
+              contradictsExisting: false,
+            },
+            {
+              subject: '暗桩',
+              attribute: 'identity',
+              value: '主角旧部',
+              contradictsExisting: false,
+            },
+          ],
+        })
+      ),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(state, '大纲描述', 4, provider)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      subject: '暗桩',
+      attribute: 'identity',
+      value: '主角旧部',
+    })
+  })
+
+  it('skips facts already present in canonical facts', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        { id: 'f1', subject: '主角', attribute: 'status', value: '负伤', establishedIn: 4 },
+      ],
+    }
+    const provider = {
+      chat: vi.fn(async (): Promise<string> =>
+        JSON.stringify({
+          facts: [
+            {
+              subject: '主角',
+              attribute: 'status',
+              value: '负伤',
+              contradictsExisting: false,
+            },
+          ],
+        })
+      ),
+    } as unknown as ModelProvider
+
+    const result = await authorizeOutlineFacts(state, '主角负伤休养。', 4, provider)
     expect(result).toHaveLength(0)
   })
 
@@ -1145,20 +1438,20 @@ describe('authorizeOutlineFacts', () => {
     const state: StoryState = {
       ...emptyState(),
       canonicalFacts: [
-        { id: 'f1', subject: '主角', attribute: 'location', value: '家中', establishedIn: 1 },
+        { id: 'f1', subject: '主角', attribute: 'status', value: '健康', establishedIn: 1 },
       ],
     }
     const provider = {
       chat: vi.fn(async (): Promise<string> =>
         JSON.stringify({
           facts: [
-            { subject: '主角', attribute: 'location', value: '京城', contradictsExisting: true },
+            { subject: '主角', attribute: 'status', value: '负伤', contradictsExisting: true },
           ],
         })
       ),
     } as unknown as ModelProvider
 
-    const result = await authorizeOutlineFacts(state, '主角已抵达京城。', 4, provider)
+    const result = await authorizeOutlineFacts(state, '主角身受重伤。', 4, provider)
     expect(result).toHaveLength(0)
   })
 
@@ -1181,17 +1474,17 @@ describe('authorizeOutlineFacts', () => {
       }),
       chat: vi.fn(
         async (): Promise<string> =>
-          '```json\n{"facts":[{"subject":"主角","attribute":"所在位置","value":"废弃仓库","contradictsExisting":false}]}\n```'
+          '```json\n{"facts":[{"subject":"暗桩","attribute":"身份","value":"主角旧部","contradictsExisting":false}]}\n```'
       ),
     } as unknown as ModelProvider
 
-    const result = await authorizeOutlineFacts(state, '主角秘密抵达废弃仓库。', 4, provider)
+    const result = await authorizeOutlineFacts(state, '主角与旧部暗桩接头。', 4, provider)
 
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({
-      subject: '主角',
-      attribute: 'location',
-      value: '废弃仓库',
+      subject: '暗桩',
+      attribute: 'identity',
+      value: '主角旧部',
       establishedIn: 4,
       source: 'outline_inference',
     })
@@ -1274,5 +1567,117 @@ describe('detectSecretRevealConflicts', () => {
     }
     const merged = mergeStoryState(base, delta)
     expect(merged.canonicalFacts?.length).toBe(2)
+  })
+})
+
+describe('mergeStoryState outline_inference supersede semantics', () => {
+  it('incoming fact supersedes a conflicting outline_inference fact and records the old value', () => {
+    const base: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'f-inferred',
+          subject: '玉佩',
+          attribute: 'status',
+          value: '完好',
+          establishedIn: 1,
+          confidence: 'medium',
+          source: 'outline_inference',
+        },
+      ],
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'f-text',
+          subject: '玉佩',
+          attribute: 'status',
+          value: '碎裂',
+          establishedIn: 3,
+          confidence: 'high',
+          source: 'chapter_text',
+        },
+      ],
+    }
+
+    const merged = mergeStoryState(base, delta)
+
+    const oldFact = merged.canonicalFacts?.find((f) => f.id === 'f-inferred')
+    const newFact = merged.canonicalFacts?.find((f) => f.id === 'f-text')
+    expect(oldFact?.retiredIn).toBe(3)
+    expect(newFact?.retiredIn).toBeUndefined()
+    expect(newFact?.supersedes).toEqual([{ chapter: 1, oldValue: '完好' }])
+  })
+
+  it('does not add supersedes when the conflicting existing fact is not outline_inference', () => {
+    const base: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'f-old',
+          subject: '玉佩',
+          attribute: 'status',
+          value: '完好',
+          establishedIn: 1,
+          confidence: 'high',
+          source: 'chapter_text',
+        },
+      ],
+    }
+    const delta: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'f-new',
+          subject: '玉佩',
+          attribute: 'status',
+          value: '碎裂',
+          establishedIn: 3,
+          confidence: 'high',
+          source: 'chapter_text',
+        },
+      ],
+    }
+
+    const merged = mergeStoryState(base, delta)
+
+    const oldFact = merged.canonicalFacts?.find((f) => f.id === 'f-old')
+    const newFact = merged.canonicalFacts?.find((f) => f.id === 'f-new')
+    expect(oldFact?.retiredIn).toBe(3)
+    expect(newFact?.retiredIn).toBeUndefined()
+    expect(newFact?.supersedes).toBeUndefined()
+  })
+
+  it('stays idempotent when the same delta is applied after a supersede was recorded', () => {
+    const base: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'f-inferred',
+          subject: '玉佩',
+          attribute: 'status',
+          value: '完好',
+          establishedIn: 1,
+          confidence: 'medium',
+          source: 'outline_inference',
+        },
+      ],
+    }
+    const deltaFact = {
+      id: 'f-text',
+      subject: '玉佩',
+      attribute: 'status' as const,
+      value: '碎裂',
+      establishedIn: 3,
+      confidence: 'high' as const,
+      source: 'chapter_text' as const,
+    }
+    const delta: StoryState = { ...emptyState(), canonicalFacts: [deltaFact] }
+
+    const once = mergeStoryState(base, delta)
+    const twice = mergeStoryState(once, delta)
+
+    expect(twice.canonicalFacts).toEqual(once.canonicalFacts)
   })
 })

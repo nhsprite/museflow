@@ -1,5 +1,43 @@
 import type { StoryState, PendingTask } from '../../../types/story-state.js'
+import type { StoryMemory } from '../../../types/story-memory.js'
 import { canonicalizeItemName } from '../../../utils/items.js'
+
+/** formatStoryState 渲染上限：避免长篇后期 prompt 无界膨胀。数组均按时间升序追加，保留最新若干条。 */
+export const MAX_RENDERED_REVEALED_SECRETS = 20
+export const MAX_RENDERED_SUPERSEDED_FACTS = 20
+export const MAX_RENDERED_CANONICAL_FACTS = 20
+
+type StoryStateEntities = StoryMemory['entities']
+
+/**
+ * 将实体 ID 渲染为 agent 可读的「名称（id）」形式。
+ * 仅当 entities 中存在该 ID 且名称与 ID 不同时才展开，其余情况原样返回。
+ */
+function resolveEntityLabel(id: string, entities: StoryStateEntities | undefined): string {
+  if (!entities) return id
+  const name =
+    entities.characters[id]?.name ??
+    entities.items[id]?.name ??
+    entities.locations[id]?.name ??
+    entities.factions[id]?.name ??
+    entities.plots[id]?.name
+  return name !== undefined && name !== id ? `${name}（${id}）` : id
+}
+
+function resolveRecordLabels(
+  entries: Record<string, string>,
+  entities: StoryStateEntities | undefined,
+  resolveValues: boolean
+): Record<string, string> {
+  if (!entities) return entries
+  const resolved: Record<string, string> = {}
+  for (const [key, value] of Object.entries(entries)) {
+    resolved[resolveEntityLabel(key, entities)] = resolveValues
+      ? resolveEntityLabel(value, entities)
+      : value
+  }
+  return resolved
+}
 
 export function buildPendingTasksConstraints(tasks: PendingTask[]): string {
   const pending = tasks.filter((t) => t.status === 'pending')
@@ -86,14 +124,34 @@ export function formatCanonicalItemEntries(
   return lines
 }
 
-export function formatStoryState(storyState: StoryState): string {
+export function formatStoryState(storyState: StoryState, entities?: StoryStateEntities): string {
   const lines: string[] = []
 
-  const locations = Object.entries(storyState.characterLocations)
+  // 位置投影与权威事实的优先级：某实体存在 active 的 canonicalFact（attribute=location）时，
+  // 其位置以【权威事实】段为准，投影条目跳过，避免同一实体两个矛盾位置同时渲染。
+  const canonicalLocationSubjects = new Set(
+    (storyState.canonicalFacts ?? [])
+      .filter((fact) => fact.retiredIn === undefined && fact.attribute === 'location')
+      .map((fact) => fact.subject)
+  )
+  const hasCanonicalLocation = (key: string): boolean => {
+    if (canonicalLocationSubjects.size === 0) return false
+    if (canonicalLocationSubjects.has(key)) return true
+    const canonicalKey = canonicalizeItemName(key)
+    if (canonicalKey.length === 0) return false
+    for (const subject of canonicalLocationSubjects) {
+      if (canonicalizeItemName(subject) === canonicalKey) return true
+    }
+    return false
+  }
+
+  const locations = Object.entries(storyState.characterLocations).filter(
+    ([char]) => !hasCanonicalLocation(char)
+  )
   if (locations.length > 0) {
     lines.push('【角色位置】')
     for (const [char, loc] of locations) {
-      lines.push(`  ${char}：${loc}`)
+      lines.push(`  ${resolveEntityLabel(char, entities)}：${resolveEntityLabel(loc, entities)}`)
     }
   }
 
@@ -101,12 +159,25 @@ export function formatStoryState(storyState: StoryState): string {
   if (statuses.length > 0) {
     lines.push('【角色状态】')
     for (const [char, status] of statuses) {
-      lines.push(`  ${char}：${status}`)
+      lines.push(`  ${resolveEntityLabel(char, entities)}：${status}`)
     }
   }
 
-  lines.push(...formatCanonicalItemEntries(storyState.keyItemsLocation, '【关键物品】'))
-  lines.push(...formatCanonicalItemEntries(storyState.keyItemsState ?? {}, '【关键物品状态】'))
+  const keyItemsLocation = Object.fromEntries(
+    Object.entries(storyState.keyItemsLocation).filter(([item]) => !hasCanonicalLocation(item))
+  )
+  lines.push(
+    ...formatCanonicalItemEntries(
+      resolveRecordLabels(keyItemsLocation, entities, true),
+      '【关键物品】'
+    )
+  )
+  lines.push(
+    ...formatCanonicalItemEntries(
+      resolveRecordLabels(storyState.keyItemsState ?? {}, entities, false),
+      '【关键物品状态】'
+    )
+  )
 
   if (storyState.activePlots.length > 0) {
     lines.push('【进行中的情节】')
@@ -115,9 +186,10 @@ export function formatStoryState(storyState: StoryState): string {
     }
   }
 
-  if (storyState.revealedSecrets.length > 0) {
+  const revealedSecrets = storyState.revealedSecrets.slice(-MAX_RENDERED_REVEALED_SECRETS)
+  if (revealedSecrets.length > 0) {
     lines.push('【已揭示的秘密】')
-    for (const secret of storyState.revealedSecrets) {
+    for (const secret of revealedSecrets) {
       lines.push(`  - ${secret}`)
     }
   }
@@ -140,18 +212,23 @@ export function formatStoryState(storyState: StoryState): string {
     }
   }
 
-  if (storyState.supersededFacts && storyState.supersededFacts.length > 0) {
+  const supersededFacts = (storyState.supersededFacts ?? []).slice(-MAX_RENDERED_SUPERSEDED_FACTS)
+  if (supersededFacts.length > 0) {
     lines.push('【已被覆盖的旧事实】')
-    for (const fact of storyState.supersededFacts) {
+    for (const fact of supersededFacts) {
       lines.push(`  - [${fact.subject}] ${fact.oldFact}（原因：${fact.reason}）`)
     }
   }
 
-  if (storyState.canonicalFacts && storyState.canonicalFacts.length > 0) {
+  const activeCanonicalFacts = (storyState.canonicalFacts ?? [])
+    .filter((fact) => fact.retiredIn === undefined)
+    .slice(-MAX_RENDERED_CANONICAL_FACTS)
+  if (activeCanonicalFacts.length > 0) {
     lines.push('【权威事实】')
-    for (const fact of storyState.canonicalFacts) {
+    for (const fact of activeCanonicalFacts) {
+      const tierMarker = fact.source === 'outline_inference' ? '（大纲推断，提示级，正文优先）' : ''
       lines.push(
-        `  - [${fact.subject}] ${fact.attribute}: ${fact.value} (第${fact.establishedIn + 1}章确立)`
+        `  - [${fact.subject}] ${fact.attribute}: ${fact.value} (第${fact.establishedIn + 1}章确立)${tierMarker}`
       )
       for (const old of fact.supersedes ?? []) {
         lines.push(`    覆盖第${old.chapter + 1}章: ${old.oldValue}`)

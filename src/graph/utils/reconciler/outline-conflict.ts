@@ -59,13 +59,51 @@ function canonicalFactConflicts(
 }
 
 /**
+ * 位置/归属类事实由 story-memory 事件投影与大纲结构化字段拥有，
+ * 不允许从大纲散文中推断（历史上这是幻觉事实的主要来源）。
+ */
+const BLOCKED_OUTLINE_ATTRIBUTES: ReadonlySet<FactAttribute> = new Set(['location', 'holder'])
+
+/**
+ * 有结构化投影的属性：投影中已有不同值时拒绝大纲推断事实。
+ * 没有对应投影的属性不做检查。
+ */
+function projectionConflicts(
+  state: StoryState,
+  subject: string,
+  attribute: FactAttribute,
+  value: string
+): boolean {
+  if (attribute === 'status') {
+    const characterStatus = state.characterStatus[subject]
+    if (characterStatus !== undefined && characterStatus !== value) return true
+    const itemStatus = state.keyItemsState[subject]
+    if (itemStatus !== undefined && itemStatus !== value) return true
+  }
+  return false
+}
+
+function collectKnownEntityIds(memory: StoryMemory | null | undefined): Set<string> | null {
+  if (!memory) return null
+  return new Set([
+    ...Object.keys(memory.entities.characters),
+    ...Object.keys(memory.entities.items),
+    ...Object.keys(memory.entities.locations),
+    ...Object.keys(memory.entities.factions),
+  ])
+}
+
+/**
  * 从本章大纲中提取首次引入、且不与已有 canonicalFacts 矛盾的具体事实，
  * 作为本章起草前的预授权权威事实写入 storyState。
+ *
+ * 这类事实 source 为 outline_inference，是最低权威层级（仅作提示）：
+ * 已定稿章节正文、story-memory 事件投影与已确立事实均优先于它。
  *
  * 这是通用机制：不针对特定书籍、题材或章节，仅基于大纲文本和已有权威事实做判断。
  */
 export async function authorizeOutlineFacts(
-  state: StoryState,
+  state: StoryState & { storyMemory?: StoryMemory | null },
   outline: string,
   chapterIndex: number,
   provider?: ModelProvider
@@ -76,6 +114,7 @@ export async function authorizeOutlineFacts(
 
   const existingFacts = state.canonicalFacts ?? []
   const factsText = formatCanonicalFacts(state)
+  const knownEntityIds = collectKnownEntityIds(state.storyMemory)
 
   const messages: Message[] = [
     {
@@ -83,16 +122,17 @@ export async function authorizeOutlineFacts(
       content: `你是故事大纲事实提取助手。你的任务是从本章大纲中提取本章首次引入的、具体的故事事实，用于写入权威事实库。
 
 提取范围（只提取具体、持久、会影响后续章节一致性的事实）：
-1. 新地点：角色或物品前往、所在、转移到的具体地点。
-2. 新物品细节：物品新增的外观特征、来源、归属、状态变化。
-3. 新角色状态/关系：由本章大纲确立的持久状态、身份关系、约束条件。
+1. 新物品细节：物品新增的外观特征、来源、状态变化。
+2. 新角色状态/关系：由本章大纲确立的持久状态、身份关系、约束条件。
 
 判断规则：
 - 只提取大纲中明确写入的事实，不要推测或补全。
+- 不要提取角色或物品的位置、所在、归属信息：这类事实由结构化状态管理，不在提取范围内。
 - 如果某个事实已经在"已确立的权威事实"中记录，不要重复提取。
 - 如果某个事实与"已确立的权威事实"直接矛盾（同一 subject + attribute 但值不同），将 contradictsExisting 设为 true，不要返回它。
 - 不要提取一次性动作、情绪描写、氛围描写、纯过渡内容。
-- attribute 必须使用以下枚举值之一，禁止输出中文自然语言标签：location, status, origin, maker, giver, holder, identity, known_info, promise, attitude, dialogue, decision, plan, key_event, event, occurrence, result, twist。
+- subject 必须使用【已确立的权威事实】中已出现的实体 id；大纲中首次登场、尚无 id 的实体不要提取。
+- attribute 必须使用以下枚举值之一，禁止输出中文自然语言标签：status, origin, maker, giver, identity, known_info, promise, attitude, dialogue, decision, plan, key_event, event, occurrence, result, twist。
 
 请输出 JSON，格式为 {"facts": [{"subject": "...", "attribute": "...", "value": "...", "contradictsExisting": false}, ...]}。`,
     },
@@ -136,8 +176,23 @@ export async function authorizeOutlineFacts(
       const value = fact.value.trim()
       if (subject.length === 0 || attribute === null || value.length === 0) continue
 
+      if (BLOCKED_OUTLINE_ATTRIBUTES.has(attribute)) {
+        skipped.push(`${subject}/${attribute}（位置/归属类属性不在大纲推断范围）`)
+        continue
+      }
+
+      if (knownEntityIds && !knownEntityIds.has(subject)) {
+        skipped.push(`${subject}/${attribute}（subject 不是已知实体 id）`)
+        continue
+      }
+
       if (fact.contradictsExisting || canonicalFactConflicts(existingFacts, subject, attribute)) {
-        skipped.push(`${subject}/${attribute}`)
+        skipped.push(`${subject}/${attribute}（与权威事实冲突）`)
+        continue
+      }
+
+      if (projectionConflicts(state, subject, attribute, value)) {
+        skipped.push(`${subject}/${attribute}（与结构化状态投影冲突）`)
         continue
       }
 
@@ -164,7 +219,7 @@ export async function authorizeOutlineFacts(
     }
 
     if (skipped.length > 0) {
-      logger.info(`大纲预授权跳过 ${skipped.length} 个与权威事实冲突/重复的条目`)
+      logger.info(`大纲预授权跳过 ${skipped.length} 个未通过门禁的条目`)
       for (const s of skipped) {
         logger.debug(`  - ${s}`)
       }

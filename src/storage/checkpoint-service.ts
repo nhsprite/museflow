@@ -94,6 +94,20 @@ export class StoryCheckpointService {
       .sort((a, b) => a.chapterNumber - b.chapterNumber)
   }
 
+  /**
+   * 删除 chapterNumber 之后的所有章节标记（rewrite 倒带时使用）。
+   * 被重写章节本身的标记会在下一次 commit 时被 saveChapterMarker 覆盖。
+   */
+  async deleteChapterMarkersFrom(chapterNumber: number): Promise<void> {
+    const markers = await this.loadMarkers()
+    const remainingEntries = Object.entries(markers).filter(
+      ([key]) => parseInt(key, 10) <= chapterNumber
+    )
+    if (remainingEntries.length === Object.keys(markers).length) return
+    await this.saveMarkers(Object.fromEntries(remainingEntries))
+    logger.debug(`Chapter markers after ${chapterNumber} deleted`)
+  }
+
   async pruneIntermediateCheckpoints(): Promise<void> {
     const dir = this.getCheckpointDir()
     if (!existsSync(dir)) return

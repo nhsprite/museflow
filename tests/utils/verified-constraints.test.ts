@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   createActPressureConstraint,
   createGenericVerifiedConstraint,
+  dedupeVerifiedConstraints,
   filterVerifiedConstraintsForChapter,
+  isRegenerableConstraintId,
   renderVerifiedConstraints,
 } from '../../src/utils/verified-constraints.js'
 import type { StoryArc } from '../../src/types/outline.js'
@@ -72,5 +74,44 @@ describe('verified constraints', () => {
       durableBoundary.text,
       latestCurrentActPressure.text,
     ])
+  })
+
+  it('creates generic constraints with an optional structured id', () => {
+    expect(createGenericVerifiedConstraint('text only')).toEqual({
+      kind: 'generic',
+      text: 'text only',
+    })
+    expect(createGenericVerifiedConstraint('with id', 'memory:task:t-1')).toEqual({
+      kind: 'generic',
+      id: 'memory:task:t-1',
+      text: 'with id',
+    })
+  })
+
+  it('recognizes regenerable constraint ids by machine-readable prefix', () => {
+    expect(isRegenerableConstraintId('memory:task:t-1')).toBe(true)
+    expect(isRegenerableConstraintId('foreshadow-boundary:fs-1')).toBe(true)
+    expect(isRegenerableConstraintId('routing-resolved-issue')).toBe(false)
+  })
+
+  it('dedupes by id or exact text, keeping the last occurrence', () => {
+    const carried = createGenericVerifiedConstraint(
+      '【伏笔边界】旧文本',
+      'foreshadow-boundary:fs-1'
+    )
+    const fresh = createGenericVerifiedConstraint('【伏笔边界】新文本', 'foreshadow-boundary:fs-1')
+    const foreign = createGenericVerifiedConstraint('来自路由的约束')
+    const foreignDuplicate = createGenericVerifiedConstraint('来自路由的约束')
+    const actPressure = createActPressureConstraint(1, 'act pressure')
+
+    const deduped = dedupeVerifiedConstraints([
+      carried,
+      foreign,
+      actPressure,
+      fresh,
+      foreignDuplicate,
+    ])
+
+    expect(deduped).toEqual([fresh, foreign, actPressure])
   })
 })

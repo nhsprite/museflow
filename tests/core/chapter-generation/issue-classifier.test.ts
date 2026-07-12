@@ -118,6 +118,23 @@ describe('classifyIssueByRule', () => {
     expect(result.isInventedCharacter).toBe(true)
   })
 
+  it('classifies structured_state dimension consistency errors as state corruption', () => {
+    const issue = makeIssue('consistency', 'error', '状态记录与已定稿章节正文矛盾')
+    issue.dimension = 'structured_state'
+    const result = classifyIssueByRule(issue)
+    expect(result.isStateCorruption).toBe(true)
+    expect(result.isStructural).toBe(true)
+    expect(result.isLocal).toBe(false)
+  })
+
+  it('classifies space dimension consistency errors as state corruption', () => {
+    const issue = makeIssue('consistency', 'error', '物品持有者记录与正文矛盾')
+    issue.dimension = 'space'
+    const result = classifyIssueByRule(issue)
+    expect(result.isStateCorruption).toBe(true)
+    expect(result.isLocal).toBe(false)
+  })
+
   it('classifies task-related issues from structured dimension as task consistency', () => {
     const issue = makeIssue('consistency', 'error', 'structured issue')
     issue.dimension = 'task_consistency'

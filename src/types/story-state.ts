@@ -6,7 +6,7 @@ export interface SupersededFact {
 }
 
 export type CanonicalFactSource =
-  'chapter_text' | 'outline_inference' | 'author_override' | 'reconciliation'
+  'chapter_text' | 'outline_inference' | 'author_override' | 'reconciliation' | 'state_repair'
 
 /**
  * 权威事实的属性类型枚举。

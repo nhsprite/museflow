@@ -94,27 +94,63 @@ describe('ConsistencyAgent foreshadow deadlines', () => {
     expect(overdueSection).toContain('必需旧伏笔')
     expect(overdueSection).not.toContain('可选环境细节')
   })
+
+  it('marks overdue foreshadows as reference-only, not an error by itself', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 20,
+      world: '',
+      characters: '【主角】',
+      outline: '第10章：推进',
+      chapterContent: '正文。',
+      chapterIndex: 9,
+      chapterSummaries: [],
+      storyState: '',
+      foreshadowStack: [
+        {
+          id: 'fs-required',
+          text: '必需旧伏笔',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+      ],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    const overdueSection = userMessage.match(/<overdue>([\s\S]*?)<\/overdue>/)?.[1] ?? ''
+    expect(overdueSection).toContain('逾期本身不是错误')
+    expect(userMessage).toContain('不得仅因伏笔逾期未回收而报 error')
+    expect(userMessage).toContain('声称回收某伏笔')
+  })
 })
 
 describe('ConsistencyAgent outline-authorized facts', () => {
-  it('includes outline-authorized facts in prompt', () => {
+  it('includes outline-inferred facts in prompt as hint-level, text-first facts', () => {
     const agent = new TestableConsistencyAgent(createMockProvider())
     const canonicalFacts: CanonicalFact[] = [
       {
         id: 'f1',
         subject: '主角',
-        attribute: '所在位置',
-        value: '废弃仓库',
-        establishedIn: 2,
-        source: 'outline',
+        attribute: 'status',
+        value: '负伤',
+        establishedIn: 1,
+        confidence: 'medium',
+        source: 'outline_inference',
       },
       {
         id: 'f2',
         subject: '密信',
-        attribute: '来源',
+        attribute: 'origin',
         value: '旧友暗中递送',
-        establishedIn: 2,
-        source: 'outline',
+        establishedIn: 1,
+        confidence: 'medium',
+        source: 'outline_inference',
       },
     ]
 
@@ -125,7 +161,7 @@ describe('ConsistencyAgent outline-authorized facts', () => {
       world: '',
       characters: '【主角】',
       outline: '第2章：接头',
-      chapterContent: '主角在废弃仓库收到旧友暗中递送的密信。',
+      chapterContent: '主角收到密信。',
       chapterIndex: 1,
       foreshadowStack: [],
       chapterSummaries: ['第1章：主角离家。'],
@@ -135,9 +171,93 @@ describe('ConsistencyAgent outline-authorized facts', () => {
     })
 
     const userMessage = messages[1]?.content ?? ''
-    expect(userMessage).toContain('本章大纲已授权的新事实')
-    expect(userMessage).toContain('废弃仓库')
-    expect(userMessage).toContain('旧友暗中递送')
+    expect(userMessage).toContain('大纲推断事实（仅供参考，正文优先）')
+    expect(userMessage).toContain('[主角] status: 负伤')
+    expect(userMessage).toContain('[密信] origin: 旧友暗中递送')
+    expect(userMessage).not.toContain('本章大纲已授权的新事实')
+  })
+
+  it('states that chapter text wins over outline-inferred facts with at most a warning', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      chapterContent: '主角收到密信。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '',
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('以正文为准')
+    expect(userMessage).toContain('最多报 warning，不得报 error')
+    expect(userMessage).toContain('只有与已确立权威事实（非推断）冲突才可报 error')
+  })
+})
+
+describe('ConsistencyAgent previous summary', () => {
+  it('renders previous chapter summaries as narrative reference after the outline', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      previousChapters: '第1章：主角离家，与旧友失散。',
+      chapterContent: '主角在废弃仓库收到密信。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: ['第1章：主角离家。'],
+      storyState: '【权威事实】\n- [主角] 所在位置: 城东茶楼',
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('<previous_summary>')
+    expect(userMessage).toContain('第1章：主角离家，与旧友失散。')
+    expect(userMessage).toContain('叙事参考')
+    expect(userMessage).toContain('不作为事实依据')
+    expect(userMessage).not.toContain('{previousSummary}')
+    expect(userMessage.indexOf('<previous_summary>')).toBeGreaterThan(
+      userMessage.indexOf('</outline>')
+    )
+    expect(userMessage.indexOf('<previous_summary>')).toBeLessThan(
+      userMessage.indexOf('<story_state>')
+    )
+  })
+
+  it('uses a first-chapter placeholder and no longer renders a separate superseded facts section', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第1章：开端',
+      chapterContent: '主角登场。',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '',
+      supersededFacts: '- [旧物] 已废弃（原因：大纲更新）',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('（这是第一章）')
+    expect(userMessage).not.toContain('<superseded_facts>')
+    expect(userMessage).not.toContain('{supersededFacts}')
   })
 })
 

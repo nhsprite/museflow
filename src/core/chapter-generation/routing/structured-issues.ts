@@ -105,6 +105,30 @@ export function buildStructuredIssues(
       })
     )
   }
+  for (const mismatch of result.finalStateMismatches ?? []) {
+    const attributeLabel = mismatch.attribute === 'location' ? '位置' : '状态'
+    issues.push(
+      structuredError(chapterIndex, {
+        type: 'event_missing',
+        description:
+          mismatch.actualValue === null
+            ? `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）未被事件流支撑：本章 STORY_EVENTS 中没有该实体的${attributeLabel}事件`
+            : `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）与事件流不符：该实体最后一条${attributeLabel}事件的值为 ${mismatch.actualValue}`,
+        source: 'outline_compliance',
+      })
+    )
+  }
+
+  for (const declaration of result.finalStateUncorroborated ?? []) {
+    issues.push({
+      id: generateId(),
+      type: 'event_missing',
+      severity: 'warning',
+      description: `章末终态声明 ${declaration.entityId}（${declaration.attribute}=${declaration.declaredValue}）未被本章事件流支撑：该实体本章无对应类型事件，按提示处理`,
+      source: 'outline_compliance',
+      location: `第 ${chapterIndex + 1} 章`,
+    })
+  }
 
   return issues
 }

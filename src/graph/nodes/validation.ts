@@ -195,11 +195,22 @@ export function inferRetryStrategy(issue: Issue): RetryStrategy {
 }
 
 /**
- * 清理过期的 word_count issue。
- * 字数问题是针对当前章与上一章的瞬时指标，写到后续章节时不应继续携带旧章节的字数警告。
+ * 每轮综合校验都会重新运行的检测器来源。
+ * 这些来源的 issue 每轮由检测器基于最新草稿重新生成（id 也是新生成的），
+ * 旧结果必须由本轮结果整体替换，否则已修复的问题会永久残留。
  */
-export function pruneStaleWordCountIssues(issues: Issue[]): Issue[] {
-  return issues.filter((issue) => issue.type !== 'word_count')
+const RERUN_ISSUE_SOURCES: ReadonlySet<IssueSource> = new Set(['word_count', 'consistency'])
+
+/**
+ * 移除属于本轮重跑检测器的旧 issue，保留其他来源的 issue
+ * （如结构化校验、大纲义务等由各自管线环节跨轮维护）。
+ * 无 source 的 issue 无法判定来源，保守保留。
+ * 参照 routing/structured-issues.ts 的 replaceStructuredIssues 整体替换模式。
+ */
+export function pruneRerunDetectorIssues(issues: Issue[]): Issue[] {
+  return issues.filter(
+    (issue) => issue.source === undefined || !RERUN_ISSUE_SOURCES.has(issue.source)
+  )
 }
 
 export async function validate_chapter(
@@ -375,18 +386,11 @@ export async function detect_consistency(
   const content = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
   const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
-  const supersededFacts = state.storyState?.supersededFacts ?? []
-  const supersededFactsStr =
-    supersededFacts.length > 0
-      ? supersededFacts.map((f) => `- [${f.subject}] ${f.oldFact}（原因：${f.reason}）`).join('\n')
-      : '（无）'
-
   const agentState: ConsistencyAgentInput = mergeAgentState(baseContext, {
     outline: buildConsistencyOutlineContext(state, chapterIndex),
     chapterContent: content ?? '',
     chapterSummaries: state.chapterSummaries,
     ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
-    supersededFacts: supersededFactsStr,
     ...(state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
   }) as ConsistencyAgentInput
 
@@ -409,10 +413,11 @@ export async function validate_chapter_comprehensive(
   // 避免每个 agent 占用一个 LangGraph 步骤，从而防止重写循环时 recursionLimit 被快速耗尽。
   let workingState: ReducedGraphState = { ...state }
 
-  // 字数问题是针对当前章与上一章的瞬时指标，旧章节遗留的字数警告
-  // 会随时间累积成不可操作的噪音。
-  // 因此在每次综合校验前，先清理既有 word_count issue，再由 validate_chapter 重新生成当前章的相关问题。
-  workingState.pendingIssues = pruneStaleWordCountIssues(workingState.pendingIssues)
+  // 字数与一致性/连续性检测器每轮都会基于最新草稿重跑，并以新 id 生成 issue。
+  // 合并本轮结果前必须先移除这些来源的旧 issue（参照 replaceStructuredIssues 的
+  // 按结构化字段整体替换模式），否则已修复的问题会永久残留，remainingErrors 永不为 0。
+  // 其他来源（结构化校验、大纲义务等）由各自的管线环节维护，不在此清理。
+  workingState.pendingIssues = pruneRerunDetectorIssues(workingState.pendingIssues)
 
   function mergePendingIssues(updates: Partial<ReducedGraphState>): void {
     if (updates.pendingIssues) {
@@ -482,9 +487,9 @@ export async function validate_chapter_comprehensive(
 
   const result: Partial<ReducedGraphState> = {}
 
-  if (workingState.pendingIssues.length > 0) {
-    result.pendingIssues = workingState.pendingIssues
-  }
+  // 始终回写 pendingIssues（包括空列表）：重跑检测器的旧 issue 已被移除，
+  // 只有写回空列表才能清除上一轮已修复的问题，避免残留 error 阻断定稿。
+  result.pendingIssues = workingState.pendingIssues
 
   if (workingState.foreshadowStack !== state.foreshadowStack) {
     result.foreshadowStack = workingState.foreshadowStack

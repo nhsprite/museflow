@@ -1,5 +1,10 @@
 export type RoutingDecision =
-  'draft_chapter' | 'fix_chapter' | 'finalize_chapter' | 'request_rewrite' | 'decide_strategy'
+  | 'draft_chapter'
+  | 'fix_chapter'
+  | 'finalize_chapter'
+  | 'request_rewrite'
+  | 'decide_strategy'
+  | 'repair_state'
 
 export interface RewriteRoutingConfig {
   maxErrorRewriteAttempts: number

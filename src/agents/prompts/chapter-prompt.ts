@@ -71,8 +71,6 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 {timeAnchorSection}
 
-{factVerificationSection}
-
 {beatMappingSection}
 
 {planSection}
@@ -99,6 +97,9 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 === CHAPTER_CONTENT ===
 （正文内容，从这里开始写小说正文）
+
+=== STORY_FINAL_STATE ===
+（章末终态声明，见下方说明）
 
 <pre_write_check_section>
 <title>【第一部分：PRE_WRITE_CHECK - 写正文前必须先完成】</title>
@@ -150,8 +151,28 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 - task-create: <taskId> / <description> @pN
 
 <important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符。若 chapterPlan.expectedEvents 已提供事件，STORY_EVENTS 必须逐字段复用 chapterPlan.expectedEvents：item-location 的 holderId 与 locationId 必须保持不变，item-state 的 attribute 与 value 必须保持不变；禁止把结构化 ID 改写成自然语言位置或状态描述。没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
+
+<important>【终态覆盖强制要求】如果本章正文中某实体的位置或状态发生了多次变化（例如先移走又放回、先受伤又痊愈），STORY_EVENTS 中该实体该属性的最后一条事件必须反映章末终态，而不是章中的中间状态。章末的归位、恢复、状态逆转等动作与章中的变化动作同等重要，必须输出对应事件。</important>
 </content>
 </story_events_section>
+
+<story_final_state_section>
+<title>【STORY_FINAL_STATE - 章末终态自声明（正文之后必须输出）】</title>
+<content>在 CHAPTER_CONTENT 正文结束之后，必须输出一个 === STORY_FINAL_STATE === 区块，以 JSON 数组逐条声明本章所有发生过位置或状态变化的实体的章末终态：
+
+=== STORY_FINAL_STATE ===
+[
+  {"entityId": "<characterId 或 itemId>", "attribute": "location", "value": "<locationId 或 holderId>"},
+  {"entityId": "<characterId 或 itemId>", "attribute": "status", "value": "<状态枚举值>"}
+]
+
+规则：
+- 只声明本章正文明确引起过位置/状态变化的实体；本章没有任何位置/状态变化时输出空数组 []，但不得省略该区块。
+- attribute 只能是 "location" 或 "status"。location 的 value 必须是地点或持有者的结构化 ID；status 的 value 必须与 STORY_EVENTS 中对应 character-status / item-state 事件的 value 完全一致（短枚举值或既有状态短语均可，禁止临时编造新表述）。
+- location 的 value 禁止自然语言描述，只能是 ID。
+- 每条声明必须与 STORY_EVENTS 一致：该实体该属性在 STORY_EVENTS 中的最后一条事件的值必须与声明的 value 完全相同。系统会逐条校验：有对应事件但终态值不一致将被判为错误并要求重写本章；声明的实体本章无对应事件时仅记为提示。
+</content>
+</story_final_state_section>
 
 <chapter_content_section>
 <title>【第二部分：CHAPTER_CONTENT - 正文写作要求】</title>
@@ -187,7 +208,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
 </content>
 </chapter_content_section>
 
-请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === STORY_EVENTS === 部分，最后输出 === CHAPTER_CONTENT === 部分。
+请严格按照上述格式输出：先输出 === PRE_WRITE_CHECK === 部分，再输出 === STORY_EVENTS === 部分，然后输出 === CHAPTER_CONTENT === 部分，最后输出 === STORY_FINAL_STATE === 部分。
 </output_format>
 </task>`
 
@@ -201,7 +222,6 @@ export interface ChapterPromptSections {
   writingConstraintsSection: string
   stateConflictsSection: string
   timeAnchorSection: string
-  factVerificationSection: string
   beatMappingSection: string
   planSection: string
   taskResolutionSection: string

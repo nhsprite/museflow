@@ -41,6 +41,12 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
     {outline}
   </outline>
 
+  <previous_summary>
+    <note>【叙事参考】以下内容为前几章的压缩摘要与上一章结尾片段，仅用于理解前情脉络与角色关系，不作为事实依据。</note>
+    <note>【重要】已确立的事实以【权威事实】与大纲为准。如果本摘要与【权威事实】存在任何差异，以【权威事实】为准。</note>
+    {previousSummary}
+  </previous_summary>
+
   <story_state>
     【权威事实 - 一致性检查的唯一事实依据】
     {storyState}
@@ -57,15 +63,6 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
   </chapter_time_anchor>
 
   {chapterContractSection}
-
-  <superseded_facts>
-    以下事实已被后续大纲覆盖或更新，不应视为矛盾：
-    {supersededFacts}
-    
-    判定规则：
-    - 如果当前章节与上述 supersededFacts 中的旧事实冲突 → 不要报 error（这是大纲演进导致的正常差异）
-    - 只有当角色对已确立的新事实表现出矛盾态度时，才报 error
-  </superseded_facts>
 
   {foreshadowsSection}
 
@@ -98,7 +95,9 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
     <dimension name="dialogue" priority="critical">角色说过的话是否前后矛盾。前一章角色亲口说的内容，本章不能自相矛盾</dimension>
     <dimension name="information" priority="high">关键信息（物品、消息、秘密）的传递和知悉情况是否前后一致</dimension>
     <dimension name="foreshadowing" priority="critical">
-      必须回收的伏笔：检查上述"必须在本章回收"和"已逾期"的伏笔是否在本章得到回收。如果未回收，报 error
+      必须回收的伏笔：检查上述"必须在本章回收"的伏笔是否在本章得到回收。如果未回收，报 error
+      已逾期伏笔：逾期本身不构成 error，不得仅因伏笔逾期未回收而报 error；如需提醒，报 warning 或 info
+      虚假回收：只有本章大纲或章节规划声称回收某伏笔（fulfilledForeshadowIds / foreshadow-fulfill 事件）而正文未真实回收时，才报 error
       伏笔提前剧透：检查本章是否提前泄露了尚未到期的伏笔内容
       伏笔回收一致性：如果本章回收了某个伏笔，检查回收内容是否与埋下时的暗示方向一致
       正常伏笔：检查"正常伏笔"是否被不当地提前揭示
@@ -219,9 +218,9 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
     2. 被权威事实明确标记为"覆盖"的旧事实，不应作为当前章节的矛盾依据。
     3. 只有当角色对权威事实中当前有效的值表现出不合理态度时，才报 consistency error。
     4. 本章内容若与权威事实中的当前值一致，即使与旧摘要中的旧值不同，也不构成矛盾。
-    5. <mandatory>【执行约束】在输出最终 issues 前，你必须逐条审查每个候选 issue。如果某个候选 issue 的描述或建议与 canonicalFacts 中的任何一条事实直接矛盾，则必须删除该候选 issue，不得在最终 JSON 中报告。</mandatory>
+    5. <mandatory>【执行约束】在输出最终 issues 前，你必须逐条审查每个候选 issue。如果某个候选 issue 的描述或建议与 canonicalFacts 中的已确立权威事实（非"大纲推断"标记的事实）直接矛盾，则必须删除该候选 issue，不得在最终 JSON 中报告。</mandatory>
     6. <mandatory>【执行约束】如果 canonicalFacts 已经明确记录了某个信息的传递方式、物品位置或角色行动，本章只要与该记录一致，就不应报 consistency error，即使该记录与你的常识推断不同。</mandatory>
-    7. <mandatory>【执行约束】如果【本章大纲已授权的新事实】中记录了某个事实，本章内容中出现该事实属于正常叙事推进，不得将其判定为"擅自发明"、"无来源引入"或"状态污染"。</mandatory>
+    7. <mandatory>【执行约束】标记为"大纲推断"的事实（包括【大纲推断事实（仅供参考，正文优先）】中的条目）是提示级信息，不是已确立权威事实：本章内容中出现这些事实属于正常叙事推进，不得将其判定为"擅自发明"、"无来源引入"或"状态污染"；本章正文与"大纲推断事实"冲突时，以正文为准，最多报 warning，不得报 error。只有与已确立权威事实（非推断）冲突才可报 error。</mandatory>
   </rule>
 
   {outlineAuthorizedFactsSection}
@@ -287,9 +286,9 @@ export interface ConsistencyPromptVariables {
   worldSetting: string
   characterSetting: string
   outline: string
+  previousSummary: string
   storyState: string
   chapterTimeAnchor: string
-  supersededFacts: string
   contentToCheck: string
 }
 

@@ -2,6 +2,8 @@ import type { ReducedGraphState } from '../../state.js'
 import type { FixAgentInput, SentenceFix } from '../../../agents/types.js'
 import type { FixAgent } from '../../../agents/index.js'
 import type { ModelProvider } from '../../../model/provider.js'
+import type { Issue } from '../../../types/agent.js'
+import type { StoryEvent } from '../../../types/story-memory.js'
 import { writeStagedChapterContent } from '../../../storage/filesystem/writer.js'
 import { getGenreSkill } from '../../../genres/registry.js'
 import {
@@ -9,9 +11,83 @@ import {
   DEFAULT_CHAPTER_WORD_COUNT_MAX,
 } from '../../../types/genre.js'
 import { validateFixedChapterContent } from '../../../utils/chapter-content-validation.js'
+import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
 import { formatStoryState, prepareStoryStateForChapter } from '../../utils/reconciler/index.js'
 import { buildEffectiveCharactersList, charactersToString } from '../../utils/characters.js'
 import { splitIntoParagraphs } from '../../utils/text-patching.js'
+import { generateId } from '../../../utils/id.js'
+import { logger } from '../../../utils/logger.js'
+
+/**
+ * 句子/段落级修复的合并产出校验，与 runLegacyFix 的 validateFixedChapterContent 口径一致。
+ */
+async function validateMergedFixContent(
+  content: string,
+  state: ReducedGraphState,
+  chapterIndex: number,
+  provider: ModelProvider
+): Promise<{ valid: boolean; error?: string }> {
+  const genre = getGenreSkill(state.genre)
+  const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
+  const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
+  return validateFixedChapterContent(
+    content,
+    { chapterIndex, minWordCount: min, maxWordCount: max, enforceWordCount: false },
+    provider
+  )
+}
+
+function buildFixValidationFailureIssue(chapterIndex: number, error: string): Issue {
+  return {
+    id: generateId(),
+    type: 'draft_failure',
+    severity: 'error',
+    description: `第 ${chapterIndex + 1} 章修复后内容校验失败：${error}`,
+    source: 'quality',
+    retryStrategy: 'draft',
+  }
+}
+
+/**
+ * fix 落盘后对 draftChapterEvents 重跑证据校验：
+ * 证据段落索引在修复后正文中越界的事件会被剔除并产生 warning，
+ * 避免结构化校验对修复后正文产生虚假 event_evidence_invalid 错误，
+ * 以及 finalize 把失效事件写入 StoryMemory。
+ */
+function refreshDraftChapterEventsAfterFix(
+  events: StoryEvent[] | undefined,
+  fixedContent: string,
+  chapterIndex: number
+): { events: StoryEvent[] | undefined; issues: Issue[] } {
+  if (!events || events.length === 0) return { events, issues: [] }
+
+  const paragraphCount = countEvidenceParagraphs(fixedContent)
+  const kept: StoryEvent[] = []
+  const issues: Issue[] = []
+
+  for (const event of events) {
+    const evidence = event.evidence
+    if (evidence && (evidence.paragraphIndex < 1 || evidence.paragraphIndex > paragraphCount)) {
+      issues.push({
+        id: generateId(),
+        type: 'event_evidence_invalid',
+        severity: 'warning',
+        description: `结构化事件 ${event.id}（${event.type}）的段落证据 @p${evidence.paragraphIndex} 在第 ${chapterIndex + 1} 章修复后的正文中不存在，已将其从 draftChapterEvents 移除，避免写入 StoryMemory`,
+        source: 'outline_compliance',
+      })
+      continue
+    }
+    kept.push(event)
+  }
+
+  if (issues.length > 0) {
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章修复后有 ${issues.length} 个结构化事件的段落证据失效，已从 draftChapterEvents 移除`
+    )
+  }
+
+  return { events: kept, issues }
+}
 
 export async function runSentenceFix(
   agent: FixAgent,
@@ -43,7 +119,7 @@ export async function runSentenceFix(
   const context = contextParagraphs.join('\n\n')
 
   const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex, provider)
-  const storyStateStr = formatStoryState(reconciledState)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
 
   const {
     merged: effectiveCharacters,
@@ -74,7 +150,11 @@ export async function runSentenceFix(
   const output = await agent.run(agentState)
 
   const affectedIndices = Array.from(new Set(sentenceFixes.map((s) => s.paragraphIndex)))
-  const { content, chapterMeta: updatedChapter } = agent.processOutput(
+  const {
+    content,
+    chapterMeta: updatedChapter,
+    issues: fixIssues,
+  } = agent.processOutput(
     output,
     existingContent,
     paragraphs,
@@ -83,12 +163,35 @@ export async function runSentenceFix(
     chapterIndex + 1
   )
 
+  const validation = await validateMergedFixContent(content, state, chapterIndex, provider)
+  if (!validation.valid) {
+    logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章句子级修复产出校验失败：${validation.error}`)
+    return {
+      pendingIssues: [
+        ...state.pendingIssues,
+        buildFixValidationFailureIssue(chapterIndex, validation.error ?? '未知错误'),
+        ...fixIssues,
+      ],
+    }
+  }
+
   await writeStagedChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
 
-  return { chapters: newChapters }
+  const { events, issues: eventIssues } = refreshDraftChapterEventsAfterFix(
+    state.draftChapterEvents,
+    content,
+    chapterIndex
+  )
+  const newIssues = [...fixIssues, ...eventIssues]
+
+  return {
+    chapters: newChapters,
+    draftChapterEvents: events,
+    ...(newIssues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...newIssues] } : {}),
+  }
 }
 
 export async function runParagraphFix(
@@ -131,7 +234,7 @@ export async function runParagraphFix(
   const context = contextParagraphs.join('\n\n')
 
   const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex, provider)
-  const storyStateStr = formatStoryState(reconciledState)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
 
   const {
     merged: effectiveCharacters,
@@ -161,7 +264,11 @@ export async function runParagraphFix(
 
   const output = await agent.run(agentState)
 
-  const { content, chapterMeta: updatedChapter } = agent.processOutput(
+  const {
+    content,
+    chapterMeta: updatedChapter,
+    issues: fixIssues,
+  } = agent.processOutput(
     output,
     existingContent,
     paragraphs,
@@ -170,13 +277,34 @@ export async function runParagraphFix(
     chapterIndex + 1
   )
 
+  const validation = await validateMergedFixContent(content, state, chapterIndex, provider)
+  if (!validation.valid) {
+    logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章段落级修复产出校验失败：${validation.error}`)
+    return {
+      pendingIssues: [
+        ...state.pendingIssues,
+        buildFixValidationFailureIssue(chapterIndex, validation.error ?? '未知错误'),
+        ...fixIssues,
+      ],
+    }
+  }
+
   await writeStagedChapterContent(state.story.outputDir, chapterIndex + 1, content)
 
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
 
+  const { events, issues: eventIssues } = refreshDraftChapterEventsAfterFix(
+    state.draftChapterEvents,
+    content,
+    chapterIndex
+  )
+  const newIssues = [...fixIssues, ...eventIssues]
+
   return {
     chapters: newChapters,
+    draftChapterEvents: events,
+    ...(newIssues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...newIssues] } : {}),
   }
 }
 
@@ -192,7 +320,7 @@ export async function runLegacyFix(
   nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
   const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex, provider)
-  const storyStateStr = formatStoryState(reconciledState)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
 
   const {
     merged: effectiveCharacters,
@@ -252,7 +380,11 @@ export async function runLegacyFix(
 
   rawContent = validation.content ?? rawContent
   const paragraphs = splitIntoParagraphs(existingContent)
-  const { content, chapterMeta: updatedChapter } = agent.processOutput(
+  const {
+    content,
+    chapterMeta: updatedChapter,
+    issues: fixIssues,
+  } = agent.processOutput(
     { ...output, content: rawContent },
     existingContent,
     paragraphs,
@@ -266,7 +398,16 @@ export async function runLegacyFix(
   const newChapters = [...state.chapters]
   newChapters[chapterIndex] = updatedChapter
 
+  const { events, issues: eventIssues } = refreshDraftChapterEventsAfterFix(
+    state.draftChapterEvents,
+    content,
+    chapterIndex
+  )
+  const newIssues = [...fixIssues, ...eventIssues]
+
   return {
     chapters: newChapters,
+    draftChapterEvents: events,
+    ...(newIssues.length > 0 ? { pendingIssues: [...state.pendingIssues, ...newIssues] } : {}),
   }
 }

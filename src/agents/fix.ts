@@ -2,6 +2,7 @@ import type { ModelProvider } from '../model/provider.js'
 import { BaseAgent, type AgentOutput } from './base.js'
 import type { FixAgentInput } from './types.js'
 import type { ChapterMeta } from '../types/chapter.js'
+import type { Issue } from '../types/agent.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { CHAPTER_TITLE_ONLY_PATTERN } from '../utils/chapter-content-validation.js'
@@ -158,8 +159,13 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     affectedIndices: number[],
     _storyId: string,
     _chapterIndex: number
-  ): { content: string; chapterMeta: ChapterMeta } {
-    const content = this.buildFixedContent(output, existingContent, paragraphs, affectedIndices)
+  ): { content: string; chapterMeta: ChapterMeta; issues: Issue[] } {
+    const { content, issues } = this.buildFixedContent(
+      output,
+      existingContent,
+      paragraphs,
+      affectedIndices
+    )
 
     const now = Date.now()
     const chapterMeta: ChapterMeta = {
@@ -175,7 +181,7 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       updatedAt: now,
     }
 
-    return { content, chapterMeta }
+    return { content, chapterMeta, issues }
   }
 
   private buildFixedContent(
@@ -183,7 +189,9 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
     existingContent: string,
     paragraphs: string[],
     affectedIndices: number[]
-  ): string {
+  ): { content: string; issues: Issue[] } {
+    const issues: Issue[] = []
+
     if (
       output.data &&
       (
@@ -216,14 +224,36 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
           .push({ index: s.sentenceIndex, content: s.content })
       }
 
+      const affectedSet = new Set(affectedIndices)
+      const coveredParagraphs = new Set<number>()
       const resultParagraphs = [...paragraphs]
       for (const [pIdx, sentences] of modifiedParagraphs) {
         const originalParagraph = paragraphs[pIdx]
-        if (originalParagraph) {
-          resultParagraphs[pIdx] = mergeSentenceFixes(originalParagraph, sentences)
+        if (!originalParagraph) {
+          issues.push(
+            buildFixMergeIssue(`模型返回了超出范围的段落索引 ${pIdx}，已忽略该修改`, {
+              patchable: false,
+            })
+          )
+          continue
+        }
+        if (!affectedSet.has(pIdx)) {
+          issues.push(
+            buildFixMergeIssue(`模型返回了未受影响段落 ${pIdx} 的修改，已按范围过滤忽略`, {
+              patchable: false,
+            })
+          )
+          continue
+        }
+        resultParagraphs[pIdx] = mergeSentenceFixes(originalParagraph, sentences)
+        coveredParagraphs.add(pIdx)
+      }
+      for (const idx of affectedIndices) {
+        if (!coveredParagraphs.has(idx)) {
+          issues.push(buildUncoveredParagraphIssue(idx))
         }
       }
-      return resultParagraphs.join('\n\n')
+      return { content: resultParagraphs.join('\n\n'), issues }
     }
 
     if (
@@ -234,7 +264,21 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       const modifiedParagraphs = (
         output.data as { modifiedParagraphs: Array<{ index: number; content: string }> }
       ).modifiedParagraphs
-      return mergeParagraphFixes(paragraphs, modifiedParagraphs, affectedIndices)
+      const merge = mergeParagraphFixes(paragraphs, modifiedParagraphs, affectedIndices)
+      for (const skip of merge.skipped) {
+        issues.push(
+          buildFixMergeIssue(
+            skip.reason === 'empty_content'
+              ? `模型对段落 ${skip.index} 返回了空内容，已保留原文以避免静默删段`
+              : `模型返回了超出范围的段落索引 ${skip.index}，已忽略该修改`,
+            skip.reason === 'empty_content' ? { paragraphIndex: skip.index, patchable: true } : {}
+          )
+        )
+      }
+      for (const idx of merge.uncoveredIndices) {
+        issues.push(buildUncoveredParagraphIssue(idx))
+      }
+      return { content: merge.content, issues }
     }
 
     if (!output.success && output.error) {
@@ -246,6 +290,42 @@ export class FixAgent extends BaseAgent<FixAgentInput> {
       throw new Error(`修复后内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
     }
 
-    return applyParagraphDiffProtection(existingContent, content, affectedIndices)
+    return {
+      content: applyParagraphDiffProtection(existingContent, content, affectedIndices),
+      issues,
+    }
+  }
+}
+
+/**
+ * 修复合并阶段的警告 issue。
+ * patchable=true 时携带结构化 locationRef，使下一轮 fix 能再次定位该段落；
+ * patchable=false 时标记为 quality 维度且无 locationRef，仅记录不触发再修复。
+ */
+function buildFixMergeIssue(
+  description: string,
+  options: { paragraphIndex?: number; patchable?: boolean } = {}
+): Issue {
+  const patchable = options.patchable ?? false
+  return {
+    id: generateId(),
+    type: 'consistency',
+    severity: 'warning',
+    description,
+    ...(patchable ? { retryStrategy: 'fix' as const } : { dimension: 'quality' }),
+    ...(options.paragraphIndex !== undefined
+      ? { locationRef: { paragraphIndex: options.paragraphIndex } }
+      : {}),
+  }
+}
+
+function buildUncoveredParagraphIssue(paragraphIndex: number): Issue {
+  return {
+    id: generateId(),
+    type: 'consistency',
+    severity: 'warning',
+    description: `受影响段落 ${paragraphIndex} 未被模型修改，相关问题可能仍未解决`,
+    retryStrategy: 'fix',
+    locationRef: { paragraphIndex },
   }
 }

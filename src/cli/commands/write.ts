@@ -29,20 +29,21 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
   const hasChaptersOnDisk = checkExistingChapters(story.outputDir)
 
   let startChapterIndex = state.currentChapterIndex
-  if (hasChaptersOnDisk && state.currentChapterIndex === 0) {
+  if (hasChaptersOnDisk) {
     const chaptersDir = join(story.outputDir, 'chapters')
     const files = readdirSync(chaptersDir).filter(
       (f) => f.startsWith('chapter_') && f.endsWith('.md')
     )
-    startChapterIndex = files.length
+    const diskCount = files.length
+    if (state.currentChapterIndex === 0) {
+      startChapterIndex = diskCount
+    } else if (diskCount < state.currentChapterIndex) {
+      // checkpoint 领先于磁盘（commit 曾被中断）：从磁盘缺失处续写，避免跳过缺失章节
+      startChapterIndex = diskCount
+    }
   }
 
   const isResume = state.currentChapterIndex > 0 || hasChaptersOnDisk
-
-  // If disk has more chapters than state.currentChapterIndex, use disk count
-  if (hasChaptersOnDisk && startChapterIndex < state.currentChapterIndex) {
-    startChapterIndex = state.currentChapterIndex
-  }
 
   if (shouldFreezeLockStory(story, state) || startChapterIndex >= state.totalChapters) {
     if (startChapterIndex >= state.totalChapters && story.status !== 'freeze') {

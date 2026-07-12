@@ -130,18 +130,22 @@ describe('mergeParagraphFixes', () => {
     const affectedIndices = [1]
     const result = mergeParagraphFixes(originalParagraphs, modifiedParagraphs, affectedIndices)
 
-    expect(result).toContain('第一段原文。')
-    expect(result).toContain('第二段已修改。')
-    expect(result).toContain('第三段原文。')
-    expect(result).toContain('第四段原文。')
+    expect(result.content).toContain('第一段原文。')
+    expect(result.content).toContain('第二段已修改。')
+    expect(result.content).toContain('第三段原文。')
+    expect(result.content).toContain('第四段原文。')
+    expect(result.appliedIndices).toEqual([1])
+    expect(result.uncoveredIndices).toEqual([])
+    expect(result.skipped).toEqual([])
   })
 
-  it('keeps original when modified paragraph is not provided', () => {
+  it('keeps original and reports uncovered when modified paragraph is not provided', () => {
     const modifiedParagraphs: Array<{ index: number; content: string }> = []
     const affectedIndices = [1]
     const result = mergeParagraphFixes(originalParagraphs, modifiedParagraphs, affectedIndices)
 
-    expect(result).toContain('第二段原文。')
+    expect(result.content).toContain('第二段原文。')
+    expect(result.uncoveredIndices).toEqual([1])
   })
 
   it('replaces multiple paragraphs', () => {
@@ -152,11 +156,32 @@ describe('mergeParagraphFixes', () => {
     const affectedIndices = [1, 3]
     const result = mergeParagraphFixes(originalParagraphs, modifiedParagraphs, affectedIndices)
 
-    const parts = result.split('\n\n')
+    const parts = result.content.split('\n\n')
     expect(parts[0]).toBe('第一段原文。')
     expect(parts[1]).toBe('第二段已修改。')
     expect(parts[2]).toBe('第三段原文。')
     expect(parts[3]).toBe('第四段已修改。')
+    expect(result.appliedIndices).toEqual([1, 3])
+  })
+
+  it('rejects empty replacement content and keeps the original paragraph', () => {
+    const modifiedParagraphs = [{ index: 1, content: '   ' }]
+    const affectedIndices = [1]
+    const result = mergeParagraphFixes(originalParagraphs, modifiedParagraphs, affectedIndices)
+
+    expect(result.content).toContain('第二段原文。')
+    expect(result.appliedIndices).toEqual([])
+    expect(result.skipped).toEqual([{ index: 1, reason: 'empty_content' }])
+  })
+
+  it('reports out-of-range paragraph indices without applying them', () => {
+    const modifiedParagraphs = [{ index: 9, content: '不存在的段落。' }]
+    const affectedIndices = [1]
+    const result = mergeParagraphFixes(originalParagraphs, modifiedParagraphs, affectedIndices)
+
+    expect(result.content).toBe(originalParagraphs.join('\n\n'))
+    expect(result.skipped).toEqual([{ index: 9, reason: 'out_of_range' }])
+    expect(result.uncoveredIndices).toEqual([1])
   })
 })
 

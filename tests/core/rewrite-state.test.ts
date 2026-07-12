@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyRewriteCleanup,
   cleanOutlineForRewrite,
+  cleanStoryMemoryForRewrite,
+  cleanStoryStateForRewrite,
+  prepareRewritePreviewState,
   recomputeActProgressForRewrite,
 } from '../../src/core/rewrite-state.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { StoryMemory } from '../../src/types/story-memory.js'
+import type { StoryState } from '../../src/types/story-state.js'
 
 describe('recomputeActProgressForRewrite', () => {
   it('uses stable mandatory beat ids from story memory without relying on keyBeat text', () => {
@@ -274,5 +279,204 @@ describe('cleanOutlineForRewrite', () => {
       },
     ])
     expect(cleaned[1]?.verifiedBeats).toBeUndefined()
+  })
+})
+
+function makeCleanupState(overrides: Record<string, unknown> = {}): ReducedGraphState {
+  return {
+    story: { id: 'story-1', title: 'Test', outputDir: '/tmp/story' },
+    totalChapters: 5,
+    currentChapterIndex: 3,
+    outline: [
+      { number: 1, title: 'Chapter 1', description: 'Desc 1' },
+      { number: 2, title: 'Chapter 2', description: 'Desc 2' },
+      { number: 3, title: 'Chapter 3', description: 'Desc 3' },
+    ],
+    storyArc: null,
+    actProgress: {},
+    chapterSummaries: ['s1', 's2', 's3'],
+    foreshadowStack: [],
+    storyState: null,
+    storyMemory: null,
+    timeline: undefined,
+    ...overrides,
+  } as unknown as ReducedGraphState
+}
+
+describe('cleanStoryStateForRewrite', () => {
+  it('filters pendingTasks by the structured createdChapter field', () => {
+    const storyState = {
+      characterLocations: {},
+      characterStatus: {},
+      keyItemsLocation: {},
+      keyItemsState: {},
+      activePlots: [],
+      revealedSecrets: [],
+      currentScene: '',
+      storyTime: '',
+      pendingTasks: [
+        { id: 't1', assignee: 'a', description: 'd1', createdChapter: 1, status: 'pending' },
+        { id: 't2', assignee: 'a', description: 'd2', createdChapter: 2, status: 'pending' },
+        { id: 't3', assignee: 'a', description: 'd3', createdChapter: 3, status: 'pending' },
+      ],
+      canonicalFacts: [],
+      supersededFacts: [],
+    } as unknown as StoryState
+
+    const cleaned = cleanStoryStateForRewrite(storyState, 2)
+
+    expect(cleaned.pendingTasks.map((task) => task.id)).toEqual(['t1', 't2'])
+  })
+})
+
+describe('cleanStoryMemoryForRewrite', () => {
+  it('keeps pre-populated beat actIndex metadata after truncating events', () => {
+    const memory: StoryMemory = {
+      version: '1',
+      lastChapterIndex: 2,
+      entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+      events: [
+        {
+          id: 'e0',
+          type: 'plot-advance',
+          chapterIndex: 0,
+          source: 'chapter',
+          beatId: 'A1-B1',
+        } as StoryMemory['events'][number],
+        {
+          id: 'e1',
+          type: 'plot-advance',
+          chapterIndex: 1,
+          source: 'chapter',
+          beatId: 'A1-B1',
+        } as StoryMemory['events'][number],
+      ],
+      foreshadows: {},
+      beats: {
+        'A1-B1': {
+          id: 'A1-B1',
+          description: '关键节点',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 0,
+          provenByEventIds: ['e0', 'e1'],
+        },
+      },
+      tasks: {},
+    }
+
+    const cleaned = cleanStoryMemoryForRewrite(memory, 1)
+
+    expect(cleaned.events.map((event) => event.id)).toEqual(['e0'])
+    expect(cleaned.beats['A1-B1']?.actIndex).toBe(1)
+    expect(cleaned.beats['A1-B1']?.description).toBe('关键节点')
+    expect(cleaned.beats['A1-B1']?.provenByEventIds).toEqual(['e0'])
+  })
+})
+
+describe('applyRewriteCleanup', () => {
+  it('resets fulfillment of foreshadows fulfilled in rolled-back chapters', () => {
+    const state = makeCleanupState({
+      foreshadowStack: [
+        {
+          id: 'f1',
+          text: 'x',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          fulfilledChapter: 3,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+        {
+          id: 'f2',
+          text: 'y',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 1,
+          fulfilledChapter: 2,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+      ],
+    })
+
+    const cleaned = applyRewriteCleanup(state, 2)
+
+    expect(cleaned.foreshadowStack[0]?.fulfilledChapter).toBeUndefined()
+    expect(cleaned.foreshadowStack[1]?.fulfilledChapter).toBe(2)
+  })
+
+  it('drops timeline snapshots of rolled-back chapters via the structured chapterNumber field', () => {
+    const state = makeCleanupState({
+      timeline: [
+        { id: 's0', storyId: 'story-1', chapterNumber: null },
+        { id: 's1', storyId: 'story-1', chapterNumber: 1 },
+        { id: 's2', storyId: 'story-1', chapterNumber: 2 },
+        { id: 's3', storyId: 'story-1', chapterNumber: 3 },
+      ],
+    })
+
+    const cleaned = applyRewriteCleanup(state, 2)
+
+    expect(cleaned.timeline?.map((snapshot) => snapshot.id)).toEqual(['s0', 's1', 's2'])
+  })
+
+  it('truncates summaries and cleans story state through the single entry', () => {
+    const storyState = {
+      characterLocations: {},
+      characterStatus: {},
+      keyItemsLocation: {},
+      keyItemsState: {},
+      activePlots: [],
+      revealedSecrets: [],
+      currentScene: '',
+      storyTime: '',
+      pendingTasks: [
+        { id: 't1', assignee: 'a', description: 'd1', createdChapter: 1, status: 'pending' },
+        { id: 't2', assignee: 'a', description: 'd2', createdChapter: 3, status: 'pending' },
+      ],
+      canonicalFacts: [],
+      supersededFacts: [],
+    } as unknown as StoryState
+    const state = makeCleanupState({ storyState })
+
+    const cleaned = applyRewriteCleanup(state, 2)
+
+    expect(cleaned.chapterSummaries).toEqual(['s1', 's2'])
+    expect(cleaned.storyState?.pendingTasks?.map((task) => task.id)).toEqual(['t1'])
+  })
+})
+
+describe('prepareRewritePreviewState', () => {
+  it('is a projection of the same shared cleanup with only currentChapterIndex overridden', () => {
+    const state = makeCleanupState({
+      foreshadowStack: [
+        {
+          id: 'f1',
+          text: 'x',
+          expectedFulfillChapter: 5,
+          createdAt: 0,
+          createdAtChapter: 2,
+          fulfilledChapter: 3,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+      ],
+      timeline: [{ id: 's3', storyId: 'story-1', chapterNumber: 3 }],
+    })
+
+    const preview = prepareRewritePreviewState(state, 2)
+    const cleanup = applyRewriteCleanup(state, 2)
+
+    expect(preview.currentChapterIndex).toBe(2)
+    expect(preview.chapterSummaries).toEqual(cleanup.chapterSummaries)
+    expect(preview.foreshadowStack).toEqual(cleanup.foreshadowStack)
+    expect(preview.timeline).toEqual(cleanup.timeline)
+    expect(preview.outline).toEqual(cleanup.outline)
   })
 })

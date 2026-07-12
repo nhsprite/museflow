@@ -441,6 +441,87 @@ describe('projectMemory foreshadows', () => {
     expect(next.foreshadows['f-1']?.fulfilledIn).toBe(4)
     expect(next.foreshadows['f-1']?.introducedIn).toBe(4)
   })
+
+  it('extends the foreshadow deadline and counts extensions', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-1',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'e2',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'f-1',
+        newExpectedFulfillChapter: 13,
+        chapterIndex: 4,
+        source: 'outline',
+      },
+      {
+        id: 'e3',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'f-1',
+        newExpectedFulfillChapter: 21,
+        chapterIndex: 12,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['f-1']?.expectedFulfillChapter).toBe(21)
+    expect(next.foreshadows['f-1']?.deadlineExtensions).toBe(2)
+  })
+
+  it('ignores a deadline extension for an unknown foreshadow', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'f-unknown',
+        newExpectedFulfillChapter: 13,
+        chapterIndex: 4,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['f-unknown']).toBeUndefined()
+  })
+
+  it('preserves the extension count across fulfillment and re-introduction', () => {
+    const memory = createEmptyStoryMemory()
+    const next = applyEvents(memory, [
+      {
+        id: 'e1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-1',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'e2',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'f-1',
+        newExpectedFulfillChapter: 13,
+        chapterIndex: 4,
+        source: 'outline',
+      },
+      {
+        id: 'e3',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'f-1',
+        chapterIndex: 6,
+        source: 'chapter',
+      },
+    ])
+
+    expect(next.foreshadows['f-1']?.fulfilledIn).toBe(6)
+    expect(next.foreshadows['f-1']?.deadlineExtensions).toBe(1)
+  })
 })
 
 describe('projectMemory beats', () => {
@@ -569,5 +650,109 @@ describe('ensureBeatsHaveActIndex', () => {
     expect(next.beats['beat-1']?.description).toBe('主角突破')
     expect(next.beats['beat-1']?.claimedIn).toBe(2)
     expect(next.beats['beat-1']?.provenByEventIds).toContain('evt-1')
+  })
+})
+
+describe('projectStoryStateFromMemory — attribute projection and null updates', () => {
+  function makeMemory(events: StoryMemory['events']): StoryMemory {
+    return applyEvents(createEmptyStoryMemory(), events)
+  }
+
+  it('keeps the conventional status key when present', () => {
+    const memory = makeMemory([
+      {
+        id: 'e1',
+        type: 'character-status',
+        characterId: 'c-hero',
+        attribute: 'status',
+        value: '健康',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e2',
+        type: 'character-status',
+        characterId: 'c-hero',
+        attribute: '伤势',
+        value: '轻伤',
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+    ])
+    const state = projectStoryStateFromMemory(memory)
+    expect(state.characterStatus['c-hero']).toBe('健康')
+  })
+
+  it('falls back to the latest attribute when the conventional key is absent', () => {
+    const memory = makeMemory([
+      {
+        id: 'e1',
+        type: 'character-status',
+        characterId: 'c-hero',
+        attribute: '伤势',
+        value: '轻伤',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    const state = projectStoryStateFromMemory(memory)
+    expect(state.characterStatus['c-hero']).toBe('轻伤')
+  })
+
+  it('projects non-standard item state attributes', () => {
+    const memory = makeMemory([
+      {
+        id: 'e1',
+        type: 'item-state',
+        itemId: 'i-sword',
+        attribute: '损耗',
+        value: '崩刃',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    const state = projectStoryStateFromMemory(memory)
+    expect(state.keyItemsState['i-sword']).toBe('崩刃')
+  })
+
+  it('deletes a stale projected location when an explicit null update exists', () => {
+    const memory = makeMemory([
+      {
+        id: 'e1',
+        type: 'character-location',
+        characterId: 'c-hero',
+        locationId: 'l-village',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e2',
+        type: 'character-location',
+        characterId: 'c-hero',
+        locationId: null,
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+    ])
+    const state = projectStoryStateFromMemory(memory)
+    expect(state.characterLocations['c-hero']).toBeUndefined()
+  })
+
+  it('preserves base locations for characters without location events', () => {
+    const memory = makeMemory([
+      {
+        id: 'e1',
+        type: 'character-status',
+        characterId: 'c-hero',
+        attribute: 'status',
+        value: '健康',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    const base = projectStoryStateFromMemory(createEmptyStoryMemory())
+    base.characterLocations['c-hero'] = 'l-author-override'
+    const state = projectStoryStateFromMemory(memory, base)
+    expect(state.characterLocations['c-hero']).toBe('l-author-override')
   })
 })

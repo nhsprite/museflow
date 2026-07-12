@@ -67,6 +67,12 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
       )
     case 'foreshadow-fulfill':
       return b.type === 'foreshadow-fulfill' && a.foreshadowId === b.foreshadowId
+    case 'foreshadow-deadline-extend':
+      return (
+        b.type === 'foreshadow-deadline-extend' &&
+        a.foreshadowId === b.foreshadowId &&
+        a.newExpectedFulfillChapter === b.newExpectedFulfillChapter
+      )
     case 'task-create':
       return b.type === 'task-create' && a.taskId === b.taskId && a.description === b.description
     case 'task-resolve':
@@ -128,7 +134,9 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
     .map((f) => f.id)
 
   const fulfilledForeshadows = Object.values(after.foreshadows)
-    .filter((f) => f.fulfilledIn && !before.foreshadows[f.id]?.fulfilledIn)
+    .filter(
+      (f) => f.fulfilledIn !== null && (before.foreshadows[f.id]?.fulfilledIn ?? null) === null
+    )
     .map((f) => f.id)
 
   const newTasks = Object.values(after.tasks)
@@ -136,7 +144,7 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
     .map((t) => t.id)
 
   const resolvedTasks = Object.values(after.tasks)
-    .filter((t) => t.resolvedIn && !before.tasks[t.id]?.resolvedIn)
+    .filter((t) => t.resolvedIn !== null && (before.tasks[t.id]?.resolvedIn ?? null) === null)
     .map((t) => t.id)
 
   return {

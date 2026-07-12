@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { parseStoryEventsBlock } from '../../src/story-memory/parser.js'
+import { parseStoryEventsBlock, parseStoryFinalStateBlock } from '../../src/story-memory/parser.js'
 
 describe('parseStoryEventsBlock', () => {
   it('parses character-location events', () => {
     const text = `=== STORY_EVENTS ===
-- character-location: c-1 -> l-1
-- foreshadow-fulfill: f-1
+- character-location: c-linxuan -> l-temple
+- foreshadow-fulfill: fs-oath
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 2)
@@ -21,7 +21,7 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses item-location events', () => {
     const text = `=== STORY_EVENTS ===
-- item-location: i-1 -> c-1
+- item-location: i-sword -> c-linxuan
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
@@ -31,23 +31,23 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses explicit item holder and location fields', () => {
     const text = `=== STORY_EVENTS ===
-- item-location: item-1 / holder=none / location=loc-1 @p3
+- item-location: item-sword / holder=none / location=loc-temple @p3
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 0)
 
     expect(events[0]).toMatchObject({
       type: 'item-location',
-      itemId: 'item-1',
+      itemId: 'item-sword',
       holderId: null,
-      locationId: 'loc-1',
+      locationId: 'loc-temple',
       evidence: { paragraphIndex: 3 },
     })
   })
 
   it('rejects free-form prose in legacy item-location targets', () => {
     const text = `=== STORY_EVENTS ===
-- item-location: item-1 -> 登记台右格原位 @p1
+- item-location: item-sword -> 登记台右格原位 @p1
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 0)
@@ -57,7 +57,7 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses plot-advance events', () => {
     const text = `=== STORY_EVENTS ===
-- plot-advance: p-1 / a1-b1
+- plot-advance: act-1 / a1-b1
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
@@ -67,7 +67,7 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses paragraph evidence markers on story events', () => {
     const text = `=== STORY_EVENTS ===
-- plot-advance: p-1 / a1-b1 @p2
+- plot-advance: act-1 / a1-b1 @p2
 === CHAPTER_CONTENT ===
 第一段。
 
@@ -79,7 +79,7 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses character-status events', () => {
     const text = `=== STORY_EVENTS ===
-- character-status: c-1 / health -> injured
+- character-status: c-linxuan / health -> injured
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
@@ -89,7 +89,7 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses item-state events', () => {
     const text = `=== STORY_EVENTS ===
-- item-state: i-1 / condition -> broken
+- item-state: i-sword / condition -> broken
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
@@ -99,7 +99,7 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses foreshadow-introduce events', () => {
     const text = `=== STORY_EVENTS ===
-- foreshadow-introduce: f-1 / 5
+- foreshadow-introduce: fs-oath / 5
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
@@ -109,14 +109,14 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses rich foreshadow-introduce metadata', () => {
     const text = `=== STORY_EVENTS ===
-- foreshadow-introduce: f-1 / expected=5 / kind=character_arc / required=false / beat=A1-M2 / text=角色A在场景A中的迟疑暗示后续选择 @p1
+- foreshadow-introduce: fs-oath / expected=5 / kind=character_arc / required=false / beat=A1-M2 / text=角色A在场景A中的迟疑暗示后续选择 @p1
 === CHAPTER_CONTENT ===
 角色A在场景A中短暂停顿。`
     const events = parseStoryEventsBlock(text, 1)
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({
       type: 'foreshadow-introduce',
-      foreshadowId: 'f-1',
+      foreshadowId: 'fs-oath',
       expectedFulfillChapter: 5,
       kind: 'character_arc',
       required: false,
@@ -128,8 +128,8 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses task-create and task-resolve events', () => {
     const text = `=== STORY_EVENTS ===
-- task-create: t-1 / find the key
-- task-resolve: t-1
+- task-create: t-errand / find the key
+- task-resolve: t-errand
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
@@ -140,11 +140,111 @@ describe('parseStoryEventsBlock', () => {
 
   it('ignores unrecognized lines inside the block', () => {
     const text = `=== STORY_EVENTS ===
-- character-location: c-1 -> l-1
+- character-location: c-linxuan -> l-temple
 - unknown-event: something
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
     expect(events).toHaveLength(1)
+  })
+
+  it('drops events that copy placeholder example IDs from prompts', () => {
+    const text = `=== STORY_EVENTS ===
+- character-location: c-1 -> l-1
+- item-location: i-1 / holder=c-1 / location=l-1
+- foreshadow-introduce: fs-1 / expected=5
+- plot-advance: p-1 / beat-1
+- task-resolve: t-1
+- character-location: c-linxuan -> l-temple
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: 'character-location',
+      characterId: 'c-linxuan',
+      locationId: 'l-temple',
+    })
+  })
+
+  it('keeps act-<n> plot IDs which are legitimate plot identifiers', () => {
+    const text = `=== STORY_EVENTS ===
+- plot-advance: act-2 / A2-M3
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'plot-advance', plotId: 'act-2', beatId: 'A2-M3' })
+  })
+})
+
+describe('parseStoryFinalStateBlock', () => {
+  it('parses a JSON array of final-state declarations', () => {
+    const text = `=== CHAPTER_CONTENT ===
+正文
+=== STORY_FINAL_STATE ===
+[
+  {"entityId": "i-box", "attribute": "location", "value": "loc-drawer-right"},
+  {"entityId": "c-linxuan", "attribute": "status", "value": "active"}
+]`
+    const declarations = parseStoryFinalStateBlock(text)
+    expect(declarations).toEqual([
+      { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+      { entityId: 'c-linxuan', attribute: 'status', value: 'active' },
+    ])
+  })
+
+  it('returns empty array when block is missing', () => {
+    expect(parseStoryFinalStateBlock('正文')).toEqual([])
+  })
+
+  it('returns empty array for an empty block', () => {
+    const text = `=== CHAPTER_CONTENT ===
+正文
+=== STORY_FINAL_STATE ===
+`
+    expect(parseStoryFinalStateBlock(text)).toEqual([])
+  })
+
+  it('tolerates broken JSON by returning empty array', () => {
+    const text = `=== STORY_FINAL_STATE ===
+[{"entityId": "i-box", "attribute": "location", "value": `
+    expect(parseStoryFinalStateBlock(text)).toEqual([])
+  })
+
+  it('drops entries with invalid attribute or prose location value', () => {
+    const text = `=== STORY_FINAL_STATE ===
+[
+  {"entityId": "i-box", "attribute": "mood", "value": "happy"},
+  {"entityId": "i-box", "attribute": "location", "value": "抽屉更深处"},
+  {"entityId": "i-box", "attribute": "location", "value": "loc-drawer-right"}
+]`
+    const declarations = parseStoryFinalStateBlock(text)
+    expect(declarations).toEqual([
+      { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+    ])
+  })
+
+  it('accepts prose status values that mirror event values verbatim', () => {
+    const text = `=== STORY_FINAL_STATE ===
+[
+  {"entityId": "i-box", "attribute": "status", "value": "贴身未拆，火漆未动"}
+]`
+    const declarations = parseStoryFinalStateBlock(text)
+    expect(declarations).toEqual([
+      { entityId: 'i-box', attribute: 'status', value: '贴身未拆，火漆未动' },
+    ])
+  })
+
+  it('drops declarations that copy placeholder example IDs', () => {
+    const text = `=== STORY_FINAL_STATE ===
+[
+  {"entityId": "c-1", "attribute": "location", "value": "l-1"},
+  {"entityId": "c-linxuan", "attribute": "location", "value": "loc-temple"}
+]`
+    const declarations = parseStoryFinalStateBlock(text)
+    expect(declarations).toEqual([
+      { entityId: 'c-linxuan', attribute: 'location', value: 'loc-temple' },
+    ])
   })
 })

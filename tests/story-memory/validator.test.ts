@@ -222,4 +222,141 @@ describe('validateChapterEvents', () => {
     const result = validateChapterEvents(memory, 1, plan, actualEvents)
     expect(result.stateConflicts).toHaveLength(0)
   })
+
+  describe('final-state declarations', () => {
+    const itemLocationEvent = (id: string, locationId: string, chapterIndex = 1) => ({
+      id,
+      type: 'item-location' as const,
+      itemId: 'i-box',
+      holderId: null,
+      locationId,
+      chapterIndex,
+      source: 'chapter' as const,
+    })
+
+    it('passes when the declaration is supported by the last matching event', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        itemLocationEvent('e1', 'loc-drawer-deep'),
+        itemLocationEvent('e2', 'loc-drawer-right'),
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [
+          { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+        ],
+      })
+      expect(result.finalStateMismatches).toEqual([])
+    })
+
+    it('routes declarations with no supporting event to the uncorroborated (warning) channel', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const result = validateChapterEvents(memory, 1, plan, [], {
+        finalStateDeclarations: [
+          { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+        ],
+      })
+      expect(result.finalStateMismatches).toEqual([])
+      expect(result.finalStateUncorroborated).toEqual([
+        {
+          entityId: 'i-box',
+          attribute: 'location',
+          declaredValue: 'loc-drawer-right',
+          actualValue: null,
+        },
+      ])
+    })
+
+    it('reports a mismatch when the last event value differs from the declaration', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [itemLocationEvent('e1', 'loc-drawer-deep')]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [
+          { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+        ],
+      })
+      expect(result.finalStateMismatches).toEqual([
+        {
+          entityId: 'i-box',
+          attribute: 'location',
+          declaredValue: 'loc-drawer-right',
+          actualValue: 'loc-drawer-deep',
+        },
+      ])
+    })
+
+    it('uses the last of multiple events for the same entity and attribute', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        itemLocationEvent('e1', 'loc-drawer-right'),
+        itemLocationEvent('e2', 'loc-drawer-deep'),
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [
+          { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+        ],
+      })
+      expect(result.finalStateMismatches).toHaveLength(1)
+      expect(result.finalStateMismatches[0]?.actualValue).toBe('loc-drawer-deep')
+    })
+
+    it('prefers holderId over locationId for item-location declarations', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        {
+          id: 'e1',
+          type: 'item-location' as const,
+          itemId: 'i-box',
+          holderId: 'c-linxuan',
+          locationId: 'loc-temple',
+          chapterIndex: 1,
+          source: 'chapter' as const,
+        },
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [{ entityId: 'i-box', attribute: 'location', value: 'c-linxuan' }],
+      })
+      expect(result.finalStateMismatches).toEqual([])
+    })
+
+    it('validates status declarations against the last status event value', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        {
+          id: 'e1',
+          type: 'character-status' as const,
+          characterId: 'c-linxuan',
+          attribute: 'condition',
+          value: 'injured',
+          chapterIndex: 1,
+          source: 'chapter' as const,
+        },
+        {
+          id: 'e2',
+          type: 'character-status' as const,
+          characterId: 'c-linxuan',
+          attribute: 'condition',
+          value: 'active',
+          chapterIndex: 1,
+          source: 'chapter' as const,
+        },
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [{ entityId: 'c-linxuan', attribute: 'status', value: 'active' }],
+      })
+      expect(result.finalStateMismatches).toEqual([])
+    })
+
+    it('returns no mismatches when declarations are absent', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const result = validateChapterEvents(memory, 1, plan, [])
+      expect(result.finalStateMismatches).toEqual([])
+    })
+  })
 })

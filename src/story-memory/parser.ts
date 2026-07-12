@@ -1,5 +1,55 @@
 import { generateId } from '../utils/id.js'
-import type { ForeshadowKind, StoryEvent, StoryEventEvidence } from '../types/story-memory.js'
+import { logger } from '../utils/logger.js'
+import { parseJsonFromLLM } from '../utils/json.js'
+import type {
+  ChapterFinalStateDeclaration,
+  FinalStateAttribute,
+  ForeshadowKind,
+  StoryEvent,
+  StoryEventEvidence,
+} from '../types/story-memory.js'
+
+/**
+ * 占位示例 ID 防御：prompt 示例中使用 <前缀>-<数字> 形态的 ID（如 c-1、l-1、evt-1、fs-1），
+ * 模型有时会照抄示例而非使用真实实体 ID。真实 ID 为 slug（c-yezhiqiu）、
+ * act-<n> 形式的 plot ID（见 chapter-prompt 的 plot-advance 约定）或 generateId 输出，
+ * 因此按 ID 形态结构校验：纯小写前缀 + 数字后缀且非 act-<n> 的 ID 视为占位 ID，丢弃并告警。
+ */
+const PLACEHOLDER_ID_PATTERN = /^[a-z]+-\d+$/
+const ACT_PLOT_ID_PATTERN = /^act-\d+$/
+
+function isPlaceholderExampleId(id: string): boolean {
+  return PLACEHOLDER_ID_PATTERN.test(id) && !ACT_PLOT_ID_PATTERN.test(id)
+}
+
+function collectEventEntityIds(event: StoryEvent): string[] {
+  switch (event.type) {
+    case 'character-location':
+      return [event.characterId, ...(event.locationId ? [event.locationId] : [])]
+    case 'character-status':
+      return [event.characterId]
+    case 'item-location':
+      return [
+        event.itemId,
+        ...(event.holderId ? [event.holderId] : []),
+        ...(event.locationId ? [event.locationId] : []),
+      ]
+    case 'item-state':
+      return [event.itemId]
+    case 'plot-advance':
+      return [event.plotId, event.beatId]
+    case 'foreshadow-introduce':
+      return [event.foreshadowId]
+    case 'foreshadow-fulfill':
+      return [event.foreshadowId]
+    case 'foreshadow-deadline-extend':
+      return [event.foreshadowId]
+    case 'task-create':
+      return [event.taskId]
+    case 'task-resolve':
+      return [event.taskId]
+  }
+}
 
 export function parseStoryEventsBlock(text: string, chapterIndex: number): StoryEvent[] {
   const match = text.match(/=== STORY_EVENTS ===\n([\s\S]*?)\n=== CHAPTER_CONTENT ===/)
@@ -11,10 +61,76 @@ export function parseStoryEventsBlock(text: string, chapterIndex: number): Story
     const trimmed = line.trim()
     if (!trimmed || trimmed.startsWith('#')) continue
     const parsed = parseEventLine(trimmed, chapterIndex)
-    if (parsed) events.push(parsed)
+    if (!parsed) continue
+    if (collectEventEntityIds(parsed).some(isPlaceholderExampleId)) {
+      logger.warn(`[MuseFlow] 丢弃含占位示例 ID 的 STORY_EVENTS 行: ${trimmed}`)
+      continue
+    }
+    events.push(parsed)
   }
 
   return events
+}
+
+const FINAL_STATE_BLOCK_PATTERN =
+  /===\s*STORY_FINAL_STATE\s*===\s*([\s\S]*?)(?:\n===\s*[A-Z_]+\s*===|$)/i
+const FINAL_STATE_ATTRIBUTES: readonly FinalStateAttribute[] = ['location', 'status']
+
+export function parseStoryFinalStateBlock(text: string): ChapterFinalStateDeclaration[] {
+  const match = text.match(FINAL_STATE_BLOCK_PATTERN)
+  if (!match) return []
+  const block = (match[1] ?? '').trim()
+  if (!block) return []
+
+  const parsed = parseJsonFromLLM<unknown>(block)
+  if (!parsed.success || !Array.isArray(parsed.data)) {
+    logger.warn('[MuseFlow] STORY_FINAL_STATE 区块不是合法 JSON 数组，已忽略')
+    return []
+  }
+
+  const declarations: ChapterFinalStateDeclaration[] = []
+  for (const entry of parsed.data) {
+    const declaration = parseFinalStateDeclaration(entry)
+    if (!declaration) continue
+    if (isPlaceholderExampleId(declaration.entityId)) {
+      logger.warn(
+        `[MuseFlow] 丢弃含占位示例 ID 的 STORY_FINAL_STATE 声明: ${JSON.stringify(entry)}`
+      )
+      continue
+    }
+    declarations.push(declaration)
+  }
+  return declarations
+}
+
+function parseFinalStateDeclaration(entry: unknown): ChapterFinalStateDeclaration | null {
+  if (typeof entry !== 'object' || entry === null) {
+    logger.warn(`[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目: ${JSON.stringify(entry)}`)
+    return null
+  }
+  const { entityId, attribute, value } = entry as Record<string, unknown>
+  if (
+    typeof entityId !== 'string' ||
+    !isMachineId(entityId) ||
+    typeof attribute !== 'string' ||
+    !FINAL_STATE_ATTRIBUTES.includes(attribute as FinalStateAttribute) ||
+    typeof value !== 'string' ||
+    value.trim().length === 0 ||
+    value.length > 100
+  ) {
+    logger.warn(`[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目: ${JSON.stringify(entry)}`)
+    return null
+  }
+  // location values must be structured ids; status values mirror the
+  // corresponding event value verbatim (short label or established status
+  // phrase), so only location is id-gated.
+  if (attribute === 'location' && !isMachineId(value)) {
+    logger.warn(
+      `[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目（location 值必须为结构化 ID）: ${JSON.stringify(entry)}`
+    )
+    return null
+  }
+  return { entityId, attribute: attribute as FinalStateAttribute, value: value.trim() }
 }
 
 function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {

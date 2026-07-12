@@ -617,6 +617,69 @@ describe('detect_consistency validation context', () => {
     )
   })
 
+  it('removes a consistency error once it is no longer reported in the next round', async () => {
+    const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
+
+    const structuredIssue = {
+      id: 'structured-1',
+      type: 'event_missing',
+      severity: 'error',
+      description: '结构化事件未验证',
+      source: 'outline_compliance',
+    }
+    const staleWordCountIssue = {
+      id: 'wc-old',
+      type: 'word_count',
+      severity: 'warning',
+      description: '上一轮遗留的字数警告',
+      source: 'word_count',
+    }
+
+    const state = buildBaseState()
+    state.pendingIssues = [structuredIssue, staleWordCountIssue]
+    readChapterContentMock.mockResolvedValue('这是足够长的正文内容。'.repeat(500))
+    consistencyOutput = {
+      success: true,
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            id: 'consistency-round-1',
+            type: 'consistency',
+            severity: 'error',
+            description: '第一轮报告的一致性问题',
+          },
+        ],
+      },
+    }
+
+    const round1 = await validate_chapter_comprehensive(createMockContext(), state)
+
+    // 重跑检测器来源的旧 issue 被移除，结构化来源的 issue 保留，本轮新 error 并入
+    expect(round1.pendingIssues).toHaveLength(2)
+    expect(round1.pendingIssues?.some((i) => i.id === 'wc-old')).toBe(false)
+    expect(round1.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'structured-1' }),
+        expect.objectContaining({
+          id: 'consistency-round-1',
+          severity: 'error',
+          source: 'consistency',
+        }),
+      ])
+    )
+
+    // 第二轮：一致性问题已修复，检测器不再报告
+    consistencyOutput = { success: true, data: { is_consistent: true, issues: [] } }
+    const round2 = await validate_chapter_comprehensive(createMockContext(), {
+      ...state,
+      pendingIssues: round1.pendingIssues ?? [],
+    })
+
+    // 已修复的 consistency error 必须消失；结构化来源的 issue 不回归、不丢失
+    expect(round2.pendingIssues).toEqual([expect.objectContaining({ id: 'structured-1' })])
+  })
+
   it('passes character aliases to the chapter opening continuity check', async () => {
     const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
 

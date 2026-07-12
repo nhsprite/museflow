@@ -311,3 +311,53 @@ describe('diffMemorySnapshots', () => {
     expect(diff.characterLocations[0]?.after).toBe('l-2')
   })
 })
+
+describe('diffMemorySnapshots — chapter index 0 transitions (falsy bug regression)', () => {
+  it('reports foreshadows fulfilled at chapter index 0', () => {
+    const before = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-early',
+        expectedFulfillChapter: 1,
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    const after = applyEvents(before, [
+      {
+        id: 'e2',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'f-early',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    const diff = diffMemorySnapshots(before, after)
+    expect(diff.fulfilledForeshadows).toContain('f-early')
+  })
+
+  it('reports tasks resolved at chapter index 0', () => {
+    const before = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'task-create',
+        taskId: 't-early',
+        description: 'task',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    const after = applyEvents(before, [
+      {
+        id: 'e2',
+        type: 'task-resolve',
+        taskId: 't-early',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    const diff = diffMemorySnapshots(before, after)
+    expect(diff.resolvedTasks).toContain('t-early')
+  })
+})

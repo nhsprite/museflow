@@ -1,6 +1,7 @@
 import type { ReducedGraphState } from '../graph/state.js'
 import type { StoryMemory } from '../types/story-memory.js'
-import { projectMemory } from '../story-memory/projector.js'
+import type { StoryState } from '../types/story-state.js'
+import { applyEvents } from '../story-memory/projector.js'
 import { getVerifiedBeatsFromMemory } from '../utils/story-arc.js'
 import {
   findClaimedMandatoryBeatForId,
@@ -70,11 +71,50 @@ export function cleanStoryMemoryForRewrite(
   if (filteredEvents.length === memory.events.length) {
     return memory
   }
-  return projectMemory({
+  const truncated: StoryMemory = {
     ...memory,
     events: filteredEvents,
     lastChapterIndex: Math.min(memory.lastChapterIndex, Math.max(0, targetChapterIndex - 1)),
-  })
+  }
+  // applyEvents re-projects from the truncated event log and merges the
+  // pre-populated beat metadata (actIndex/description) back in, so beats do not
+  // fall back to actIndex 0 the way a bare projectMemory call would.
+  return applyEvents(truncated, [])
+}
+
+export function cleanStoryStateForRewrite(
+  storyState: StoryState,
+  targetChapterIndex: number
+): StoryState {
+  const canonicalFacts = storyState.canonicalFacts ?? []
+  const supersededFacts = storyState.supersededFacts ?? []
+  const pendingTasks = storyState.pendingTasks ?? []
+
+  const cleanedCanonicalFacts = canonicalFacts.filter(
+    (fact) => fact.source === 'author_override' || fact.establishedIn < targetChapterIndex
+  )
+  const cleanedSupersededFacts = supersededFacts.filter(
+    (fact) => fact.chapterIndex < targetChapterIndex
+  )
+  // createdChapter is 1-based; chapters >= targetChapterIndex + 1 are rolled back.
+  const cleanedPendingTasks = pendingTasks.filter(
+    (task) => task.createdChapter <= targetChapterIndex
+  )
+
+  if (
+    cleanedCanonicalFacts.length === canonicalFacts.length &&
+    cleanedSupersededFacts.length === supersededFacts.length &&
+    cleanedPendingTasks.length === pendingTasks.length
+  ) {
+    return storyState
+  }
+
+  return {
+    ...storyState,
+    canonicalFacts: cleanedCanonicalFacts,
+    supersededFacts: cleanedSupersededFacts,
+    pendingTasks: cleanedPendingTasks,
+  }
 }
 
 function getTrustedOutlineVerifiedBeatsForRewrite(
@@ -205,7 +245,12 @@ export function recomputeActProgressForRewrite(
   return actProgress
 }
 
-export function prepareRewritePreviewState(
+/**
+ * Single entry point for rewrite state cleanup, shared by the runner (which
+ * feeds the result into the graph) and the CLI preview (which only projects it
+ * for display). Keeps both paths from drifting apart.
+ */
+export function applyRewriteCleanup(
   state: ReducedGraphState,
   targetChapterIndex: number
 ): ReducedGraphState {
@@ -213,18 +258,46 @@ export function prepareRewritePreviewState(
   const storyMemory = state.storyMemory
     ? cleanStoryMemoryForRewrite(state.storyMemory, targetChapterIndex)
     : state.storyMemory
-  const next = {
+  const storyState = state.storyState
+    ? cleanStoryStateForRewrite(state.storyState, targetChapterIndex)
+    : state.storyState
+  // createdAtChapter / fulfilledChapter are 1-based; chapters >= targetChapterIndex + 1
+  // are rolled back, so fulfillment markers from those chapters must be reset.
+  const foreshadowStack = state.foreshadowStack
+    .filter((f) => f.createdAtChapter < targetChapterIndex + 1)
+    .map((f) => {
+      if (f.fulfilledChapter === undefined || f.fulfilledChapter < targetChapterIndex + 1) {
+        return f
+      }
+      const { fulfilledChapter: _fulfilledChapter, ...rest } = f
+      return rest
+    })
+  // Snapshots are keyed by the structured chapterNumber field (1-based, null for
+  // story-level snapshots); drop snapshots of rolled-back chapters.
+  const timeline = state.timeline?.filter(
+    (snapshot) => snapshot.chapterNumber === null || snapshot.chapterNumber <= targetChapterIndex
+  )
+  const next: ReducedGraphState = {
     ...state,
-    currentChapterIndex: targetChapterIndex,
     outline,
     storyMemory,
+    storyState,
     chapterSummaries: state.chapterSummaries.slice(0, targetChapterIndex),
-    foreshadowStack: state.foreshadowStack.filter(
-      (f) => f.createdAtChapter < targetChapterIndex + 1
-    ),
+    foreshadowStack,
+    timeline,
   }
   return {
     ...next,
     actProgress: recomputeActProgressForRewrite(next, targetChapterIndex),
+  }
+}
+
+export function prepareRewritePreviewState(
+  state: ReducedGraphState,
+  targetChapterIndex: number
+): ReducedGraphState {
+  return {
+    ...applyRewriteCleanup(state, targetChapterIndex),
+    currentChapterIndex: targetChapterIndex,
   }
 }

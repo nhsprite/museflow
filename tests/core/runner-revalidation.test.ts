@@ -15,12 +15,16 @@ const readChapterContent = vi.fn().mockResolvedValue('chapter content')
 const deleteChapterContent = vi.fn().mockResolvedValue(undefined)
 const deleteStagedChapterContent = vi.fn().mockResolvedValue(undefined)
 const promoteStagedChapterContent = vi.fn().mockResolvedValue(true)
+const hasStagedChapterContent = vi.fn().mockReturnValue(false)
 const saveChapterMarker = vi.fn().mockResolvedValue(undefined)
 const getChapterMarker = vi.fn().mockResolvedValue(undefined)
+const deleteChapterMarkersFrom = vi.fn().mockResolvedValue(undefined)
 const pruneIntermediateCheckpoints = vi.fn().mockResolvedValue(undefined)
 const clearPendingWrites = vi.fn().mockResolvedValue(undefined)
 const updateLatestState = vi.fn().mockResolvedValue(undefined)
 const exportMetaFromCheckpoint = vi.fn().mockResolvedValue(undefined)
+const saveChapterReport = vi.fn()
+const deleteChapterReport = vi.fn()
 const updateStoryStatus = vi.fn()
 const chapterPlannerRun = vi.fn().mockResolvedValue({
   success: true,
@@ -34,6 +38,7 @@ vi.mock('../../src/storage/checkpoint-service.js', () => ({
     clearPendingWrites,
     saveChapterMarker,
     getChapterMarker,
+    deleteChapterMarkersFrom,
     pruneIntermediateCheckpoints,
     updateLatestState,
   }),
@@ -41,6 +46,11 @@ vi.mock('../../src/storage/checkpoint-service.js', () => ({
 
 vi.mock('../../src/storage/meta/exporter.js', () => ({
   exportMetaFromCheckpoint,
+}))
+
+vi.mock('../../src/storage/meta/stores/chapter-report.js', () => ({
+  saveChapterReport,
+  deleteChapterReport,
 }))
 
 const mockExistsSync = vi.fn().mockReturnValue(true)
@@ -110,6 +120,7 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   deleteChapterContent,
   deleteStagedChapterContent,
   promoteStagedChapterContent,
+  hasStagedChapterContent,
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),
 }))
@@ -208,6 +219,8 @@ vi.mock('../../src/agents/index.js', () => ({
 describe('runner revalidation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    readChapterContent.mockResolvedValue('chapter content')
+    hasStagedChapterContent.mockReturnValue(false)
     mockGraph.getState.mockResolvedValue({
       values: createBaseGraphState(),
       config: { configurable: { checkpoint_id: 'checkpoint-123' } },
@@ -681,5 +694,238 @@ describe('runner revalidation', () => {
         ]),
       })
     )
+  })
+
+  it('does not delete files or commit truncated state when blocked by past-act pending beats', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        totalChapters: 5,
+        currentChapterIndex: 4,
+        storyArc: {
+          totalChapters: 5,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 3,
+              title: 'Act 1',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-a', 'beat-b'],
+            },
+            {
+              index: 2,
+              startChapter: 4,
+              endChapter: 5,
+              title: 'Act 2',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-c'],
+            },
+          ],
+          keyBeats: [],
+        },
+        actProgress: {
+          1: { consumed: ['beat-a'], pending: ['beat-b'] },
+          2: { consumed: [], pending: ['beat-c'] },
+        },
+        outline: [
+          { number: 1, title: 'Chapter 1', description: 'Desc 1' },
+          { number: 2, title: 'Chapter 2', description: 'Desc 2' },
+          { number: 3, title: 'Chapter 3', description: 'Desc 3' },
+          { number: 4, title: 'Chapter 4', description: 'Desc 4' },
+          { number: 5, title: 'Chapter 5', description: 'Desc 5' },
+        ],
+        chapters: [{}, {}, {}, {}, null],
+        chapterSummaries: ['s1', 's2', 's3', 's4'],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    const result = await runOneChapter(
+      'story-1',
+      { mode: 'rewrite', targetChapterIndex: 3, userResponse: true },
+      createMockContext()
+    )
+
+    expect(mockGraph.invoke).not.toHaveBeenCalled()
+    expect(result.rewriteRequested).toBe(true)
+    expect(deleteChapterContent).not.toHaveBeenCalled()
+    expect(deleteStagedChapterContent).not.toHaveBeenCalled()
+    expect(deleteChapterMarkersFrom).not.toHaveBeenCalled()
+    const committed = updateLatestState.mock.calls[0]![0] as Record<string, unknown>
+    expect(committed).not.toHaveProperty('chapters')
+    expect(committed).not.toHaveProperty('chapterSummaries')
+    expect(committed).not.toHaveProperty('outline')
+    expect(committed.rewriteRequested).toBe(true)
+    expect(committed.isWriting).toBe(false)
+  })
+
+  it('promotes staged chapter content left behind by an interrupted commit', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({ currentChapterIndex: 2, chapters: [{}, {}, null] }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+    readChapterContent.mockImplementation((_dir: string, chapterNumber: number) =>
+      Promise.resolve(chapterNumber === 2 ? null : 'chapter content')
+    )
+    hasStagedChapterContent.mockImplementation(
+      (_dir: string, chapterNumber: number) => chapterNumber === 2
+    )
+
+    await runOneChapter('story-1', { mode: 'draft' }, createMockContext())
+
+    const outputDir = join(testOutputsDir, 'test-story-story-1')
+    expect(promoteStagedChapterContent).toHaveBeenCalledWith(outputDir, 2)
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
+    expect(invokedState.pendingIssues).toEqual([])
+  })
+
+  it('injects a structured draft_failure issue when a committed chapter has no content anywhere', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({ currentChapterIndex: 2, chapters: [{}, {}, null] }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+    readChapterContent.mockResolvedValue(null)
+    hasStagedChapterContent.mockReturnValue(false)
+
+    await runOneChapter('story-1', { mode: 'draft' }, createMockContext())
+
+    expect(promoteStagedChapterContent).not.toHaveBeenCalledWith(testTempDir, 1)
+    expect(promoteStagedChapterContent).not.toHaveBeenCalledWith(testTempDir, 2)
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
+    expect(invokedState.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'chapter-1-content-missing',
+          type: 'draft_failure',
+          severity: 'error',
+          source: 'state_reconciliation',
+          retryStrategy: 'manual',
+        }),
+        expect.objectContaining({
+          id: 'chapter-2-content-missing',
+          type: 'draft_failure',
+          severity: 'error',
+        }),
+      ])
+    )
+  })
+
+  it('deletes downstream chapter files and markers at the commit boundary after a successful rewrite', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({ currentChapterIndex: 3, chapters: [{}, {}, {}] }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter(
+      'story-1',
+      { mode: 'rewrite', targetChapterIndex: 1, userResponse: true },
+      createMockContext()
+    )
+
+    expect(mockGraph.invoke).toHaveBeenCalledTimes(1)
+    const outputDir = join(testOutputsDir, 'test-story-story-1')
+    // downstream chapter 3 is truncated; the rewritten target chapter 2 is untouched
+    expect(deleteChapterContent).toHaveBeenCalledWith(outputDir, 3)
+    expect(deleteChapterContent).not.toHaveBeenCalledWith(outputDir, 2)
+    expect(deleteChapterReport).toHaveBeenCalledWith(outputDir, 2)
+    expect(deleteChapterMarkersFrom).toHaveBeenCalledWith(2)
+    // truncation happens after the graph ran and the new marker was saved
+    expect(mockGraph.invoke.mock.invocationCallOrder[0]!).toBeLessThan(
+      deleteChapterContent.mock.invocationCallOrder[0]!
+    )
+    expect(saveChapterMarker.mock.invocationCallOrder[0]!).toBeLessThan(
+      deleteChapterContent.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('applies the shared rewrite cleanup (pendingTasks, foreshadow fulfillment, timeline) to the graph input', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        currentChapterIndex: 3,
+        storyState: {
+          characterLocations: {},
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          currentScene: '',
+          storyTime: '',
+          pendingTasks: [
+            { id: 't1', assignee: 'a', description: 'd1', createdChapter: 1, status: 'pending' },
+            { id: 't2', assignee: 'a', description: 'd2', createdChapter: 3, status: 'pending' },
+          ],
+          canonicalFacts: [],
+          supersededFacts: [],
+        },
+        foreshadowStack: [
+          {
+            id: 'f1',
+            text: 'x',
+            expectedFulfillChapter: 5,
+            createdAt: 0,
+            createdAtChapter: 1,
+            fulfilledChapter: 3,
+            status: 'planted',
+            isExplicit: true,
+            required: true,
+          },
+          {
+            id: 'f2',
+            text: 'y',
+            expectedFulfillChapter: 5,
+            createdAt: 0,
+            createdAtChapter: 2,
+            fulfilledChapter: 2,
+            status: 'planted',
+            isExplicit: true,
+            required: true,
+          },
+          {
+            id: 'f3',
+            text: 'z',
+            expectedFulfillChapter: 5,
+            createdAt: 0,
+            createdAtChapter: 3,
+            status: 'planted',
+            isExplicit: true,
+            required: true,
+          },
+        ],
+        timeline: [
+          { id: 's0', storyId: 'story-1', chapterNumber: null },
+          { id: 's2', storyId: 'story-1', chapterNumber: 2 },
+          { id: 's3', storyId: 'story-1', chapterNumber: 3 },
+        ],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter(
+      'story-1',
+      { mode: 'rewrite', targetChapterIndex: 2, userResponse: true },
+      createMockContext()
+    )
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, any>
+    expect(invokedState.storyState.pendingTasks.map((t: { id: string }) => t.id)).toEqual(['t1'])
+    expect(invokedState.foreshadowStack.map((f: { id: string }) => f.id)).toEqual(['f1', 'f2'])
+    expect(invokedState.foreshadowStack[0].fulfilledChapter).toBeUndefined()
+    expect(invokedState.foreshadowStack[1].fulfilledChapter).toBe(2)
+    expect(
+      invokedState.timeline.map((s: { chapterNumber: number | null }) => s.chapterNumber)
+    ).toEqual([null, 2])
   })
 })

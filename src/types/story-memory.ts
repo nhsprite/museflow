@@ -17,6 +17,19 @@ export interface StoryEventEvidence {
   paragraphIndex: number
 }
 
+export type FinalStateAttribute = 'location' | 'status'
+
+/**
+ * Structured chapter-end final-state declaration emitted by the draft agent in
+ * the STORY_FINAL_STATE block. `value` must be an entity id (location) or an
+ * enum value (status); prose is rejected at parse time.
+ */
+export interface ChapterFinalStateDeclaration {
+  entityId: EntityId
+  attribute: FinalStateAttribute
+  value: string
+}
+
 export interface StoryMemory {
   version: '1'
   lastChapterIndex: number
@@ -48,6 +61,7 @@ export type StoryEvent =
   | PlotAdvanceEvent
   | ForeshadowIntroduceEvent
   | ForeshadowFulfillEvent
+  | ForeshadowDeadlineExtendEvent
   | TaskCreateEvent
   | TaskResolveEvent
 
@@ -97,6 +111,12 @@ export interface ForeshadowIntroduceEvent extends BaseEvent {
 export interface ForeshadowFulfillEvent extends BaseEvent {
   type: 'foreshadow-fulfill'
   foreshadowId: ForeshadowId
+}
+
+export interface ForeshadowDeadlineExtendEvent extends BaseEvent {
+  type: 'foreshadow-deadline-extend'
+  foreshadowId: ForeshadowId
+  newExpectedFulfillChapter: number
 }
 
 export interface TaskCreateEvent extends BaseEvent {
@@ -154,6 +174,7 @@ export interface ForeshadowMemory {
   fulfilledIn: number | null
   required: boolean
   beatId: BeatId | null
+  deadlineExtensions?: number
 }
 
 export interface BeatMemory {

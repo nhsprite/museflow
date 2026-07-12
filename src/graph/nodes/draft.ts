@@ -17,7 +17,7 @@ import {
   DEFAULT_CHAPTER_WORD_COUNT_MAX,
 } from '../../types/genre.js'
 import type { RuntimeContext } from '../../core/context.js'
-import type { StoryEvent } from '../../types/story-memory.js'
+import type { StoryEvent, ChapterFinalStateDeclaration } from '../../types/story-memory.js'
 
 export async function draft_chapter(
   context: RuntimeContext,
@@ -47,8 +47,7 @@ export async function draft_chapter(
   }
   const outlineItem = state.outline[chapterIndex]
 
-  const isRetryDraft =
-    state.rewriteApproved || (state.session?.errorRewriteAttempts ?? 0) > 0
+  const isRetryDraft = state.rewriteApproved || (state.session?.errorRewriteAttempts ?? 0) > 0
   const mergedIssues = [
     ...(outlinePendingIssues ?? []),
     ...(isRetryDraft ? (state.pendingIssues ?? []) : []),
@@ -76,6 +75,9 @@ export async function draft_chapter(
   }
 
   const storyEvents = isStoryEventsData(output.data) ? (output.data.storyEvents ?? []) : []
+  const finalStateDeclarations = isFinalStateData(output.data)
+    ? (output.data.finalStateDeclarations ?? [])
+    : []
 
   let content = output.content ?? ''
   if (!content || content.trim().length === 0) {
@@ -125,9 +127,18 @@ export async function draft_chapter(
     chapters: newChapters,
     chapterPlan,
     draftChapterEvents: storyEvents,
+    chapterFinalStateDeclarations: finalStateDeclarations,
+    canonicalFactsDelta: baseContext.reconciledState.canonicalFacts ?? [],
+    supersededFactsDelta: baseContext.reconciledState.supersededFacts ?? [],
   }
 }
 
 function isStoryEventsData(data: unknown): data is { storyEvents?: StoryEvent[] } {
   return typeof data === 'object' && data !== null && 'storyEvents' in data
+}
+
+function isFinalStateData(
+  data: unknown
+): data is { finalStateDeclarations?: ChapterFinalStateDeclaration[] } {
+  return typeof data === 'object' && data !== null && 'finalStateDeclarations' in data
 }

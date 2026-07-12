@@ -22,6 +22,9 @@ function isResolvedActCoverageIssue(
     const keyBeat = storyArc?.keyBeats.find((beat) => beat.id === issue.subject)
     if (keyBeat?.deadlineAct === actIndex) return true
   }
+  // act-{actIndex}-pending-beats-at-boundary is a machine-generated stable id for
+  // the past-act boundary block; it is resolved by manually adjusting the act.
+  if (issue.id === `act-${actIndex}-pending-beats-at-boundary`) return true
   // unverified-beat-{act}-{beatIndex} issues are resolved when the act is extended
   if (issue.id.startsWith(`unverified-beat-${actIndex}-`)) return true
   // Auto-extension-limit errors for the adjusted act are resolved by manual adjustment

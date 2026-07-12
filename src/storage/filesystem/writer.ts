@@ -70,6 +70,10 @@ export async function promoteStagedChapterContent(
   return true
 }
 
+export function hasStagedChapterContent(outputDir: string, chapterNumber: number): boolean {
+  return existsSync(getStagedChapterFilePath(outputDir, chapterNumber))
+}
+
 export async function deleteChapterContent(
   outputDir: string,
   chapterNumber: number

@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 
 import {
-  deleteChapterContent,
   deleteStagedChapterContent,
   readChapterContent,
   writeOutlineContent,
@@ -19,14 +18,10 @@ import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 import { updateStoryStatus } from '../storage/meta/stores/story.js'
 import type { Issue } from '../types/agent.js'
 import type { StoryStatus } from '../types/story.js'
-import type { StateOverride, StoryState } from '../types/story-state.js'
+import type { StateOverride } from '../types/story-state.js'
 import { createRuntimeContext, type RuntimeContext } from './context.js'
-import { commitChapterRun } from './chapter-commit.js'
-import {
-  cleanOutlineForRewrite,
-  cleanStoryMemoryForRewrite,
-  recomputeActProgressForRewrite,
-} from './rewrite-state.js'
+import { commitChapterRun, reconcileStagedChapterCommits } from './chapter-commit.js'
+import { applyRewriteCleanup } from './rewrite-state.js'
 import {
   createGenericVerifiedConstraint,
   normalizeVerifiedConstraints,
@@ -119,6 +114,9 @@ export async function runStory(
     authorDecisions: {},
     storyMemory: null,
     draftChapterEvents: undefined,
+    chapterFinalStateDeclarations: undefined,
+    canonicalFactsDelta: undefined,
+    supersededFactsDelta: undefined,
     structuredValidationResult: undefined,
   }
 
@@ -135,7 +133,8 @@ async function runChapterGraph(
   storyId: string,
   outputDir: string,
   workingState: ReducedGraphState,
-  context: RuntimeContext
+  context: RuntimeContext,
+  truncateAfterChapter?: number
 ): Promise<ReducedGraphState> {
   const graph = buildNovelGraph(context)
   const checkpointService = createCheckpointService(outputDir)
@@ -156,6 +155,7 @@ async function runChapterGraph(
       config,
       checkpointService,
       outputDir,
+      ...(truncateAfterChapter !== undefined ? { truncateAfterChapter } : {}),
     })
 
     return result as ReducedGraphState
@@ -175,31 +175,6 @@ export interface RunOneChapterOptions {
   userResponse?: boolean | undefined
   retryIssues?: Issue[] | undefined
   preserveTargetOutline?: boolean | undefined
-}
-
-function cleanStoryStateForRewrite(storyState: StoryState, targetChapterIndex: number): StoryState {
-  const canonicalFacts = storyState.canonicalFacts ?? []
-  const supersededFacts = storyState.supersededFacts ?? []
-
-  const cleanedCanonicalFacts = canonicalFacts.filter(
-    (fact) => fact.source === 'author_override' || fact.establishedIn < targetChapterIndex
-  )
-  const cleanedSupersededFacts = supersededFacts.filter(
-    (fact) => fact.chapterIndex < targetChapterIndex
-  )
-
-  if (
-    cleanedCanonicalFacts.length === canonicalFacts.length &&
-    cleanedSupersededFacts.length === supersededFacts.length
-  ) {
-    return storyState
-  }
-
-  return {
-    ...storyState,
-    canonicalFacts: cleanedCanonicalFacts,
-    supersededFacts: cleanedSupersededFacts,
-  }
 }
 
 function buildPastActPendingIssue(
@@ -354,12 +329,17 @@ export async function runOneChapter(
     targetChapterFileExists =
       existingTargetContent !== null && existingTargetContent.trim().length > 0
   }
-  const cleanedPendingIssues = normalizePendingIssuesForChapter(
-    basePendingIssues,
-    targetChapterFileExists
+  const reconciliationIssues = await reconcileStagedChapterCommits(
+    outputDir,
+    checkpointState.currentChapterIndex,
+    storyId
   )
+  const cleanedPendingIssues = [
+    ...normalizePendingIssuesForChapter(basePendingIssues, targetChapterFileExists),
+    ...reconciliationIssues,
+  ]
 
-  const workingState: ReducedGraphState = {
+  let workingState: ReducedGraphState = {
     ...checkpointState,
     currentChapterIndex: targetIndex,
     chapters: rewrittenChapters,
@@ -387,25 +367,7 @@ export async function runOneChapter(
   }
 
   if (options.mode === 'rewrite') {
-    workingState.chapterSummaries = checkpointState.chapterSummaries.slice(0, targetIndex)
-    workingState.foreshadowStack = checkpointState.foreshadowStack.filter(
-      (f) => f.createdAtChapter < targetIndex + 1
-    )
-    workingState.outline = cleanOutlineForRewrite(
-      workingState.outline,
-      targetIndex,
-      workingState.storyArc
-    )
-    if (checkpointState.storyState) {
-      workingState.storyState = cleanStoryStateForRewrite(checkpointState.storyState, targetIndex)
-    }
-    if (checkpointState.storyMemory) {
-      workingState.storyMemory = cleanStoryMemoryForRewrite(
-        checkpointState.storyMemory,
-        targetIndex
-      )
-    }
-    workingState.actProgress = recomputeActProgressForRewrite(workingState, targetIndex)
+    workingState = applyRewriteCleanup(workingState, targetIndex)
     if (options.targetChapterIndex !== undefined) {
       workingState.chapterPlan = null
     }
@@ -424,11 +386,6 @@ export async function runOneChapter(
       }
       workingState.outline = clearedOutline
     }
-
-    for (let ch = targetIndex + 1; ch <= checkpointState.totalChapters; ch++) {
-      await deleteChapterContent(outputDir, ch)
-      await deleteStagedChapterContent(outputDir, ch)
-    }
   }
 
   const pastActPendingIssue = findPastActPendingIssue(storyId, workingState, targetIndex)
@@ -444,11 +401,19 @@ export async function runOneChapter(
       rewriteRequested: true,
       isWriting: false,
     }
-    await checkpointService.updateLatestState(blockedState)
+    // 阻塞分支只更新 checkpoint 中的阻塞 issue：不删除任何文件，
+    // 也不把截断后的章节数组/摘要提交为最新状态。
+    await checkpointService.updateLatestState({
+      pendingIssues,
+      rewriteRequested: true,
+      isWriting: false,
+    })
     return blockedState
   }
 
-  return runChapterGraph(storyId, outputDir, workingState, context)
+  const truncateAfterChapter =
+    options.mode === 'rewrite' && options.targetChapterIndex !== undefined ? targetIndex : undefined
+  return runChapterGraph(storyId, outputDir, workingState, context, truncateAfterChapter)
 }
 
 export async function continueStory(
@@ -496,7 +461,7 @@ export async function applyStateOverrides(
   }
   const updatedConstraints = [
     ...existingConstraints,
-    ...constraints.map(createGenericVerifiedConstraint),
+    ...constraints.map((text) => createGenericVerifiedConstraint(text)),
   ]
   const updatedDecisions = { ...existingDecisions, ...authorDecisions }
 

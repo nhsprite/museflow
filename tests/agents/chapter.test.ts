@@ -226,7 +226,7 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain('item-state 的 attribute 与 value')
   })
 
-  it('includes canonical fact verification section when storyState is provided', () => {
+  it('renders storyState sections exactly once without a duplicate fact verification section', () => {
     const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
@@ -246,7 +246,8 @@ describe('ChapterAgent chapter numbering', () => {
     })
 
     const userMessage = messages[1]?.content ?? ''
-    expect(userMessage).toContain('<canonical_facts>')
+    expect(userMessage).toContain('<story_state>')
+    expect(userMessage).not.toContain('<canonical_facts>')
     expect(userMessage).toContain('【角色位置】')
     expect(userMessage).toContain('林玄：破庙')
     expect(userMessage).toContain('【角色状态】')
@@ -258,7 +259,11 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain('【已被覆盖的旧事实】')
     expect(userMessage).toContain('林玄原名林二')
     expect(userMessage).toContain('事实核查')
-    expect(userMessage).toContain('严禁 invent 新的事实')
+    // 同一份事实在 prompt 中只出现一次（storyState 是唯一渲染来源）
+    expect(userMessage.match(/【角色位置】/g)).toHaveLength(1)
+    expect(userMessage.match(/林玄：破庙/g)).toHaveLength(1)
+    expect(userMessage.match(/【已揭示的秘密】/g)).toHaveLength(1)
+    expect(userMessage.match(/【已被覆盖的旧事实】/g)).toHaveLength(1)
   })
 
   it('omits canonical fact section when storyState is empty', () => {
@@ -322,7 +327,7 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain('上一章结束时间')
   })
 
-  it('sorts canonical facts by outline relevance', () => {
+  it('renders canonical facts from storyState in their given order', () => {
     const agent = new TestableChapterAgent(createMockProvider())
 
     const messages = agent.exposePrompt({
@@ -555,9 +560,9 @@ describe('ChapterAgent.parse', () => {
     const raw = `=== PRE_WRITE_CHECK ===
 - 检查项1
 === STORY_EVENTS ===
-- character-location: char-1 -> loc-1
-- foreshadow-fulfill: fs-1
-- plot-advance: plot-1 / beat-1
+- character-location: c-linxuan -> l-temple
+- foreshadow-fulfill: fs-oath
+- plot-advance: act-1 / A1-M2
 === CHAPTER_CONTENT ===
 ## 第四章 王府递帖
 
@@ -579,5 +584,54 @@ describe('ChapterAgent.parse', () => {
     expect(events[0]?.chapterIndex).toBe(2)
     expect(events[1]?.chapterIndex).toBe(2)
     expect(events[2]?.chapterIndex).toBe(2)
+  })
+
+  it('parses STORY_FINAL_STATE block and strips it from chapter content', () => {
+    const raw = `=== PRE_WRITE_CHECK ===
+- 检查项1
+=== STORY_EVENTS ===
+- item-location: i-box / holder=none / location=loc-drawer-deep @p3
+- item-location: i-box / holder=none / location=loc-drawer-right @p8
+=== CHAPTER_CONTENT ===
+## 第四章 王府递帖
+
+正文内容。
+=== STORY_FINAL_STATE ===
+[{"entityId": "i-box", "attribute": "location", "value": "loc-drawer-right"}]`
+    const agent = new TestableChapterAgent(createMockProvider())
+    const result = agent.exposeParse(raw)
+    expect(result.success).toBe(true)
+    expect(result.content).toContain('## 第四章 王府递帖')
+    expect(result.content).not.toContain('STORY_FINAL_STATE')
+    expect(result.content).not.toContain('loc-drawer-right"}]')
+    expect(result.data?.finalStateDeclarations).toEqual([
+      { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+    ])
+  })
+
+  it('returns empty final-state declarations when block is absent', () => {
+    const raw = `=== PRE_WRITE_CHECK ===
+- 检查项1
+=== CHAPTER_CONTENT ===
+## 第四章 王府递帖
+
+正文内容。`
+    const agent = new TestableChapterAgent(createMockProvider())
+    const result = agent.exposeParse(raw)
+    expect(result.data?.finalStateDeclarations).toEqual([])
+  })
+
+  it('tolerates a malformed STORY_FINAL_STATE block', () => {
+    const raw = `=== CHAPTER_CONTENT ===
+## 第四章 王府递帖
+
+正文内容。
+=== STORY_FINAL_STATE ===
+[{not json`
+    const agent = new TestableChapterAgent(createMockProvider())
+    const result = agent.exposeParse(raw)
+    expect(result.success).toBe(true)
+    expect(result.content).not.toContain('STORY_FINAL_STATE')
+    expect(result.data?.finalStateDeclarations).toEqual([])
   })
 })

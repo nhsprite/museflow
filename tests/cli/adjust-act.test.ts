@@ -225,6 +225,42 @@ describe('adjust-act command', () => {
     logSpy.mockRestore()
   })
 
+  it('clears the act-N-pending-beats-at-boundary issue that blocks continuing after the adjustment', async () => {
+    const issues: Issue[] = [
+      {
+        id: 'act-1-pending-beats-at-boundary',
+        type: 'outline_coverage',
+        severity: 'error',
+        subject: 'act-1',
+        description: '第 1 幕结束时仍有 mandatory beats 未消费。',
+        source: 'outline_compliance',
+        retryStrategy: 'manual',
+      },
+      {
+        id: 'act-2-pending-beats-at-boundary',
+        type: 'outline_coverage',
+        severity: 'error',
+        subject: 'act-2',
+        description: '第 2 幕结束时仍有 mandatory beats 未消费。',
+        source: 'outline_compliance',
+        retryStrategy: 'manual',
+      },
+    ]
+    getTupleMock.mockResolvedValue({
+      checkpoint: { channel_values: makeState({ pendingIssues: issues }) },
+    })
+    const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await adjustAct('story-1', { act: '1', endChapter: '6' })
+
+    const updatedState = updateLatestStateMock.mock.calls[0]![0] as { pendingIssues: Issue[] }
+    expect(updatedState.pendingIssues.map((issue) => issue.id)).toEqual([
+      'act-2-pending-beats-at-boundary',
+    ])
+    logSpy.mockRestore()
+  })
+
   it('exports meta after updating the checkpoint state', async () => {
     const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})

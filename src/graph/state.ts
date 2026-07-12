@@ -4,7 +4,7 @@ import type { Character } from '../types/character.js'
 import type { Issue } from '../types/agent.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ChapterPlan } from '../agents/types.js'
-import type { StoryState } from '../types/story-state.js'
+import type { StoryState, CanonicalFact, SupersededFact } from '../types/story-state.js'
 import type { ChapterReport } from '../types/chapter-report.js'
 import type { BlockingReport } from '../types/blocking-report.js'
 import type { WorldContent } from '../types/world.js'
@@ -13,7 +13,11 @@ import type { ForeshadowItem } from '../types/foreshadow.js'
 import type { StateSnapshot } from '../types/timeline.js'
 import type { ChapterSession } from '../core/chapter-generation/routing/types.js'
 import type { VerifiedConstraint } from '../types/verified-constraint.js'
-import type { StoryMemory, StoryEvent } from '../types/story-memory.js'
+import type {
+  StoryMemory,
+  StoryEvent,
+  ChapterFinalStateDeclaration,
+} from '../types/story-memory.js'
 import type { StructuredValidationResult } from '../story-memory/validator.js'
 
 export const GraphState = Annotation.Root({
@@ -60,6 +64,14 @@ export const GraphState = Annotation.Root({
 
   // events extracted from the current draft chapter before validation
   draftChapterEvents: Annotation<StoryEvent[] | undefined>,
+
+  // chapter-end final-state declarations self-reported by the draft (STORY_FINAL_STATE block)
+  chapterFinalStateDeclarations: Annotation<ChapterFinalStateDeclaration[] | undefined>,
+
+  // canonical/superseded facts produced by the reconciler during the current
+  // chapter's draft; finalize_chapter merges them into storyState and clears them
+  canonicalFactsDelta: Annotation<CanonicalFact[] | undefined>,
+  supersededFactsDelta: Annotation<SupersededFact[] | undefined>,
 
   // structured validation result for the current chapter (populated by the story memory validator)
   structuredValidationResult: Annotation<StructuredValidationResult | undefined>,

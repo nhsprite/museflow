@@ -169,12 +169,25 @@ function buildChapterContract(
     }
   }
 
-  const protectedFacts = (reconciledState.canonicalFacts ?? [])
-    .filter((fact) => fact.retiredIn === undefined && fact.confidence !== 'low')
-    .slice(0, 20)
+  const activeFacts = (reconciledState.canonicalFacts ?? []).filter(
+    (fact) => fact.retiredIn === undefined && fact.confidence !== 'low'
+  )
+  const protectedFacts = activeFacts
+    .filter((fact) => fact.source !== 'outline_inference')
+    .slice(-20)
   if (protectedFacts.length > 0) {
     lines.push('【受保护权威事实】')
     for (const fact of protectedFacts) {
+      lines.push(`- [${fact.subject}] ${fact.attribute}: ${fact.value}`)
+    }
+  }
+
+  const outlineInferredFacts = activeFacts
+    .filter((fact) => fact.source === 'outline_inference')
+    .slice(-10)
+  if (outlineInferredFacts.length > 0) {
+    lines.push('【大纲推断事实（提示级，正文/已确立事实优先）】')
+    for (const fact of outlineInferredFacts) {
       lines.push(`- [${fact.subject}] ${fact.attribute}: ${fact.value}`)
     }
   }
@@ -205,7 +218,7 @@ export async function buildChapterAgentContext(
     .filter(Boolean)
     .join('\n\n')
   const { reconciledState, stateConflicts } = preparedState
-  const storyStateStr = formatStoryState(reconciledState)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
   const chapterContract = buildChapterContract(state, chapterIndex, reconciledState)
 
   const {

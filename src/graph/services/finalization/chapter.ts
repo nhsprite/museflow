@@ -51,9 +51,13 @@ import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import { loadConfig } from '../../../config/store.js'
 import {
   createGenericVerifiedConstraint,
+  dedupeVerifiedConstraints,
   filterVerifiedConstraintsForChapter,
+  isRegenerableConstraintId,
   normalizeVerifiedConstraints,
 } from '../../../utils/verified-constraints.js'
+import { mergeStoryState } from '../../utils/reconciler/state-merge.js'
+import { createEmptyStoryState } from '../../../storage/meta/stores/story-state.js'
 import {
   getActForChapter,
   getPendingMandatoryBeats,
@@ -234,19 +238,22 @@ function buildVerifiedConstraints(
   activeForeshadows: ForeshadowId[],
   openTasks: TaskId[],
   unprovenBeats: BeatId[]
-): string[] {
-  const constraints: string[] = []
+): Array<{ id: string; text: string }> {
+  const constraints: Array<{ id: string; text: string }> = []
   for (const id of activeForeshadows) {
     const fs = memory.foreshadows[id]
-    if (fs) constraints.push(`未回收伏笔 [${id}]: ${fs.text}`)
+    if (fs)
+      constraints.push({ id: `memory:foreshadow:${id}`, text: `未回收伏笔 [${id}]: ${fs.text}` })
   }
   for (const id of openTasks) {
     const task = memory.tasks[id]
-    if (task) constraints.push(`未完成任务 [${id}]: ${task.description}`)
+    if (task)
+      constraints.push({ id: `memory:task:${id}`, text: `未完成任务 [${id}]: ${task.description}` })
   }
   for (const id of unprovenBeats) {
     const beat = memory.beats[id]
-    if (beat) constraints.push(`未推进节拍 [${id}]: ${beat.description}`)
+    if (beat)
+      constraints.push({ id: `memory:beat:${id}`, text: `未推进节拍 [${id}]: ${beat.description}` })
   }
   return constraints
 }
@@ -272,6 +279,9 @@ function foreshadowMemoryToItem(
   }
   if (memory.beatId) {
     item.beatId = memory.beatId
+  }
+  if (memory.deadlineExtensions !== undefined) {
+    item.deadlineExtensions = memory.deadlineExtensions
   }
   return item
 }
@@ -304,6 +314,20 @@ export async function finalizeChapter(
   }
 
   let updatedStoryState = state.storyState
+
+  // Persist the reconciler's canonical/superseded facts. The reconciler only
+  // renders them into prompts; without this merge the authoritative-fact layer
+  // never reaches the checkpoint. mergeStoryState is idempotent for repeated
+  // deltas (same subject+attribute+value replaces, never duplicates).
+  const canonicalFactsDelta = state.canonicalFactsDelta ?? []
+  const supersededFactsDelta = state.supersededFactsDelta ?? []
+  if (canonicalFactsDelta.length > 0 || supersededFactsDelta.length > 0) {
+    updatedStoryState = mergeStoryState(updatedStoryState ?? null, {
+      ...createEmptyStoryState(),
+      ...(canonicalFactsDelta.length > 0 ? { canonicalFacts: canonicalFactsDelta } : {}),
+      ...(supersededFactsDelta.length > 0 ? { supersededFacts: supersededFactsDelta } : {}),
+    })
+  }
   const hasInputStoryMemory = state.storyMemory !== null && state.storyMemory !== undefined
   let updatedStoryMemory = ensureBeatsHaveActIndex(
     state.storyMemory ?? createEmptyStoryMemory(),
@@ -419,6 +443,9 @@ export async function finalizeChapter(
             updatedStoryState = {
               ...updatedStoryState,
               chapterHandoff: summaryData.chapterHandoff,
+              ...(summaryData.chapterHandoff.endTime
+                ? { storyTime: summaryData.chapterHandoff.endTime }
+                : {}),
             }
           }
 
@@ -503,8 +530,59 @@ export async function finalizeChapter(
     }
   }
 
+  const planningConfig = getChapterPlanningConfig(state.genre)
+
+  // Negotiated foreshadow scheduling: when the chapter outline deferred a
+  // severely overdue required foreshadow, extend its deadline through the
+  // event log so the projection (and the memory→meta sync below) stays
+  // consistent across rewrites. Extensions are bounded; at the limit the
+  // foreshadow is surfaced for manual attention without blocking the chapter.
+  const MAX_FORESHADOW_DEADLINE_EXTENSIONS = 2
+  const foreshadowsNeedingAttention: string[] = []
+  const deferredForeshadowIds = updatedOutline[chapterIndex]?.deferredForeshadowIds ?? []
+  if (deferredForeshadowIds.length > 0) {
+    const currentChapterNumber = chapterIndex + 1
+    const extendEvents: Array<Extract<StoryEvent, { type: 'foreshadow-deadline-extend' }>> = []
+    for (const foreshadowId of deferredForeshadowIds) {
+      const memory = updatedStoryMemory.foreshadows[foreshadowId]
+      if (!memory || !memory.required || memory.fulfilledIn !== null) continue
+      if (memory.expectedFulfillChapter === null) continue
+      if (
+        currentChapterNumber <=
+        memory.expectedFulfillChapter + planningConfig.foreshadowMaxFulfillDistance
+      ) {
+        continue
+      }
+      const extensions = memory.deadlineExtensions ?? 0
+      if (extensions >= MAX_FORESHADOW_DEADLINE_EXTENSIONS) {
+        foreshadowsNeedingAttention.push(foreshadowId)
+        logger.warn(
+          `[MuseFlow] 伏笔 ${foreshadowId} 已达 deadline 顺延上限（${MAX_FORESHADOW_DEADLINE_EXTENSIONS} 次）且仍严重逾期，请作者人工关注其回收安排。`
+        )
+        continue
+      }
+      extendEvents.push({
+        id: generateId('evt'),
+        type: 'foreshadow-deadline-extend',
+        foreshadowId,
+        chapterIndex,
+        source: 'outline',
+        newExpectedFulfillChapter:
+          currentChapterNumber + planningConfig.foreshadowMaxFulfillDistance,
+      })
+    }
+    if (extendEvents.length > 0) {
+      updatedStoryMemory = applyEvents(updatedStoryMemory, extendEvents)
+      for (const event of extendEvents) {
+        logger.info(
+          `[MuseFlow] 伏笔 ${event.foreshadowId} 已顺延 deadline 至第 ${event.newExpectedFulfillChapter} 章（第 ${updatedStoryMemory.foreshadows[event.foreshadowId]?.deadlineExtensions ?? 0} 次顺延）`
+        )
+      }
+    }
+  }
+
   let updatedForeshadowStack = state.foreshadowStack
-  let memoryConstraintTexts: string[] = []
+  let memoryConstraintRecords: Array<{ id: string; text: string }> = []
   if (updatedStoryMemory) {
     const memoryForeshadows = Object.values(updatedStoryMemory.foreshadows)
     updatedForeshadowStack =
@@ -514,15 +592,15 @@ export async function finalizeChapter(
     const activeForeshadows = getActiveForeshadows(updatedStoryMemory)
     const openTasks = getOpenTasks(updatedStoryMemory)
     const unprovenBeats = getUnprovenMandatoryBeats(updatedStoryMemory)
-    memoryConstraintTexts = buildVerifiedConstraints(
+    memoryConstraintRecords = buildVerifiedConstraints(
       updatedStoryMemory,
       activeForeshadows,
       openTasks,
       unprovenBeats
     )
-    if (memoryConstraintTexts.length > 0) {
+    if (memoryConstraintRecords.length > 0) {
       logger.info(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章生成 ${memoryConstraintTexts.length} 条 StoryMemory 约束`
+        `[MuseFlow] 第 ${chapterIndex + 1} 章生成 ${memoryConstraintRecords.length} 条 StoryMemory 约束`
       )
     }
     updatedStoryState = projectStoryStateFromMemory(updatedStoryMemory, updatedStoryState)
@@ -561,16 +639,28 @@ export async function finalizeChapter(
     updatedForeshadowStack,
     chapterIndex + 1
   )
-  let updatedVerifiedConstraints =
-    memoryConstraintTexts.length > 0
-      ? memoryConstraintTexts.map(createGenericVerifiedConstraint)
-      : normalizeVerifiedConstraints(state.verifiedConstraints)
-  if (newForeshadowConstraints.length > 0) {
-    updatedVerifiedConstraints = [
-      ...updatedVerifiedConstraints,
-      ...newForeshadowConstraints.map(createGenericVerifiedConstraint),
-    ]
-  }
+  // Rebuild regenerable constraints (StoryMemory-derived + foreshadow boundary)
+  // from scratch each chapter, while carrying over constraints from other
+  // sources (routing, outline-expander, manual). Previously the whole list was
+  // replaced whenever memory constraints existed, so boundary constraints only
+  // survived one chapter.
+  const carriedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints).filter(
+    (constraint) =>
+      !(
+        constraint.kind === 'generic' &&
+        constraint.id !== undefined &&
+        isRegenerableConstraintId(constraint.id)
+      )
+  )
+  let updatedVerifiedConstraints = dedupeVerifiedConstraints([
+    ...carriedConstraints,
+    ...memoryConstraintRecords.map((record) =>
+      createGenericVerifiedConstraint(record.text, record.id)
+    ),
+    ...newForeshadowConstraints.map((record) =>
+      createGenericVerifiedConstraint(record.text, record.id)
+    ),
+  ])
 
   const stateForActProgress: ReducedGraphState = {
     ...state,
@@ -591,7 +681,6 @@ export async function finalizeChapter(
     updatedVerifiedConstraints = [...updatedVerifiedConstraints, beatPressureConstraint]
   }
 
-  const planningConfig = getChapterPlanningConfig(state.genre)
   const closingPhaseConstraint = state.storyArc
     ? buildClosingPhaseConstraint(
         state.storyArc,
@@ -758,7 +847,8 @@ export async function finalizeChapter(
       updatedChapter ?? existingChapter ?? null,
       chapterContent,
       state.storyState,
-      updatedPendingIssues
+      updatedPendingIssues,
+      foreshadowsNeedingAttention
     )
     if (boundaryProposals.length > 0) {
       failureReport.actBoundaryProposals = boundaryProposals
@@ -808,7 +898,8 @@ export async function finalizeChapter(
     updatedChapter,
     chapterContent,
     updatedStoryState,
-    updatedPendingIssues
+    updatedPendingIssues,
+    foreshadowsNeedingAttention
   )
   if (boundaryProposals.length > 0) {
     chapterReport.actBoundaryProposals = boundaryProposals
@@ -830,6 +921,8 @@ export async function finalizeChapter(
     pendingIssues: updatedPendingIssues,
     outline: updatedOutline,
     storyArc: updatedStoryArc,
+    canonicalFactsDelta: undefined,
+    supersededFactsDelta: undefined,
   }
 }
 
@@ -838,7 +931,8 @@ function buildChapterReport(
   chapter: ReducedGraphState['chapters'][number],
   chapterContent: string,
   updatedStoryState: ReducedGraphState['storyState'],
-  pendingIssues: Issue[] = state.pendingIssues
+  pendingIssues: Issue[] = state.pendingIssues,
+  foreshadowsNeedingAttention: string[] = []
 ): ChapterReport {
   const chapterIndex = state.currentChapterIndex
   const outlineItem = state.outline[chapterIndex]
@@ -869,6 +963,9 @@ function buildChapterReport(
     state.foreshadowStack,
     chapterIndex + 1
   ).overdueRequired.length
+  if (foreshadowsNeedingAttention.length > 0) {
+    report.foreshadowsNeedingAttention = foreshadowsNeedingAttention
+  }
 
   report.convergence = inferConvergence(state)
 

@@ -8,6 +8,7 @@ import {
 } from './nodes/story-creation.js'
 import { draft_chapter } from './nodes/draft.js'
 import { fix_chapter } from './nodes/fix.js'
+import { repair_state } from './nodes/repair-state.js'
 import { validate_chapter_comprehensive } from './nodes/validation.js'
 import { validateChapterStructured } from './nodes/structured-validation.js'
 import { finalize_chapter, finalize_story } from './nodes/finalization.js'
@@ -40,6 +41,7 @@ export function buildNovelGraph(context: RuntimeContext) {
     converge_and_decide: withContext(converge_and_decide),
     draft_chapter: withContext(draft_chapter),
     fix_chapter: withContext(fix_chapter),
+    repair_state: withContext(repair_state),
     validate_chapter_structured: withContext(validateChapterStructured),
     validate_chapter_comprehensive: withContext(validate_chapter_comprehensive),
     request_rewrite: withContext(request_rewrite),
@@ -63,6 +65,7 @@ export function buildNovelGraph(context: RuntimeContext) {
   b1.addConditionalEdges('converge_and_decide', route_by_decision, {
     draft_chapter: 'draft_chapter',
     fix_chapter: 'fix_chapter',
+    repair_state: 'repair_state',
     finalize_chapter: 'finalize_chapter',
     request_rewrite: 'request_rewrite',
   })
@@ -70,6 +73,7 @@ export function buildNovelGraph(context: RuntimeContext) {
   b1.addEdge('draft_chapter', 'validate_chapter_structured')
   b1.addEdge('validate_chapter_structured', 'validate_chapter_comprehensive')
   b1.addEdge('fix_chapter', 'validate_chapter_structured')
+  b1.addEdge('repair_state', 'validate_chapter_structured')
 
   b1.addConditionalEdges('validate_chapter_comprehensive', route_after_validation, {
     converge_and_decide: 'converge_and_decide',

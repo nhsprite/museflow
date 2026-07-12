@@ -185,4 +185,112 @@ describe('buildChapterAgentContext cache', () => {
     expect(agentContext.chapterContract).toContain('仇敌公开反击')
     expect(agentContext.chapterContract).toContain('[铜钥匙] 持有者: 同伴')
   })
+
+  it('keeps the most recent protected facts in the chapter contract', async () => {
+    const context = createMockContext()
+    const canonicalFacts = Array.from({ length: 25 }, (_, i) => ({
+      id: `cf-${i}`,
+      subject: `事实${i}`,
+      attribute: 'status' as const,
+      value: `值${i}`,
+      establishedIn: i,
+      confidence: 'high' as const,
+      source: 'chapter_text' as const,
+    }))
+    const state = buildState({
+      storyState: {
+        ...buildState().storyState,
+        canonicalFacts,
+      },
+    })
+
+    const agentContext = await buildChapterAgentContext(state, 1, context)
+
+    expect(agentContext.chapterContract).toContain('[事实24]')
+    expect(agentContext.chapterContract).toContain('[事实5]')
+    expect(agentContext.chapterContract).not.toContain('[事实4]')
+  })
+
+  it('renders outline_inference facts separately from protected authoritative facts', async () => {
+    const context = createMockContext()
+    const state = buildState({
+      storyState: {
+        ...buildState().storyState,
+        canonicalFacts: [
+          {
+            id: 'cf-established',
+            subject: '铜钥匙',
+            attribute: 'status',
+            value: '已折断',
+            establishedIn: 0,
+            confidence: 'high',
+            source: 'chapter_text',
+          },
+          {
+            id: 'cf-inferred',
+            subject: '铜钥匙',
+            attribute: 'origin',
+            value: '铁匠铺',
+            establishedIn: 1,
+            confidence: 'medium',
+            source: 'outline_inference',
+          },
+        ],
+      },
+    })
+
+    const agentContext = await buildChapterAgentContext(state, 1, context)
+    const contract = agentContext.chapterContract ?? ''
+
+    expect(contract).toContain('【受保护权威事实】')
+    expect(contract).toContain('【大纲推断事实（提示级，正文/已确立事实优先）】')
+    expect(contract).toContain('[铜钥匙] status: 已折断')
+    expect(contract).toContain('[铜钥匙] origin: 铁匠铺')
+
+    const protectedSection = contract.slice(
+      contract.indexOf('【受保护权威事实】'),
+      contract.indexOf('【大纲推断事实')
+    )
+    expect(protectedSection).toContain('[铜钥匙] status: 已折断')
+    expect(protectedSection).not.toContain('[铜钥匙] origin: 铁匠铺')
+  })
+
+  it('renders storyState entity IDs with readable names from storyMemory', async () => {
+    const context = createMockContext()
+    const state = buildState({
+      storyState: {
+        ...buildState().storyState,
+        characterLocations: { 'c-linxuan': 'l-temple' },
+      },
+      storyMemory: {
+        version: '1',
+        lastChapterIndex: 0,
+        entities: {
+          characters: {
+            'c-linxuan': {
+              id: 'c-linxuan',
+              name: '林玄',
+              locationId: 'l-temple',
+              status: {},
+              introducedIn: 0,
+            },
+          },
+          items: {},
+          locations: {
+            'l-temple': { id: 'l-temple', name: '破庙', introducedIn: 0 },
+          },
+          factions: {},
+          plots: {},
+        },
+        events: [],
+        foreshadows: {},
+        beats: {},
+        tasks: {},
+      },
+    })
+
+    const agentContext = await buildChapterAgentContext(state, 0, context)
+
+    expect(agentContext.storyState).toContain('林玄（c-linxuan）：破庙（l-temple）')
+  })
 })

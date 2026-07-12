@@ -22,6 +22,7 @@ describe('novel graph', () => {
       'converge_and_decide',
       'draft_chapter',
       'fix_chapter',
+      'repair_state',
       'validate_chapter_structured',
       'validate_chapter_comprehensive',
       'request_rewrite',
@@ -52,6 +53,7 @@ describe('novel graph', () => {
     expect(edges).toContain('draft_chapter -> validate_chapter_structured')
     expect(edges).toContain('validate_chapter_structured -> validate_chapter_comprehensive')
     expect(edges).toContain('fix_chapter -> validate_chapter_structured')
+    expect(edges).toContain('repair_state -> validate_chapter_structured')
     expect(edges).toContain('request_rewrite -> __end__')
     expect(edges).toContain('finalize_story -> __end__')
   })
@@ -71,6 +73,7 @@ describe('novel graph', () => {
     expect(graph.builder.branches['converge_and_decide']?.condition.ends).toEqual({
       draft_chapter: 'draft_chapter',
       fix_chapter: 'fix_chapter',
+      repair_state: 'repair_state',
       finalize_chapter: 'finalize_chapter',
       request_rewrite: 'request_rewrite',
     })

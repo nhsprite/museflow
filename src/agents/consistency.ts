@@ -36,7 +36,7 @@ export class ConsistencyAgent extends BaseAgent<ConsistencyAgentInput> {
     const outlineAuthorizedFactsSection =
       outlineAuthorizedFacts.length > 0
         ? `<outline_authorized_facts>
-<mandatory>【本章大纲已授权的新事实】以下事实由本章大纲首次引入，已写入权威事实。本章内容中出现这些事实不属于"擅自发明"或"状态污染"，不得据此报 consistency error：</mandatory>
+<note>【大纲推断事实（仅供参考，正文优先）】以下事实由本章大纲文本推断而来，未经验证，仅供写作参考。本章内容中出现这些事实不属于"擅自发明"或"状态污染"，不得据此报 consistency error；如果本章正文与这些事实不一致，以正文为准，最多报 warning，不得报 error：</note>
 ${outlineAuthorizedFacts.map((f) => `  - [${f.subject}] ${f.attribute}: ${f.value}`).join('\n')}
 </outline_authorized_facts>`
         : ''
@@ -66,6 +66,7 @@ ${outlineAuthorizedFacts.map((f) => `  - [${f.subject}] ${f.attribute}: ${f.valu
     overdueForeshadows.length > 0
       ? `
   <overdue>
+    <note>以下伏笔已超过预期回收章节，仅供优先回收参考；逾期本身不是错误，不得仅因伏笔逾期未回收而报 error。</note>
     ${overdueForeshadows.map((f, i) => `  <item index="${i + 1}" expected="${f.expectedFulfillChapter}" current="${chapterIndex}" overdue="${chapterIndex - f.expectedFulfillChapter}">${f.text}</item>`).join('\n')}
   </overdue>`
       : ''
@@ -96,7 +97,7 @@ ${state.chapterContract}
           state.chapterPlan?.chapterTimeAnchor ||
           state.chapterTimeAnchor ||
           '（未指定，默认以本章自身时间线为准）',
-        supersededFacts: state.supersededFacts || '（无）',
+        previousSummary: state.previousChapters || '（这是第一章）',
         contentToCheck: state.chapterContent || '（无内容）',
       }
     )

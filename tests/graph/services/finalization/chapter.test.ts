@@ -11,7 +11,7 @@ import type { ForeshadowMemory, StoryEvent, StoryMemory } from '@/types/story-me
 import type { ChapterPlan } from '@/agents/types.js'
 import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/utils/story-arc.js'
 import { logger } from '@/utils/logger.js'
-import { createEmptyStoryMemory } from '@/story-memory/projector.js'
+import { createEmptyStoryMemory, applyEvents } from '@/story-memory/projector.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -1512,3 +1512,430 @@ function testMemoryBeat(id: string, actIndex: number) {
     provenByEventIds: [],
   }
 }
+
+describe('finalizeChapter — deferred foreshadow deadline extension', () => {
+  const DEFAULT_CHAPTER_INDEX = 11 // 第 12 章
+  const FORESHADOW_MAX_FULFILL_DISTANCE = 8 // default genre planning config
+
+  let tmpDir: string
+
+  beforeEach(async () => {
+    loadConfigMock.mockReturnValue({
+      model: { provider: 'openai' as const, model: 'gpt-4o' },
+      autoAdjustActBoundaries: false,
+    })
+    vi.mocked(getSummaryAgent).mockReturnValue(
+      createBaseSummaryAgent() as unknown as ReturnType<typeof getSummaryAgent>
+    )
+    vi.mocked(proposeActBoundaryAdjustments).mockReturnValue([])
+    vi.mocked(applyActBoundaryAdjustment).mockReturnValue({
+      storyArc: null,
+      applied: false,
+    })
+
+    tmpDir = path.join(process.cwd(), 'tests', 'tmp', `finalize-defer-${Date.now()}`)
+    await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
+    for (const chapterNumber of [DEFAULT_CHAPTER_INDEX + 1, 62]) {
+      await fs.writeFile(
+        path.join(tmpDir, 'chapters', `chapter_${chapterNumber}.md`),
+        `# 第${chapterNumber}章\n\n主角继续前行，路途漫长。`,
+        'utf-8'
+      )
+    }
+  })
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  function buildMemoryWithForeshadows(events: StoryEvent[]): StoryMemory {
+    return applyEvents(createEmptyStoryMemory(), events)
+  }
+
+  function introduceEvent(id: string, expectedFulfillChapter: number): StoryEvent {
+    return {
+      id: `evt-introduce-${id}`,
+      type: 'foreshadow-introduce',
+      foreshadowId: id,
+      expectedFulfillChapter,
+      chapterIndex: 0,
+      source: 'outline',
+    }
+  }
+
+  function extendEvent(
+    id: string,
+    chapterIndex: number,
+    newExpectedFulfillChapter: number
+  ): StoryEvent {
+    return {
+      id: `evt-extend-${id}-${chapterIndex}`,
+      type: 'foreshadow-deadline-extend',
+      foreshadowId: id,
+      newExpectedFulfillChapter,
+      chapterIndex,
+      source: 'outline',
+    }
+  }
+
+  function buildLateChapterState(
+    storyMemory: StoryMemory,
+    deferredForeshadowIds: string[],
+    chapterIndex = DEFAULT_CHAPTER_INDEX,
+    totalChapters = 20
+  ): ReducedGraphState {
+    const outline = Array.from({ length: totalChapters }, (_, i) => ({
+      number: i + 1,
+      title: `第${i + 1}章`,
+      description: `第${i + 1}章剧情。`,
+    }))
+    outline[chapterIndex] = {
+      ...outline[chapterIndex]!,
+      ...(deferredForeshadowIds.length > 0 ? { deferredForeshadowIds } : {}),
+    }
+    const chapters = Array.from({ length: totalChapters }, () => null)
+    chapters[chapterIndex] = {
+      id: `ch-${chapterIndex + 1}`,
+      storyId: 'test-story',
+      number: chapterIndex + 1,
+      title: `第${chapterIndex + 1}章`,
+      outline: '主角继续前行。',
+      summary: '主角继续前行，路途漫长。',
+      foreshadows: null,
+      status: 'drafting',
+      createdAt: 0,
+      updatedAt: 0,
+    }
+    return buildState(tmpDir, {
+      totalChapters,
+      currentChapterIndex: chapterIndex,
+      outline,
+      chapters,
+      storyArc: {
+        totalChapters,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: totalChapters,
+            title: '启程',
+            theme: '出发',
+            function: '建立动机',
+            mandatoryBeats: ['主角离开家乡'],
+          },
+        ],
+        keyBeats: [{ id: 'beat-1', beat: '主角离开家乡', deadlineAct: 1, required: true }],
+      },
+      actProgress: { 1: { consumed: ['主角离开家乡'], pending: [] } },
+      story: {
+        id: 'test-story',
+        title: 'Test',
+        outputDir: tmpDir,
+        genre: 'default',
+        totalChapters,
+        status: 'writing',
+        provider: 'openai',
+        idea: 'test idea',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      storyMemory,
+      session: buildSession({ chapterIndex }),
+    })
+  }
+
+  it('extends the deadline of a deferred, severely overdue required foreshadow', async () => {
+    const storyMemory = buildMemoryWithForeshadows([introduceEvent('fs-1', 2)])
+    const state = buildLateChapterState(storyMemory, ['fs-1'])
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const extendEvents = (result.storyMemory?.events ?? []).filter(
+      (event) => event.type === 'foreshadow-deadline-extend'
+    )
+    expect(extendEvents).toHaveLength(1)
+    expect(extendEvents[0]).toMatchObject({
+      foreshadowId: 'fs-1',
+      chapterIndex: DEFAULT_CHAPTER_INDEX,
+      newExpectedFulfillChapter: DEFAULT_CHAPTER_INDEX + 1 + FORESHADOW_MAX_FULFILL_DISTANCE,
+    })
+    expect(result.storyMemory?.foreshadows['fs-1']?.expectedFulfillChapter).toBe(
+      DEFAULT_CHAPTER_INDEX + 1 + FORESHADOW_MAX_FULFILL_DISTANCE
+    )
+    expect(result.storyMemory?.foreshadows['fs-1']?.deadlineExtensions).toBe(1)
+    expect(result.rewriteRequested).toBeFalsy()
+  })
+
+  it('syncs the extended deadline and extension count to the meta foreshadow stack', async () => {
+    const storyMemory = buildMemoryWithForeshadows([introduceEvent('fs-1', 2)])
+    const state = buildLateChapterState(storyMemory, ['fs-1'])
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const item = result.foreshadowStack?.find((foreshadow) => foreshadow.id === 'fs-1')
+    expect(item?.expectedFulfillChapter).toBe(
+      DEFAULT_CHAPTER_INDEX + 1 + FORESHADOW_MAX_FULFILL_DISTANCE
+    )
+    expect(item?.deadlineExtensions).toBe(1)
+  })
+
+  it('does not extend an overdue foreshadow that was not deferred this chapter', async () => {
+    const storyMemory = buildMemoryWithForeshadows([introduceEvent('fs-1', 2)])
+    const state = buildLateChapterState(storyMemory, [])
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(
+      (result.storyMemory?.events ?? []).some(
+        (event) => event.type === 'foreshadow-deadline-extend'
+      )
+    ).toBe(false)
+    expect(result.storyMemory?.foreshadows['fs-1']?.expectedFulfillChapter).toBe(2)
+  })
+
+  it('does not extend a deferred foreshadow that is not severely overdue', async () => {
+    const storyMemory = buildMemoryWithForeshadows([introduceEvent('fs-1', 10)])
+    const state = buildLateChapterState(storyMemory, ['fs-1'])
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(
+      (result.storyMemory?.events ?? []).some(
+        (event) => event.type === 'foreshadow-deadline-extend'
+      )
+    ).toBe(false)
+    expect(result.storyMemory?.foreshadows['fs-1']?.expectedFulfillChapter).toBe(10)
+  })
+
+  it('does not extend a deferred foreshadow that is already fulfilled', async () => {
+    const storyMemory = buildMemoryWithForeshadows([
+      introduceEvent('fs-1', 2),
+      {
+        id: 'evt-fulfill-fs-1',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-1',
+        chapterIndex: 3,
+        source: 'chapter',
+      },
+    ])
+    const state = buildLateChapterState(storyMemory, ['fs-1'])
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(
+      (result.storyMemory?.events ?? []).some(
+        (event) => event.type === 'foreshadow-deadline-extend'
+      )
+    ).toBe(false)
+  })
+
+  it('stops extending at the limit and reports the foreshadow for manual attention without blocking', async () => {
+    // Extension history consistent with the distance-8 rule: extended to 20 at
+    // chapter 12, severely overdue again at chapter 37, extended to 45.
+    const storyMemory = buildMemoryWithForeshadows([
+      introduceEvent('fs-1', 2),
+      extendEvent('fs-1', 11, 20),
+      extendEvent('fs-1', 36, 45),
+    ])
+    const state = buildLateChapterState(storyMemory, ['fs-1'], 61, 80)
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(
+      (result.storyMemory?.events ?? []).filter(
+        (event) => event.type === 'foreshadow-deadline-extend'
+      )
+    ).toHaveLength(2)
+    expect(result.storyMemory?.foreshadows['fs-1']?.expectedFulfillChapter).toBe(45)
+    expect(result.storyMemory?.foreshadows['fs-1']?.deadlineExtensions).toBe(2)
+    expect(result.chapterReport?.foreshadowsNeedingAttention).toEqual(['fs-1'])
+    expect(result.rewriteRequested).toBeFalsy()
+    expect(result.currentChapterIndex).toBe(62)
+  })
+})
+
+describe('finalizeChapter — canonical facts delta & regenerable constraints', () => {
+  let tmpDir: string
+
+  beforeEach(async () => {
+    loadConfigMock.mockReturnValue({
+      model: { provider: 'openai' as const, model: 'gpt-4o' },
+      autoAdjustActBoundaries: false,
+    })
+    vi.mocked(getSummaryAgent).mockReturnValue(
+      createBaseSummaryAgent() as unknown as ReturnType<typeof getSummaryAgent>
+    )
+    vi.mocked(proposeActBoundaryAdjustments).mockReturnValue([])
+    vi.mocked(applyActBoundaryAdjustment).mockReturnValue({ storyArc: null, applied: false })
+
+    tmpDir = path.join(
+      process.cwd(),
+      'tests',
+      'tmp',
+      `finalize-delta-${Date.now()}-${Math.random()}`
+    )
+    await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_1.md'),
+      '# 第一章 启程\n\n主角告别了故乡，踏上了未知的旅途。',
+      'utf-8'
+    )
+  })
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  it('merges canonicalFactsDelta into storyState and clears the delta', async () => {
+    const fact = {
+      id: 'fact-1',
+      subject: 'c-hero',
+      attribute: 'location' as const,
+      value: 'l-capital',
+      establishedIn: 0,
+      confidence: 'high' as const,
+      source: 'outline_inference' as const,
+    }
+    const state = buildState(tmpDir, {
+      canonicalFactsDelta: [fact],
+      supersededFactsDelta: [],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.storyState?.canonicalFacts?.some((f) => f.id === 'fact-1')).toBe(true)
+    expect(result.canonicalFactsDelta).toBeUndefined()
+    expect(result.supersededFactsDelta).toBeUndefined()
+  })
+
+  it('applies the same canonical facts delta idempotently and retires superseded values', async () => {
+    const { mergeStoryState } = await import('@/graph/utils/reconciler/state-merge.js')
+    const older = {
+      id: 'fact-old',
+      subject: 'c-hero',
+      attribute: 'location' as const,
+      value: 'l-village',
+      establishedIn: 0,
+      confidence: 'high' as const,
+      source: 'outline_inference' as const,
+    }
+    const newer = { ...older, id: 'fact-new', value: 'l-capital', establishedIn: 2 }
+
+    const once = mergeStoryState(
+      { ...createEmptyStoryState(), canonicalFacts: [older] },
+      { ...createEmptyStoryState(), canonicalFacts: [newer] }
+    )
+    expect(once.canonicalFacts?.find((f) => f.id === 'fact-old')?.retiredIn).toBe(2)
+    expect(once.canonicalFacts?.find((f) => f.id === 'fact-new')?.retiredIn).toBeUndefined()
+
+    const twice = mergeStoryState(once, { ...createEmptyStoryState(), canonicalFacts: [newer] })
+    expect(twice.canonicalFacts).toEqual(once.canonicalFacts)
+  })
+
+  it('supersedes a persisted outline_inference fact when the delta carries a conflicting fact', async () => {
+    const inferred = {
+      id: 'fact-inferred',
+      subject: 'c-hero',
+      attribute: 'status' as const,
+      value: '健康',
+      establishedIn: 0,
+      confidence: 'medium' as const,
+      source: 'outline_inference' as const,
+    }
+    const fromText = {
+      id: 'fact-text',
+      subject: 'c-hero',
+      attribute: 'status' as const,
+      value: '负伤',
+      establishedIn: 0,
+      confidence: 'high' as const,
+      source: 'chapter_text' as const,
+    }
+    const state = buildState(tmpDir, {
+      storyState: { ...createEmptyStoryState(), canonicalFacts: [inferred] },
+      canonicalFactsDelta: [fromText],
+      supersededFactsDelta: [],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const oldFact = result.storyState?.canonicalFacts?.find((f) => f.id === 'fact-inferred')
+    const newFact = result.storyState?.canonicalFacts?.find((f) => f.id === 'fact-text')
+    expect(oldFact?.retiredIn).toBe(0)
+    expect(newFact?.retiredIn).toBeUndefined()
+    expect(newFact?.supersedes).toEqual([{ chapter: 0, oldValue: '健康' }])
+  })
+
+  it('backfills storyTime from the chapter handoff endTime', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角离开家乡。',
+          chapterHandoff: {
+            chapterNumber: 1,
+            endScene: '村口',
+            endTime: '第三日黄昏',
+            charactersPresent: [],
+            lastAction: '启程',
+            openQuestions: [],
+          },
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const result = await finalizeChapter(buildState(tmpDir), createMockProvider())
+
+    expect(result.storyState?.storyTime).toBe('第三日黄昏')
+  })
+
+  it('rebuilds regenerable constraints while carrying over foreign constraints', async () => {
+    const state = buildState(tmpDir, {
+      verifiedConstraints: [
+        { kind: 'generic', id: 'memory:task:task-old', text: '未完成任务 [task-old]: 旧任务' },
+        { kind: 'generic', id: 'foreshadow-boundary:fs-gone', text: '【伏笔边界】已消失的旧约束' },
+        { kind: 'generic', text: '来自路由的约束' },
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const constraints = result.verifiedConstraints ?? []
+    expect(constraints.some((c) => c.text === '来自路由的约束')).toBe(true)
+    expect(constraints.some((c) => c.text.includes('task-old'))).toBe(false)
+    expect(constraints.some((c) => c.text.includes('fs-gone'))).toBe(false)
+    expect(constraints.some((c) => c.kind === 'generic' && c.id === 'memory:task:task-1')).toBe(
+      true
+    )
+  })
+
+  it('replaces a carried boundary constraint with the fresh copy (single entry)', async () => {
+    const state = buildState(tmpDir, {
+      storyMemory: makeStoryMemory({}, [
+        {
+          id: 'evt-fs-1',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-1',
+          text: '神秘信件的来历',
+          expectedFulfillChapter: 3,
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        },
+      ]),
+      verifiedConstraints: [
+        { kind: 'generic', id: 'foreshadow-boundary:fs-1', text: '【伏笔边界】旧文本' },
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const boundary = (result.verifiedConstraints ?? []).filter(
+      (c) => c.kind === 'generic' && c.id === 'foreshadow-boundary:fs-1'
+    )
+    expect(boundary).toHaveLength(1)
+    expect(boundary[0]?.text).toContain('第1章埋下')
+  })
+})

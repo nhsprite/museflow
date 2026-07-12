@@ -29,6 +29,8 @@ export async function validateChapterStructured(
         unclaimedMandatoryBeats: [],
         claimedButUnprovenBeats: [],
         stateConflicts: [],
+        finalStateMismatches: [],
+        finalStateUncorroborated: [],
       },
     }
   }
@@ -36,12 +38,11 @@ export async function validateChapterStructured(
   const chapterContent = state.story?.outputDir
     ? await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
     : null
-  const result = validateChapterEvents(
-    memory,
-    chapterIndex,
-    plan,
-    actualEvents,
-    chapterContent !== null ? { chapterContent, requireEvidence: true } : { requireEvidence: false }
-  )
+  const result = validateChapterEvents(memory, chapterIndex, plan, actualEvents, {
+    ...(chapterContent !== null
+      ? { chapterContent, requireEvidence: true }
+      : { requireEvidence: false }),
+    finalStateDeclarations: state.chapterFinalStateDeclarations ?? [],
+  })
   return { structuredValidationResult: result }
 }

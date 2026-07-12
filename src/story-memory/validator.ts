@@ -1,4 +1,11 @@
-import type { StoryMemory, StoryEvent, ForeshadowId, BeatId } from '../types/story-memory.js'
+import type {
+  StoryMemory,
+  StoryEvent,
+  ForeshadowId,
+  BeatId,
+  ChapterFinalStateDeclaration,
+  FinalStateAttribute,
+} from '../types/story-memory.js'
 import type { ChapterPlan } from '../agents/types.js'
 import { diffEvents } from './diff.js'
 import { applyEvents } from './projector.js'
@@ -21,6 +28,15 @@ export interface StructuredValidationResult {
   claimedButUnprovenBeats: BeatId[]
 
   stateConflicts: StateConflict[]
+  finalStateMismatches: FinalStateMismatch[]
+  finalStateUncorroborated: FinalStateMismatch[]
+}
+
+export interface FinalStateMismatch {
+  entityId: string
+  attribute: FinalStateAttribute
+  declaredValue: string
+  actualValue: string | null
 }
 
 export interface StateConflict {
@@ -34,6 +50,7 @@ export interface StateConflict {
 export interface ChapterEventValidationOptions {
   chapterContent?: string
   requireEvidence?: boolean
+  finalStateDeclarations?: ChapterFinalStateDeclaration[]
 }
 
 export function validateChapterEvents(
@@ -63,7 +80,7 @@ export function validateChapterEvents(
   for (const fs of Object.values(effectiveMemory.foreshadows)) {
     if (
       fs.required &&
-      !fs.fulfilledIn &&
+      fs.fulfilledIn === null &&
       fs.expectedFulfillChapter !== null &&
       currentChapter > fs.expectedFulfillChapter
     ) {
@@ -71,7 +88,7 @@ export function validateChapterEvents(
     }
     if (
       fs.required &&
-      !fs.fulfilledIn &&
+      fs.fulfilledIn === null &&
       fs.expectedFulfillChapter !== null &&
       currentChapter >= fs.expectedFulfillChapter
     ) {
@@ -119,6 +136,7 @@ export function validateChapterEvents(
     unclaimedMandatoryBeats,
     claimedButUnprovenBeats,
     stateConflicts: detectStateConflicts(acceptedEvents),
+    ...validateFinalStateDeclarations(acceptedEvents, options.finalStateDeclarations ?? []),
   }
 }
 
@@ -171,6 +189,73 @@ function applyNewChapterEvents(memory: StoryMemory, chapterActual: StoryEvent[])
   const knownEventIds = new Set(memory.events.map((event) => event.id))
   const newEvents = chapterActual.filter((event) => !knownEventIds.has(event.id))
   return newEvents.length > 0 ? applyEvents(memory, newEvents) : memory
+}
+
+/**
+ * Table-driven mapping from a final-state declaration attribute to the event
+ * types that can support it. No prose matching: only event type enums and
+ * entity ids are compared.
+ */
+const FINAL_STATE_EVENT_TYPES: Record<FinalStateAttribute, readonly StoryEvent['type'][]> = {
+  location: ['character-location', 'item-location'],
+  status: ['character-status', 'item-state'],
+}
+
+function validateFinalStateDeclarations(
+  events: StoryEvent[],
+  declarations: ChapterFinalStateDeclaration[]
+): { finalStateMismatches: FinalStateMismatch[]; finalStateUncorroborated: FinalStateMismatch[] } {
+  const finalStateMismatches: FinalStateMismatch[] = []
+  const finalStateUncorroborated: FinalStateMismatch[] = []
+
+  for (const declaration of declarations) {
+    const supportedTypes = FINAL_STATE_EVENT_TYPES[declaration.attribute]
+    const candidates = events.filter(
+      (event) =>
+        (supportedTypes as readonly string[]).includes(event.type) &&
+        entityIdFromEvent(event) === declaration.entityId
+    )
+    const lastEvent = candidates[candidates.length - 1]
+    if (!lastEvent) {
+      // No supporting event this chapter: the declaration is unverifiable, not
+      // necessarily wrong (the entity may simply not have changed). Downgrade to
+      // a warning channel instead of a blocking error.
+      finalStateUncorroborated.push({
+        entityId: declaration.entityId,
+        attribute: declaration.attribute,
+        declaredValue: declaration.value,
+        actualValue: null,
+      })
+      continue
+    }
+    const actualValue = finalStateEventValue(lastEvent)
+    if (actualValue !== declaration.value) {
+      finalStateMismatches.push({
+        entityId: declaration.entityId,
+        attribute: declaration.attribute,
+        declaredValue: declaration.value,
+        actualValue,
+      })
+    }
+  }
+
+  return { finalStateMismatches, finalStateUncorroborated }
+}
+
+function finalStateEventValue(event: StoryEvent): string | null {
+  switch (event.type) {
+    case 'character-location':
+      return event.locationId
+    case 'item-location':
+      // The holder determines where the item effectively is; fall back to the
+      // location id when the item is not held by anyone.
+      return event.holderId ?? event.locationId
+    case 'character-status':
+    case 'item-state':
+      return typeof event.value === 'string' ? event.value : (JSON.stringify(event.value) ?? null)
+    default:
+      return null
+  }
 }
 
 function detectStateConflicts(events: StoryEvent[]): StateConflict[] {

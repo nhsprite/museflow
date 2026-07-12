@@ -93,27 +93,62 @@ export function mergeSentenceFixes(
   modifiedSentences: Array<{ index: number; content: string }>
 ): string {
   const sentences = splitParagraphIntoSentences(originalParagraph)
-  const modifiedMap = new Map(modifiedSentences.map((s) => [s.index, s.content]))
+  const modifiedMap = new Map(
+    modifiedSentences.filter((s) => s.content.trim().length > 0).map((s) => [s.index, s.content])
+  )
 
   const result = sentences.map((s, i) => (modifiedMap.has(i) ? modifiedMap.get(i)! : s))
   return result.join('')
+}
+
+export type ParagraphMergeSkipReason = 'out_of_range' | 'empty_content'
+
+export interface ParagraphMergeSkip {
+  index: number
+  reason: ParagraphMergeSkipReason
+}
+
+export interface ParagraphMergeResult {
+  content: string
+  appliedIndices: number[]
+  /** 受影响但模型未返回修改的段落索引（保持原文）。 */
+  uncoveredIndices: number[]
+  /** 模型返回但被拒绝的修改（索引越界或内容为空）。 */
+  skipped: ParagraphMergeSkip[]
 }
 
 export function mergeParagraphFixes(
   originalParagraphs: string[],
   modifiedParagraphs: Array<{ index: number; content: string }>,
   affectedIndices: number[]
-): string {
+): ParagraphMergeResult {
   const result = [...originalParagraphs]
   const modifiedMap = new Map(modifiedParagraphs.map((p) => [p.index, p.content]))
+  const appliedIndices: number[] = []
+  const uncoveredIndices: number[] = []
+  const skipped: ParagraphMergeSkip[] = []
 
-  for (const idx of affectedIndices) {
-    if (modifiedMap.has(idx)) {
-      result[idx] = modifiedMap.get(idx)!
+  for (const index of modifiedMap.keys()) {
+    if (index < 0 || index >= originalParagraphs.length) {
+      skipped.push({ index, reason: 'out_of_range' })
     }
   }
 
-  return result.join('\n\n')
+  for (const idx of affectedIndices) {
+    if (!modifiedMap.has(idx)) {
+      uncoveredIndices.push(idx)
+      continue
+    }
+    const modified = modifiedMap.get(idx)!
+    if (modified.trim().length === 0) {
+      skipped.push({ index: idx, reason: 'empty_content' })
+      continue
+    }
+    result[idx] = modified
+    appliedIndices.push(idx)
+  }
+
+  return { content: result.join('\n\n'), appliedIndices, uncoveredIndices, skipped }
 }
 
 export function applyParagraphDiffProtection(

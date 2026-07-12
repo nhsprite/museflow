@@ -189,6 +189,7 @@ describe('ChapterOutlineAgent', () => {
     const result = output.data as {
       claimedBeatIds: string[]
       fulfilledForeshadowIds: string[]
+      deferredForeshadowIds: string[]
       introducedForeshadowIds: string[]
       touchedCharacterIds: string[]
       touchedItemIds: string[]
@@ -198,6 +199,7 @@ describe('ChapterOutlineAgent', () => {
     }
     expect(result.claimedBeatIds).toEqual([])
     expect(result.fulfilledForeshadowIds).toEqual([])
+    expect(result.deferredForeshadowIds).toEqual([])
     expect(result.introducedForeshadowIds).toEqual([])
     expect(result.touchedCharacterIds).toEqual([])
     expect(result.touchedItemIds).toEqual([])
@@ -229,6 +231,36 @@ describe('ChapterOutlineAgent', () => {
     const prompt = messages.map((message) => message.content).join('\n')
     expect(prompt).toContain('本章节拍预算')
     expect(prompt).toContain('最多承载')
+  })
+
+  it('parses deferredForeshadowIds from the LLM output', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '过渡',
+        description: '主角在城中休整，暂不回收旧线索。',
+        claimedBeats: [],
+        fulfilledForeshadowIds: ['fs-a'],
+        deferredForeshadowIds: ['fs-b', ''],
+      })
+    )
+
+    const output = await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 1,
+      storyArc,
+      actProgress: { 1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] } },
+    } as ChapterOutlineAgentInput)
+
+    expect(output.success).toBe(true)
+    const result = output.data as {
+      fulfilledForeshadowIds: string[]
+      deferredForeshadowIds: string[]
+    }
+    expect(result.fulfilledForeshadowIds).toEqual(['fs-a'])
+    expect(result.deferredForeshadowIds).toEqual(['fs-b'])
   })
 
   it('propagates conflict flag and reason', async () => {

@@ -82,7 +82,7 @@ describe('runLegacyFix validation', () => {
 
     const agent = {
       run: vi.fn().mockResolvedValue({ success: true, content: planContent }),
-      processOutput: vi.fn().mockReturnValue({ content: planContent, chapterMeta: {} }),
+      processOutput: vi.fn().mockReturnValue({ content: planContent, chapterMeta: {}, issues: [] }),
     }
 
     const state = buildState(outputDir)
@@ -117,7 +117,11 @@ describe('runLegacyFix validation', () => {
 
     const agent = {
       run: vi.fn().mockResolvedValue({ success: true, content: fixedContent }),
-      processOutput: vi.fn().mockReturnValue({ content: fixedContent, chapterMeta: {} }),
+      processOutput: vi.fn().mockReturnValue({
+        content: fixedContent,
+        chapterMeta: {},
+        issues: [],
+      }),
     }
 
     const state = buildState(outputDir)

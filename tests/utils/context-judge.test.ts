@@ -4,6 +4,7 @@ import {
   batchJudgeTaskRelevance,
   batchClassifyIssues,
   generateIssueFingerprint,
+  batchValidateTimeAnchors,
 } from '../../src/utils/context-judge.js'
 
 describe('context-judge robustness', () => {
@@ -163,6 +164,67 @@ describe('context-judge robustness', () => {
       severity: 'error' as const,
       description: 'any text',
     }
-    expect(generateIssueFingerprint(issue)).toBe('hallucination:unknown:__generic__:issue-8')
+    const fp = generateIssueFingerprint(issue)
+    expect(fp).toContain('hallucination:unknown:__generic__:')
+    expect(fp).not.toContain('issue-8')
+  })
+
+  it('generateIssueFingerprint generic branch stays stable across rounds when id changes', () => {
+    const a = {
+      id: 'round-1-id',
+      type: 'consistency' as const,
+      severity: 'error' as const,
+      description: '同一问题描述',
+    }
+    const b = {
+      id: 'round-2-id',
+      type: 'consistency' as const,
+      severity: 'error' as const,
+      description: '同一问题描述',
+    }
+    expect(generateIssueFingerprint(a)).toBe(generateIssueFingerprint(b))
+  })
+
+  it('generateIssueFingerprint generic branch distinguishes different descriptions', () => {
+    const a = {
+      id: 'issue-1',
+      type: 'consistency' as const,
+      severity: 'error' as const,
+      description: '问题甲',
+    }
+    const b = {
+      id: 'issue-2',
+      type: 'consistency' as const,
+      severity: 'error' as const,
+      description: '问题乙',
+    }
+    expect(generateIssueFingerprint(a)).not.toBe(generateIssueFingerprint(b))
+  })
+})
+
+describe('batchValidateTimeAnchors', () => {
+  it('validates against the ending snippet of the previous chapter, not the opening', async () => {
+    let capturedUserContent = ''
+    const provider = {
+      chatStructured: vi.fn(
+        async (messages: Array<{ role: string; content: string }>): Promise<unknown> => {
+          capturedUserContent = messages.find((m) => m.role === 'user')?.content ?? ''
+          return { results: [{ id: 'item_1', value: { valid: true } }] }
+        }
+      ),
+      chat: vi.fn(),
+    } as unknown as ModelProvider
+
+    const openingMarker = 'OPENING_MARKER_上一章开头与终态无关'
+    const endingMarker = 'ENDING_MARKER_上一章结尾终态事件'
+    const previousContent = `${openingMarker}\n\n${'填充段落。'.repeat(400)}\n\n${endingMarker}`
+
+    const results = await batchValidateTimeAnchors(provider, [
+      { anchor: '承接上一章结尾', previousContent },
+    ])
+
+    expect(results).toEqual([{ valid: true }])
+    expect(capturedUserContent).toContain(endingMarker)
+    expect(capturedUserContent).not.toContain(openingMarker)
   })
 })

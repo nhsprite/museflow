@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { existsSync, unlinkSync } from 'node:fs'
 import type { ChapterReport } from '../../../types/chapter-report.js'
 import { writeFileAtomic, ensureDir } from '../../../utils/fs.js'
 
@@ -16,4 +17,11 @@ export function saveChapterReport(outputDir: string, report: ChapterReport): voi
   const path = getChapterReportPath(outputDir, report.chapterIndex)
   const data = JSON.stringify(report, null, 2)
   writeFileAtomic(path, data)
+}
+
+export function deleteChapterReport(outputDir: string, chapterIndex: number): void {
+  const path = getChapterReportPath(outputDir, chapterIndex)
+  if (existsSync(path)) {
+    unlinkSync(path)
+  }
 }

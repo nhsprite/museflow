@@ -177,4 +177,50 @@ describe('validateChapterStructured', () => {
 
     expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual([])
   })
+
+  it('validates chapter final-state declarations against draft events', async () => {
+    const plan: ChapterPlan = {
+      chapterIndex: 24,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const events: StoryEvent[] = [
+      {
+        id: 'e1',
+        type: 'item-location',
+        itemId: 'i-box',
+        holderId: null,
+        locationId: 'loc-drawer-deep',
+        chapterIndex: 24,
+        source: 'chapter',
+      },
+    ]
+    const state = {
+      currentChapterIndex: 24,
+      storyMemory: createEmptyStoryMemory(),
+      chapterPlan: plan,
+      draftChapterEvents: events,
+      chapterFinalStateDeclarations: [
+        { entityId: 'i-box', attribute: 'location', value: 'loc-drawer-right' },
+      ],
+    } as ReducedGraphState
+
+    const result = await validateChapterStructured(createMockContext(), state)
+
+    expect(result.structuredValidationResult?.finalStateMismatches).toEqual([
+      {
+        entityId: 'i-box',
+        attribute: 'location',
+        declaredValue: 'loc-drawer-right',
+        actualValue: 'loc-drawer-deep',
+      },
+    ])
+  })
 })

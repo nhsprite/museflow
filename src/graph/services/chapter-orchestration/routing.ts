@@ -213,7 +213,7 @@ export async function convergeAndDecide(
       planningConfig: getChapterPlanningConfig(state.genre),
       calculateIssueSetSimilarity: (prev, curr) =>
         calculateIssueSetSimilarity(prev, curr, async (issue) =>
-          issueFingerprint(undefined, issue)
+          issueFingerprint(context.provider, issue)
         ),
       isInterpretiveIssue: (issue) => isInterpretiveIssue(undefined, issue, preferLLM),
       isStateCorruptionIssue: (issue) => isStateCorruptionIssue(undefined, issue, preferLLM),
@@ -228,6 +228,7 @@ export async function convergeAndDecide(
     isStructuralIssue: (issue) => isStructuralIssue(undefined, issue, preferLLM),
     isLocalIssue: (issue) => isLocalIssue(undefined, issue, preferLLM),
     isTaskConsistencyIssue: (issue) => isTaskConsistencyIssue(undefined, issue, preferLLM),
+    fingerprintIssue: (issue) => issueFingerprint(context.provider, issue),
   }
 
   const ctx: RoutingContext = {
@@ -254,6 +255,9 @@ export async function convergeAndDecide(
     case 'finalize':
       routingDecision = 'finalize_chapter'
       break
+    case 'repair_state':
+      routingDecision = 'repair_state'
+      break
     case 'request_rewrite':
       routingDecision = 'request_rewrite'
       break
@@ -263,6 +267,9 @@ export async function convergeAndDecide(
     ...sessionUpdate,
     routingDecision,
     rewriteAttempts: session.rewriteAttempts + 1,
+    // 回写本轮问题快照，供 rewrite-policy 的相似度升级与已解决约束提取使用。
+    previousIssues: processedIssues,
+    previousRawErrorCount: processedIssues.filter((i) => i.severity === 'error').length,
   })
 
   update.pendingIssues = processedIssues
@@ -270,7 +277,7 @@ export async function convergeAndDecide(
   const currentVerifiedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints)
   const nextVerifiedConstraints = [
     ...currentVerifiedConstraints,
-    ...newConstraints.map(createGenericVerifiedConstraint),
+    ...newConstraints.map((text) => createGenericVerifiedConstraint(text)),
   ]
   const trimmedConstraints =
     nextVerifiedConstraints.length > getChapterPlanningConfig(state.genre).maxVerifiedConstraints

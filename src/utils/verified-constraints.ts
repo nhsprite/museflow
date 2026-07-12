@@ -7,8 +7,51 @@ import type {
 } from '../types/verified-constraint.js'
 import { getActForChapter } from './story-arc.js'
 
-export function createGenericVerifiedConstraint(text: string): GenericVerifiedConstraint {
-  return { kind: 'generic', text }
+export function createGenericVerifiedConstraint(
+  text: string,
+  id?: string
+): GenericVerifiedConstraint {
+  return id !== undefined ? { kind: 'generic', id, text } : { kind: 'generic', text }
+}
+
+/**
+ * Regenerable constraints are rebuilt from scratch every finalize (StoryMemory-
+ * derived and foreshadow-boundary constraints). Their ids carry a machine-
+ * readable prefix so carried-over copies from previous chapters can be dropped
+ * before the fresh ones are appended.
+ */
+const REGENERABLE_CONSTRAINT_ID_PREFIXES = ['memory:', 'foreshadow-boundary:']
+
+export function isRegenerableConstraintId(id: string): boolean {
+  return REGENERABLE_CONSTRAINT_ID_PREFIXES.some((prefix) => id.startsWith(prefix))
+}
+
+/**
+ * Deduplicate constraints, keeping the last occurrence. Generic constraints are
+ * keyed by structured id when present, otherwise by exact text equality (whole-
+ * string identity of machine-produced records, not prose similarity). Other
+ * kinds pass through untouched.
+ */
+export function dedupeVerifiedConstraints(
+  constraints: readonly VerifiedConstraint[]
+): VerifiedConstraint[] {
+  const result: VerifiedConstraint[] = []
+  const genericIndexByKey = new Map<string, number>()
+  for (const constraint of constraints) {
+    if (constraint.kind !== 'generic') {
+      result.push(constraint)
+      continue
+    }
+    const key = constraint.id ?? `text:${constraint.text}`
+    const existingIndex = genericIndexByKey.get(key)
+    if (existingIndex !== undefined) {
+      result[existingIndex] = constraint
+    } else {
+      genericIndexByKey.set(key, result.length)
+      result.push(constraint)
+    }
+  }
+  return result
 }
 
 export function createActPressureConstraint(

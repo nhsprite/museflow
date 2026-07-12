@@ -178,6 +178,28 @@ function projectionValueToString(value: unknown): string {
   return JSON.stringify(value)
 }
 
+/**
+ * StoryState exposes a single string per entity, while memory keeps a full
+ * attribute record. Prefer the conventional key ('status' for characters,
+ * 'state' for items) to preserve legacy behavior; otherwise fall back to the
+ * last written attribute so non-standard attributes (injuries, mood, ...) are
+ * not silently dropped from the projected state.
+ */
+function pickLatestAttributeValue(
+  record: Record<string, unknown>,
+  preferredKey: string
+): string | undefined {
+  const preferred = record[preferredKey]
+  if (preferred !== undefined && preferred !== null) {
+    return projectionValueToString(preferred)
+  }
+  const entries = Object.entries(record).filter(
+    ([, value]) => value !== null && value !== undefined
+  )
+  const last = entries[entries.length - 1]
+  return last ? projectionValueToString(last[1]) : undefined
+}
+
 export function projectStoryStateFromMemory(
   memory: StoryMemory,
   previousState?: StoryState | null
@@ -188,13 +210,30 @@ export function projectStoryStateFromMemory(
   const keyItemsLocation = { ...base.keyItemsLocation }
   const keyItemsState = { ...base.keyItemsState }
 
+  // Entities only contain records for ids that appeared in events, but an
+  // entity created by a status event has locationId null without any explicit
+  // "cleared" signal. Track which ids actually had location events so a null
+  // final location can delete the stale projected value without wiping base
+  // values that came from other sources (e.g. author overrides).
+  const charactersWithLocationEvents = new Set<string>()
+  const itemsWithLocationEvents = new Set<string>()
+  for (const event of memory.events) {
+    if (event.type === 'character-location') {
+      charactersWithLocationEvents.add(event.characterId)
+    } else if (event.type === 'item-location') {
+      itemsWithLocationEvents.add(event.itemId)
+    }
+  }
+
   for (const character of Object.values(memory.entities.characters)) {
     if (character.locationId) {
       characterLocations[character.id] = character.locationId
+    } else if (charactersWithLocationEvents.has(character.id)) {
+      delete characterLocations[character.id]
     }
-    const status = character.status.status
+    const status = pickLatestAttributeValue(character.status, 'status')
     if (status !== undefined) {
-      characterStatus[character.id] = projectionValueToString(status)
+      characterStatus[character.id] = status
     }
   }
 
@@ -202,10 +241,12 @@ export function projectStoryStateFromMemory(
     const location = item.holderId ?? item.locationId
     if (location) {
       keyItemsLocation[item.id] = location
+    } else if (itemsWithLocationEvents.has(item.id)) {
+      delete keyItemsLocation[item.id]
     }
-    const state = item.state.state
+    const state = pickLatestAttributeValue(item.state, 'state')
     if (state !== undefined) {
-      keyItemsState[item.id] = projectionValueToString(state)
+      keyItemsState[item.id] = state
     }
   }
 
@@ -269,6 +310,17 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         fulfilledIn: event.chapterIndex,
         required: existing?.required ?? true,
         beatId: existing?.beatId ?? null,
+        ...(existing?.deadlineExtensions !== undefined
+          ? { deadlineExtensions: existing.deadlineExtensions }
+          : {}),
+      }
+    } else if (event.type === 'foreshadow-deadline-extend') {
+      const existing = foreshadows[event.foreshadowId]
+      if (!existing) continue
+      foreshadows[event.foreshadowId] = {
+        ...existing,
+        expectedFulfillChapter: event.newExpectedFulfillChapter,
+        deadlineExtensions: (existing.deadlineExtensions ?? 0) + 1,
       }
     }
   }

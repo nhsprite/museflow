@@ -47,9 +47,9 @@ export function capNonErrorIssuesByType(
     } else {
       log?.(
         'warn',
-        `[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留前 ${maxPerType} 个`
+        `[MuseFlow] 检测到 ${type} 类型有 ${nonErrors.length} 个非错误问题，只保留最新 ${maxPerType} 个`
       )
-      result.push(...nonErrors.slice(0, maxPerType))
+      result.push(...nonErrors.slice(-maxPerType))
       cappedTypes.push(type)
     }
   }

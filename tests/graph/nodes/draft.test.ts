@@ -217,7 +217,34 @@ describe('draft_chapter output validation', () => {
       path.join(tmpDir, '.staging', 'chapters', 'chapter_16.md'),
       'utf8'
     )
-
     expect(written.startsWith('# 第16章 第十七页的空白')).toBe(true)
+  })
+
+  it('returns canonical/superseded facts deltas from the reconciled state', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValueOnce({
+      success: true,
+      content: '主角走在路上，心中思绪万千。'.repeat(50),
+    })
+
+    const result = await draft_chapter(createMockContext(), state)
+
+    expect(Array.isArray(result.canonicalFactsDelta)).toBe(true)
+    expect(Array.isArray(result.supersededFactsDelta)).toBe(true)
   })
 })

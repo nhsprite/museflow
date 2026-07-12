@@ -1,6 +1,6 @@
 export { AI_PHRASE_PROHIBITIONS } from './ai-phrases.js'
 export { TIMELINE_RULES, TIME_ANCHOR_AUTHORITY_RULES } from './timeline.js'
-export { FACT_CONSISTENCY_RULES, buildCanonicalFactsSection } from './facts.js'
+export { FACT_CONSISTENCY_RULES } from './facts.js'
 export { CAPABILITY_CONSISTENCY_RULES } from './capabilities.js'
 export { CROSS_CHAPTER_CONTINUITY_RULES } from './continuity.js'
 export { FORESHADOW_BOUNDARY_RULES, FORESHADOW_DISCIPLINE_RULES } from './foreshadow.js'

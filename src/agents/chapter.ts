@@ -8,7 +8,6 @@ import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 import {
-  buildCanonicalFactsSection,
   buildCharacterWhitelistSection,
   FACT_CONSISTENCY_RULES,
 } from './prompts/fragments/index.js'
@@ -18,7 +17,7 @@ import {
   buildBeatMappingSection,
   type BeatMappingEntry,
 } from './prompts/chapter-prompt.js'
-import { parseStoryEventsBlock } from '../story-memory/parser.js'
+import { parseStoryEventsBlock, parseStoryFinalStateBlock } from '../story-memory/parser.js'
 import {
   CHAPTER_HEADING_PATTERN,
   CHAPTER_TITLE_ONLY_PATTERN,
@@ -220,7 +219,6 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
 </closing_phase>`
             : ''
 
-    const factVerificationSection = this.buildFactVerificationSection(state)
     const absoluteConstraintsSection = this.buildAbsoluteConstraints(state)
     const beatMappingSection = this.buildBeatMappingSection(state)
     const writingConstraintsSection = this.buildWritingConstraintsSection(state)
@@ -237,7 +235,6 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         writingConstraintsSection,
         stateConflictsSection,
         timeAnchorSection,
-        factVerificationSection,
         beatMappingSection,
         planSection,
         taskResolutionSection,
@@ -339,62 +336,6 @@ ${lines.join('\n')}
     return [description.trim()]
   }
 
-  private buildFactVerificationSection(state: ChapterAgentInput): string {
-    const storyState = state.storyState
-    if (!storyState) {
-      return ''
-    }
-
-    const extractSection = (label: string, content: string): string | null => {
-      const pattern = new RegExp(`【${label}】\\n([\\s\\S]*?)(?=【|$)`)
-      const match = content.match(pattern)
-      return match && match[1] ? match[1].trim() : null
-    }
-
-    const revealedSecrets = extractSection('已揭示的秘密', storyState)
-    const supersededFacts = extractSection('已被覆盖的旧事实', storyState)
-    const canonicalFacts = extractSection('权威事实', storyState)
-    const characterLocations = extractSection('角色位置', storyState)
-    const characterStatuses = extractSection('角色状态', storyState)
-    const keyItems = extractSection('关键物品', storyState)
-    const keyItemStates = extractSection('关键物品状态', storyState)
-
-    const facts: string[] = []
-    if (canonicalFacts) {
-      facts.push(
-        `【权威事实】\n${this.sortCanonicalFactsByOutlineRelevance(canonicalFacts, state.outline ?? '')}`
-      )
-    }
-    if (characterLocations) {
-      facts.push(`【角色位置】\n${characterLocations}`)
-    }
-    if (characterStatuses) {
-      facts.push(`【角色状态】\n${characterStatuses}`)
-    }
-    if (keyItems) {
-      facts.push(
-        `【关键物品】\n${keyItems}\n${keyItemStates ? `【关键物品状态】\n${keyItemStates}\n` : ''}`
-      )
-    }
-    if (revealedSecrets) {
-      facts.push(`【已揭示的秘密】\n${revealedSecrets}`)
-    }
-    if (supersededFacts) {
-      facts.push(`【已被覆盖的旧事实】\n${supersededFacts}`)
-    }
-
-    return buildCanonicalFactsSection(facts)
-  }
-
-  private sortCanonicalFactsByOutlineRelevance(
-    canonicalFactsText: string,
-    _outline: string
-  ): string {
-    const lines = canonicalFactsText.split('\n').filter((line) => line.trim().length > 0)
-    if (lines.length === 0) return ''
-    return lines.join('\n')
-  }
-
   private buildAbsoluteConstraints(state: ChapterAgentInput): string {
     const constraints: string[] = [
       '本章不得提前完成或彻底收尾下一章大纲中的核心行动。',
@@ -437,6 +378,8 @@ ${lines.join('\n')}
   }
 
   protected parse(content: string): AgentOutput {
+    const finalStateDeclarations = parseStoryFinalStateBlock(content)
+
     const standardPreWriteMatch = content.match(
       /===\s*PRE_WRITE_CHECK\s*===([\s\S]*?)(?:===\s*STORY_EVENTS\s*===|===\s*CHAPTER_CONTENT\s*===|$)/i
     )
@@ -452,6 +395,8 @@ ${lines.join('\n')}
       logger.warn('[MuseFlow] 警告: 未检测到标准的 === CHAPTER_CONTENT === 标记，尝试智能截断...')
       extractedContent = this.extractContentWithoutMarkers(content)
     }
+
+    extractedContent = this.stripFinalStateBlock(extractedContent)
 
     if (this.hasPreWriteCheckArtifacts(extractedContent)) {
       logger.warn('[MuseFlow] 警告: 正文中检测到检查表残留，执行清理...')
@@ -469,6 +414,7 @@ ${lines.join('\n')}
           data: {
             preWriteCheck: detectedPreWrite,
             storyEvents: parseStoryEventsBlock(content, this.currentChapterIndex),
+            finalStateDeclarations,
           },
         }
       }
@@ -482,8 +428,13 @@ ${lines.join('\n')}
       data: {
         preWriteCheck: standardPreWriteCheck || undefined,
         storyEvents: parseStoryEventsBlock(content, this.currentChapterIndex),
+        finalStateDeclarations,
       },
     }
+  }
+
+  private stripFinalStateBlock(text: string): string {
+    return text.replace(/\n*===\s*STORY_FINAL_STATE\s*===[\s\S]*$/i, '').trim()
   }
 
   private extractContentWithoutMarkers(rawContent: string): string {

@@ -58,6 +58,7 @@ export interface ChapterOutline {
   touchedLocationIds?: EntityId[]
   claimedBeatIds?: BeatId[] // 全局 keyBeat ID，不用于 mandatory beat 覆盖判断
   fulfilledForeshadowIds?: ForeshadowId[]
+  deferredForeshadowIds?: ForeshadowId[] // 调度候选中本章裁决为顺延的伏笔 ID
   introducedForeshadowIds?: ForeshadowId[]
   resolvedTaskIds?: TaskId[]
   createdTaskIds?: TaskId[]

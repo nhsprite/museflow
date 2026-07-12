@@ -28,8 +28,14 @@ function makeIssue(
 describe('applyIssuePolicy', () => {
   it('deduplicates issues by rule by default', async () => {
     const issues: Issue[] = [
-      makeIssue('a', 'consistency', 'error', '应明确写出原定计划被改期的原因'),
-      makeIssue('b', 'consistency', 'error', '应明确写出原定计划被改期的原因'),
+      {
+        ...makeIssue('a', 'consistency', 'error', '应明确写出原定计划被改期的原因'),
+        subject: '同一对象',
+      },
+      {
+        ...makeIssue('b', 'consistency', 'error', '应明确写出原定计划被改期的原因'),
+        subject: '同一对象',
+      },
       makeIssue('c', 'consistency', 'warning', '段落节奏拖沓'),
     ]
 
@@ -60,6 +66,8 @@ describe('applyIssuePolicy', () => {
     const warnings = result.issues.filter((i) => i.severity === 'warning')
     expect(errors).toHaveLength(1)
     expect(warnings).toHaveLength(3)
+    // 超出上限时保留最新的 N 个，丢弃最旧的。
+    expect(warnings.map((i) => i.id)).toEqual(['w2', 'w3', 'w4'])
     expect(result.cappedTypes).toContain('consistency')
   })
 

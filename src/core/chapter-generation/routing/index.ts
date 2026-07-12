@@ -10,6 +10,7 @@ import { applyIssuePolicy } from './issue-policy.js'
 import { applyRewritePolicy } from './rewrite-policy.js'
 import { classifyIssues, decideRepairApproach } from './fix-policy.js'
 import { issueFingerprint } from '../../../utils/issue-deduplication.js'
+import { hasPatchableIssues } from '../../../graph/services/fix/decision.js'
 import {
   buildStructuredIssues,
   replaceStructuredIssues,
@@ -25,20 +26,8 @@ export interface RoutingDeps {
   isStructuralIssue: (issue: Issue) => Promise<boolean> | boolean
   isLocalIssue: (issue: Issue) => Promise<boolean> | boolean
   isTaskConsistencyIssue: (issue: Issue) => Promise<boolean> | boolean
-}
-
-function hasPatchableWarnings(issues: Issue[]): Issue[] {
-  return issues.filter((issue) => {
-    if (issue.severity !== 'warning') return false
-    if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
-    if (issue.type === 'consistency' && issue.dimension === 'quality') {
-      return (
-        issue.locationRef?.paragraphIndex !== undefined ||
-        issue.locationRef?.sentenceIndex !== undefined
-      )
-    }
-    return false
-  })
+  /** 用于停滞检测的 issue 指纹函数；未提供时回退到无 provider 的规则指纹。 */
+  fingerprintIssue?: (issue: Issue) => Promise<string>
 }
 
 function allIssuesMatch(
@@ -105,9 +94,9 @@ export async function decideNextStep(
 
   const remainingErrors = policyResult.issues.filter((i) => i.severity === 'error')
 
-  const currentErrorFingerprints = await Promise.all(
-    remainingErrors.map((issue) => issueFingerprint(undefined, issue))
-  )
+  const fingerprintIssue =
+    deps.fingerprintIssue ?? ((issue: Issue) => issueFingerprint(undefined, issue))
+  const currentErrorFingerprints = await Promise.all(remainingErrors.map(fingerprintIssue))
 
   const nextFingerprintHistory = [...session.issueFingerprintHistory, currentErrorFingerprints]
 
@@ -136,12 +125,25 @@ export async function decideNextStep(
     }
   }
 
-  // Case 1: 重写循环中出现上游状态污染且无法收敛
+  // Case 1: 重写循环中出现上游状态污染且无法收敛。
+  // 本章尚未尝试过状态修复时，先走 repair_state 自动修复路径；
+  // 已尝试过（修复失败或修后仍报同类错）则退回人工 request_rewrite。
   if (
     session.rewriteApproved &&
     remainingErrors.length > 0 &&
     (await allIssuesMatch(remainingErrors, deps.rewritePolicy.isStateCorruptionIssue))
   ) {
+    if (!session.stateRepairAttempted) {
+      return {
+        step: { kind: 'repair_state' },
+        sessionUpdate: {
+          stateRepairAttempted: true,
+          issueFingerprintHistory: nextFingerprintHistory,
+        },
+        processedIssues: policyResult.issues,
+        newConstraints: policyResult.newConstraints,
+      }
+    }
     return {
       step: {
         kind: 'request_rewrite',
@@ -159,11 +161,11 @@ export async function decideNextStep(
 
   // Case 2: 无剩余错误
   if (remainingErrors.length === 0) {
-    const patchableWarnings = hasPatchableWarnings(policyResult.issues)
+    const patchable = hasPatchableIssues(policyResult.issues)
 
-    if (patchableWarnings.length > 0 && session.autoFixAttempts < 3) {
+    if (patchable && session.autoFixAttempts < 3) {
       return {
-        step: { kind: 'fix', patchableIssues: patchableWarnings },
+        step: { kind: 'fix', patchableIssues: policyResult.issues },
         sessionUpdate: {
           autoFixAttempts: session.autoFixAttempts + 1,
           issueFingerprintHistory: nextFingerprintHistory,

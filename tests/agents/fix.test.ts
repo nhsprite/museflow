@@ -116,3 +116,66 @@ describe('FixAgent parse', () => {
     expect(output.content).toBe('# 第四章 王府递帖\n\n正文。')
   })
 })
+
+describe('FixAgent processOutput scope protection', () => {
+  const paragraphs = ['段落零。', '原句一。原句二。', '段落二。', '段落三。']
+
+  it('filters sentence fixes to affected paragraphs and warns about out-of-scope edits', () => {
+    const agent = createAgent(() => '')
+    const output = {
+      success: true,
+      content: '',
+      data: {
+        modifiedSentences: [
+          { paragraphIndex: 1, sentenceIndex: 0, content: '修改后的句子。' },
+          { paragraphIndex: 3, sentenceIndex: 0, content: '范围外修改。' },
+          { paragraphIndex: 9, sentenceIndex: 0, content: '越界修改。' },
+        ],
+      },
+    }
+
+    const { content, issues } = agent.processOutput(output, '', paragraphs, [1], 'story', 4)
+
+    expect(content).toContain('修改后的句子。原句二。')
+    expect(content).toContain('段落三。')
+    expect(content).not.toContain('范围外修改。')
+    expect(content).not.toContain('越界修改。')
+    expect(issues).toHaveLength(2)
+    expect(issues.some((i) => i.description.includes('未受影响段落 3'))).toBe(true)
+    expect(issues.some((i) => i.description.includes('超出范围的段落索引 9'))).toBe(true)
+  })
+
+  it('warns about affected paragraphs the model did not cover', () => {
+    const agent = createAgent(() => '')
+    const output = {
+      success: true,
+      content: '',
+      data: {
+        modifiedSentences: [{ paragraphIndex: 1, sentenceIndex: 0, content: '修改后的句子。' }],
+      },
+    }
+
+    const { issues } = agent.processOutput(output, '', paragraphs, [1, 2], 'story', 4)
+
+    const uncovered = issues.find((i) => i.locationRef?.paragraphIndex === 2)
+    expect(uncovered).toBeDefined()
+    expect(uncovered?.severity).toBe('warning')
+    expect(uncovered?.retryStrategy).toBe('fix')
+  })
+
+  it('rejects empty paragraph replacements and keeps the original paragraph', () => {
+    const agent = createAgent(() => '')
+    const output = {
+      success: true,
+      content: '',
+      data: { modifiedParagraphs: [{ index: 1, content: '' }] },
+    }
+
+    const { content, issues } = agent.processOutput(output, '', paragraphs, [1], 'story', 4)
+
+    expect(content).toBe(paragraphs.join('\n\n'))
+    const emptyWarning = issues.find((i) => i.description.includes('空内容'))
+    expect(emptyWarning).toBeDefined()
+    expect(emptyWarning?.locationRef?.paragraphIndex).toBe(1)
+  })
+})

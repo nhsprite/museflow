@@ -74,6 +74,8 @@ function makeStructuredResult(
     unclaimedMandatoryBeats: [],
     claimedButUnprovenBeats: [],
     stateConflicts: [],
+    finalStateMismatches: [],
+    finalStateUncorroborated: [],
     ...overrides,
   }
 }

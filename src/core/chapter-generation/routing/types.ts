@@ -4,12 +4,18 @@ import type { ChapterPlanningConfig } from '../../../types/genre.js'
 import type { StructuredValidationResult } from '../../../story-memory/validator.js'
 
 export type RoutingDecision =
-  'draft_chapter' | 'fix_chapter' | 'finalize_chapter' | 'request_rewrite' | 'decide_strategy'
+  | 'draft_chapter'
+  | 'fix_chapter'
+  | 'finalize_chapter'
+  | 'request_rewrite'
+  | 'decide_strategy'
+  | 'repair_state'
 
 export type ChapterStep =
   | { kind: 'draft'; discardPlan: boolean; feedbackIssues: Issue[] }
   | { kind: 'fix'; patchableIssues: Issue[] }
   | { kind: 'finalize' }
+  | { kind: 'repair_state' }
   | { kind: 'request_rewrite'; reason: BlockingReason; blockingIssues: Issue[] }
 
 export interface ChapterSession {
@@ -23,6 +29,8 @@ export interface ChapterSession {
   forceStructuralRewrite: boolean
   rewriteApproved: boolean
   issueFingerprintHistory: string[][]
+  /** 本章是否已尝试过自动状态修复（repair_state），每章限 1 次。 */
+  stateRepairAttempted?: boolean
 }
 
 export interface RoutingContext {

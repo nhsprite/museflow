@@ -3,6 +3,7 @@ import type { ReducedGraphState } from '../state.js'
 import { getFixAgent } from '../agent-factory.js'
 import { readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { buildLayeredSummaries } from '../../utils/summary-compressor.js'
+import { buildPreviousChapterEndingContext } from '../utils/chapter-window.js'
 import { buildCharacterFactTimeline } from '../utils/reconciler/index.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { splitIntoParagraphs, findAffectedParagraphs } from '../utils/text-patching.js'
@@ -38,7 +39,15 @@ export async function fix_chapter(
   const paragraphs = splitIntoParagraphs(existingContent)
   const affectedIndices = findAffectedParagraphs(paragraphs, pendingIssues)
 
-  const previousChapters = buildLayeredSummaries(state.chapterSummaries, chapterIndex)
+  // 与 draft/plan/consistency 口径统一：摘要之外追加上一章结尾片段，
+  // 让 fix 能感知章节衔接处的语气与未闭合线索。
+  const previousChapterEnding = await buildPreviousChapterEndingContext(state, chapterIndex)
+  const previousChapters = [
+    buildLayeredSummaries(state.chapterSummaries, chapterIndex),
+    previousChapterEnding,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   const timelineSnapshot = buildCharacterFactTimeline(state, chapterIndex)
   const nextBoundaryHint = buildNextChapterBoundaryHint(state.outline, chapterIndex)
 

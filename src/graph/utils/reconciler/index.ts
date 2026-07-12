@@ -92,7 +92,7 @@ export async function prepareStoryStateForChapter(
     }
 
     const outlineAuthorizedFacts = await authorizeOutlineFacts(
-      reconciledState,
+      { ...reconciledState, storyMemory: state.storyMemory },
       outlineItem.description,
       chapterIndex,
       provider

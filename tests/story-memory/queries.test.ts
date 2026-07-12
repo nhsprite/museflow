@@ -110,3 +110,47 @@ describe('queries', () => {
     expect(getItemHolder(memory, 'i-1')).toBe('c-1')
   })
 })
+
+describe('queries — chapter index 0 fulfillment (falsy bug regression)', () => {
+  it('excludes foreshadows fulfilled in the first chapter (fulfilledIn = 0)', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-early',
+        expectedFulfillChapter: 1,
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e2',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'f-early',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    expect(getActiveForeshadows(memory)).not.toContain('f-early')
+  })
+
+  it('excludes tasks resolved in the first chapter (resolvedIn = 0)', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'task-create',
+        taskId: 't-early',
+        description: '第一章就解决的任务',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'e2',
+        type: 'task-resolve',
+        taskId: 't-early',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ])
+    expect(getOpenTasks(memory)).not.toContain('t-early')
+  })
+})

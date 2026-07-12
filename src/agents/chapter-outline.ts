@@ -150,6 +150,7 @@ ${formatMandatoryBeatList(consumedBeats)}
         touchedLocationIds: normalizeStringArray(data.touchedLocationIds),
         claimedBeatIds: normalizeStringArray(data.claimedBeatIds),
         fulfilledForeshadowIds: normalizeStringArray(data.fulfilledForeshadowIds),
+        deferredForeshadowIds: normalizeStringArray(data.deferredForeshadowIds),
         introducedForeshadowIds: normalizeStringArray(data.introducedForeshadowIds),
         resolvedTaskIds: normalizeStringArray(data.resolvedTaskIds),
         createdTaskIds: normalizeStringArray(data.createdTaskIds),

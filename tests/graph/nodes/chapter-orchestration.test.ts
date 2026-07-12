@@ -218,6 +218,32 @@ describe('converge_and_decide', () => {
     expect(result.session?.errorRewriteAttempts).toBe(1)
   })
 
+  it('routes to repair_state on the first all-state-corruption rewrite round', async () => {
+    const { isStateCorruptionIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isStateCorruptionIssue).mockResolvedValue(true)
+
+    const pendingIssues: Issue[] = [
+      { id: '1', type: 'consistency', severity: 'error', description: '上游状态污染' },
+    ]
+    const state = buildBaseState({
+      session: {
+        rewriteApproved: true,
+        errorRewriteAttempts: 1,
+        previousIssues: [],
+        previousRawErrorCount: 0,
+      },
+      pendingIssues,
+    })
+
+    const result = await converge_and_decide(createMockContext(), state)
+
+    expect(result.session?.routingDecision).toBe('repair_state')
+    expect(result.session?.stateRepairAttempted).toBe(true)
+    expect(result.session?.rewriteApproved).toBe(true)
+    expect(result.blockingReport).toBeUndefined()
+  })
+
   it('requests rewrite after max error rewrite attempts', async () => {
     const { isStateCorruptionIssue } =
       await import('../../../src/core/chapter-generation/issue-classifier.js')
@@ -232,6 +258,7 @@ describe('converge_and_decide', () => {
         errorRewriteAttempts: 3,
         previousIssues: [],
         previousRawErrorCount: 0,
+        stateRepairAttempted: true,
       },
       pendingIssues,
     })
@@ -256,6 +283,7 @@ describe('converge_and_decide', () => {
         errorRewriteAttempts: 2,
         previousIssues: pendingIssues,
         previousRawErrorCount: 1,
+        stateRepairAttempted: true,
       },
       pendingIssues,
     })
@@ -286,6 +314,7 @@ describe('converge_and_decide', () => {
         errorRewriteAttempts: 2,
         previousIssues: pendingIssues,
         previousRawErrorCount: 1,
+        stateRepairAttempted: true,
       },
       pendingIssues,
     })
@@ -334,18 +363,21 @@ describe('converge_and_decide', () => {
         type: 'consistency',
         severity: 'error',
         description: '应明确写出原定计划被改期的原因',
+        subject: '同一对象',
       },
       {
         id: '2',
         type: 'consistency',
         severity: 'error',
         description: '应明确写出原定计划被改期的原因',
+        subject: '同一对象',
       },
       {
         id: '3',
         type: 'consistency',
         severity: 'error',
         description: '应明确写出原定计划被改期的原因',
+        subject: '同一对象',
       },
     ]
     const state = buildBaseState({
@@ -453,6 +485,32 @@ describe('converge_and_decide', () => {
 
     expect(result.session?.routingDecision).toBe('fix_chapter')
     expect(result.pendingIssues?.some((i) => i.id === 'w1')).toBe(true)
+  })
+
+  it('writes back previousIssues and previousRawErrorCount for the next round', async () => {
+    const { isLocalIssue } =
+      await import('../../../src/core/chapter-generation/issue-classifier.js')
+    vi.mocked(isLocalIssue).mockResolvedValue(true)
+
+    const pendingIssues: Issue[] = [
+      { id: 'e1', type: 'consistency', severity: 'error', description: '时间顺序不一致' },
+      {
+        id: 'w1',
+        type: 'consistency',
+        severity: 'warning',
+        description: '描写重复',
+        locationRef: { paragraphIndex: 0 },
+      },
+    ]
+    const state = buildBaseState({
+      session: { rewriteApproved: true },
+      pendingIssues,
+    })
+
+    const result = await converge_and_decide(createMockContext(), state)
+
+    expect(result.session?.previousIssues.map((i) => i.id)).toEqual(['e1', 'w1'])
+    expect(result.session?.previousRawErrorCount).toBe(1)
   })
 
   it('does not auto-fix warnings when max auto-fix attempts reached', async () => {

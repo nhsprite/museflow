@@ -12,7 +12,29 @@ const DEFAULT_CONFIG: CompressionConfig = {
   fullRange: 3,
   mediumRange: 4,
   mediumLimit: 100,
-  minimalLimit: 50,
+  minimalLimit: 80,
+}
+
+/**
+ * 按句号/段落边界截断到限额，避免在句子中间硬截断产生残缺前缀。
+ * 找不到合适边界时退回硬截断并追加省略号。
+ */
+function truncateAtSentenceBoundary(text: string, limit: number, level: CompressionLevel): string {
+  if (text.length <= limit) return text
+  const slice = text.slice(0, limit)
+  const lastBoundary = Math.max(
+    slice.lastIndexOf('。'),
+    slice.lastIndexOf('！'),
+    slice.lastIndexOf('？'),
+    slice.lastIndexOf('；'),
+    slice.lastIndexOf('.'),
+    slice.lastIndexOf('\n')
+  )
+  const minThreshold = level === 'medium' ? limit * 0.7 : limit * 0.6
+  if (lastBoundary > minThreshold) {
+    return text.slice(0, lastBoundary + 1)
+  }
+  return slice + '...'
 }
 
 interface ImportanceItem {
@@ -154,26 +176,8 @@ function compressSummaryByImportance(summary: string, level: CompressionLevel): 
     medium: DEFAULT_CONFIG.mediumLimit,
     minimal: DEFAULT_CONFIG.minimalLimit,
   }
-  const limit = limits[level]
 
-  if (result.length > limit) {
-    const slice = result.slice(0, limit)
-    const lastPunctuation = Math.max(
-      slice.lastIndexOf('。'),
-      slice.lastIndexOf('！'),
-      slice.lastIndexOf('？'),
-      slice.lastIndexOf('；'),
-      slice.lastIndexOf('.')
-    )
-    const minThreshold = level === 'medium' ? limit * 0.7 : limit * 0.6
-    if (lastPunctuation > minThreshold) {
-      result = result.slice(0, lastPunctuation + 1)
-    } else {
-      result = result.slice(0, limit) + '...'
-    }
-  }
-
-  return result
+  return truncateAtSentenceBoundary(result, limits[level], level)
 }
 
 function compressSummaryLegacy(summary: string, level: CompressionLevel): string {
@@ -183,18 +187,10 @@ function compressSummaryLegacy(summary: string, level: CompressionLevel): string
   switch (level) {
     case 'full':
       return trimmed
-
     case 'medium':
-      if (trimmed.length <= DEFAULT_CONFIG.mediumLimit) {
-        return trimmed
-      }
-      return trimmed.slice(0, DEFAULT_CONFIG.mediumLimit) + '...'
-
+      return truncateAtSentenceBoundary(trimmed, DEFAULT_CONFIG.mediumLimit, level)
     case 'minimal':
-      if (trimmed.length <= DEFAULT_CONFIG.minimalLimit) {
-        return trimmed
-      }
-      return trimmed.slice(0, DEFAULT_CONFIG.minimalLimit) + '...'
+      return truncateAtSentenceBoundary(trimmed, DEFAULT_CONFIG.minimalLimit, level)
   }
 }
 

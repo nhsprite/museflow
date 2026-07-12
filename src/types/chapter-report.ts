@@ -45,6 +45,7 @@ export interface ChapterReport {
   foreshadowsPlanted: number
   foreshadowsFulfilled: number
   foreshadowsOverdue: number
+  foreshadowsNeedingAttention?: string[]
 
   wordCount: number
   summary: string | null

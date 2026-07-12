@@ -3,6 +3,7 @@ import { logger } from './logger.js'
 import type { Issue } from '../types/agent.js'
 import type { FactAttribute } from '../types/story-state.js'
 import { labelFromFactAttribute } from '../types/story-state.js'
+import { extractChapterEndingSnippet } from '../graph/utils/chapter-window.js'
 
 const MAX_BATCH_JUDGE_ITEMS = 20
 
@@ -336,6 +337,18 @@ export async function batchClassifyIssues(
   )
 }
 
+/**
+ * 对 issue 元数据（description）做确定性哈希，用于生成跨轮稳定的指纹。
+ * 这是机器可读元数据的哈希，不是对 prose 的语义匹配。
+ */
+function hashIssueDescription(description: string): string {
+  let hash = 5381
+  for (let i = 0; i < description.length; i++) {
+    hash = ((hash << 5) + hash + description.charCodeAt(i)) >>> 0
+  }
+  return hash.toString(16)
+}
+
 export function generateIssueFingerprint(issue: Issue): string {
   const dimension = issue.dimension ?? 'unknown'
   const location = issue.locationRef
@@ -346,10 +359,11 @@ export function generateIssueFingerprint(issue: Issue): string {
     return `${issue.type}:${dimension}:${issue.subject}${location ? ':' + location : ''}`
   }
   if (location) {
-    return `${issue.type}:${dimension}:${location}:${issue.id}`
+    return `${issue.type}:${dimension}:${location}:${hashIssueDescription(issue.description)}`
   }
   // No subject or location available; mark as generic so callers can decide to use LLM fallback.
-  return `${issue.type}:${dimension}:__generic__:${issue.id}`
+  // 使用 description 的确定性哈希而非每轮重新生成的 issue.id，保证跨轮指纹稳定。
+  return `${issue.type}:${dimension}:__generic__:${hashIssueDescription(issue.description)}`
 }
 
 export async function batchGenerateIssueFingerprints(
@@ -622,7 +636,10 @@ export async function batchValidateTimeAnchors(
 2. 如果 anchor 声称上一章某个事件已经达成终态，但该事件的核心内容未出现在 previousContent 中，返回 valid=false 并在 reason 中说明。
 3. 否则返回 valid=true。
 只输出 JSON {"results": [{"valid": bool, "reason": "..."|null}, ...]}，顺序与输入一致。`,
-    anchors.map((a) => `anchor=${a.anchor}\npreviousContent=${a.previousContent.slice(0, 1200)}`),
+    anchors.map(
+      // 上一章事件的终态几乎总在结尾，取结尾片段与 detect_continuity 的口径保持一致。
+      (a) => `anchor=${a.anchor}\npreviousContent=${extractChapterEndingSnippet(a.previousContent)}`
+    ),
     schema,
     { valid: true }
   )

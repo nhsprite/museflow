@@ -132,7 +132,8 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
   }
 
   const mergedCanonicalFacts = [...(base.canonicalFacts ?? [])]
-  for (const fact of safeDelta.canonicalFacts) {
+  for (const deltaFact of safeDelta.canonicalFacts) {
+    let fact = deltaFact
     const sameValueIndex = mergedCanonicalFacts.findIndex(
       (existing) =>
         existing.subject === fact.subject &&
@@ -140,10 +141,14 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
         existing.value === fact.value
     )
     if (sameValueIndex >= 0) {
-      if (
-        (fact.establishedIn ?? -1) >= (mergedCanonicalFacts[sameValueIndex]!.establishedIn ?? -1)
-      ) {
-        mergedCanonicalFacts[sameValueIndex] = fact
+      const existing = mergedCanonicalFacts[sameValueIndex]!
+      if ((fact.establishedIn ?? -1) >= (existing.establishedIn ?? -1)) {
+        // Preserve the accumulated supersedes history when replacing with an
+        // equal-or-newer copy of the same fact, so repeated deltas stay
+        // idempotent after a supersede has been recorded.
+        mergedCanonicalFacts[sameValueIndex] = existing.supersedes
+          ? { ...fact, supersedes: existing.supersedes }
+          : fact
       }
       continue
     }
@@ -157,6 +162,19 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     if (sameSubjectIndex >= 0) {
       const existing = mergedCanonicalFacts[sameSubjectIndex]!
       mergedCanonicalFacts[sameSubjectIndex] = { ...existing, retiredIn: fact.establishedIn }
+      // outline_inference is the lowest authority tier: any incoming fact that
+      // conflicts with it wins, and the old inferred value is recorded in
+      // supersedes. Established facts (other sources) follow the existing
+      // retire-and-push logic unchanged.
+      if (existing.source === 'outline_inference') {
+        fact = {
+          ...fact,
+          supersedes: [
+            ...(fact.supersedes ?? []),
+            { chapter: existing.establishedIn, oldValue: existing.value },
+          ],
+        }
+      }
     }
     mergedCanonicalFacts.push(fact)
   }

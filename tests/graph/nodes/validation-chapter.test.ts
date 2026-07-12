@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { validate_chapter, pruneStaleWordCountIssues } from '../../../src/graph/nodes/validation.js'
+import { validate_chapter, pruneRerunDetectorIssues } from '../../../src/graph/nodes/validation.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { Issue } from '../../../src/types/agent.js'
 import type { RuntimeContext } from '../../../src/core/context.js'
@@ -84,37 +84,63 @@ describe('validate_chapter', () => {
   })
 })
 
-describe('pruneStaleWordCountIssues', () => {
-  it('removes word_count issues while preserving other issues', () => {
-    const staleWordCountIssue: Issue = {
-      id: 'stale-word-count',
+describe('pruneRerunDetectorIssues', () => {
+  it('removes issues from rerun detector sources while preserving other sources', () => {
+    const wordCountIssue: Issue = {
+      id: 'w1',
       type: 'word_count',
       severity: 'warning',
-      description: '第 10 章字数 3367 与上一章 6968 差异超过50%，请检查章节内容是否完整',
+      description: '字数差异',
       source: 'word_count',
     }
-    const otherIssue: Issue = {
-      id: 'other-issue',
+    const consistencyIssue: Issue = {
+      id: 'c1',
       type: 'consistency',
+      severity: 'error',
+      description: '上一轮一致性错误',
+      source: 'consistency',
+    }
+    const structuredIssue: Issue = {
+      id: 's1',
+      type: 'event_missing',
+      severity: 'error',
+      description: '结构化事件缺失',
+      source: 'outline_compliance',
+    }
+    const untaggedIssue: Issue = {
+      id: 'u1',
+      type: 'outline_gap',
       severity: 'warning',
-      description: '其他警告',
+      description: '无来源标记的问题',
     }
 
-    const result = pruneStaleWordCountIssues([staleWordCountIssue, otherIssue])
+    const result = pruneRerunDetectorIssues([
+      wordCountIssue,
+      consistencyIssue,
+      structuredIssue,
+      untaggedIssue,
+    ])
 
-    expect(result).toHaveLength(1)
-    expect(result[0]!.id).toBe('other-issue')
+    expect(result.map((i) => i.id)).toEqual(['s1', 'u1'])
   })
 
-  it('returns empty array when all issues are word_count', () => {
+  it('returns empty array when all issues come from rerun detectors', () => {
     const issues: Issue[] = [
       {
         id: 'w1',
         type: 'word_count',
         severity: 'warning',
         description: '字数差异',
+        source: 'word_count',
+      },
+      {
+        id: 'c1',
+        type: 'continuity',
+        severity: 'error',
+        description: '承接断裂',
+        source: 'consistency',
       },
     ]
-    expect(pruneStaleWordCountIssues(issues)).toHaveLength(0)
+    expect(pruneRerunDetectorIssues(issues)).toHaveLength(0)
   })
 })
