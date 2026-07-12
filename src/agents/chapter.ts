@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js'
 import { BaseAgent, type AgentOutput } from './base.js'
 import type { ChapterAgentInput } from './types.js'
 import type { ChapterMeta } from '../types/chapter.js'
+import type { StoryEvent } from '../types/story-memory.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
@@ -173,6 +174,8 @@ ${JSON.stringify(state.chapterPlan, null, 2)}
 </chapter_plan>`
       : ''
 
+    const expectedEventsSection = this.buildExpectedEventsSection(state.chapterPlan?.expectedEvents)
+
     const taskResolutions = state.chapterPlan?.taskResolutions
     const taskResolutionSection =
       taskResolutions && taskResolutions.length > 0
@@ -237,6 +240,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         timeAnchorSection,
         beatMappingSection,
         planSection,
+        expectedEventsSection,
         taskResolutionSection,
         outlineComplianceSection,
         issuesSection,
@@ -259,6 +263,10 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         stateConflictsRow: state.stateConflicts
           ? `| 大纲-权威事实冲突 | stateConflicts | 本章存在需要处理的冲突：${state.stateConflicts.replace(/\n/g, '；')} | （请填写：每个冲突选择以谁为准、通过什么角色动作或叙事过渡实现） | （请填写） |`
           : '',
+        expectedEventsRow:
+          (state.chapterPlan?.expectedEvents?.length ?? 0) > 0
+            ? `| 结构化事件 | chapterPlan.expectedEvents | 本章规划要求输出 ${state.chapterPlan!.expectedEvents!.length} 条结构化事件 | （请填写：每条事件对应正文的哪个段落，并确认类型/字段值与规划一致） | （请填写） |`
+            : '',
       },
       {
         displayChapterNumber,
@@ -375,6 +383,24 @@ ${lines.join('\n')}
     }))
 
     return buildBeatMappingSection(currentAct.index, entries)
+  }
+
+  private buildExpectedEventsSection(expectedEvents: StoryEvent[] | undefined): string {
+    if (!expectedEvents || expectedEvents.length === 0) return ''
+
+    return `<expected_events>
+<mandatory>【本章必须输出的结构化事件 - 强制复用】</mandatory>
+以下事件由章节规划（chapterPlan.expectedEvents）明确指定，必须在 === STORY_EVENTS === 区块中逐条输出。
+
+要求：
+- 不得遗漏任何一条；
+- 事件类型、ID、所有字段值必须与下列 JSON 完全一致；
+- 每条事件末尾必须附加正文段落证据 @pN，其中 N 是 CHAPTER_CONTENT 中非标题正文段落的 1-based 序号；
+- 禁止把 location 事件改写成 state 事件，禁止把 state 事件改写成 location 事件；
+- 如果某事件在正文中没有发生，必须先修改正文让它发生，而不是省略该事件。
+
+${JSON.stringify(expectedEvents, null, 2)}
+</expected_events>`
   }
 
   protected parse(content: string): AgentOutput {

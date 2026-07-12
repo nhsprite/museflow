@@ -222,8 +222,67 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain(
       'item-location: <itemId> / holder=<holderId|none> / location=<locationId|none> @pN'
     )
-    expect(userMessage).toContain('STORY_EVENTS 必须逐字段复用')
-    expect(userMessage).toContain('item-state 的 attribute 与 value')
+    expect(userMessage).toContain('【expectedEvents 强制复用 - 最高优先级】')
+    expect(userMessage).toContain('禁止把 location 事件改写成 state 事件')
+  })
+
+  it('renders a dedicated expectedEvents section and requires exact reuse', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 1,
+      world: '',
+      characters: '【主角】',
+      outline: '第1章：移动物品',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      chapterPlan: {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-character-location',
+            type: 'character-location',
+            characterId: 'c-1',
+            locationId: 'loc-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+          {
+            id: 'evt-item-location',
+            type: 'item-location',
+            itemId: 'item-1',
+            holderId: null,
+            locationId: 'loc-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+        claimedMandatoryBeatIds: [],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('<expected_events>')
+    expect(userMessage).toContain('【本章必须输出的结构化事件 - 强制复用】')
+    expect(userMessage).toContain('evt-character-location')
+    expect(userMessage).toContain('evt-item-location')
+    expect(userMessage).toContain('事件类型、ID、所有字段值必须与下列 JSON 完全一致')
+    expect(userMessage).toContain('禁止省略、禁止改写为其他类型、禁止更改任何字段值')
+    expect(userMessage).toContain(
+      '结构化事件 | chapterPlan.expectedEvents | 本章规划要求输出 2 条结构化事件'
+    )
   })
 
   it('renders storyState sections exactly once without a duplicate fact verification section', () => {

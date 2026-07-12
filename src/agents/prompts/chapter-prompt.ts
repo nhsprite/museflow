@@ -75,6 +75,8 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 
 {planSection}
 
+{expectedEventsSection}
+
 {taskResolutionSection}
 
 {outlineComplianceSection}
@@ -113,6 +115,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 {planSectionsRows}
 {writingConstraintRows}
 {stateConflictsRow}
+{expectedEventsRow}
 | 关键台词 | 大纲 | （如有大纲要求的台词，请列出） | （请填写：由谁说、在什么场景说） | （请填写） |
 | 事实核查 | 权威事实 | 本章涉及的事实是否已核对？ | （请填写：核对结果） | （请填写） |
 | 时间线 | 大纲/规划 | （如有时间要求，请列出） | （请填写：时间如何推进） | （请填写） |
@@ -156,8 +159,13 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
   - character-location：角色从一个地点移动到另一个地点（如离开、抵达、回家、出门）。只要角色位置发生改变，就必须使用此类型，不得使用 character-status。
   - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。"锁回木箱""放入抽屉""贴身携带"等动作都属于位置变化，必须使用 item-location，并将木箱/抽屉/角色等对应 ID 填入 locationId 或 holderId。
   - item-state：仅用于物品自身属性变化，如破损、开封、浸湿、折叠、密封状态变化、燃烧等，不用于位置变化。
-  - 若 chapterPlan.expectedEvents 已提供事件，STORY_EVENTS 必须逐字段复用：item-location 的 holderId 与 locationId 必须保持不变，item-state 的 attribute 与 value 必须保持不变；禁止把 location 变化改写成 item-state，也禁止把结构化 ID 改写成自然语言位置或状态描述。
   - 没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
+
+<important>【expectedEvents 强制复用 - 最高优先级】
+  - 如果【本章必须输出的结构化事件】已提供 expectedEvents，STORY_EVENTS 必须包含其中的每一条事件，且类型、ID、所有字段值必须与 expectedEvents 中的 JSON 完全一致。
+  - 禁止省略、禁止改写为其他类型、禁止更改任何字段值、禁止 invent 新 ID 替换已有 ID。
+  - character-location / item-location / character-status / item-state / plot-advance / foreshadow-introduce / foreshadow-fulfill / task-resolve / task-create 等所有类型的事件都必须按上述规则复用。
+  - 输出顺序可与 expectedEvents 不同，但内容必须一一对应；系统会通过类型与字段值精确匹配来校验，任何字段不一致都会被判定为错误并要求重写。</important>
 
 <important>【终态覆盖强制要求】如果本章正文中某实体的位置或状态发生了多次变化（例如先移走又放回、先受伤又痊愈），STORY_EVENTS 中该实体该属性的最后一条事件必须反映章末终态，而不是章中的中间状态。章末的归位、恢复、状态逆转等动作与章中的变化动作同等重要，必须输出对应事件。同一实体在本章内发生多次位置/状态变化属于正常叙事，不会被判为冲突，但所有中间变化与最终归位都必须有对应事件。</important>
 </content>
@@ -232,6 +240,7 @@ export interface ChapterPromptSections {
   timeAnchorSection: string
   beatMappingSection: string
   planSection: string
+  expectedEventsSection: string
   taskResolutionSection: string
   outlineComplianceSection: string
   issuesSection: string
@@ -242,6 +251,7 @@ export interface ChapterPromptSections {
   planSectionsRows: string
   writingConstraintRows: string
   stateConflictsRow: string
+  expectedEventsRow: string
 }
 
 export interface ChapterPromptVariables {
