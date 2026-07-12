@@ -170,6 +170,62 @@ describe('ChapterAgent chapter numbering', () => {
     expect(userMessage).toContain('章节开头形式')
   })
 
+  it('requires canonical item event fields in STORY_EVENTS output', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 1,
+      world: '',
+      characters: '【主角】',
+      outline: '第1章：移动物品',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      chapterPlan: {
+        chapterIndex: 0,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-item-location',
+            type: 'item-location',
+            itemId: 'item-1',
+            holderId: null,
+            locationId: 'loc-1',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+          {
+            id: 'evt-item-state',
+            type: 'item-state',
+            itemId: 'item-1',
+            attribute: 'sealed',
+            value: true,
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+        claimedMandatoryBeatIds: [],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: [],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain(
+      'item-location: <itemId> / holder=<holderId|none> / location=<locationId|none> @pN'
+    )
+    expect(userMessage).toContain('必须逐字段复用 chapterPlan.expectedEvents')
+    expect(userMessage).toContain('item-state 的 attribute 与 value')
+  })
+
   it('includes canonical fact verification section when storyState is provided', () => {
     const agent = new TestableChapterAgent(createMockProvider())
 

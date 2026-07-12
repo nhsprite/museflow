@@ -51,8 +51,36 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
     )
   }
 
+  const itemLocCanonical = eventLine.match(/^-\s*item-location:\s*(\S+)\s*\/\s*(.+)$/)
+  if (itemLocCanonical?.[1] && itemLocCanonical[2] && isMachineId(itemLocCanonical[1])) {
+    const fields = parseMachineFields(itemLocCanonical[2])
+    const holderId = parseNullableId(fields.holder)
+    const locationId = parseNullableId(fields.location)
+    if (
+      holderId === undefined ||
+      locationId === undefined ||
+      (holderId !== null && !isMachineId(holderId)) ||
+      (locationId !== null && !isMachineId(locationId))
+    ) {
+      return null
+    }
+    return withEvidence(
+      {
+        id: generateId('evt'),
+        type: 'item-location',
+        itemId: itemLocCanonical[1],
+        holderId,
+        locationId,
+        chapterIndex,
+        source: 'chapter',
+      },
+      evidence
+    )
+  }
+
   const itemLoc = eventLine.match(/^-\s*item-location:\s*(\S+)\s*->\s*(\S+)$/)
   if (itemLoc) {
+    if (!isMachineId(itemLoc[1]) || !isMachineId(itemLoc[2])) return null
     return withEvidence(
       {
         id: generateId('evt'),
@@ -147,6 +175,10 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
   }
 
   return null
+}
+
+function isMachineId(value: string | undefined): value is string {
+  return typeof value === 'string' && /^[A-Za-z][A-Za-z0-9._:-]*$/.test(value)
 }
 
 function extractEvidence(line: string): {

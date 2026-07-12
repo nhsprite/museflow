@@ -141,7 +141,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 每条事件使用以下格式之一，并严格使用大纲/规划中给定的精确 ID；每条事件末尾必须追加正文段落证据 @pN，其中 N 是 CHAPTER_CONTENT 中非标题正文段落的 1-based 序号：
 - character-location: <characterId> -> <locationId> @pN
 - character-status: <characterId> / <attribute> -> <value> @pN
-- item-location: <itemId> -> <holderId> @pN
+- item-location: <itemId> / holder=<holderId|none> / location=<locationId|none> @pN
 - item-state: <itemId> / <attribute> -> <value> @pN
 - plot-advance: <plotId> / <beatId> @pN
 - foreshadow-introduce: <foreshadowId> / expected=<expectedFulfillChapter|none> / kind=<character_arc|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict|plot|other> / required=<true|false> / beat=<beatId|none> / text=<伏笔可读描述> @pN
@@ -149,7 +149,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 - task-resolve: <taskId> @pN
 - task-create: <taskId> / <description> @pN
 
-<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符。没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
+<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符。若 chapterPlan.expectedEvents 已提供事件，STORY_EVENTS 必须逐字段复用 chapterPlan.expectedEvents：item-location 的 holderId 与 locationId 必须保持不变，item-state 的 attribute 与 value 必须保持不变；禁止把结构化 ID 改写成自然语言位置或状态描述。没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
 </content>
 </story_events_section>
 

@@ -29,6 +29,32 @@ describe('parseStoryEventsBlock', () => {
     expect(events[0]?.type).toBe('item-location')
   })
 
+  it('parses explicit item holder and location fields', () => {
+    const text = `=== STORY_EVENTS ===
+- item-location: item-1 / holder=none / location=loc-1 @p3
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 0)
+
+    expect(events[0]).toMatchObject({
+      type: 'item-location',
+      itemId: 'item-1',
+      holderId: null,
+      locationId: 'loc-1',
+      evidence: { paragraphIndex: 3 },
+    })
+  })
+
+  it('rejects free-form prose in legacy item-location targets', () => {
+    const text = `=== STORY_EVENTS ===
+- item-location: item-1 -> 登记台右格原位 @p1
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 0)
+
+    expect(events).toEqual([])
+  })
+
   it('parses plot-advance events', () => {
     const text = `=== STORY_EVENTS ===
 - plot-advance: p-1 / a1-b1
