@@ -339,9 +339,10 @@ describe('ChapterPlannerAgent issues integration', () => {
         expectedEvents: [
           {
             id: 'evt-1',
-            type: 'character-location',
-            characterId: 'c-1',
-            locationId: 'l-1',
+            type: 'item-location',
+            itemId: 'item-1',
+            holderId: null,
+            locationId: 'location-1',
             chapterIndex: 0,
             source: 'chapter',
           },
@@ -430,6 +431,43 @@ describe('ChapterPlannerAgent issues integration', () => {
 
     const prompt = messages[1]?.content ?? ''
     expect(prompt).toContain('内部零基章节索引固定为 25')
+    expect(prompt).toContain('"chapterIndex": 25')
+  })
+
+  it('renders the complete strict StoryEvent JSON contract', () => {
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 50,
+      world: '',
+      characters: '',
+      outline: 'chapter outline',
+      previousChapters: '',
+      chapterIndex: 25,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const prompt = messages[1]?.content ?? ''
+    for (const type of [
+      'character-location',
+      'character-status',
+      'item-location',
+      'item-state',
+      'plot-advance',
+      'foreshadow-introduce',
+      'foreshadow-fulfill',
+      'task-resolve',
+      'task-create',
+    ]) {
+      expect(prompt).toContain(`"type": "${type}"`)
+    }
+    expect(prompt).toContain('holderId 和 locationId 两个字段都必须出现')
+    expect(prompt).toContain('"holderId": null')
+    expect(prompt).toContain('"locationId": "location-id"')
+    expect(prompt).toContain('"attribute": "attribute"')
+    expect(prompt).toContain('"value": "value"')
     expect(prompt).toContain('"chapterIndex": 25')
   })
 })

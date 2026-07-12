@@ -3,6 +3,7 @@ import {
   OFFICIAL_CHARACTER_RULES,
   FORESHADOW_DISCIPLINE_RULES,
   buildCharacterWhitelistSection,
+  buildPlannerStoryEventContract,
 } from './fragments/index.js'
 import { isClosingPhase } from '../../utils/story-arc.js'
 
@@ -134,6 +135,7 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
      - 输出 expectedEvents 数组，记录本章计划产生的、会影响故事记忆的状态变化事件。
      - 每个事件必须包含 id、type、chapterIndex，以及对应类型所需的字段（如 characterId、locationId、itemId、beatId、foreshadowId、taskId 等）。
      - 事件类型包括：character-location、character-status、item-location、item-state、plot-advance、foreshadow-introduce、foreshadow-fulfill、task-resolve、task-create。
+     {storyEventContractSection}
      - foreshadow-introduce 事件必须包含 text、kind、required、expectedFulfillChapter；若与某个节拍绑定，填写 beatId，否则 beatId 为 null。
      - 每个事件的 source 固定为 "chapter"。
      - expectedEvents 中的所有事件都由本章产生，其内部零基章节索引固定为 {chapterIndex}；不得填写展示章节号 {displayChapterNumber} 或其他章节索引。
@@ -223,6 +225,7 @@ export interface ChapterPlannerPromptSections {
   chapterContractSection: string
   stateConflictsSection: string
   characterWhitelistSection: string
+  storyEventContractSection: string
 }
 
 export interface ChapterPlannerPromptVariables {
@@ -355,6 +358,7 @@ export function buildChapterPlannerUserPrompt(
       charactersList: state.charactersList,
       outlineCharacters: state.outlineCharacters,
     }),
+    storyEventContractSection: buildPlannerStoryEventContract(chapterIndex),
   }
 
   const vars: ChapterPlannerPromptVariables = {
