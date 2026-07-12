@@ -14,68 +14,7 @@ import {
 import { parseJsonFromLLM } from '../utils/json.js'
 import type { StoryEvent } from '../types/story-memory.js'
 import type { ChapterHandoff } from '../types/story-state.js'
-
-const SUMMARY_EVENT_TYPES = [
-  'character-location',
-  'character-status',
-  'item-location',
-  'item-state',
-  'plot-advance',
-  'foreshadow-introduce',
-  'foreshadow-fulfill',
-  'task-resolve',
-  'task-create',
-] as const
-
-function isStoryEvent(e: unknown): e is StoryEvent {
-  if (!e || typeof e !== 'object') return false
-  const event = e as Record<string, unknown>
-  if (typeof event.id !== 'string') return false
-  if (typeof event.type !== 'string') return false
-  if (typeof event.chapterIndex !== 'number') return false
-  if (!('source' in event) || (event.source !== 'chapter' && event.source !== 'outline'))
-    return false
-  if (!(SUMMARY_EVENT_TYPES as readonly string[]).includes(event.type)) return false
-
-  switch (event.type) {
-    case 'character-location':
-      return (
-        typeof event.characterId === 'string' &&
-        (event.locationId === null || typeof event.locationId === 'string')
-      )
-    case 'character-status':
-      return (
-        typeof event.characterId === 'string' &&
-        typeof event.attribute === 'string' &&
-        'value' in event
-      )
-    case 'item-location':
-      return (
-        typeof event.itemId === 'string' &&
-        (event.holderId === null || typeof event.holderId === 'string') &&
-        (event.locationId === null || typeof event.locationId === 'string')
-      )
-    case 'item-state':
-      return (
-        typeof event.itemId === 'string' && typeof event.attribute === 'string' && 'value' in event
-      )
-    case 'plot-advance':
-      return typeof event.plotId === 'string' && typeof event.beatId === 'string'
-    case 'foreshadow-introduce':
-      return (
-        typeof event.foreshadowId === 'string' &&
-        (event.expectedFulfillChapter === null || typeof event.expectedFulfillChapter === 'number')
-      )
-    case 'foreshadow-fulfill':
-      return typeof event.foreshadowId === 'string'
-    case 'task-resolve':
-      return typeof event.taskId === 'string'
-    case 'task-create':
-      return typeof event.taskId === 'string' && typeof event.description === 'string'
-    default:
-      return false
-  }
-}
+import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -96,8 +35,15 @@ function isChapterHandoff(value: unknown): value is ChapterHandoff {
 }
 
 export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
+  private currentChapterIndex = 0
+
   constructor(provider: ModelProvider) {
     super(provider, 0.3)
+  }
+
+  async run(state: SummaryAgentInput): Promise<AgentOutput> {
+    this.currentChapterIndex = state.chapterIndex ?? 0
+    return super.run(state)
   }
 
   protected buildPrompt(state: SummaryAgentInput): Message[] {
@@ -151,10 +97,14 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
     let storyEvents: StoryEvent[] = []
     const parsedEvents = parseJsonFromLLM<unknown[]>(eventsText)
     if (parsedEvents.success && Array.isArray(parsedEvents.data)) {
-      storyEvents = parsedEvents.data.filter(isStoryEvent)
-      if (storyEvents.length < parsedEvents.data.length) {
+      const normalizedEvents = normalizeStoryEvents(parsedEvents.data, {
+        chapterIndex: this.currentChapterIndex,
+        mode: 'strict',
+      })
+      storyEvents = normalizedEvents.events
+      if (normalizedEvents.invalid.length > 0) {
         logger.warn(
-          `[MuseFlow] SummaryAgent 过滤了 ${parsedEvents.data.length - storyEvents.length} 个无效 storyEvents`
+          `[MuseFlow] SummaryAgent 过滤了 ${normalizedEvents.invalid.length} 个无效 storyEvents`
         )
       }
     }

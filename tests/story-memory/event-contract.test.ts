@@ -81,6 +81,38 @@ describe('normalizeStoryEvent', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('preserves valid paragraph evidence', () => {
+    const event = {
+      id: 'evt-with-evidence',
+      type: 'task-resolve',
+      taskId: 'task-1',
+      chapterIndex: 0,
+      source: 'chapter',
+      evidence: { paragraphIndex: 2 },
+    }
+
+    const result = normalizeStoryEvent(event, { chapterIndex: 0, mode: 'strict' })
+
+    expect(result).toEqual({ ok: true, event, normalized: false })
+  })
+
+  it('rejects malformed paragraph evidence', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-bad-evidence',
+        type: 'task-resolve',
+        taskId: 'task-1',
+        chapterIndex: 0,
+        source: 'chapter',
+        evidence: { paragraphIndex: 0 },
+      },
+      { chapterIndex: 0, mode: 'strict' }
+    )
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toContain('evidence.paragraphIndex')
+  })
+
   it.each([
     {
       id: 'evt-character-location',

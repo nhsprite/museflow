@@ -1,4 +1,8 @@
-import type { ForeshadowKind, StoryEvent } from '../types/story-memory.js'
+import type {
+  ForeshadowKind,
+  StoryEvent,
+  StoryEventEvidence,
+} from '../types/story-memory.js'
 
 export interface StoryEventNormalizationOptions {
   chapterIndex: number
@@ -53,6 +57,7 @@ interface NormalizedBase {
   id: string
   chapterIndex: number
   source: 'outline' | 'chapter'
+  evidence?: StoryEventEvidence
   normalized: boolean
 }
 
@@ -76,11 +81,34 @@ function normalizeBase(
     return 'event.source must be outline or chapter'
   }
 
+  let evidence: StoryEventEvidence | undefined
+  if (record.evidence !== undefined) {
+    if (!isRecord(record.evidence)) return 'event.evidence must be an object when present'
+    if (
+      typeof record.evidence.paragraphIndex !== 'number' ||
+      !Number.isInteger(record.evidence.paragraphIndex) ||
+      record.evidence.paragraphIndex < 1
+    ) {
+      return 'event.evidence.paragraphIndex must be a positive integer'
+    }
+    evidence = { paragraphIndex: record.evidence.paragraphIndex }
+  }
+
   return {
     id: record.id,
     chapterIndex: options.chapterIndex,
     source,
+    ...(evidence ? { evidence } : {}),
     normalized,
+  }
+}
+
+function eventBase(base: NormalizedBase) {
+  return {
+    id: base.id,
+    chapterIndex: base.chapterIndex,
+    source: base.source,
+    ...(base.evidence ? { evidence: base.evidence } : {}),
   }
 }
 
@@ -106,12 +134,10 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           characterId: value.characterId,
           locationId: value.locationId,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }
@@ -127,13 +153,11 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           characterId: value.characterId,
           attribute: value.attribute,
           value: value.value,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }
@@ -165,13 +189,11 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized || !hasHolder || !hasLocation,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           itemId: value.itemId,
           holderId,
           locationId,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }
@@ -185,13 +207,11 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           itemId: value.itemId,
           attribute: value.attribute,
           value: value.value,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }
@@ -202,12 +222,10 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           plotId: value.plotId,
           beatId: value.beatId,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }
@@ -243,12 +261,10 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           foreshadowId: value.foreshadowId,
           expectedFulfillChapter: value.expectedFulfillChapter,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
           ...(value.text !== undefined ? { text: value.text } : {}),
           ...(value.kind !== undefined ? { kind: value.kind as ForeshadowKind } : {}),
           ...(value.required !== undefined ? { required: value.required } : {}),
@@ -264,11 +280,9 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           foreshadowId: value.foreshadowId,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }
@@ -281,12 +295,10 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           taskId: value.taskId,
           description: value.description,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }
@@ -296,11 +308,9 @@ export function normalizeStoryEvent(
         ok: true,
         normalized: base.normalized,
         event: {
-          id: base.id,
+          ...eventBase(base),
           type: value.type,
           taskId: value.taskId,
-          chapterIndex: base.chapterIndex,
-          source: base.source,
         },
       }
     }

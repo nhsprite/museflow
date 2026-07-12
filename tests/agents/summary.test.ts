@@ -286,4 +286,32 @@ describe('SummaryAgent prompt', () => {
     expect(result.data?.storyEvents).toHaveLength(1)
     expect(result.data?.storyEvents?.[0].type).toBe('character-location')
   })
+
+  it('uses the shared event contract to reject prose values in identifier fields', async () => {
+    const response = `<chapter_summary>
+主角整理了登记台。
+</chapter_summary>
+
+<story_events>
+[
+  { "id": "evt-valid", "type": "item-location", "itemId": "item-inkpad", "holderId": null, "locationId": "loc-counter", "chapterIndex": 1, "source": "chapter" },
+  { "id": "evt-invalid", "type": "item-location", "itemId": "item-inkpad", "holderId": null, "locationId": "登记台正中抽屉右格原位", "chapterIndex": 1, "source": "chapter" }
+]
+</story_events>`
+    const agent = new TestableSummaryAgent(createMockProvider(response))
+    const result = await agent.run({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterContent: '主角整理了登记台。',
+      chapterTitle: '整理',
+      chapterIndex: 1,
+      charactersList: [],
+      chapterSummaries: [],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.storyEvents).toHaveLength(1)
+    expect(result.data?.storyEvents?.[0].id).toBe('evt-valid')
+  })
 })
