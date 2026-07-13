@@ -1,4 +1,11 @@
-import type { Issue, IssueLocationRef, IssueSeverity, IssueType } from '../types/agent.js'
+import type {
+  Issue,
+  IssueLocationRef,
+  IssueSeverity,
+  IssueType,
+  IssueSource,
+  RetryStrategy,
+} from '../types/agent.js'
 import type { ChapterMeta } from '../types/chapter.js'
 import type { ModelProvider } from '../model/provider.js'
 import { generateId } from './id.js'
@@ -84,6 +91,22 @@ export async function normalizeIssues(
       }
       return result
     })
+}
+
+/**
+ * 构造一个标准化 Issue，自动分配 id，并统一设置 source 与 retryStrategy。
+ */
+export function createIssue(
+  partial: Omit<Issue, 'id'>,
+  source: IssueSource,
+  retryStrategy: RetryStrategy
+): Issue {
+  return {
+    id: generateId(),
+    ...partial,
+    source,
+    retryStrategy,
+  }
 }
 
 function normalizeLocationRef(issue: RawIssue): IssueLocationRef | undefined {

@@ -10,6 +10,7 @@ import type { ChapterPlan } from '../agents/types.js'
 import { diffEvents } from './diff.js'
 import { applyEvents } from './projector.js'
 import { partitionInvalidForeshadowIntroductions } from './foreshadow-policy.js'
+import { splitContentParagraphs } from '../utils/text.js'
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -178,10 +179,7 @@ function filterEventsByEvidence(
 }
 
 export function countEvidenceParagraphs(chapterContent: string): number {
-  return chapterContent
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
-    .filter((paragraph) => paragraph.length > 0 && !/^#{1,6}\s/.test(paragraph)).length
+  return splitContentParagraphs(chapterContent).length
 }
 
 function applyNewChapterEvents(memory: StoryMemory, chapterActual: StoryEvent[]): StoryMemory {

@@ -1,5 +1,6 @@
 import type { Issue } from '../../../types/agent.js'
 import type { ChapterSession } from './types.js'
+import { isStructuralIssue, isLocalIssue, isTaskConsistencyIssue } from '../issue-classifier.js'
 
 export type RepairApproach = { kind: 'draft'; discardPlan: boolean } | { kind: 'fix' }
 
@@ -9,12 +10,7 @@ export interface IssueClassificationSummary {
   hasTaskConsistency: boolean
 }
 
-export async function classifyIssues(
-  issues: Issue[],
-  isStructuralIssue: (issue: Issue) => boolean,
-  isLocalIssue: (issue: Issue) => boolean,
-  isTaskConsistencyIssue: (issue: Issue) => boolean
-): Promise<IssueClassificationSummary> {
+export async function classifyIssues(issues: Issue[]): Promise<IssueClassificationSummary> {
   const errorIssues = issues.filter((i) => i.severity === 'error')
   if (errorIssues.length === 0) {
     return { hasStructural: false, hasLocal: false, hasTaskConsistency: false }

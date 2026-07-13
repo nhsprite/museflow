@@ -1,11 +1,11 @@
-import { runOneChapter, updateStoryRuntimeStatus } from '../../core/runner.js'
+import { updateStoryRuntimeStatus } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
-import { withSpinner } from '../utils/spinner.js'
 import { requireStoryState } from '../utils/story-loader.js'
-import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
-import type { ReducedGraphState } from '../../graph/state.js'
-import { printActProgress } from '../utils/chapter-display.js'
-import { printFrozenStoryMessage, shouldFreezeLockStory } from '../utils/story-freeze.js'
+import { printActProgress, printIssues } from '../utils/chapter-display.js'
+import { guardStoryWritable } from '../utils/story-guard.js'
+import { runOneChapterWithConflictResolution } from '../utils/chapter-runner.js'
+import { handleCommandError } from '../utils/command-error.js'
+import { question } from '../utils/prompt.js'
 
 interface ContinueOptions {
   storyId: string
@@ -18,11 +18,7 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
 
   const { story, state } = await requireStoryState(storyId)
 
-  if (shouldFreezeLockStory(story, state)) {
-    if (state.currentChapterIndex >= state.totalChapters && story.status !== 'freeze') {
-      await updateStoryRuntimeStatus(storyId, 'freeze')
-    }
-    printFrozenStoryMessage(story, state, storyId)
+  if (await guardStoryWritable(storyId, story, state)) {
     return
   }
 
@@ -33,14 +29,7 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
   console.log('')
 
   if (state.pendingIssues.length > 0) {
-    console.log('[MuseFlow] 发现以下问题:')
-    for (const issue of state.pendingIssues) {
-      const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'
-      console.log(`  ${icon} [${issue.type}] ${issue.description}`)
-      if (issue.location) {
-        console.log(`     位置: ${issue.location}`)
-      }
-    }
+    printIssues(state.pendingIssues, { heading: '[MuseFlow] 发现以下问题:' })
     console.log()
   }
 
@@ -70,24 +59,11 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
   }
 
   try {
-    async function runWithConflictResolution(): Promise<ReducedGraphState> {
-      try {
-        return await withSpinner(
-          '正在处理章节...',
-          () => runOneChapter(storyId, { mode: 'continue', userResponse }),
-          undefined,
-          (result) => !result.rewriteRequested
-        )
-      } catch (err) {
-        if (isBlockingConflictError(err)) {
-          await resolveBlockingConflicts(storyId, err)
-          return runWithConflictResolution()
-        }
-        throw err
-      }
-    }
-
-    const result = await runWithConflictResolution()
+    const result = await runOneChapterWithConflictResolution(
+      storyId,
+      { mode: 'continue', userResponse },
+      '正在处理章节...'
+    )
 
     const currentChapter = result.currentChapterIndex
     const totalChapters = result.totalChapters
@@ -103,13 +79,7 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
         const errors = result.pendingIssues.filter((i) => i.severity === 'error')
         if (errors.length > 0) {
           console.log(`\n[MuseFlow] 发现 ${errors.length} 个严重问题：`)
-          for (const err of errors) {
-            const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-            console.log(`  ${icon} [${err.type}] ${err.description}`)
-            if (err.location) {
-              console.log(`     位置: ${err.location}`)
-            }
-          }
+          printIssues(errors)
           console.log(`\n[MuseFlow] 请先重写本章后再继续：`)
           console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
         }
@@ -125,17 +95,6 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
 
     console.log('\n[MuseFlow] 使用 "museflow status" 查看进度')
   } catch (err) {
-    console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
-    await updateStatus('error')
-    process.exit(1)
+    await handleCommandError(storyId, err, { updateStatus })
   }
-}
-
-function question(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    process.stdout.write(prompt)
-    process.stdin.once('data', (data) => {
-      resolve(data.toString().trim())
-    })
-  })
 }

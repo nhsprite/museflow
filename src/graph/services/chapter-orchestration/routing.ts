@@ -9,9 +9,6 @@ import { shouldForceTemporaryReplan } from '../../../utils/outline-boundary.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import {
-  isStructuralIssue,
-  isLocalIssue,
-  isTaskConsistencyIssue,
   isStateCorruptionIssue,
   isInterpretiveIssue,
 } from '../../../core/chapter-generation/issue-classifier.js'
@@ -23,8 +20,9 @@ import {
   type RoutingDeps,
 } from '../../../core/chapter-generation/routing/index.js'
 import { calculateIssueSetSimilarity } from '../../../core/chapter-generation/routing/issue-policy.js'
-import type { RoutingDecision } from './types.js'
+import type { RoutingDecision } from '../../../core/chapter-generation/routing/types.js'
 import type { RuntimeContext } from '../../../core/context.js'
+import { createChapterSession } from '../../../core/chapter-generation/routing/session.js'
 import {
   createGenericVerifiedConstraint,
   normalizeVerifiedConstraints,
@@ -33,20 +31,7 @@ import { resolveEntityAttribute } from '../../../utils/canonical-facts.js'
 import { factAttributeFromLabel } from '../../../types/story-state.js'
 
 export function buildChapterSession(state: ReducedGraphState): ChapterSession {
-  return (
-    state.session ?? {
-      chapterIndex: state.currentChapterIndex,
-      rewriteAttempts: 0,
-      errorRewriteAttempts: 0,
-      autoFixAttempts: 0,
-      previousIssues: [],
-      previousRawErrorCount: 0,
-      routingDecision: undefined,
-      forceStructuralRewrite: false,
-      rewriteApproved: false,
-      issueFingerprintHistory: [],
-    }
-  )
+  return state.session ?? createChapterSession(state.currentChapterIndex)
 }
 
 export function mergeSessionUpdate(
@@ -244,9 +229,6 @@ export async function convergeAndDecide(
     fixPolicy: {
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },
-    isStructuralIssue,
-    isLocalIssue,
-    isTaskConsistencyIssue,
   }
 
   const ctx: RoutingContext = {
@@ -262,24 +244,7 @@ export async function convergeAndDecide(
     routingDeps
   )
 
-  let routingDecision: RoutingDecision = 'finalize_chapter'
-  switch (step.kind) {
-    case 'draft':
-      routingDecision = 'draft_chapter'
-      break
-    case 'fix':
-      routingDecision = 'fix_chapter'
-      break
-    case 'finalize':
-      routingDecision = 'finalize_chapter'
-      break
-    case 'repair_state':
-      routingDecision = 'repair_state'
-      break
-    case 'request_rewrite':
-      routingDecision = 'request_rewrite'
-      break
-  }
+  const routingDecision: RoutingDecision = step.kind
 
   const update = mergeSessionUpdate(session, {
     ...sessionUpdate,
@@ -310,7 +275,7 @@ export async function convergeAndDecide(
     chapterPlan = null
   }
 
-  if (step.kind === 'draft' && step.discardPlan) {
+  if (step.kind === 'draft_chapter' && step.discardPlan) {
     chapterPlan = null
   }
 

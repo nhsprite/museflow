@@ -3,14 +3,14 @@ import type { ReducedGraphState } from '../state.js'
 import type { ForeshadowingAgentInput, ConsistencyAgentInput } from '../../agents/types.js'
 import { getForeshadowingAgent, getConsistencyAgent } from '../agent-factory.js'
 import { generateId } from '../../utils/id.js'
+import { createIssue } from '../../utils/agent-output.js'
 import { readChapterContent, readChapterContentForRun } from '../../storage/filesystem/writer.js'
-import { getGenreSkill } from '../../genres/registry.js'
 import { buildConsistencyOutlineContext } from './planning.js'
 import { countChineseWords } from '../../utils/text.js'
 import {
-  DEFAULT_CHAPTER_WORD_COUNT_MIN,
-  DEFAULT_CHAPTER_WORD_COUNT_MAX,
-} from '../../types/genre.js'
+  getChapterWordCountBounds,
+  validateWordCount,
+} from '../../utils/chapter-content-validation.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
 import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 import { charactersToString } from '../utils/characters.js'
@@ -26,7 +26,7 @@ import { inferRetryStrategy } from '../../utils/retry-strategy.js'
 import {
   extractChapterEndingSnippet,
   extractChapterOpeningSnippet,
-  hasDuplicateEndingParagraphs,
+  buildDuplicateEndingParagraphMessage,
 } from '../utils/chapter-window.js'
 import { diffMemorySnapshots } from '../../story-memory/diff.js'
 import { applyEvents } from '../../story-memory/projector.js'
@@ -281,34 +281,19 @@ export async function validate_chapter(
   }
 
   const wordCount = countChineseWords(content)
-  const genre = getGenreSkill(state.genre)
-  const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
-  const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
+  const bounds = getChapterWordCountBounds(state.genre)
 
   // 只返回本轮新发现的字数问题，旧的 pendingIssues 由 orchestration 层统一维护。
   const newIssues: Issue[] = []
 
-  if (wordCount < min) {
+  const wordCountResult = validateWordCount(content, bounds)
+  if (!wordCountResult.valid) {
     newIssues.push(
-      tagIssueSource(
+      createIssue(
         {
-          id: generateId(),
-          type: 'word_count' as const,
+          type: 'word_count',
           severity: 'error',
-          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 低于最低要求 ${min} 字`,
-        },
-        'word_count',
-        'fix'
-      )
-    )
-  } else if (wordCount > max) {
-    newIssues.push(
-      tagIssueSource(
-        {
-          id: generateId(),
-          type: 'word_count' as const,
-          severity: 'error',
-          description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 超过上限 ${max} 字`,
+          description: `第 ${chapterIndex + 1} 章${wordCountResult.error}`,
         },
         'word_count',
         'fix'
@@ -337,16 +322,18 @@ export async function validate_chapter(
         )
       }
 
-      const duplicateCheck = hasDuplicateEndingParagraphs(prevContent, content, 1)
-      if (duplicateCheck.duplicate) {
-        const preview = duplicateCheck.paragraph?.slice(0, 80) ?? ''
+      const duplicateMessage = buildDuplicateEndingParagraphMessage(
+        chapterIndex,
+        prevContent,
+        content
+      )
+      if (duplicateMessage) {
         newIssues.push(
-          tagIssueSource(
+          createIssue(
             {
-              id: generateId(),
-              type: 'consistency' as const,
+              type: 'consistency',
               severity: 'error',
-              description: `第 ${chapterIndex + 1} 章结尾与上一章结尾存在重复段落，疑似直接复制：${preview}${preview.length >= 80 ? '……' : ''}`,
+              description: duplicateMessage,
               suggestion: '改写本章结尾，避免与上一章结尾形成完全相同的段落。',
             },
             'consistency',

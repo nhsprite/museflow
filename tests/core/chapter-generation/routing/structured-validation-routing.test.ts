@@ -46,9 +46,6 @@ function makeDeps(overrides: Partial<RoutingDeps> = {}): RoutingDeps {
       isStateCorruptionIssue: () => false,
     },
     fixPolicy: {},
-    isStructuralIssue: () => false,
-    isLocalIssue: () => false,
-    isTaskConsistencyIssue: () => false,
     ...overrides,
   }
 }
@@ -112,7 +109,7 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step).toMatchObject({ kind: 'draft', discardPlan: false })
+    expect(result.step).toMatchObject({ kind: 'draft_chapter', discardPlan: false })
     expect(result.sessionUpdate.errorRewriteAttempts).toBe(1)
     expect(result.processedIssues).toHaveLength(1)
     expect(result.processedIssues[0]?.type).toBe('state_conflict')
@@ -133,7 +130,7 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step.kind).toBe('draft')
+    expect(result.step.kind).toBe('draft_chapter')
     expect(result.processedIssues).toHaveLength(1)
     expect(result.processedIssues[0]?.type).toBe('beat_unproven')
     expect(result.processedIssues[0]?.description).toContain('beat-1')
@@ -152,7 +149,7 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step.kind).toBe('draft')
+    expect(result.step.kind).toBe('draft_chapter')
     expect(result.processedIssues).toHaveLength(1)
     expect(result.processedIssues[0]?.type).toBe('foreshadow_false_fulfillment')
     expect(result.processedIssues[0]?.description).toContain('fs-1')
@@ -179,7 +176,7 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step.kind).toBe('draft')
+    expect(result.step.kind).toBe('draft_chapter')
     expect(result.processedIssues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -222,7 +219,7 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step.kind).toBe('draft')
+    expect(result.step.kind).toBe('draft_chapter')
     expect(result.processedIssues).toEqual([])
   })
 
@@ -248,7 +245,7 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step.kind).toBe('draft')
+    expect(result.step.kind).toBe('draft_chapter')
     expect(result.processedIssues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -281,7 +278,7 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step.kind).toBe('draft')
+    expect(result.step.kind).toBe('draft_chapter')
     expect(result.processedIssues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -423,7 +420,7 @@ describe('decideNextStep structured validation routing', () => {
     const result = await decideNextStep(ctx, makeDeps())
 
     expect(result.processedIssues).toEqual([])
-    expect(result.step.kind).toBe('finalize')
+    expect(result.step.kind).toBe('finalize_chapter')
   })
 
   it('routes fix retry issues to draft when the chapter file is missing', async () => {
@@ -446,7 +443,7 @@ describe('decideNextStep structured validation routing', () => {
     const result = await decideNextStep(ctx, makeDeps())
 
     expect(result.step).toEqual({
-      kind: 'draft',
+      kind: 'draft_chapter',
       discardPlan: false,
       feedbackIssues: ctx.pendingIssues,
     })

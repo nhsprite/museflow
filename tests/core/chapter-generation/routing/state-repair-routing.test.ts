@@ -45,9 +45,6 @@ function makeDeps(overrides: Partial<RoutingDeps> = {}): RoutingDeps {
       isStateCorruptionIssue: (issue) => issue.dimension === 'structured_state',
     },
     fixPolicy: {},
-    isStructuralIssue: () => false,
-    isLocalIssue: () => false,
-    isTaskConsistencyIssue: () => false,
     ...overrides,
   }
 }

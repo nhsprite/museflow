@@ -7,3 +7,13 @@ export function countChineseWords(text: string): number {
   const englishWords = (text.match(/[a-zA-Z]+/g) ?? []).length
   return chineseChars + englishWords
 }
+
+/**
+ * 将正文按空行切分为段落，过滤空段落与 Markdown 标题行。
+ */
+export function splitContentParagraphs(content: string): string[] {
+  return content
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0 && !/^#{1,6}\s+/.test(paragraph))
+}

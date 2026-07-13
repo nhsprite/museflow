@@ -10,6 +10,7 @@ import { updateStoryStatus } from '../../storage/meta/stores/story.js'
 import { exportMetaFromCheckpoint } from '../../storage/meta/exporter.js'
 import { generateTitleOptions, selectTitleOption, type TitleOption } from './title-selector.js'
 import { withSpinner } from '../utils/spinner.js'
+import { handleCommandError } from '../utils/command-error.js'
 import type { ModelConfig } from '../../types/config.js'
 import { createRuntimeContext, type RuntimeContext } from '../../core/context.js'
 import type { Story } from '../../types/story.js'
@@ -162,10 +163,12 @@ export async function start(options: StartOptions, context?: RuntimeContext): Pr
     console.log(`[MuseFlow] 故事ID: ${story.id}`)
     console.log('[MuseFlow] 使用 "museflow write" 开始撰写正文')
   } catch (err) {
-    console.error('[MuseFlow] 错误:', err instanceof Error ? err.message : String(err))
-    await updateStoryRuntimeStatus(story.id, 'error').catch(() =>
-      updateStoryStatus(story.id, 'error')
-    )
-    process.exit(1)
+    await handleCommandError(story.id, err, {
+      updateStatus: async (status) => {
+        await updateStoryRuntimeStatus(story.id, status).catch(() =>
+          updateStoryStatus(story.id, status)
+        )
+      },
+    })
   }
 }

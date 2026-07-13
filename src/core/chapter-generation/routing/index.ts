@@ -16,6 +16,7 @@ import {
   replaceStructuredIssues,
   STRUCTURED_ISSUE_TYPES,
 } from './structured-issues.js'
+import { calculateFingerprintSetSimilarity } from './fingerprint.js'
 
 export * from './types.js'
 
@@ -23,22 +24,8 @@ export interface RoutingDeps {
   issuePolicy: IssuePolicyDeps
   rewritePolicy: RewritePolicyDeps
   fixPolicy: FixPolicyDeps
-  isStructuralIssue: (issue: Issue) => boolean
-  isLocalIssue: (issue: Issue) => boolean
-  isTaskConsistencyIssue: (issue: Issue) => boolean
   /** 用于停滞检测的 issue 指纹函数；未提供时使用规则指纹。 */
   fingerprintIssue?: (issue: Issue) => Promise<string> | string
-}
-
-function calculateFingerprintSetSimilarity(prev: string[], curr: string[]): number {
-  if (prev.length === 0 || curr.length === 0) return 0
-  const prevSet = new Set(prev)
-  const currSet = new Set(curr)
-  let intersection = 0
-  for (const fp of currSet) {
-    if (prevSet.has(fp)) intersection++
-  }
-  return intersection / Math.max(prevSet.size, currSet.size)
 }
 
 function isRewriteLoopStalled(
@@ -157,7 +144,7 @@ export async function decideNextStep(
 
     if (patchable && session.autoFixAttempts < 3) {
       return {
-        step: { kind: 'fix', patchableIssues: policyResult.issues },
+        step: { kind: 'fix_chapter', patchableIssues: policyResult.issues },
         sessionUpdate: {
           autoFixAttempts: session.autoFixAttempts + 1,
           issueFingerprintHistory: nextFingerprintHistory,
@@ -170,8 +157,8 @@ export async function decideNextStep(
     if (!session.rewriteApproved) {
       return {
         step: ctx.chapterFileExists
-          ? { kind: 'finalize' }
-          : { kind: 'draft', discardPlan: false, feedbackIssues: [] },
+          ? { kind: 'finalize_chapter' }
+          : { kind: 'draft_chapter', discardPlan: false, feedbackIssues: [] },
         sessionUpdate: {
           rewriteApproved: false,
           issueFingerprintHistory: nextFingerprintHistory,
@@ -183,7 +170,7 @@ export async function decideNextStep(
 
     if (session.rewriteAttempts === 0) {
       return {
-        step: { kind: 'draft', discardPlan: false, feedbackIssues: [] },
+        step: { kind: 'draft_chapter', discardPlan: false, feedbackIssues: [] },
         sessionUpdate: {
           rewriteApproved: true,
           issueFingerprintHistory: nextFingerprintHistory,
@@ -194,7 +181,7 @@ export async function decideNextStep(
     }
 
     return {
-      step: { kind: 'finalize' },
+      step: { kind: 'finalize_chapter' },
       sessionUpdate: {
         rewriteApproved: false,
         issueFingerprintHistory: nextFingerprintHistory,
@@ -232,7 +219,7 @@ export async function decideNextStep(
 
   if (!ctx.chapterFileExists) {
     return {
-      step: { kind: 'draft', discardPlan: false, feedbackIssues: remainingErrors },
+      step: { kind: 'draft_chapter', discardPlan: false, feedbackIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
         issueFingerprintHistory: nextFingerprintHistory,
@@ -260,7 +247,7 @@ export async function decideNextStep(
 
   if (retryStrategy === 'fix') {
     return {
-      step: { kind: 'fix', patchableIssues: remainingErrors },
+      step: { kind: 'fix_chapter', patchableIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
         issueFingerprintHistory: nextFingerprintHistory,
@@ -272,7 +259,7 @@ export async function decideNextStep(
 
   if (remainingErrors.some((issue) => STRUCTURED_ISSUE_TYPES.has(issue.type))) {
     return {
-      step: { kind: 'draft', discardPlan: false, feedbackIssues: remainingErrors },
+      step: { kind: 'draft_chapter', discardPlan: false, feedbackIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
         issueFingerprintHistory: nextFingerprintHistory,
@@ -282,18 +269,13 @@ export async function decideNextStep(
     }
   }
 
-  const summary = await classifyIssues(
-    remainingErrors,
-    deps.isStructuralIssue,
-    deps.isLocalIssue,
-    deps.isTaskConsistencyIssue
-  )
+  const summary = await classifyIssues(remainingErrors)
 
   const approach = decideRepairApproach(session, summary, ctx.chapterFileExists, deps.fixPolicy.log)
 
   if (approach.kind === 'fix') {
     return {
-      step: { kind: 'fix', patchableIssues: remainingErrors },
+      step: { kind: 'fix_chapter', patchableIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
         issueFingerprintHistory: nextFingerprintHistory,
@@ -304,7 +286,11 @@ export async function decideNextStep(
   }
 
   return {
-    step: { kind: 'draft', discardPlan: approach.discardPlan, feedbackIssues: remainingErrors },
+    step: {
+      kind: 'draft_chapter',
+      discardPlan: approach.discardPlan,
+      feedbackIssues: remainingErrors,
+    },
     sessionUpdate: {
       errorRewriteAttempts: session.errorRewriteAttempts + 1,
       forceStructuralRewrite: policyResult.forceStructuralRewrite || approach.discardPlan,

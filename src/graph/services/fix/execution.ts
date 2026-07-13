@@ -5,19 +5,17 @@ import type { ModelProvider } from '../../../model/provider.js'
 import type { Issue } from '../../../types/agent.js'
 import type { StoryEvent } from '../../../types/story-memory.js'
 import { writeStagedChapterContent } from '../../../storage/filesystem/writer.js'
-import { getGenreSkill } from '../../../genres/registry.js'
 import {
-  DEFAULT_CHAPTER_WORD_COUNT_MIN,
-  DEFAULT_CHAPTER_WORD_COUNT_MAX,
-} from '../../../types/genre.js'
-import { validateFixedChapterContent } from '../../../utils/chapter-content-validation.js'
+  getChapterWordCountBounds,
+  validateFixedChapterContent,
+} from '../../../utils/chapter-content-validation.js'
 import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
 import { formatStoryState, prepareStoryStateForChapter } from '../../utils/reconciler/index.js'
 import { buildEffectiveCharactersList, charactersToString } from '../../utils/characters.js'
 import { splitIntoParagraphs } from '../../utils/text-patching.js'
-import { hasDuplicateEndingParagraphs } from '../../utils/chapter-window.js'
+import { buildDuplicateEndingParagraphMessage } from '../../utils/chapter-window.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
-import { generateId } from '../../../utils/id.js'
+import { createIssue } from '../../../utils/agent-output.js'
 import { logger } from '../../../utils/logger.js'
 
 /**
@@ -30,12 +28,10 @@ async function validateMergedFixContent(
   chapterIndex: number,
   provider: ModelProvider
 ): Promise<{ valid: boolean; error?: string }> {
-  const genre = getGenreSkill(state.genre)
-  const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
-  const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
+  const bounds = getChapterWordCountBounds(state.genre)
   const baseValidation = await validateFixedChapterContent(
     content,
-    { chapterIndex, minWordCount: min, maxWordCount: max, enforceWordCount: false },
+    { chapterIndex, minWordCount: bounds.min, maxWordCount: bounds.max, enforceWordCount: false },
     provider
   )
   if (!baseValidation.valid) {
@@ -45,12 +41,15 @@ async function validateMergedFixContent(
   if (chapterIndex > 0) {
     const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)
     if (previousContent && previousContent.trim().length > 0) {
-      const duplicateCheck = hasDuplicateEndingParagraphs(previousContent, content, 1)
-      if (duplicateCheck.duplicate) {
-        const preview = duplicateCheck.paragraph?.slice(0, 80) ?? ''
+      const duplicateMessage = buildDuplicateEndingParagraphMessage(
+        chapterIndex,
+        previousContent,
+        content
+      )
+      if (duplicateMessage) {
         return {
           valid: false,
-          error: `修复后的第 ${chapterIndex + 1} 章结尾与上一章结尾存在重复段落，疑似修复引入的跨章断裂：${preview}${preview.length >= 80 ? '……' : ''}`,
+          error: `修复后的${duplicateMessage}`,
         }
       }
     }
@@ -60,14 +59,15 @@ async function validateMergedFixContent(
 }
 
 function buildFixValidationFailureIssue(chapterIndex: number, error: string): Issue {
-  return {
-    id: generateId(),
-    type: 'draft_failure',
-    severity: 'error',
-    description: `第 ${chapterIndex + 1} 章修复后内容校验失败：${error}`,
-    source: 'quality',
-    retryStrategy: 'draft',
-  }
+  return createIssue(
+    {
+      type: 'draft_failure',
+      severity: 'error',
+      description: `第 ${chapterIndex + 1} 章修复后内容校验失败：${error}`,
+    },
+    'quality',
+    'draft'
+  )
 }
 
 /**
@@ -90,13 +90,17 @@ function refreshDraftChapterEventsAfterFix(
   for (const event of events) {
     const evidence = event.evidence
     if (evidence && (evidence.paragraphIndex < 1 || evidence.paragraphIndex > paragraphCount)) {
-      issues.push({
-        id: generateId(),
-        type: 'event_evidence_invalid',
-        severity: 'warning',
-        description: `结构化事件 ${event.id}（${event.type}）的段落证据 @p${evidence.paragraphIndex} 在第 ${chapterIndex + 1} 章修复后的正文中不存在，已将其从 draftChapterEvents 移除，避免写入 StoryMemory`,
-        source: 'outline_compliance',
-      })
+      issues.push(
+        createIssue(
+          {
+            type: 'event_evidence_invalid',
+            severity: 'warning',
+            description: `结构化事件 ${event.id}（${event.type}）的段落证据 @p${evidence.paragraphIndex} 在第 ${chapterIndex + 1} 章修复后的正文中不存在，已将其从 draftChapterEvents 移除，避免写入 StoryMemory`,
+          },
+          'outline_compliance',
+          'draft'
+        )
+      )
       continue
     }
     kept.push(event)
@@ -381,16 +385,14 @@ export async function runLegacyFix(
     )
   }
 
-  const genre = getGenreSkill(state.genre)
-  const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
-  const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
+  const bounds = getChapterWordCountBounds(state.genre)
 
   const validation = await validateFixedChapterContent(
     rawContent,
     {
       chapterIndex,
-      minWordCount: min,
-      maxWordCount: max,
+      minWordCount: bounds.min,
+      maxWordCount: bounds.max,
       enforceWordCount: false,
     },
     provider

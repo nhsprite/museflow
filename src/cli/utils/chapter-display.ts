@@ -1,6 +1,7 @@
 import type { ChapterOutline } from '../../types/outline.js'
 import type { ChapterReport } from '../../types/chapter-report.js'
 import type { ReducedGraphState } from '../../graph/state.js'
+import type { Issue } from '../../types/agent.js'
 import { buildArcStatus } from '../../utils/story-arc.js'
 
 function toDisplayChapterNumber(chapterIndex: number): number {
@@ -149,4 +150,31 @@ function convergenceLabel(convergence: ChapterReport['convergence']): string {
     default:
       return '未知'
   }
+}
+
+export interface PrintIssuesOptions {
+  heading?: string
+  log?: typeof console.log
+}
+
+/**
+ * 统一打印 issue 列表，返回其中 error 的数量。
+ */
+export function printIssues(issues: Issue[], options: PrintIssuesOptions = {}): number {
+  const { heading, log = console.log } = options
+  if (issues.length === 0) return 0
+
+  if (heading) {
+    log(heading)
+  }
+
+  for (const issue of issues) {
+    const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'
+    log(`  ${icon} [${issue.type}] ${issue.description}`)
+    if (issue.location) {
+      log(`     位置: ${issue.location}`)
+    }
+  }
+
+  return issues.filter((i) => i.severity === 'error').length
 }

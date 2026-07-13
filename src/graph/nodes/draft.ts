@@ -10,12 +10,8 @@ import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-cont
 import {
   validateFixedChapterContent,
   normalizeChapterHeading,
+  getChapterWordCountBounds,
 } from '../../utils/chapter-content-validation.js'
-import { getGenreSkill } from '../../genres/registry.js'
-import {
-  DEFAULT_CHAPTER_WORD_COUNT_MIN,
-  DEFAULT_CHAPTER_WORD_COUNT_MAX,
-} from '../../types/genre.js'
 import type { RuntimeContext } from '../../core/context.js'
 import type { StoryEvent, ChapterFinalStateDeclaration } from '../../types/story-memory.js'
 import {
@@ -122,16 +118,13 @@ export async function draft_chapter(
   }
   content = completionResult.content
 
-  const genre = getGenreSkill(state.genre)
-  const min = genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN
-  const max = genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX
-
+  const bounds = getChapterWordCountBounds(state.genre)
   const validation = await validateFixedChapterContent(content, {
     chapterIndex,
-    minWordCount: min,
-    maxWordCount: max,
+    minWordCount: bounds.min,
+    maxWordCount: bounds.max,
     enforceWordCount: true,
-    maxWordCountTolerance: Math.max(Math.round(max * 0.1), 300),
+    maxWordCountTolerance: Math.max(Math.round(bounds.max * 0.1), 300),
   })
 
   if (!validation.valid) {

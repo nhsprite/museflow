@@ -1,23 +1,18 @@
-import {
-  runOneChapter,
-  getState,
-  updateStoryRuntimeStatus,
-  type RunOneChapterOptions,
-} from '../../core/runner.js'
+import { getState, updateStoryRuntimeStatus, type RunOneChapterOptions } from '../../core/runner.js'
 import type { StoryStatus, Story } from '../../types/story.js'
-import type { ReducedGraphState } from '../../graph/state.js'
-import { withSpinner } from '../utils/spinner.js'
 import {
   printActProgress,
   printChapterOutline,
   printChapterReport,
+  printIssues,
 } from '../utils/chapter-display.js'
 import { getChapterFilePath } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { requireStoryState } from '../utils/story-loader.js'
-import { resolveBlockingConflicts, isBlockingConflictError } from '../utils/conflict-resolver.js'
-import { printFrozenStoryMessage, shouldFreezeLockStory } from '../utils/story-freeze.js'
+import { guardStoryWritable } from '../utils/story-guard.js'
+import { runOneChapterWithConflictResolution } from '../utils/chapter-runner.js'
+import { handleCommandError } from '../utils/command-error.js'
 
 interface WriteOptions {
   storyId: string
@@ -45,11 +40,7 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
 
   const isResume = state.currentChapterIndex > 0 || hasChaptersOnDisk
 
-  if (shouldFreezeLockStory(story, state) || startChapterIndex >= state.totalChapters) {
-    if (startChapterIndex >= state.totalChapters && story.status !== 'freeze') {
-      await updateStoryRuntimeStatus(storyId, 'freeze')
-    }
-    printFrozenStoryMessage(story, state, storyId, startChapterIndex)
+  if (await guardStoryWritable(storyId, story, state, startChapterIndex)) {
     return
   }
 
@@ -82,18 +73,9 @@ async function handleWrite(
   const hasOnlyDraftFailures =
     unresolvedErrors.length > 0 && unresolvedErrors.every((i) => i.type === 'draft_failure')
 
-  // 当用户主动运行 write 时，清除 rewriteRequested 状态，让 agents 重新评估
-  const effectiveRewriteRequested = false
-
-  if ((effectiveRewriteRequested || nonDraftErrors.length > 0) && !hasOnlyDraftFailures) {
+  if (nonDraftErrors.length > 0 && !hasOnlyDraftFailures) {
     console.error('[MuseFlow] 当前章节存在问题，需要先修复')
-    for (const issue of state.pendingIssues) {
-      const icon = issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'
-      console.error(`  ${icon} [${issue.type}] ${issue.description}`)
-      if (issue.location) {
-        console.error(`     位置: ${issue.location}`)
-      }
-    }
+    printIssues(state.pendingIssues, { log: console.error })
     console.error(`\n当前章节存在严重问题，需要重写：`)
     console.error(`   museflow rewrite ${story.id}  # 彻底重写\n`)
     process.exit(1)
@@ -135,35 +117,17 @@ async function executeWrite(
   }
 
   try {
-    async function runWithConflictResolution(): Promise<ReducedGraphState> {
-      try {
-        return await withSpinner(
-          `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
-          () => runOneChapter(storyId, runOptions),
-          `✅ 第 ${chapterNum} 章撰写完成`,
-          (result) => !result.rewriteRequested
-        )
-      } catch (err) {
-        if (isBlockingConflictError(err)) {
-          await resolveBlockingConflicts(storyId, err)
-          return runWithConflictResolution()
-        }
-        throw err
-      }
-    }
-
-    const result = await runWithConflictResolution()
+    const result = await runOneChapterWithConflictResolution(
+      storyId,
+      runOptions,
+      `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
+      `✅ 第 ${chapterNum} 章撰写完成`
+    )
 
     if (result.rewriteRequested) {
       const errors = result.pendingIssues.filter((i) => i.severity === 'error')
       console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，撰写已中断：`)
-      for (const err of errors) {
-        const icon = err.severity === 'error' ? '❌' : err.severity === 'warning' ? '⚠️' : 'ℹ️'
-        console.log(`  ${icon} [${err.type}] ${err.description}`)
-        if (err.location) {
-          console.log(`     位置: ${err.location}`)
-        }
-      }
+      printIssues(errors)
       console.log(`\n请运行以下命令重写本章：`)
       console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
       process.exit(1)
@@ -202,18 +166,10 @@ async function executeWrite(
       console.log(`   或运行 "museflow info" 查看故事进度\n`)
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    if (message.includes('Branch condition returned unknown or null destination')) {
-      console.error('[MuseFlow] 错误: 章节处理流程异常')
-    } else {
-      console.error('[MuseFlow] 错误:', message)
-    }
-    console.error('')
-    console.error('可以运行以下命令重试：')
-    console.error(`   museflow rewrite ${storyId}`)
-    console.error('')
-    await updateStatus('error')
-    process.exit(1)
+    await handleCommandError(storyId, err, {
+      retryCommand: `museflow rewrite ${storyId}`,
+      updateStatus,
+    })
   }
 }
 

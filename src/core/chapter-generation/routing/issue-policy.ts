@@ -2,6 +2,7 @@ import type { Issue } from '../../../types/agent.js'
 import type { IssuePolicyDeps, IssuePolicyResult } from './types.js'
 import { deduplicateByRule } from '../../../utils/issue-deduplication.js'
 import { generateIssueFingerprint } from '../../../utils/context-judge.js'
+import { calculateFingerprintSetSimilarity } from './fingerprint.js'
 
 export async function calculateIssueSetSimilarity(
   prev: Issue[],
@@ -14,14 +15,7 @@ export async function calculateIssueSetSimilarity(
 
   const prevFps = await Promise.all(prev.map(fingerprintFn))
   const currFps = await Promise.all(curr.map(fingerprintFn))
-  const prevSet = new Set(prevFps)
-  const currSet = new Set(currFps)
-
-  let intersection = 0
-  for (const fp of currSet) {
-    if (prevSet.has(fp)) intersection++
-  }
-  return intersection / Math.max(prevSet.size, currSet.size)
+  return calculateFingerprintSetSimilarity(prevFps, currFps)
 }
 
 export function capNonErrorIssuesByType(

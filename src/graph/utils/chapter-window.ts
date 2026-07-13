@@ -1,21 +1,14 @@
 import type { ReducedGraphState } from '../state.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
+import { splitContentParagraphs } from '../../utils/text.js'
 
 const DEFAULT_SNIPPET_MAX_CHARS = 900
-
-function contentParagraphs(content: string): string[] {
-  return content
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
-    .filter((paragraph) => paragraph.length > 0)
-    .filter((paragraph) => !/^#{1,6}\s+/.test(paragraph))
-}
 
 export function extractChapterOpeningSnippet(
   content: string,
   maxChars = DEFAULT_SNIPPET_MAX_CHARS
 ): string {
-  const paragraphs = contentParagraphs(content)
+  const paragraphs = splitContentParagraphs(content)
   if (paragraphs.length === 0) return content.trim().slice(0, maxChars)
 
   const selected: string[] = []
@@ -35,7 +28,7 @@ export function extractChapterEndingSnippet(
   content: string,
   maxChars = DEFAULT_SNIPPET_MAX_CHARS
 ): string {
-  const paragraphs = contentParagraphs(content)
+  const paragraphs = splitContentParagraphs(content)
   if (paragraphs.length === 0) return content.trim().slice(-maxChars)
 
   const selected: string[] = []
@@ -54,7 +47,7 @@ export function extractChapterEndingSnippet(
 }
 
 export function extractChapterEndingParagraphs(content: string, count = 2): string[] {
-  const paragraphs = contentParagraphs(content)
+  const paragraphs = splitContentParagraphs(content)
   return paragraphs.slice(-count)
 }
 
@@ -75,6 +68,20 @@ export function hasDuplicateEndingParagraphs(
   }
 
   return { duplicate: false }
+}
+
+/**
+ * 构建章末重复段落提示文案。无重复时返回 undefined。
+ */
+export function buildDuplicateEndingParagraphMessage(
+  chapterIndex: number,
+  previousContent: string,
+  currentContent: string
+): string | undefined {
+  const check = hasDuplicateEndingParagraphs(previousContent, currentContent, 1)
+  if (!check.duplicate) return undefined
+  const preview = check.paragraph?.slice(0, 80) ?? ''
+  return `第 ${chapterIndex + 1} 章结尾与上一章结尾存在重复段落，疑似直接复制：${preview}${preview.length >= 80 ? '……' : ''}`
 }
 
 export async function buildPreviousChapterEndingContext(

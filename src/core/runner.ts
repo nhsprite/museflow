@@ -28,6 +28,7 @@ import {
 } from '../utils/verified-constraints.js'
 import { projectVerifiedClaimedBeatIdsIntoActProgress } from './act-progress-projection.js'
 import { formatActBoundaryAdjustmentCommand } from '../utils/story-arc.js'
+import { createChapterSession } from './chapter-generation/routing/session.js'
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
@@ -351,18 +352,9 @@ export async function runOneChapter(
     writeOneChapterOnly: true,
     chapterReport: null,
     blockingReport: null,
-    session: {
-      chapterIndex: targetIndex,
-      rewriteAttempts: 0,
-      errorRewriteAttempts: 0,
-      autoFixAttempts: 0,
-      previousIssues: [],
-      previousRawErrorCount: 0,
-      routingDecision: undefined,
-      forceStructuralRewrite: false,
+    session: createChapterSession(targetIndex, {
       rewriteApproved: options.userResponse ?? false,
-      issueFingerprintHistory: [],
-    },
+    }),
     authorDecisions: {},
   }
 

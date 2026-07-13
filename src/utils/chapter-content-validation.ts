@@ -2,6 +2,7 @@ import { countChineseWords } from './text.js'
 import type { ModelProvider } from '../model/provider.js'
 import { batchValidateFixedContent } from './context-judge.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
+import { getGenreSkill } from '../genres/registry.js'
 
 interface ValidationOptions {
   chapterIndex: number
@@ -164,6 +165,49 @@ export function tryCorrectOffByOneChapterHeading(
   return null
 }
 
+export interface ChapterWordCountBounds {
+  min: number
+  max: number
+}
+
+export function getChapterWordCountBounds(genre: string | undefined): ChapterWordCountBounds {
+  const skill = genre ? getGenreSkill(genre) : null
+  return {
+    min: skill?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN,
+    max: skill?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX,
+  }
+}
+
+export interface WordCountValidationResult {
+  valid: boolean
+  wordCount: number
+  error?: string
+}
+
+export function validateWordCount(
+  content: string,
+  bounds: ChapterWordCountBounds,
+  tolerance = 0
+): WordCountValidationResult {
+  const wordCount = countChineseWords(content)
+  if (wordCount < bounds.min) {
+    return {
+      valid: false,
+      wordCount,
+      error: `字数 ${wordCount} 低于最低要求 ${bounds.min}`,
+    }
+  }
+  const effectiveMax = bounds.max + tolerance
+  if (wordCount > effectiveMax) {
+    return {
+      valid: false,
+      wordCount,
+      error: `字数 ${wordCount} 超过上限 ${effectiveMax}（含 ${tolerance} 字容差）`,
+    }
+  }
+  return { valid: true, wordCount }
+}
+
 export async function validateFixedChapterContent(
   rawContent: string,
   options: ValidationOptions,
@@ -196,20 +240,13 @@ export async function validateFixedChapterContent(
   }
 
   if (enforceWordCount) {
-    const wordCount = countChineseWords(rawContent)
-    if (wordCount < minWordCount) {
-      return {
-        valid: false,
-        error: `修复后的内容字数 ${wordCount} 低于最低要求 ${minWordCount}`,
-      }
-    }
-
-    const effectiveMax = maxWordCount + maxWordCountTolerance
-    if (maxWordCount !== undefined && wordCount > effectiveMax) {
-      return {
-        valid: false,
-        error: `修复后的内容字数 ${wordCount} 超过上限 ${effectiveMax}（含 ${maxWordCountTolerance} 字容差）`,
-      }
+    const wordCountResult = validateWordCount(
+      rawContent,
+      { min: minWordCount, max: maxWordCount },
+      maxWordCountTolerance
+    )
+    if (!wordCountResult.valid) {
+      return { valid: false, error: `修复后的内容${wordCountResult.error}` }
     }
   }
 

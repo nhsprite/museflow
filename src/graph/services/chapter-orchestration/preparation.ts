@@ -1,6 +1,6 @@
 import type { ReducedGraphState } from '../../state.js'
 import type { Issue } from '../../../types/agent.js'
-import { buildChapterSession, mergeSessionUpdate } from './routing.js'
+import { createChapterSession } from '../../../core/chapter-generation/routing/session.js'
 
 /**
  * 进入新章节时丢弃上一章残留的连续性/质量类 warning。
@@ -24,21 +24,9 @@ export async function prepareChapter(
     return {}
   }
 
-  const currentSession = buildChapterSession(state)
+  const freshSession = createChapterSession(state.currentChapterIndex)
   return {
-    ...mergeSessionUpdate(currentSession, {
-      chapterIndex: state.currentChapterIndex,
-      rewriteAttempts: 0,
-      errorRewriteAttempts: 0,
-      previousIssues: [],
-      previousRawErrorCount: 0,
-      forceStructuralRewrite: false,
-      autoFixAttempts: 0,
-      routingDecision: undefined,
-      rewriteApproved: false,
-      issueFingerprintHistory: [],
-      stateRepairAttempted: false,
-    }),
+    session: freshSession,
     pendingIssues: pruneStaleChapterWarnings(state.pendingIssues),
   }
 }
