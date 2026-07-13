@@ -456,6 +456,73 @@ describe('expandOutlineForChapter', () => {
     expect(formattedOutline).toContain('【本章顺延伏笔】fs-b')
   })
 
+  it('extends the act before planning when the boundary outline defers every due candidate', async () => {
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
+    const state = stateWithScheduledForeshadows(
+      2,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '幕末核心事件',
+        description: '本章完成幕末核心事件，并将不相容的既有线索顺延。',
+        fulfilledForeshadowIds: [],
+        deferredForeshadowIds: foreshadowIds,
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({ chapterIndex: 2 }),
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
+      [1, 4],
+      [5, 5],
+    ])
+    expect(result.totalChapters).toBe(5)
+    const plannerState = planChapterWithOverrideMock.mock.calls[0]![1] as ReducedGraphState
+    expect(plannerState.storyArc?.acts[0]?.endChapter).toBe(4)
+  })
+
+  it('extends the act when planner evidence failure changes boundary fulfillments to deferrals', async () => {
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
+    const state = stateWithScheduledForeshadows(
+      2,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '计划回收',
+        description: '本章尝试在核心事件中回收既有线索。',
+        fulfilledForeshadowIds: foreshadowIds,
+        deferredForeshadowIds: [],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: foreshadowIds,
+        expectedEvents: [],
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
+    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(foreshadowIds)
+    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
+      [1, 4],
+      [5, 5],
+    ])
+    expect(result.boundaryHints.join('\n')).not.toContain('下一章将进入第 2 幕')
+    expect(result.boundaryHints.join('\n')).toContain('下一章为第4章')
+  })
+
   it('retries JIT outline generation when a scheduled obligation is omitted', async () => {
     chapterOutlineRunMock
       .mockResolvedValueOnce({
@@ -753,7 +820,7 @@ describe('expandOutlineForChapter', () => {
     }
   })
 
-  it('auto-defers scheduled IDs and continues when JIT outline retries are exhausted', async () => {
+  it('requires manual adjustment when JIT auto-deferral exceeds act extension limits', async () => {
     const foreshadowIds = Array.from(
       { length: 11 },
       (_, index) => `fs-${String(index + 1).padStart(2, '0')}`
@@ -772,15 +839,15 @@ describe('expandOutlineForChapter', () => {
       },
     })
 
-    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
+      '请先运行：museflow adjust-act story-1 --act 1 --end-chapter 7'
+    )
 
-    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(['fs-01', 'fs-02', 'fs-03'])
-    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
-    expect(result.pendingIssues.some((i) => i.type === 'outline_foreshadow')).toBe(true)
+    expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
     expect(writeOutlineContent).not.toHaveBeenCalled()
   })
 
-  it('auto-defers outline-claimed IDs and continues when plan correction is exhausted', async () => {
+  it('requires manual adjustment when planner auto-deferral exceeds act extension limits', async () => {
     const foreshadowIds = Array.from(
       { length: 11 },
       (_, index) => `fs-${String(index + 1).padStart(2, '0')}`
@@ -806,12 +873,11 @@ describe('expandOutlineForChapter', () => {
       }),
     })
 
-    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
+      '请先运行：museflow adjust-act story-1 --act 1 --end-chapter 7'
+    )
 
-    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(['fs-01', 'fs-02', 'fs-03'])
-    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
-    expect(result.chapterPlan.fulfilledForeshadowIds).toEqual([])
-    expect(result.pendingIssues.some((i) => i.type === 'outline_foreshadow')).toBe(true)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
     expect(writeOutlineContent).not.toHaveBeenCalled()
   })
 

@@ -35,7 +35,9 @@ import {
   calculateBeatBudget,
   formatActBoundaryAdjustmentCommand,
   getActForChapter,
+  proposeActExtensionAfterForeshadowAdjudication,
   proposeActBoundaryAdjustments,
+  type ActBoundaryProposal,
 } from '../utils/story-arc.js'
 import { findMandatoryBeatById, getMandatoryBeatIdByText } from '../utils/mandatory-beat-ids.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
@@ -242,6 +244,62 @@ function ensureChaptersLength(
   return next
 }
 
+function synchronizeStateWithStoryArc(
+  state: ReducedGraphState,
+  updatedStoryArc: NonNullable<ReducedGraphState['storyArc']>
+): ReducedGraphState {
+  if (updatedStoryArc === state.storyArc) return state
+
+  const updatedTotalChapters = Math.max(state.totalChapters, updatedStoryArc.totalChapters)
+  const updatedOutline = ensureOutlineLength(state.outline, updatedTotalChapters)
+  const updatedChapters = ensureChaptersLength(state.chapters, updatedTotalChapters)
+  const updatedStory =
+    updatedTotalChapters === state.story.totalChapters
+      ? state.story
+      : { ...state.story, totalChapters: updatedTotalChapters, updatedAt: Date.now() }
+
+  return {
+    ...state,
+    story: updatedStory,
+    totalChapters: updatedTotalChapters,
+    storyArc: updatedStoryArc,
+    outline: updatedOutline,
+    chapters: updatedChapters,
+  }
+}
+
+function applyAutomaticActExtensions(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  proposals: readonly ActBoundaryProposal[],
+  stage: string
+): ReducedGraphState {
+  if (!state.storyArc || proposals.length === 0) return state
+
+  let updatedStoryArc = state.storyArc
+  for (const proposal of proposals) {
+    const result = applyActBoundaryAdjustment(updatedStoryArc, proposal, chapterIndex)
+    if (!result.applied) {
+      logger.warn(`[MuseFlow] ${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
+      const command = formatActBoundaryAdjustmentCommand(state.story.id, proposal)
+      logger.warn(`[MuseFlow] 建议运行：${command}`)
+      if (result.requiresManualResolution) {
+        throw new Error(
+          [
+            `${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason ?? '需要人工调整幕边界。'}`,
+            `请先运行：${command}`,
+          ].join('\n')
+        )
+      }
+      continue
+    }
+    updatedStoryArc = result.storyArc
+    logger.info(`[MuseFlow] ${stage}${result.reason}`)
+  }
+
+  return synchronizeStateWithStoryArc(state, updatedStoryArc)
+}
+
 async function autoExtendCurrentActBeforeOutline(
   state: ReducedGraphState,
   chapterIndex: number
@@ -269,45 +327,27 @@ async function autoExtendCurrentActBeforeOutline(
 
   if (extensionProposals.length === 0) return state
 
-  let updatedStoryArc = state.storyArc
-  for (const proposal of extensionProposals) {
-    const result = applyActBoundaryAdjustment(updatedStoryArc, proposal, chapterIndex)
-    if (!result.applied) {
-      logger.warn(`[MuseFlow] 写前自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
-      const command = formatActBoundaryAdjustmentCommand(state.story.id, proposal)
-      logger.warn(`[MuseFlow] 建议运行：${command}`)
-      if (result.requiresManualResolution) {
-        throw new Error(
-          [
-            `写前自动延长第 ${proposal.actIndex} 幕失败：${result.reason ?? '需要人工调整幕边界。'}`,
-            `请先运行：${command}`,
-          ].join('\n')
-        )
-      }
-      continue
-    }
-    updatedStoryArc = result.storyArc
-    logger.info(`[MuseFlow] 写前${result.reason}`)
-  }
+  return applyAutomaticActExtensions(state, chapterIndex, extensionProposals, '写前')
+}
 
-  if (updatedStoryArc === state.storyArc) return state
+function ensureActCapacityAfterForeshadowAdjudication(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  plannedFulfillmentIds: readonly string[]
+): ReducedGraphState {
+  if (!state.storyArc || !state.storyMemory) return state
 
-  const updatedTotalChapters = Math.max(state.totalChapters, updatedStoryArc.totalChapters)
-  const updatedOutline = ensureOutlineLength(state.outline, updatedTotalChapters)
-  const updatedChapters = ensureChaptersLength(state.chapters, updatedTotalChapters)
-  const updatedStory =
-    updatedTotalChapters === state.story.totalChapters
-      ? state.story
-      : { ...state.story, totalChapters: updatedTotalChapters, updatedAt: Date.now() }
+  const planningConfig = getChapterPlanningConfig(state.genre)
+  const proposal = proposeActExtensionAfterForeshadowAdjudication(
+    state.storyArc,
+    chapterIndex,
+    state.storyMemory,
+    planningConfig.foreshadowMaxFulfillmentsPerChapter,
+    plannedFulfillmentIds
+  )
+  if (!proposal) return state
 
-  return {
-    ...state,
-    story: updatedStory,
-    totalChapters: updatedTotalChapters,
-    storyArc: updatedStoryArc,
-    outline: updatedOutline,
-    chapters: updatedChapters,
-  }
+  return applyAutomaticActExtensions(state, chapterIndex, [proposal], '伏笔裁决后')
 }
 
 function buildArcStatusConstraint(
@@ -899,6 +939,16 @@ export async function expandOutlineForChapter(
     throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
   }
 
+  state = ensureActCapacityAfterForeshadowAdjudication(
+    state,
+    chapterIndex,
+    outlineItem.fulfilledForeshadowIds ?? []
+  )
+  outlineItem = state.outline[chapterIndex]
+  if (!outlineItem) {
+    throw new Error(`第 ${chapterIndex + 1} 章大纲在幕边界调整后不存在`)
+  }
+
   const nextItem = state.outline[chapterIndex + 1]
   const scheduledForeshadowIds = getScheduledForeshadowIds(state, chapterIndex)
   const scheduledForeshadowConstraint =
@@ -921,7 +971,7 @@ export async function expandOutlineForChapter(
     planningConfig,
     provider
   )
-  const boundaryHints = [nextBoundaryHint].filter((h) => h.length > 0)
+  let boundaryHints = [nextBoundaryHint].filter((h) => h.length > 0)
 
   // 如果下一章进入新幕，优先使用幕边界提示；否则使用下一章具体描述作为边界
   const currentAct = state.storyArc
@@ -1104,6 +1154,11 @@ export async function expandOutlineForChapter(
 
   chapterPlan = planEvaluation.plan
   state = { ...state, chapterPlan }
+  state = ensureActCapacityAfterForeshadowAdjudication(
+    state,
+    chapterIndex,
+    chapterPlan.fulfilledForeshadowIds ?? []
+  )
 
   if (chapterIndex > 0) {
     const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)
@@ -1272,6 +1327,10 @@ export async function expandOutlineForChapter(
       logger.info(`  - ${tr.assignee}：${tr.description} → ${tr.resolution}（${tr.reason}）`)
     }
   }
+
+  boundaryHints = [
+    buildNextChapterBoundaryHint(state.outline, chapterIndex, state.storyArc),
+  ].filter((hint) => hint.length > 0)
 
   if (boundaryHints.length > 0) {
     logger.info('边界约束：')
