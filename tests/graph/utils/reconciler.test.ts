@@ -612,6 +612,63 @@ describe('detectOutlineStateConflicts', () => {
     expect(result.conflicts).toHaveLength(1)
     expect(result.conflicts[0].subject).toBe('密信')
   })
+
+  it('only checks canonical facts whose subjects are in filterSubjects', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'cf1',
+          subject: '密信',
+          attribute: 'location',
+          value: '官府仓库',
+          establishedIn: 5,
+        },
+        {
+          id: 'cf2',
+          subject: '匕首',
+          attribute: 'location',
+          value: '口袋',
+          establishedIn: 5,
+        },
+      ],
+    }
+
+    const provider = {
+      chat: vi.fn(async (): Promise<string> =>
+        JSON.stringify({
+          conflicts: [
+            {
+              subject: '密信',
+              attribute: 'location',
+              oldValue: '官府仓库',
+              newValue: '王府',
+              severity: 'warning',
+              description: '大纲将密信位置改为王府',
+            },
+          ],
+          constraints: [],
+        })
+      ),
+    } as unknown as ModelProvider
+
+    const result = await detectOutlineStateConflicts(
+      state,
+      '密信被转移至王府。',
+      6,
+      provider,
+      undefined,
+      new Set(['密信'])
+    )
+    expect(result.conflicts).toHaveLength(1)
+    expect(result.conflicts[0].subject).toBe('密信')
+    const calls = vi.mocked(provider.chat).mock.calls[0]
+    const messages = calls?.[0] as Array<{ role?: string; content?: string }> | undefined
+    const userMessage = messages?.find((m) => m.role === 'user')
+    const prompt = userMessage?.content ?? ''
+    expect(prompt).toContain('密信')
+    expect(prompt).not.toContain('匕首')
+  })
 })
 
 describe('detectSecretRevealConflicts', () => {
@@ -720,6 +777,44 @@ describe('conflict detection & classification', () => {
     const result = await classifyConflicts([conflict], createMockProvider())
     expect(result[0].type).toBe('contradiction')
     expect(result[0].severity).toBe('blocking')
+  })
+
+  it('only checks item locations in filterSubjects when filter is provided', async () => {
+    const state = emptyState()
+    state.keyItemsLocation = { 密信: '书桌抽屉', 白玉牌: '赵管事腰间' }
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValueOnce([
+      { skip: false, location: '官府仓库', state: null, changeKind: 'explicit_change' },
+      { skip: false, location: '官府仓库', state: null, changeKind: 'explicit_change' },
+    ])
+
+    const conflicts = await detectItemLocationConflicts(
+      state,
+      '第10章：密信与白玉牌都被转移至官府仓库。',
+      createMockProvider(),
+      new Set(['密信'])
+    )
+
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].subject).toBe('密信')
+  })
+
+  it('only checks character status in filterSubjects when filter is provided', async () => {
+    const state = emptyState()
+    state.characterStatus = { 主角: '自由', 侍女: '自由' }
+    vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValueOnce([
+      { skip: false, location: null, state: '身受重伤', changeKind: 'explicit_change' },
+      { skip: false, location: null, state: '身亡', changeKind: 'explicit_change' },
+    ])
+
+    const conflicts = await detectCharacterStatusConflicts(
+      state,
+      '第10章：主角身受重伤，侍女身亡。',
+      createMockProvider(),
+      new Set(['主角'])
+    )
+
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].subject).toBe('主角')
   })
 })
 

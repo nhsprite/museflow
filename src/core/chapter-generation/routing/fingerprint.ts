@@ -11,3 +11,16 @@ export function calculateFingerprintSetSimilarity(prev: string[], curr: string[]
   }
   return intersection / Math.max(prevSet.size, currSet.size)
 }
+
+/**
+ * 判断当前指纹集合是否是上一轮的严格子集（或相等）。
+ * 空集合不被视为子集，避免在问题已清空时误判。
+ */
+export function isFingerprintSubset(prev: string[], curr: string[]): boolean {
+  if (prev.length === 0 || curr.length === 0) return false
+  const prevSet = new Set(prev)
+  for (const fp of curr) {
+    if (!prevSet.has(fp)) return false
+  }
+  return true
+}

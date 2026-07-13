@@ -574,7 +574,7 @@ describe('expandOutlineForChapter', () => {
     expect(finalOutline).toContain('fs-null')
   })
 
-  it('throws the exact bounded scheduling error after all JIT attempts omit a selected ID', async () => {
+  it('auto-defers scheduled foreshadow IDs when all JIT attempts omit them', async () => {
     const state = stateWithScheduledForeshadows(1, '', [createRequiredForeshadow('fs-due', 2)])
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     chapterOutlineRunMock.mockResolvedValue({
@@ -587,9 +587,8 @@ describe('expandOutlineForChapter', () => {
     })
 
     try {
-      await expect(expandOutlineForChapter(state, 1, createMockProvider())).rejects.toThrow(
-        '第 2 章即时大纲连续 3 次存在未裁决伏笔候选：fs-due（单章容量 3）'
-      )
+      const result = await expandOutlineForChapter(state, 1, createMockProvider())
+
       expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
       expect(warnSpy).toHaveBeenCalledWith(
         '[MuseFlow] 第 2 章即时大纲第 1/3 次存在未裁决伏笔候选：fs-due'
@@ -597,7 +596,9 @@ describe('expandOutlineForChapter', () => {
       expect(warnSpy).toHaveBeenCalledWith(
         '[MuseFlow] 第 2 章即时大纲第 3/3 次存在未裁决伏笔候选：fs-due'
       )
-      expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+      expect(result.outline?.[1]?.deferredForeshadowIds).toContain('fs-due')
+      expect(result.outline?.[1]?.fulfilledForeshadowIds).not.toContain('fs-due')
+      expect(result.pendingIssues.some((i) => i.type === 'outline_foreshadow')).toBe(true)
     } finally {
       warnSpy.mockRestore()
     }
@@ -648,7 +649,7 @@ describe('expandOutlineForChapter', () => {
     }
   })
 
-  it('reports exact evidence and capacity after the initial plan correction is exhausted', async () => {
+  it('auto-defers outline-claimed foreshadow IDs when plan correction is exhausted', async () => {
     const scheduledState = stateWithScheduledForeshadows(1, '既有大纲。', [
       createRequiredForeshadow('fs-due', 2),
     ])
@@ -674,12 +675,16 @@ describe('expandOutlineForChapter', () => {
       })
 
     try {
-      await expect(expandOutlineForChapter(state, 1, createMockProvider())).rejects.toThrow(
-        '第 2 章章节规划连续 2 次遗漏大纲声称的伏笔兑现证据：fulfilledForeshadowIds：fs-due；expectedEvents.foreshadow-fulfill：（无遗漏）（单章容量 3）'
-      )
+      const result = await expandOutlineForChapter(state, 1, createMockProvider())
+
+      expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
       expect(warnSpy).toHaveBeenCalledWith(
         '[MuseFlow] 第 2 章章节规划第 2/2 次遗漏大纲声称的伏笔兑现证据：fulfilledForeshadowIds：fs-due；expectedEvents.foreshadow-fulfill：（无遗漏）（单章容量 3）'
       )
+      expect(result.outline?.[1]?.deferredForeshadowIds).toContain('fs-due')
+      expect(result.outline?.[1]?.fulfilledForeshadowIds).not.toContain('fs-due')
+      expect(result.chapterPlan.fulfilledForeshadowIds).not.toContain('fs-due')
+      expect(result.pendingIssues.some((i) => i.type === 'outline_foreshadow')).toBe(true)
     } finally {
       warnSpy.mockRestore()
     }
@@ -748,7 +753,7 @@ describe('expandOutlineForChapter', () => {
     }
   })
 
-  it('does not persist a staged capacity extension when JIT outline retries are exhausted', async () => {
+  it('auto-defers scheduled IDs and continues when JIT outline retries are exhausted', async () => {
     const foreshadowIds = Array.from(
       { length: 11 },
       (_, index) => `fs-${String(index + 1).padStart(2, '0')}`
@@ -767,13 +772,15 @@ describe('expandOutlineForChapter', () => {
       },
     })
 
-    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
-      '第 3 章即时大纲连续 3 次存在未裁决伏笔候选：fs-01, fs-02, fs-03（单章容量 3）'
-    )
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(['fs-01', 'fs-02', 'fs-03'])
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
+    expect(result.pendingIssues.some((i) => i.type === 'outline_foreshadow')).toBe(true)
     expect(writeOutlineContent).not.toHaveBeenCalled()
   })
 
-  it('does not persist staged extension or JIT outline when plan correction is exhausted', async () => {
+  it('auto-defers outline-claimed IDs and continues when plan correction is exhausted', async () => {
     const foreshadowIds = Array.from(
       { length: 11 },
       (_, index) => `fs-${String(index + 1).padStart(2, '0')}`
@@ -799,9 +806,12 @@ describe('expandOutlineForChapter', () => {
       }),
     })
 
-    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
-      '第 3 章章节规划连续 2 次遗漏大纲声称的伏笔兑现证据：fulfilledForeshadowIds：（无遗漏）；expectedEvents.foreshadow-fulfill：fs-01, fs-02, fs-03（单章容量 3）'
-    )
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(['fs-01', 'fs-02', 'fs-03'])
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
+    expect(result.chapterPlan.fulfilledForeshadowIds).toEqual([])
+    expect(result.pendingIssues.some((i) => i.type === 'outline_foreshadow')).toBe(true)
     expect(writeOutlineContent).not.toHaveBeenCalled()
   })
 
@@ -1787,6 +1797,68 @@ describe('validateChapterPlanBudget', () => {
 
     const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
 
+    expect(result.valid).toBe(true)
+  })
+
+  it('skips LLM when rule-based validation passes', async () => {
+    const plan: ChapterPlan = {
+      sections: [
+        {
+          title: '核心事件',
+          summary: '买办登场',
+          wordCount: 2500,
+          events: ['陈裕堂登门'],
+          characters: ['苏半城', '陈裕堂'],
+          timeMark: '午时',
+        },
+        {
+          title: '过渡',
+          summary: '亲王回话收尾',
+          wordCount: 800,
+          events: ['回话亲王'],
+          characters: ['苏半城'],
+          timeMark: '巳时',
+        },
+      ],
+      timeline: [],
+      outlineCheck: [{ requirement: '买办登场', fulfilled: true, section: '核心事件' }],
+    }
+
+    const judge = vi.fn().mockResolvedValue([false, false])
+    const result = await validateChapterPlanBudget(plan, defaultPlanningConfig, '大纲描述', judge)
+
+    expect(result.valid).toBe(true)
+    expect(judge).not.toHaveBeenCalled()
+  })
+
+  it('calls LLM only for ambiguous sections when rules fail', async () => {
+    const plan: ChapterPlan = {
+      sections: [
+        {
+          title: '核心事件',
+          summary: '买办登场',
+          wordCount: 1000,
+          events: ['陈裕堂登门'],
+          characters: ['苏半城', '陈裕堂'],
+          timeMark: '午时',
+        },
+        {
+          title: '过渡',
+          summary: '亲王回话谈判',
+          wordCount: 2000,
+          events: ['回话亲王'],
+          characters: ['苏半城', '亲王'],
+          timeMark: '巳时',
+        },
+      ],
+      timeline: [],
+      outlineCheck: [{ requirement: '买办登场', fulfilled: true, section: '核心事件' }],
+    }
+
+    const judge = vi.fn().mockResolvedValue([false, true])
+    const result = await validateChapterPlanBudget(plan, defaultPlanningConfig, '大纲描述', judge)
+
+    expect(judge).toHaveBeenCalledTimes(1)
     expect(result.valid).toBe(true)
   })
 })

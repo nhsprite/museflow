@@ -719,4 +719,119 @@ describe('detect_consistency validation context', () => {
     expect(capturedContinuityPrompt).toContain('人物设定')
     expect(capturedContinuityPrompt).toContain('改名徐砚秋')
   })
+
+  describe('opening continuity judge skip', () => {
+    function buildChapterTwoState() {
+      const state = buildBaseState()
+      state.currentChapterIndex = 1
+      state.chapters = [
+        {
+          id: 'chapter-1',
+          storyId: 'story-1',
+          number: 1,
+          title: null,
+          outline: null,
+          summary: '第一章摘要',
+          foreshadows: null,
+          status: 'done',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        {
+          id: 'chapter-2',
+          storyId: 'story-1',
+          number: 2,
+          title: null,
+          outline: null,
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        null,
+      ]
+      readChapterContentMock.mockImplementation(
+        async (_outputDir: string, chapterNumber: number) =>
+          chapterNumber === 1 ? '# 第一章\n\n甲在前厅坐下。' : '# 第二章\n\n三日后，甲到了后屋。'
+      )
+      continuityCheckResponse = { isContinuous: false, reason: '位置断裂' }
+      return state
+    }
+
+    it('skips the LLM judge when a validated chapterTimeAnchor exists', async () => {
+      const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+      const { createEmptyStoryMemory } = await import('../../src/story-memory/projector.js')
+
+      const state = buildChapterTwoState()
+      state.storyMemory = createEmptyStoryMemory()
+      state.chapterPlan = { chapterTimeAnchor: '三日后清晨' } as typeof state.chapterPlan
+
+      const result = await detect_continuity(createMockContext(), state)
+
+      expect(result.pendingIssues).toBeUndefined()
+      expect(capturedContinuityPrompt).toBe('')
+    })
+
+    it('skips the LLM judge when draft events already explain the location jump', async () => {
+      const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+      const { createEmptyStoryMemory } = await import('../../src/story-memory/projector.js')
+
+      const state = buildChapterTwoState()
+      const memory = createEmptyStoryMemory()
+      memory.entities.characters['c-1'] = {
+        id: 'c-1',
+        name: '甲',
+        locationId: 'loc-a',
+        status: {},
+        introducedIn: 0,
+      }
+      memory.entities.locations['loc-a'] = { id: 'loc-a', name: '前厅', introducedIn: 0 }
+      memory.entities.locations['loc-b'] = { id: 'loc-b', name: '后屋', introducedIn: 0 }
+      state.storyMemory = memory
+      state.chapterPlan = null
+      state.draftChapterEvents = [
+        {
+          id: 'e-1',
+          type: 'character-location',
+          characterId: 'c-1',
+          locationId: 'loc-b',
+          chapterIndex: 1,
+          source: 'chapter',
+        },
+      ]
+
+      const result = await detect_continuity(createMockContext(), state)
+
+      expect(result.pendingIssues).toBeUndefined()
+      expect(capturedContinuityPrompt).toBe('')
+    })
+
+    it('runs the LLM judge when there is no anchor and no explaining event', async () => {
+      const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+      const { createEmptyStoryMemory } = await import('../../src/story-memory/projector.js')
+
+      const state = buildChapterTwoState()
+      state.storyMemory = createEmptyStoryMemory()
+      state.chapterPlan = null
+
+      const result = await detect_continuity(createMockContext(), state)
+
+      expect(capturedContinuityPrompt).not.toBe('')
+      expect(result.pendingIssues).toHaveLength(1)
+      expect(result.pendingIssues?.[0]?.type).toBe('continuity')
+    })
+
+    it('runs the LLM judge when storyMemory is missing even with an anchor', async () => {
+      const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+
+      const state = buildChapterTwoState()
+      state.chapterPlan = { chapterTimeAnchor: '三日后清晨' } as typeof state.chapterPlan
+
+      const result = await detect_continuity(createMockContext(), state)
+
+      expect(capturedContinuityPrompt).not.toBe('')
+      expect(result.pendingIssues).toHaveLength(1)
+    })
+  })
 })

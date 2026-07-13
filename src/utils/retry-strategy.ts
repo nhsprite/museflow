@@ -17,6 +17,13 @@ export function inferRetryStrategy(issue: Issue): RetryStrategy {
   // 普通伏笔回收描写不足可以局部修复；结构性违约已由上方 type 分支处理。
   if (issue.dimension === 'foreshadowing') return 'fix'
   if (issue.dimension === 'outline') return 'draft'
-  if (issue.dimension === 'character_knowledge' || issue.dimension === 'dialogue') return 'draft'
+  if (
+    issue.dimension === 'character_knowledge' ||
+    issue.dimension === 'dialogue' ||
+    issue.dimension === 'information'
+  ) {
+    // 如果一致性错误已经精确定位到段落/句子，优先走局部 fix，避免整章重打。
+    return issue.locationRef?.paragraphIndex !== undefined ? 'fix' : 'draft'
+  }
   return 'draft'
 }

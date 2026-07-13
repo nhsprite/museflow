@@ -7,13 +7,14 @@ import { repairCorruptedState } from '../services/state-repair/index.js'
 import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 
 /**
- * 自动状态修复节点：rewrite 循环中剩余 error 全部为状态污染类且本章尚未
- * 尝试过修复时由 routing 进入。LLM 提出结构化状态修正提案，经严格结构化
- * 校验后写入 canonicalFacts（source: 'state_repair'）并立即合并进 storyState，
- * 随后出边进入 validate_chapter_structured 重新校验。
+ * 自动状态修复节点：rewrite 循环中剩余 error 包含状态污染类问题且本章修复
+ * 尝试次数未耗尽时由 routing 进入（每章最多 2 次）。LLM 提出结构化状态修正
+ * 提案，经严格结构化校验后写入 canonicalFacts（source: 'state_repair'）并
+ * 立即合并进 storyState，随后出边进入 validate_chapter_structured 重新校验。
  *
- * 无任何提案通过校验时不改状态：routing 下轮会因 stateRepairAttempted=true
- * 退回人工 request_rewrite。
+ * 被校验拒绝的提案原因会写回 session.stateRepairRejections，在下一次修复
+ * 尝试时回传给 LLM，避免原样重复提案；尝试次数耗尽后 routing 退回人工
+ * request_rewrite。
  */
 export async function repair_state(
   context: RuntimeContext,
@@ -40,12 +41,25 @@ export async function repair_state(
       storyMemory: state.storyMemory,
       chapterSummaries: selectChapterSummaries(state.chapters, chapterIndex),
       currentChapterIndex: chapterIndex,
+      ...(state.session?.stateRepairRejections && state.session.stateRepairRejections.length > 0
+        ? { previousRejections: state.session.stateRepairRejections }
+        : {}),
     },
     context.provider
   )
 
+  // 把本轮被拒原因写回 session，供下一次修复尝试回传给 LLM。
+  const sessionUpdate: Partial<ReducedGraphState> = state.session
+    ? {
+        session: {
+          ...state.session,
+          stateRepairRejections: outcome.rejectionFeedback,
+        },
+      }
+    : {}
+
   if (outcome.acceptedFacts.length === 0) {
-    return {}
+    return sessionUpdate
   }
 
   // 已修复的状态污染类 issue 从 pendingIssues 移除，避免旧 issue 残留；
@@ -53,6 +67,7 @@ export async function repair_state(
   const repairedIssueIds = new Set(stateCorruptionIssues.map((issue) => issue.id))
 
   return {
+    ...sessionUpdate,
     storyState: outcome.storyState,
     canonicalFactsDelta: [...(state.canonicalFactsDelta ?? []), ...outcome.acceptedFacts],
     pendingIssues: state.pendingIssues.filter((issue) => !repairedIssueIds.has(issue.id)),

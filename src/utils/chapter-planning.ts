@@ -62,12 +62,47 @@ export interface ChapterPlanBudgetValidation {
   maxNonCoreWordCount: number
 }
 
-export async function validateChapterPlanBudget(
+interface RuleBasedCoreSectionResult {
+  flags: boolean[]
+  ambiguousIndices: Set<number>
+}
+
+function computeRuleBasedCoreSectionFlags(plan: ChapterPlan): RuleBasedCoreSectionResult {
+  const sections = plan.sections
+  const coreSectionTitles = new Set(
+    (plan.outlineCheck ?? []).filter((c) => c.fulfilled && c.section).map((c) => c.section!.trim())
+  )
+
+  const flags: boolean[] = []
+  const ambiguousIndices = new Set<number>()
+
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i]
+    if (!s) {
+      flags.push(false)
+      continue
+    }
+    const title = s.title?.trim() ?? ''
+    if (coreSectionTitles.has(title)) {
+      flags.push(true)
+    } else if (!s.events || s.events.length === 0) {
+      // 没有明确事件描述的 section 不可能为核心事件
+      flags.push(false)
+    } else {
+      // 有事件但标题未命中 outlineCheck，属于模糊边界，交给 LLM 兜底
+      flags.push(false)
+      ambiguousIndices.add(i)
+    }
+  }
+
+  return { flags, ambiguousIndices }
+}
+
+function computeBudgetValidation(
   plan: ChapterPlan,
   config: ChapterPlanningConfig,
-  outlineDescription?: string,
-  judgeCoreSections?: CoreSectionJudge
-): Promise<ChapterPlanBudgetValidation> {
+  coreFlags: boolean[]
+): ChapterPlanBudgetValidation {
   const sections = plan.sections
   if (!sections || sections.length === 0) {
     return {
@@ -78,20 +113,6 @@ export async function validateChapterPlanBudget(
       coreRatio: 0,
       maxNonCoreWordCount: 0,
     }
-  }
-
-  // 优先使用注入的语义判断函数。
-  // 若未提供，则回退到 outlineCheck 中标注的 fulfilled section 标题匹配。
-  let coreFlags: boolean[]
-  if (judgeCoreSections) {
-    coreFlags = await judgeCoreSections(outlineDescription, sections)
-  } else {
-    const coreSectionTitles = new Set(
-      (plan.outlineCheck ?? [])
-        .filter((c) => c.fulfilled && c.section)
-        .map((c) => c.section!.trim())
-    )
-    coreFlags = sections.map((s) => coreSectionTitles.has(s.title?.trim() ?? ''))
   }
 
   let totalWordCount = 0
@@ -145,4 +166,31 @@ export async function validateChapterPlanBudget(
     coreRatio,
     maxNonCoreWordCount,
   }
+}
+
+export async function validateChapterPlanBudget(
+  plan: ChapterPlan,
+  config: ChapterPlanningConfig,
+  outlineDescription?: string,
+  judgeCoreSections?: CoreSectionJudge
+): Promise<ChapterPlanBudgetValidation> {
+  // 先用 outlineCheck 与 section.events 等结构化规则判定核心段落。
+  const { flags: ruleFlags, ambiguousIndices } = computeRuleBasedCoreSectionFlags(plan)
+  const ruleValidation = computeBudgetValidation(plan, config, ruleFlags)
+
+  // 规则已经通过时直接返回，避免调用 LLM。
+  if (ruleValidation.valid) {
+    return ruleValidation
+  }
+
+  // 规则未通过且存在模糊边界、并提供了 LLM 兜底时，让模型判断模糊边界。
+  if (judgeCoreSections && ambiguousIndices.size > 0) {
+    const llmFlags = await judgeCoreSections(outlineDescription, plan.sections)
+    const combinedFlags = ruleFlags.map(
+      (isCore, i) => isCore || (ambiguousIndices.has(i) && (llmFlags[i] ?? false))
+    )
+    return computeBudgetValidation(plan, config, combinedFlags)
+  }
+
+  return ruleValidation
 }

@@ -7,6 +7,7 @@ import {
 } from './fragments/index.js'
 import type { FixAgentInput, SentenceFix, ParagraphFix } from '../types.js'
 import type { Issue } from '../../types/agent.js'
+import { renderStoryEventLine } from '../../story-memory/event-format.js'
 
 export type FixPromptMode = 'sentence' | 'paragraph' | 'legacy'
 
@@ -72,6 +73,58 @@ export interface FixPromptSections {
   characterWhitelistSection: string
   targetSection: string
   existingChapterSection: string
+  chapterContractSection: string
+}
+
+function buildChapterContractSection(chapterPlan: FixAgentInput['chapterPlan']): string {
+  if (!chapterPlan) return ''
+
+  const parts: string[] = []
+
+  if (chapterPlan.expectedEvents && chapterPlan.expectedEvents.length > 0) {
+    parts.push(`<expected_events>
+${chapterPlan.expectedEvents.map((e) => `  - ${renderStoryEventLine(e)}`).join('\n')}
+</expected_events>`)
+  }
+
+  if (chapterPlan.claimedMandatoryBeatIds && chapterPlan.claimedMandatoryBeatIds.length > 0) {
+    parts.push(`<claimed_mandatory_beats>
+${chapterPlan.claimedMandatoryBeatIds.map((id) => `  - ${id}`).join('\n')}
+</claimed_mandatory_beats>`)
+  }
+
+  if (chapterPlan.claimedBeatIds && chapterPlan.claimedBeatIds.length > 0) {
+    parts.push(`<claimed_beats>
+${chapterPlan.claimedBeatIds.map((id) => `  - ${id}`).join('\n')}
+</claimed_beats>`)
+  }
+
+  if (chapterPlan.fulfilledForeshadowIds && chapterPlan.fulfilledForeshadowIds.length > 0) {
+    parts.push(`<fulfilled_foreshadows>
+${chapterPlan.fulfilledForeshadowIds.map((id) => `  - ${id}`).join('\n')}
+</fulfilled_foreshadows>`)
+  }
+
+  if (chapterPlan.introducedForeshadowIds && chapterPlan.introducedForeshadowIds.length > 0) {
+    parts.push(`<introduced_foreshadows>
+${chapterPlan.introducedForeshadowIds.map((id) => `  - ${id}`).join('\n')}
+</introduced_foreshadows>`)
+  }
+
+  if (chapterPlan.resolvedTaskIds && chapterPlan.resolvedTaskIds.length > 0) {
+    parts.push(`<resolved_tasks>
+${chapterPlan.resolvedTaskIds.map((id) => `  - ${id}`).join('\n')}
+</resolved_tasks>`)
+  }
+
+  if (chapterPlan.createdTaskIds && chapterPlan.createdTaskIds.length > 0) {
+    parts.push(`<created_tasks>
+${chapterPlan.createdTaskIds.map((id) => `  - ${id}`).join('\n')}
+</created_tasks>`)
+  }
+
+  if (parts.length === 0) return ''
+  return `<chapter_contract>\n${parts.join('\n\n')}\n</chapter_contract>`
 }
 
 export function buildFixPromptSections(
@@ -95,6 +148,7 @@ export function buildFixPromptSections(
     existingChapterSection: state.chapterContent
       ? `<chapter_content>\n${state.chapterContent}\n</chapter_content>`
       : '',
+    chapterContractSection: buildChapterContractSection(state.chapterPlan),
   }
 }
 
@@ -139,6 +193,8 @@ const SENTENCE_USER_PROMPT_TEMPLATE = `<instruction>
 
 {characterWhitelistSection}
 
+{chapterContractSection}
+
 <context>
   {context}
 </context>
@@ -156,6 +212,7 @@ const SENTENCE_USER_PROMPT_TEMPLATE = `<instruction>
   ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后通读段落，确保没有句子重复出现</constraint>
   <constraint priority="critical">修复时必须对照"前几章摘要"和"角色状态与时间线"，确保不引入与前文矛盾的描述；不得改变前文已确立的事实状态。</constraint>
+  <constraint priority="critical">不得破坏本章契约（chapter_contract）中声明的结构化事件、必须兑现的伏笔、任务与节拍；修复后的正文仍须满足这些契约。</constraint>
   <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
   <constraint>你不需要输出完整章节或完整段落，只需要输出修改后的句子</constraint>
 </constraints>
@@ -187,6 +244,8 @@ const PARAGRAPH_USER_PROMPT_TEMPLATE = `<instruction>
 
 {characterWhitelistSection}
 
+{chapterContractSection}
+
 <context>
   {context}
 </context>
@@ -206,6 +265,7 @@ const PARAGRAPH_USER_PROMPT_TEMPLATE = `<instruction>
   ${FACT_CONSISTENCY_RULES}
   <constraint>修改后通读段落，确保没有句子重复出现</constraint>
   <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述；不得改变前文已确立的事实状态。</constraint>
+  <constraint priority="critical">不得破坏本章契约（chapter_contract）中声明的结构化事件、必须兑现的伏笔、任务与节拍；修复后的正文仍须满足这些契约。</constraint>
   <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
   <constraint>你不需要输出完整章节，只需要输出修改后的段落</constraint>
 </constraints>
@@ -237,6 +297,8 @@ const LEGACY_USER_PROMPT_TEMPLATE = `<instruction>
 
 {characterWhitelistSection}
 
+{chapterContractSection}
+
 {existingChapterSection}
 
 <constraints>
@@ -248,6 +310,7 @@ const LEGACY_USER_PROMPT_TEMPLATE = `<instruction>
   ${AI_PHRASE_PROHIBITIONS}
   <constraint>修改后确保没有任何句子重复出现</constraint>
   <constraint priority="critical">修复时必须对照"前几章摘要"、"角色状态与时间线"和"故事当前状态"，确保不引入与前文矛盾的描述；不得改变前文已确立的事实状态。</constraint>
+  <constraint priority="critical">不得破坏本章契约（chapter_contract）中声明的结构化事件、必须兑现的伏笔、任务与节拍；修复后的正文仍须满足这些契约。</constraint>
   <constraint priority="critical">本章只能修复上述问题，不得借机推进到后续章节的核心事件。如果修复会越界，请宁可保留原文也不要越界。</constraint>
 </constraints>
 

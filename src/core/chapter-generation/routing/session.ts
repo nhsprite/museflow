@@ -19,7 +19,7 @@ export function createChapterSession(
     forceStructuralRewrite: false,
     rewriteApproved: false,
     issueFingerprintHistory: [],
-    stateRepairAttempted: false,
+    stateRepairAttempts: 0,
     ...overrides,
   }
 }

@@ -73,13 +73,31 @@ describe('decideNextStep state repair routing (Case 1)', () => {
     const result = await decideNextStep(ctx, makeDeps())
 
     expect(result.step).toEqual({ kind: 'repair_state' })
-    expect(result.sessionUpdate.stateRepairAttempted).toBe(true)
+    expect(result.sessionUpdate.stateRepairAttempts).toBe(1)
     expect(result.sessionUpdate.rewriteApproved).toBeUndefined()
   })
 
-  it('falls back to request_rewrite once state repair was already attempted', async () => {
+  it('allows a second repair attempt with rejection feedback available', async () => {
     const ctx: RoutingContext = {
-      session: makeSession({ stateRepairAttempted: true }),
+      session: makeSession({
+        stateRepairAttempts: 1,
+        stateRepairRejections: ['c-1/location: l-1 → l-2（oldValue 与当前记录值不精确相等）'],
+      }),
+      pendingIssues: [stateCorruptionError('e1')],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: undefined,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step).toEqual({ kind: 'repair_state' })
+    expect(result.sessionUpdate.stateRepairAttempts).toBe(2)
+  })
+
+  it('falls back to request_rewrite once state repair attempts are exhausted', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({ stateRepairAttempts: 2 }),
       pendingIssues: [stateCorruptionError('e1')],
       genre: 'general',
       chapterFileExists: true,
@@ -117,7 +135,7 @@ describe('decideNextStep state repair routing (Case 1)', () => {
     const result = await decideNextStep(ctx, makeDeps())
 
     expect(result.step).toEqual({ kind: 'repair_state' })
-    expect(result.sessionUpdate.stateRepairAttempted).toBe(true)
+    expect(result.sessionUpdate.stateRepairAttempts).toBe(1)
   })
 
   it('does not route to repair_state when no error is state-corruption', async () => {

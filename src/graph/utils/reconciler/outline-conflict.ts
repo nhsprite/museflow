@@ -277,8 +277,11 @@ function buildOutlineStateConflictId(subject: string, attribute: string, index: 
   return `outline-state:${subject}:${attribute}:${index}`
 }
 
-function formatCanonicalFacts(state: StoryState): string {
-  const facts = state.canonicalFacts ?? []
+function formatCanonicalFacts(state: StoryState, filterSubjects?: Set<string>): string {
+  let facts = state.canonicalFacts ?? []
+  if (filterSubjects) {
+    facts = facts.filter((f) => filterSubjects.has(f.subject))
+  }
   if (facts.length === 0) return '（暂无权威事实）'
 
   return facts
@@ -331,13 +334,14 @@ async function detectCanonicalFactOutlineConflicts(
   state: StoryState,
   outline: string,
   chapterIndex: number,
-  provider?: ModelProvider
+  provider?: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<{ conflicts: Conflict[]; constraints: string[] }> {
   if (!provider) {
     return { conflicts: [], constraints: [] }
   }
 
-  const factsText = formatCanonicalFacts(state)
+  const factsText = formatCanonicalFacts(state, filterSubjects)
 
   const messages: Message[] = [
     {
@@ -430,7 +434,8 @@ export async function detectOutlineStateConflicts(
   outline: string,
   chapterIndex: number,
   provider?: ModelProvider,
-  storyArc?: StoryArc
+  storyArc?: StoryArc,
+  filterSubjects?: Set<string>
 ): Promise<{ conflicts: Conflict[]; constraints: string[] }> {
   if (!outline || outline.trim().length === 0) {
     return { conflicts: [], constraints: [] }
@@ -440,7 +445,8 @@ export async function detectOutlineStateConflicts(
     state,
     outline,
     chapterIndex,
-    provider
+    provider,
+    filterSubjects
   )
 
   if (state.storyMemory && storyArc) {

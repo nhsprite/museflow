@@ -128,6 +128,39 @@ ${canonicalFacts.map((fact) => `- [${fact.subject}] ${fact.attribute}: ${fact.va
   return sections.join('\n\n')
 }
 
+/**
+ * 判断是否可以跳过 LLM 开头承接检查。
+ *
+ * 当 StoryMemory 存在且存在结构化转场依据时，开头与上一章结尾的时间/位置跳转
+ * 已被权威数据仲裁，prose 级的 LLM 开头承接检查误判率高于检出率：
+ * - chapterPlan.chapterTimeAnchor 已经过 outline-expander 校验（不一致的锚点会被
+ *   重规划或移除），且 consistency agent 将其作为时间推进的最高权威；
+ * - 或本章草稿的结构化事件已记录实体移动（角色位置/物品持有者/物品位置变化），
+ *   开头的位置/持有者跳转属于被事件解释的转场。
+ * 跨章节一致性仍由 consistency agent（权威事实 + 时间锚点）兜底；
+ * 无 StoryMemory 时保留原检查。
+ */
+function shouldSkipOpeningContinuityJudge(state: ReducedGraphState): boolean {
+  const memory = state.storyMemory
+  if (!memory) return false
+
+  const anchor = state.chapterPlan?.chapterTimeAnchor
+  if (typeof anchor === 'string' && anchor.trim().length > 0) return true
+
+  const events = state.draftChapterEvents
+  if (events && events.length > 0) {
+    const projected = applyEvents(memory, events)
+    const diff = diffMemorySnapshots(memory, projected)
+    return (
+      diff.characterLocations.length > 0 ||
+      diff.itemHolders.length > 0 ||
+      diff.itemLocations.length > 0
+    )
+  }
+
+  return false
+}
+
 async function judgeChapterOpeningContinuity(
   provider: ModelProvider,
   previousEnding: string,
@@ -406,6 +439,12 @@ export async function detect_continuity(
 
   const previousEnding = extractChapterEndingSnippet(previousContent)
   const currentOpening = extractChapterOpeningSnippet(currentContent)
+
+  if (shouldSkipOpeningContinuityJudge(state)) {
+    logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章存在结构化转场依据，跳过 LLM 开头承接检查`)
+    return {}
+  }
+
   const issues = await judgeChapterOpeningContinuity(
     context.provider,
     previousEnding,

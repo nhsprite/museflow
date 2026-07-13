@@ -167,6 +167,7 @@ export async function runSentenceFix(
     charactersList: effectiveCharacters,
     outlineCharacters,
     establishedCharacters,
+    ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
     sentenceFix: {
       sentences: sentenceFixes,
       context,
@@ -282,6 +283,7 @@ export async function runParagraphFix(
     charactersList: effectiveCharacters,
     outlineCharacters,
     establishedCharacters,
+    ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
     paragraphFix: {
       paragraphs: paragraphFixes,
       context,
@@ -369,6 +371,7 @@ export async function runLegacyFix(
     charactersList: effectiveCharacters,
     outlineCharacters,
     establishedCharacters,
+    ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
     outline: state.outline.map((o, i) => `第${i + 1}章：${o.title}\n${o.description}`).join('\n\n'),
   }
 

@@ -24,8 +24,10 @@ export interface ChapterSession {
   forceStructuralRewrite: boolean
   rewriteApproved: boolean
   issueFingerprintHistory: string[][]
-  /** 本章是否已尝试过自动状态修复（repair_state），每章限 1 次。 */
-  stateRepairAttempted?: boolean
+  /** 本章已尝试自动状态修复（repair_state）的次数，每章最多 2 次。 */
+  stateRepairAttempts?: number
+  /** 上轮状态修复被结构化校验拒绝的提案反馈，供下一次 LLM 提案参考。 */
+  stateRepairRejections?: string[]
 }
 
 export interface RoutingContext {

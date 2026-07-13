@@ -368,4 +368,79 @@ describe('repairCorruptedState', () => {
     expect(outcome.acceptedFacts).toHaveLength(0)
     expect(outcome.storyState).toBe(storyState)
   })
+
+  it('returns structured rejection feedback with reasons for rejected proposals', async () => {
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({
+        proposals: [
+          makeProposal({ subject: 'ghost' }),
+          makeProposal({ oldValue: 'wrong' }),
+          makeProposal(),
+        ],
+      }),
+    }
+    const outcome = await repairCorruptedState(
+      {
+        issues: [makeIssue()],
+        storyState: buildState(),
+        storyMemory: buildMemory(),
+        chapterSummaries: [],
+        currentChapterIndex: 24,
+      },
+      provider
+    )
+
+    expect(outcome.acceptedFacts).toHaveLength(1)
+    expect(outcome.rejectionFeedback).toHaveLength(2)
+    expect(outcome.rejectionFeedback[0]).toContain('ghost/location')
+    expect(outcome.rejectionFeedback[0]).toContain('不是已知实体 id')
+    expect(outcome.rejectionFeedback[1]).toContain('不精确相等')
+  })
+
+  it('feeds previous rejection feedback back into the repair prompt', async () => {
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({ proposals: [makeProposal()] }),
+    }
+    await repairCorruptedState(
+      {
+        issues: [makeIssue()],
+        storyState: buildState(),
+        storyMemory: buildMemory(),
+        chapterSummaries: [],
+        currentChapterIndex: 24,
+        previousRejections: ['item-1/location: deeper → loc-b（oldValue 与当前记录值不精确相等）'],
+      },
+      provider
+    )
+
+    const calls = vi.mocked(provider.chatStructured!).mock.calls
+    const messages = calls[0]?.[0] as Array<{ role: string; content: string }>
+    const userMessage = messages.find((m) => m.role === 'user')
+    expect(userMessage?.content).toContain('上轮被拒提案及原因')
+    expect(userMessage?.content).toContain('item-1/location: deeper → loc-b')
+  })
+
+  it('omits the rejection section when there is no previous feedback', async () => {
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({ proposals: [makeProposal()] }),
+    }
+    await repairCorruptedState(
+      {
+        issues: [makeIssue()],
+        storyState: buildState(),
+        storyMemory: buildMemory(),
+        chapterSummaries: [],
+        currentChapterIndex: 24,
+      },
+      provider
+    )
+
+    const calls = vi.mocked(provider.chatStructured!).mock.calls
+    const messages = calls[0]?.[0] as Array<{ role: string; content: string }>
+    const userMessage = messages.find((m) => m.role === 'user')
+    expect(userMessage?.content).not.toContain('上轮被拒提案及原因')
+  })
 })

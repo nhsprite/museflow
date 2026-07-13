@@ -50,7 +50,8 @@ async function detectEntityConflictsWithLLM<T extends Record<string, string>>(
   outline: string,
   attribute: FactAttribute,
   severity: 'auto' | 'warning',
-  provider: ModelProvider
+  provider: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<Conflict[]> {
   const items: Array<{
     text: string
@@ -60,6 +61,7 @@ async function detectEntityConflictsWithLLM<T extends Record<string, string>>(
   }> = []
 
   for (const [subject, currentValue] of Object.entries(entities)) {
+    if (filterSubjects && !filterSubjects.has(subject)) continue
     items.push({
       text: outline,
       subject,
@@ -105,39 +107,65 @@ async function detectEntityConflictsWithLLM<T extends Record<string, string>>(
 export async function detectItemLocationConflicts(
   state: StoryState,
   outline: string,
-  provider: ModelProvider
+  provider: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<Conflict[]> {
-  return detectEntityConflictsWithLLM(state.keyItemsLocation, outline, 'location', 'auto', provider)
+  return detectEntityConflictsWithLLM(
+    state.keyItemsLocation,
+    outline,
+    'location',
+    'auto',
+    provider,
+    filterSubjects
+  )
 }
 
 export async function detectItemStateConflicts(
   state: StoryState,
   outline: string,
-  provider: ModelProvider
+  provider: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<Conflict[]> {
-  return detectEntityConflictsWithLLM(state.keyItemsState, outline, 'status', 'auto', provider)
+  return detectEntityConflictsWithLLM(
+    state.keyItemsState,
+    outline,
+    'status',
+    'auto',
+    provider,
+    filterSubjects
+  )
 }
 
 export async function detectCharacterLocationConflicts(
   state: StoryState,
   outline: string,
-  provider: ModelProvider
+  provider: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<Conflict[]> {
   return detectEntityConflictsWithLLM(
     state.characterLocations,
     outline,
     'location',
     'auto',
-    provider
+    provider,
+    filterSubjects
   )
 }
 
 export async function detectCharacterStatusConflicts(
   state: StoryState,
   outline: string,
-  provider: ModelProvider
+  provider: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<Conflict[]> {
-  return detectEntityConflictsWithLLM(state.characterStatus, outline, 'status', 'warning', provider)
+  return detectEntityConflictsWithLLM(
+    state.characterStatus,
+    outline,
+    'status',
+    'warning',
+    provider,
+    filterSubjects
+  )
 }
 
 export function detectSecretRevealConflicts(state: StoryState, outline: string): Conflict[] {
@@ -180,7 +208,8 @@ export async function detectAllConflicts(
   state: StoryState,
   outline: string,
   chapterIndex: number,
-  provider?: ModelProvider
+  provider?: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<Conflict[]> {
   if (!provider) {
     return []
@@ -188,10 +217,10 @@ export async function detectAllConflicts(
 
   const [itemLocation, itemState, characterLocation, characterStatus, secretReveal, timeAnchor] =
     await Promise.all([
-      detectItemLocationConflicts(state, outline, provider),
-      detectItemStateConflicts(state, outline, provider),
-      detectCharacterLocationConflicts(state, outline, provider),
-      detectCharacterStatusConflicts(state, outline, provider),
+      detectItemLocationConflicts(state, outline, provider, filterSubjects),
+      detectItemStateConflicts(state, outline, provider, filterSubjects),
+      detectCharacterLocationConflicts(state, outline, provider, filterSubjects),
+      detectCharacterStatusConflicts(state, outline, provider, filterSubjects),
       detectSecretRevealConflicts(state, outline),
       detectTimeAnchorConflicts(state, outline, chapterIndex, provider),
     ])
@@ -451,9 +480,16 @@ export async function reconcileStoryState(
   outline: string,
   characters: Array<{ name: string }> = [],
   chapterIndex = 0,
-  provider?: ModelProvider
+  provider?: ModelProvider,
+  filterSubjects?: Set<string>
 ): Promise<ReconciliationReport> {
-  const rawConflicts = await detectAllConflicts(storyState, outline, chapterIndex, provider)
+  const rawConflicts = await detectAllConflicts(
+    storyState,
+    outline,
+    chapterIndex,
+    provider,
+    filterSubjects
+  )
   const classified = await classifyConflicts(rawConflicts, provider)
   const {
     state: preReconciled,

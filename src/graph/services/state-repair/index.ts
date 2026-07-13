@@ -38,6 +38,8 @@ export interface StateRepairInput {
   chapterSummaries: string[]
   /** 当前章 index（0-based）。 */
   currentChapterIndex: number
+  /** 上轮被结构化校验拒绝的提案及原因，供本轮提案参考避免重复。 */
+  previousRejections?: string[]
 }
 
 export interface StateRepairOutcome {
@@ -46,6 +48,8 @@ export interface StateRepairOutcome {
   /** 合并了 acceptedFacts 的 storyState；无有效提案时返回原引用。 */
   storyState: StoryState
   rejectedCount: number
+  /** 本轮被拒提案的结构化反馈（含原因），供下次尝试回传给 LLM。 */
+  rejectionFeedback: string[]
 }
 
 export interface StateRepairValidationContext {
@@ -213,6 +217,12 @@ function buildRepairMessages(input: StateRepairInput, memory: StoryMemory): Mess
     involvedSubjects.has(f.subject)
   )
 
+  const previousRejections = input.previousRejections ?? []
+  const rejectionSection =
+    previousRejections.length > 0
+      ? `【上轮被拒提案及原因（禁止原样重复，需根据原因修正或放弃）】\n${previousRejections.map((r) => `- ${r}`).join('\n')}\n\n`
+      : ''
+
   return [
     {
       role: 'system',
@@ -253,7 +263,7 @@ ${locationIds.join('、') || '（无）'}
 【已定稿章节摘要（最近）】
 ${recentSummaries.length > 0 ? recentSummaries.map((s, i) => `- ${i + 1}. ${s}`).join('\n') : '（无）'}
 
-请输出 JSON。`,
+${rejectionSection}请输出 JSON。`,
     },
   ]
 }
@@ -302,15 +312,21 @@ async function requestRepairProposals(
  * 经严格结构化校验后写入权威事实（source: 'state_repair'），
  * 并立即合并进 storyState 使后续重渲染/重校验生效。
  *
- * 无任何提案通过校验时不修改状态（返回原 storyState 引用），
- * routing 下轮会因 stateRepairAttempted=true 退回人工 request_rewrite。
+ * 无任何提案通过校验时不修改状态（返回原 storyState 引用）；被拒提案原因
+ * 通过 rejectionFeedback 回传，供本章下一次修复尝试参考（每章最多 2 次），
+ * 尝试耗尽后 routing 退回人工 request_rewrite。
  */
 export async function repairCorruptedState(
   input: StateRepairInput,
   provider: ModelProvider
 ): Promise<StateRepairOutcome> {
   if (input.issues.length === 0 || !input.storyMemory) {
-    return { acceptedFacts: [], storyState: input.storyState, rejectedCount: 0 }
+    return {
+      acceptedFacts: [],
+      storyState: input.storyState,
+      rejectedCount: 0,
+      rejectionFeedback: [],
+    }
   }
 
   let proposals: StateRepairProposal[]
@@ -321,7 +337,12 @@ export async function repairCorruptedState(
       '[MuseFlow] 状态修复提案生成失败，跳过自动修复:',
       err instanceof Error ? err.message : String(err)
     )
-    return { acceptedFacts: [], storyState: input.storyState, rejectedCount: 0 }
+    return {
+      acceptedFacts: [],
+      storyState: input.storyState,
+      rejectedCount: 0,
+      rejectionFeedback: [],
+    }
   }
 
   const validationCtx: StateRepairValidationContext = {
@@ -334,11 +355,15 @@ export async function repairCorruptedState(
   }
 
   const acceptedFacts: CanonicalFact[] = []
+  const rejectionFeedback: string[] = []
   let rejectedCount = 0
   for (const proposal of proposals) {
     const verdict = validateStateRepairProposal(proposal, validationCtx)
     if (!verdict.accepted) {
       rejectedCount++
+      rejectionFeedback.push(
+        `${proposal.subject}/${proposal.attribute}: ${proposal.oldValue} → ${proposal.newValue}（${verdict.reason}）`
+      )
       logger.info(
         `[MuseFlow] 状态修复提案被拒：${proposal.subject}/${proposal.attribute}（${verdict.reason}）`
       )
@@ -361,7 +386,7 @@ export async function repairCorruptedState(
 
   if (acceptedFacts.length === 0) {
     logger.warn('[MuseFlow] 状态修复未产生任何通过校验的提案，保持状态不变')
-    return { acceptedFacts: [], storyState: input.storyState, rejectedCount }
+    return { acceptedFacts: [], storyState: input.storyState, rejectedCount, rejectionFeedback }
   }
 
   logger.info(`[MuseFlow] 状态修复写入 ${acceptedFacts.length} 条权威事实（state_repair）`)
@@ -374,5 +399,5 @@ export async function repairCorruptedState(
     canonicalFacts: acceptedFacts,
   })
 
-  return { acceptedFacts, storyState, rejectedCount }
+  return { acceptedFacts, storyState, rejectedCount, rejectionFeedback }
 }

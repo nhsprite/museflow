@@ -16,9 +16,12 @@ import {
   replaceStructuredIssues,
   STRUCTURED_ISSUE_TYPES,
 } from './structured-issues.js'
-import { calculateFingerprintSetSimilarity } from './fingerprint.js'
+import { calculateFingerprintSetSimilarity, isFingerprintSubset } from './fingerprint.js'
 
 export * from './types.js'
+
+/** 每章自动状态修复（repair_state）的最大尝试次数。 */
+const MAX_STATE_REPAIR_ATTEMPTS = 2
 
 export interface RoutingDeps {
   issuePolicy: IssuePolicyDeps
@@ -44,6 +47,18 @@ function isRewriteLoopStalled(
     if (similarity < threshold) return false
   }
   return true
+}
+
+function isRewriteLoopSubsetStalled(history: string[][], currentFingerprints: string[]): boolean {
+  if (currentFingerprints.length === 0) return false
+  const fullHistory = [...history, currentFingerprints]
+  if (fullHistory.length < 3) return false
+
+  const lastThree = fullHistory.slice(-3)
+  return (
+    isFingerprintSubset(lastThree[0]!, lastThree[1]!) &&
+    isFingerprintSubset(lastThree[1]!, lastThree[2]!)
+  )
 }
 
 function decideStrategyFromRetryStrategies(errors: Issue[]): 'draft' | 'fix' | 'manual' {
@@ -79,11 +94,13 @@ export async function decideNextStep(
 
   const nextFingerprintHistory = [...session.issueFingerprintHistory, currentErrorFingerprints]
 
-  // 停滞检测：连续多轮问题指纹高度相似，说明 rewrite 循环无法收敛
+  // 停滞检测：连续多轮问题指纹高度相似，或连续两轮当前错误集是上一轮子集，
+  // 说明 rewrite 循环无法收敛
   if (
     remainingErrors.length > 0 &&
     session.rewriteApproved &&
-    isRewriteLoopStalled(session.issueFingerprintHistory, currentErrorFingerprints)
+    (isRewriteLoopStalled(session.issueFingerprintHistory, currentErrorFingerprints) ||
+      isRewriteLoopSubsetStalled(session.issueFingerprintHistory, currentErrorFingerprints))
   ) {
     deps.rewritePolicy.log?.(
       'error',
@@ -106,17 +123,18 @@ export async function decideNextStep(
 
   // Case 1: 重写循环中出现上游状态污染。
   // 只要剩余 error 中至少有一个是状态污染类问题，就优先尝试自动状态修复；
-  // 本章尚未尝试过状态修复时进入 repair_state，已尝试过则退回人工 request_rewrite。
+  // 每章最多尝试 MAX_STATE_REPAIR_ATTEMPTS 次，耗尽后退回人工 request_rewrite。
   const hasStateCorruptionError = await Promise.all(
     remainingErrors.map((i) => deps.rewritePolicy.isStateCorruptionIssue(i))
   ).then((results) => results.some(Boolean))
 
   if (session.rewriteApproved && remainingErrors.length > 0 && hasStateCorruptionError) {
-    if (!session.stateRepairAttempted) {
+    const stateRepairAttempts = session.stateRepairAttempts ?? 0
+    if (stateRepairAttempts < MAX_STATE_REPAIR_ATTEMPTS) {
       return {
         step: { kind: 'repair_state' },
         sessionUpdate: {
-          stateRepairAttempted: true,
+          stateRepairAttempts: stateRepairAttempts + 1,
           issueFingerprintHistory: nextFingerprintHistory,
         },
         processedIssues: policyResult.issues,

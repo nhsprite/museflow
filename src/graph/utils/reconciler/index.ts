@@ -35,6 +35,15 @@ export async function prepareStoryStateForChapter(
   let itemLocationConflicts: Array<{ item: string; locations: string[] }> = []
 
   if (outlineItem?.description) {
+    const touchedSubjectIds = new Set([
+      ...(outlineItem.touchedCharacterIds ?? []),
+      ...(outlineItem.touchedItemIds ?? []),
+      ...(outlineItem.touchedLocationIds ?? []),
+    ])
+    for (const fact of reconciledState.canonicalFacts ?? []) {
+      touchedSubjectIds.add(fact.subject)
+    }
+
     reconciledState = applyAuthorOverrides(reconciledState)
 
     const reconciliationReport = await reconcileStoryState(
@@ -42,7 +51,8 @@ export async function prepareStoryStateForChapter(
       outlineItem.description,
       state.characters,
       chapterIndex,
-      provider
+      provider,
+      touchedSubjectIds
     )
     reconciledState = reconciliationReport.state
 
@@ -65,7 +75,8 @@ export async function prepareStoryStateForChapter(
       outlineItem.description,
       chapterIndex,
       provider,
-      state.storyArc ?? undefined
+      state.storyArc ?? undefined,
+      touchedSubjectIds
     )
 
     const undecidedBlockingConflicts = [

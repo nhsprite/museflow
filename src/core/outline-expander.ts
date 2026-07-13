@@ -331,6 +331,41 @@ function buildArcStatusConstraint(
   return undefined
 }
 
+function finalizeChapterOutlineCandidate(
+  candidate: ChapterOutlineResult,
+  state: ReducedGraphState,
+  chapterIndex: number,
+  beatBudget: number
+): ChapterOutlineResult {
+  const filteredClaimedBeatPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
+    candidate.claimedBeats,
+    candidate.claimedMandatoryBeatIds,
+    state,
+    chapterIndex
+  )
+  const cappedClaimedBeatPairs =
+    beatBudget > 0 ? filteredClaimedBeatPairs.slice(0, beatBudget) : filteredClaimedBeatPairs
+  const cappedClaimedBeats = cappedClaimedBeatPairs.map((pair) => pair.beat)
+  const cappedClaimedMandatoryBeatIds = cappedClaimedBeatPairs.map((pair) => pair.id)
+  const claimedBeatIds = filterClaimedKeyBeatIdsToStoryArc(
+    candidate.claimedBeatIds,
+    state,
+    chapterIndex
+  )
+  if (filteredClaimedBeatPairs.length > cappedClaimedBeatPairs.length) {
+    logger.info(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章声称节拍 ${filteredClaimedBeatPairs.length} 个，超出预算 ${beatBudget} 个，已裁剪为：${cappedClaimedBeats.join('、') || '（无）'}`
+    )
+  }
+
+  return {
+    ...candidate,
+    claimedBeats: cappedClaimedBeats,
+    claimedMandatoryBeatIds: cappedClaimedMandatoryBeatIds,
+    claimedBeatIds,
+  }
+}
+
 function getCurrentActMandatoryBeats(state: ReducedGraphState, chapterIndex: number): Set<string> {
   if (!state.storyArc) return new Set()
   const chapterNumber = chapterIndex + 1
@@ -548,11 +583,16 @@ function buildCurrentStateSnapshot(state: ReducedGraphState): string {
   return parts.join('\n')
 }
 
+interface GenerateChapterOutlineResult {
+  state: ReducedGraphState
+  pendingIssues: Issue[]
+}
+
 async function generateChapterOutlineIfNeeded(
   state: ReducedGraphState,
   chapterIndex: number,
   provider: ModelProvider
-): Promise<ReducedGraphState> {
+): Promise<GenerateChapterOutlineResult> {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
     throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
@@ -560,7 +600,7 @@ async function generateChapterOutlineIfNeeded(
 
   // 已有具体描述，不需要重新生成
   if (outlineItem.description.trim().length > 0) {
-    return state
+    return { state, pendingIssues: [] }
   }
 
   if (!state.storyArc) {
@@ -573,10 +613,6 @@ async function generateChapterOutlineIfNeeded(
     state.verifiedConstraints,
     state.storyArc,
     chapterIndex
-  )
-  const planningConfig = getChapterPlanningConfig(state.genre)
-  const foreshadowCapacity = normalizeForeshadowCapacity(
-    planningConfig.foreshadowMaxFulfillmentsPerChapter
   )
   const scheduledForeshadowIds = getScheduledForeshadowIds(state, chapterIndex)
   const scheduledForeshadowConstraint =
@@ -596,7 +632,9 @@ async function generateChapterOutlineIfNeeded(
 
   let correctionConstraints: string[] = []
   let result: ChapterOutlineResult | null = null
+  let lastCandidate: ChapterOutlineResult | null = null
   let lastMissingScheduledForeshadowIds: string[] = []
+  let autoDeferredForeshadowIds: string[] = []
 
   for (let attempt = 0; attempt < MAX_JIT_OUTLINE_ATTEMPTS; attempt++) {
     const verifiedConstraints = [
@@ -639,6 +677,7 @@ async function generateChapterOutlineIfNeeded(
     }
 
     const candidate = output.data as ChapterOutlineResult
+    lastCandidate = candidate
     if (candidate.conflict) {
       throw new Error(
         `第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`
@@ -660,44 +699,32 @@ async function generateChapterOutlineIfNeeded(
       continue
     }
 
-    const filteredClaimedBeatPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
-      candidate.claimedBeats,
-      candidate.claimedMandatoryBeatIds,
-      state,
-      chapterIndex
-    )
-    // 强制执行节拍预算：超出预算时只保留前 N 个 claimedBeats
-    const cappedClaimedBeatPairs =
-      beatBudget > 0 ? filteredClaimedBeatPairs.slice(0, beatBudget) : filteredClaimedBeatPairs
-    const cappedClaimedBeats = cappedClaimedBeatPairs.map((pair) => pair.beat)
-    const cappedClaimedMandatoryBeatIds = cappedClaimedBeatPairs.map((pair) => pair.id)
-    const claimedBeatIds = filterClaimedKeyBeatIdsToStoryArc(
-      candidate.claimedBeatIds,
-      state,
-      chapterIndex
-    )
-    if (filteredClaimedBeatPairs.length > cappedClaimedBeatPairs.length) {
-      logger.info(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章声称节拍 ${filteredClaimedBeatPairs.length} 个，超出预算 ${beatBudget} 个，已裁剪为：${cappedClaimedBeats.join('、') || '（无）'}`
-      )
-    }
-
-    result = {
-      ...candidate,
-      claimedBeats: cappedClaimedBeats,
-      claimedMandatoryBeatIds: cappedClaimedMandatoryBeatIds,
-      claimedBeatIds,
-    }
+    result = finalizeChapterOutlineCandidate(candidate, state, chapterIndex, beatBudget)
     break
   }
 
   if (!result) {
-    if (lastMissingScheduledForeshadowIds.length > 0) {
-      throw new Error(
-        `第 ${chapterIndex + 1} 章即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决伏笔候选：${lastMissingScheduledForeshadowIds.join(', ')}（单章容量 ${foreshadowCapacity}）`
+    if (lastCandidate && lastMissingScheduledForeshadowIds.length > 0) {
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决伏笔候选，已自动顺延：${lastMissingScheduledForeshadowIds.join(', ')}`
       )
+      autoDeferredForeshadowIds = lastMissingScheduledForeshadowIds
+      const candidateWithDeferred = {
+        ...lastCandidate,
+        deferredForeshadowIds: [
+          ...(lastCandidate.deferredForeshadowIds ?? []),
+          ...autoDeferredForeshadowIds,
+        ],
+      }
+      result = finalizeChapterOutlineCandidate(
+        candidateWithDeferred,
+        state,
+        chapterIndex,
+        beatBudget
+      )
+    } else {
+      throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：未返回可执行大纲`)
     }
-    throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：未返回可执行大纲`)
   }
 
   const newOutline = [...state.outline]
@@ -720,13 +747,24 @@ async function generateChapterOutlineIfNeeded(
   }
   newOutline[chapterIndex] = newOutlineItem
 
+  const pendingIssues: Issue[] = []
+  if (autoDeferredForeshadowIds.length > 0) {
+    pendingIssues.push({
+      id: `outline-foreshadow-auto-deferred-${chapterIndex}`,
+      type: 'outline_foreshadow',
+      severity: 'warning',
+      description: `即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未对候选伏笔 ${autoDeferredForeshadowIds.join(', ')} 作出裁决，已自动顺延至 deferredForeshadowIds。`,
+      source: 'outline_compliance',
+    })
+  }
+
   logger.info(`[MuseFlow] 已即时生成第 ${chapterIndex + 1} 章大纲：${result.title}`)
   logger.info(`  ${result.description}`)
   if (result.claimedBeats && result.claimedBeats.length > 0) {
     logger.info(`  声称推进节拍：${result.claimedBeats.join('、')}`)
   }
 
-  return { ...state, outline: newOutline }
+  return { state: { ...state, outline: newOutline }, pendingIssues }
 }
 
 const MAX_AUTO_REVISION_ATTEMPTS = 3
@@ -847,11 +885,16 @@ export async function expandOutlineForChapter(
   source: ChapterContextSource
 ): Promise<ExpandedOutline> {
   const provider = getProvider(source)
+  let pendingIssues: Issue[] = []
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
-  state = await generateChapterOutlineIfNeeded(state, chapterIndex, provider)
+  const outlineResult = await generateChapterOutlineIfNeeded(state, chapterIndex, provider)
+  state = outlineResult.state
+  if (outlineResult.pendingIssues.length > 0) {
+    pendingIssues = [...pendingIssues, ...outlineResult.pendingIssues]
+  }
   state = await autoResolveBlockingOutlineConflicts(state, chapterIndex, source)
 
-  const outlineItem = state.outline[chapterIndex]
+  let outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
     throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
   }
@@ -954,8 +997,6 @@ export async function expandOutlineForChapter(
     ]
   }
 
-  let pendingIssues: Issue[] = []
-
   // 首次生成规划
   if (!chapterPlan) {
     const planState: ReducedGraphState = {
@@ -1021,12 +1062,43 @@ export async function expandOutlineForChapter(
         planEvaluation.missing,
         foreshadowCapacity
       )
-      throw buildScheduledForeshadowPlanError(
-        chapterIndex,
-        '章节规划连续 2 次',
-        planEvaluation.missing,
-        foreshadowCapacity
+      const missingForeshadowIds = Array.from(
+        new Set([...planEvaluation.missing.declarationIds, ...planEvaluation.missing.eventIds])
       )
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章章节规划连续 2 次无法为大纲声称伏笔生成结构化证据，已自动顺延：${missingForeshadowIds.join(', ')}`
+      )
+
+      // 自动顺延：从大纲 fulfilled 移除，加入大纲与规划的 deferred
+      const newOutline = [...state.outline]
+      const updatedOutlineItem = { ...outlineItem }
+      const fulfilledSet = new Set(updatedOutlineItem.fulfilledForeshadowIds ?? [])
+      const deferredSet = new Set(updatedOutlineItem.deferredForeshadowIds ?? [])
+      const planFulfilledSet = new Set(planEvaluation.plan.fulfilledForeshadowIds ?? [])
+      for (const id of missingForeshadowIds) {
+        fulfilledSet.delete(id)
+        deferredSet.add(id)
+        planFulfilledSet.delete(id)
+      }
+      updatedOutlineItem.fulfilledForeshadowIds = Array.from(fulfilledSet)
+      updatedOutlineItem.deferredForeshadowIds = Array.from(deferredSet)
+      newOutline[chapterIndex] = updatedOutlineItem
+      state = { ...state, outline: newOutline }
+      outlineItem = updatedOutlineItem
+
+      chapterPlan = {
+        ...planEvaluation.plan,
+        fulfilledForeshadowIds: Array.from(planFulfilledSet),
+      }
+      planEvaluation = { missing: { declarationIds: [], eventIds: [] }, plan: chapterPlan }
+
+      pendingIssues.push({
+        id: `plan-foreshadow-auto-deferred-${chapterIndex}`,
+        type: 'outline_foreshadow',
+        severity: 'warning',
+        description: `章节规划连续 2 次无法为大纲声称的伏笔 ${missingForeshadowIds.join(', ')} 生成结构化兑现证据，已自动将其顺延。`,
+        source: 'outline_compliance',
+      })
     }
   }
 

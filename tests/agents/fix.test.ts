@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { FixAgent } from '../../src/agents/fix.js'
 import type { FixAgentInput } from '../../src/agents/types.ts'
 import type { ModelProvider } from '../../src/model/provider.ts'
+import type { ChapterPlan } from '../../src/agents/types.ts'
 
 function createMockProvider(
   chat: (messages: unknown[]) => string | Promise<string>
@@ -177,5 +178,106 @@ describe('FixAgent processOutput scope protection', () => {
     const emptyWarning = issues.find((i) => i.description.includes('空内容'))
     expect(emptyWarning).toBeDefined()
     expect(emptyWarning?.locationRef?.paragraphIndex).toBe(1)
+  })
+})
+
+describe('FixAgent chapter contract prompt', () => {
+  it('includes expected events and beats in the sentence fix prompt', async () => {
+    let capturedMessages: unknown[] = []
+    const agent = createAgent((messages) => {
+      capturedMessages = messages
+      return '=== FIXED_CHAPTER ===\n【段落 1 · 第 1 句】\n修改后的第一句。\n=== END_FIXED_CHAPTER ==='
+    })
+
+    const chapterPlan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [
+        {
+          id: 'evt-1',
+          chapterIndex: 3,
+          source: 'outline',
+          type: 'character-location',
+          characterId: 'char-1',
+          locationId: 'loc-1',
+        },
+      ],
+      claimedBeatIds: ['beat-1'],
+      fulfilledForeshadowIds: ['fs-1'],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+
+    await agent.run({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterIndex: 3,
+      chapterContent: '# 第四章 王府递帖\n\n旧正文。',
+      issues: [{ id: '1', type: 'consistency', severity: 'error', description: '矛盾' }],
+      previousChapters: '',
+      timelineSnapshot: '',
+      storyState: '',
+      chapterPlan,
+      sentenceFix: {
+        sentences: [
+          {
+            paragraphIndex: 1,
+            sentenceIndex: 0,
+            original: '原句。',
+            issue: { id: '1', type: 'consistency', severity: 'error', description: '矛盾' },
+          },
+        ],
+        context: '',
+      },
+    } as FixAgentInput)
+
+    expect(capturedMessages).toHaveLength(2)
+    const userContent = (capturedMessages[1] as { content?: string }).content ?? ''
+    expect(userContent).toContain('<chapter_contract>')
+    expect(userContent).toContain('<expected_events>')
+    expect(userContent).toContain('character-location: char-1 -> loc-1')
+    expect(userContent).toContain('<claimed_beats>')
+    expect(userContent).toContain('beat-1')
+    expect(userContent).toContain('<fulfilled_foreshadows>')
+    expect(userContent).toContain('fs-1')
+    expect(userContent).toContain('不得破坏本章契约')
+  })
+
+  it('omits the contract section when no chapter plan is provided', async () => {
+    let capturedMessages: unknown[] = []
+    const agent = createAgent((messages) => {
+      capturedMessages = messages
+      return '=== FIXED_CHAPTER ===\n【段落 1 · 第 1 句】\n修改后的第一句。\n=== END_FIXED_CHAPTER ==='
+    })
+
+    await agent.run({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterIndex: 3,
+      chapterContent: '# 第四章 王府递帖\n\n旧正文。',
+      issues: [{ id: '1', type: 'consistency', severity: 'error', description: '矛盾' }],
+      previousChapters: '',
+      timelineSnapshot: '',
+      storyState: '',
+      sentenceFix: {
+        sentences: [
+          {
+            paragraphIndex: 1,
+            sentenceIndex: 0,
+            original: '原句。',
+            issue: { id: '1', type: 'consistency', severity: 'error', description: '矛盾' },
+          },
+        ],
+        context: '',
+      },
+    } as FixAgentInput)
+
+    const userContent = (capturedMessages[1] as { content?: string }).content ?? ''
+    expect(userContent).not.toContain('<chapter_contract>')
   })
 })

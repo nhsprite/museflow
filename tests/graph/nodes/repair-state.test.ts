@@ -161,4 +161,82 @@ describe('repair_state node', () => {
     expect(update.storyState).toBeUndefined()
     expect(context.provider.chatStructured).not.toHaveBeenCalled()
   })
+
+  it('writes rejection feedback back into the session for the next attempt', async () => {
+    const state = {
+      ...buildState([stateCorruptionIssue('e1')]),
+      session: {
+        chapterIndex: 24,
+        rewriteAttempts: 2,
+        errorRewriteAttempts: 1,
+        autoFixAttempts: 0,
+        previousIssues: [],
+        previousRawErrorCount: 0,
+        routingDecision: 'repair_state' as const,
+        forceStructuralRewrite: false,
+        rewriteApproved: true,
+        issueFingerprintHistory: [],
+        stateRepairAttempts: 1,
+      },
+    } as ReducedGraphState
+    const context = buildContext([
+      {
+        subject: 'unknown-entity',
+        attribute: 'location',
+        oldValue: 'deeper',
+        newValue: 'loc-b',
+        evidenceChapter: 20,
+        rationale: '无',
+      },
+    ])
+
+    const update = await repair_state(context, state)
+
+    expect(update.storyState).toBeUndefined()
+    expect(update.session?.stateRepairAttempts).toBe(1)
+    expect(update.session?.stateRepairRejections).toHaveLength(1)
+    expect(update.session?.stateRepairRejections?.[0]).toContain('unknown-entity/location')
+    expect(update.session?.stateRepairRejections?.[0]).toContain('不是已知实体 id')
+  })
+
+  it('passes previous rejection feedback into the next repair prompt', async () => {
+    const state = {
+      ...buildState([stateCorruptionIssue('e1')]),
+      session: {
+        chapterIndex: 24,
+        rewriteAttempts: 2,
+        errorRewriteAttempts: 1,
+        autoFixAttempts: 0,
+        previousIssues: [],
+        previousRawErrorCount: 0,
+        routingDecision: 'repair_state' as const,
+        forceStructuralRewrite: false,
+        rewriteApproved: true,
+        issueFingerprintHistory: [],
+        stateRepairAttempts: 1,
+        stateRepairRejections: [
+          'item-1/location: deeper → loc-b（oldValue 与当前记录值不精确相等）',
+        ],
+      },
+    } as ReducedGraphState
+    const context = buildContext([
+      {
+        subject: 'item-1',
+        attribute: 'location',
+        oldValue: 'deeper',
+        newValue: 'loc-b',
+        evidenceChapter: 20,
+        rationale: '修正后的提案',
+      },
+    ])
+
+    const update = await repair_state(context, state)
+
+    const calls = vi.mocked(context.provider.chatStructured!).mock.calls
+    const messages = calls[0]?.[0] as Array<{ role: string; content: string }>
+    const userMessage = messages.find((m) => m.role === 'user')
+    expect(userMessage?.content).toContain('上轮被拒提案及原因')
+    expect(userMessage?.content).toContain('item-1/location: deeper → loc-b')
+    expect(update.session?.stateRepairRejections).toEqual([])
+  })
 })

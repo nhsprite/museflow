@@ -229,7 +229,7 @@ describe('converge_and_decide', () => {
     const result = await converge_and_decide(createMockContext(), state)
 
     expect(result.session?.routingDecision).toBe('repair_state')
-    expect(result.session?.stateRepairAttempted).toBe(true)
+    expect(result.session?.stateRepairAttempts).toBe(1)
     expect(result.session?.rewriteApproved).toBe(true)
     expect(result.blockingReport).toBeUndefined()
   })
@@ -248,7 +248,7 @@ describe('converge_and_decide', () => {
         errorRewriteAttempts: 3,
         previousIssues: [],
         previousRawErrorCount: 0,
-        stateRepairAttempted: true,
+        stateRepairAttempts: 2,
       },
       pendingIssues,
     })
@@ -273,7 +273,7 @@ describe('converge_and_decide', () => {
         errorRewriteAttempts: 2,
         previousIssues: pendingIssues,
         previousRawErrorCount: 1,
-        stateRepairAttempted: true,
+        stateRepairAttempts: 2,
       },
       pendingIssues,
     })
@@ -304,7 +304,7 @@ describe('converge_and_decide', () => {
         errorRewriteAttempts: 2,
         previousIssues: pendingIssues,
         previousRawErrorCount: 1,
-        stateRepairAttempted: true,
+        stateRepairAttempts: 2,
       },
       pendingIssues,
     })
