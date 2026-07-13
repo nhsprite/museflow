@@ -17,9 +17,8 @@ const { planChapterWithOverrideMock } = vi.hoisted(() => ({
 const mockChat = vi.fn(async (): Promise<string> => '')
 const mockChatStructured = vi.fn()
 const chapterOutlineRunMock = vi.fn()
-const { prepareStoryStateForChapterMock, generateOutlineRevisionProposalMock } = vi.hoisted(() => ({
+const { prepareStoryStateForChapterMock } = vi.hoisted(() => ({
   prepareStoryStateForChapterMock: vi.fn(),
-  generateOutlineRevisionProposalMock: vi.fn(),
 }))
 
 function createMockProvider(): ModelProvider {
@@ -53,10 +52,6 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
 vi.mock('../../src/graph/utils/reconciler/index.js', () => ({
   formatStoryState: vi.fn(() => 'mocked story state'),
   prepareStoryStateForChapter: prepareStoryStateForChapterMock,
-}))
-
-vi.mock('../../src/core/chapter-generation/outline-revision-proposal.js', () => ({
-  generateOutlineRevisionProposal: generateOutlineRevisionProposalMock,
 }))
 
 const storyArc = {
@@ -120,9 +115,23 @@ function createConflict(overrides?: Partial<Conflict>): Conflict {
   }
 }
 
+function createJitState(): ReducedGraphState {
+  return {
+    ...baseState,
+    outline: baseState.outline.map((item, index) =>
+      index === 1 ? { ...item, title: '', description: '' } : { ...item }
+    ),
+  }
+}
+
 describe('expandOutlineForChapter auto-revision', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    planChapterWithOverrideMock.mockReset()
+    chapterOutlineRunMock.mockReset()
+    prepareStoryStateForChapterMock.mockReset()
+    mockChat.mockReset()
+    mockChatStructured.mockReset()
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
     mockChatStructured.mockResolvedValue({ results: [true, true] })
     mockChat.mockResolvedValue(JSON.stringify({ results: [true, true] }))
@@ -140,119 +149,143 @@ describe('expandOutlineForChapter auto-revision', () => {
       stateConflicts: '',
       itemLocationConflicts: [],
     })
-    generateOutlineRevisionProposalMock.mockResolvedValue(null)
   })
 
-  it('revises outline automatically when first draft has blocking conflicts', async () => {
+  it('does not silently rewrite a persisted outline and exposes a validated proposal', async () => {
     const conflict = createConflict()
-    const blockingError = new BlockingConflictError([conflict], 1, {
+    const proposal = {
       revisedDescription: '修订后的描述，不再违反约束。',
       explanation: '解释',
-    })
-
-    prepareStoryStateForChapterMock.mockRejectedValueOnce(blockingError).mockResolvedValueOnce({
-      reconciledState: {},
-      stateConflicts: '',
-      itemLocationConflicts: [],
-    })
-
-    generateOutlineRevisionProposalMock.mockResolvedValue({
-      revisedDescription: '修订后的描述，不再违反约束。',
-      explanation: '解释',
-    })
-
-    const result = await expandOutlineForChapter(baseState, 1, createMockProvider())
-
-    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
-    expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
-    expect(result.outline?.[1]?.description).toBe('修订后的描述，不再违反约束。')
-  })
-
-  it('propagates BlockingConflictError when auto-revision repeats the same conflict', async () => {
-    const conflict = createConflict()
-    const blockingError = new BlockingConflictError([conflict], 1, null)
-
-    prepareStoryStateForChapterMock.mockRejectedValue(blockingError)
-    generateOutlineRevisionProposalMock.mockResolvedValue({
-      revisedDescription: '仍然冲突的描述。',
-      explanation: '解释',
-    })
-
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
-      blockingError
-    )
-    // 第一次失败后生成修订，第二次检测到冲突集合未变，提前停止
-    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
-  })
-
-  it('retries up to max attempts when each revision produces a different conflict', async () => {
-    const conflict1 = createConflict({
-      id: 'conflict-1',
-      description: '冲突一',
-      subject: '主角',
-      newValue: '离开村子',
-    })
-    const conflict2 = createConflict({
-      id: 'conflict-2',
-      description: '冲突二',
-      subject: '反派',
-      newValue: '提前登场',
-    })
-    const blockingError1 = new BlockingConflictError([conflict1], 1, null)
-    const blockingError2 = new BlockingConflictError([conflict2], 1, null)
+    }
 
     prepareStoryStateForChapterMock
-      .mockRejectedValueOnce(blockingError1)
-      .mockRejectedValueOnce(blockingError2)
-      .mockRejectedValue(blockingError2)
-
-    generateOutlineRevisionProposalMock
+      .mockRejectedValueOnce(new BlockingConflictError([conflict], 1, proposal))
       .mockResolvedValueOnce({
-        revisedDescription: '第一次修订描述。',
-        explanation: '解释',
-      })
-      .mockResolvedValueOnce({
-        revisedDescription: '第二次修订描述。',
-        explanation: '解释',
+        reconciledState: {},
+        stateConflicts: '',
+        itemLocationConflicts: [],
       })
 
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
-      blockingError2
-    )
-    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(3)
-  })
-
-  it('stops retrying when revision proposal is identical to current outline', async () => {
-    const conflict = createConflict()
-    const blockingError = new BlockingConflictError([conflict], 1, null)
-
-    prepareStoryStateForChapterMock.mockRejectedValue(blockingError)
-    generateOutlineRevisionProposalMock.mockResolvedValue({
-      revisedDescription: baseState.outline[1]?.description,
-      explanation: '解释',
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toMatchObject({
+      conflicts: [conflict],
+      proposal,
     })
-
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
-      blockingError
-    )
-    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(1)
-    expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('stops retrying when conflicts do not change between attempts', async () => {
-    const conflict = createConflict()
-    const blockingError = new BlockingConflictError([conflict], 1, null)
-
-    prepareStoryStateForChapterMock.mockRejectedValue(blockingError)
-    generateOutlineRevisionProposalMock.mockResolvedValue({
-      revisedDescription: '修订后的描述，仍然触发同一冲突。',
-      explanation: '解释',
-    })
-
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toBe(
-      blockingError
-    )
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
-    expect(generateOutlineRevisionProposalMock).toHaveBeenCalledTimes(1)
+    expect(prepareStoryStateForChapterMock.mock.calls[1]?.[3]).toEqual({
+      proposalMode: 'omit',
+    })
+    expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+  })
+
+  it('does not expose a persisted-outline proposal that still conflicts', async () => {
+    const conflict = createConflict()
+    const proposal = {
+      revisedDescription: '仍然冲突的描述。',
+      explanation: '解释',
+    }
+
+    prepareStoryStateForChapterMock
+      .mockRejectedValueOnce(new BlockingConflictError([conflict], 1, proposal))
+      .mockRejectedValueOnce(new BlockingConflictError([conflict], 1))
+
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toMatchObject({
+      conflicts: [conflict],
+      proposal: undefined,
+    })
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('discards a conflicting JIT candidate and succeeds with an independent candidate', async () => {
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: { title: '候选一', description: '冲突候选。' },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { title: '候选二', description: '有效候选。' },
+      })
+    prepareStoryStateForChapterMock
+      .mockRejectedValueOnce(new BlockingConflictError([createConflict()], 1))
+      .mockResolvedValueOnce({
+        reconciledState: {},
+        stateConflicts: '',
+        itemLocationConflicts: [],
+      })
+
+    const result = await expandOutlineForChapter(createJitState(), 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(result.outline?.[1]?.description).toBe('有效候选。')
+  })
+
+  it('uses a validated revision of a JIT candidate without regenerating', async () => {
+    const proposal = {
+      revisedDescription: '有效修订。',
+      explanation: '解释',
+    }
+    prepareStoryStateForChapterMock
+      .mockRejectedValueOnce(new BlockingConflictError([createConflict()], 1, proposal))
+      .mockResolvedValueOnce({
+        reconciledState: {},
+        stateConflicts: '',
+        itemLocationConflicts: [],
+      })
+
+    const result = await expandOutlineForChapter(createJitState(), 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[1]?.description).toBe('有效修订。')
+    expect(prepareStoryStateForChapterMock.mock.calls[1]?.[3]).toEqual({
+      proposalMode: 'omit',
+    })
+  })
+
+  it('escalates when every independent JIT candidate has the same structured conflict', async () => {
+    const conflict = createConflict()
+    prepareStoryStateForChapterMock.mockRejectedValue(
+      new BlockingConflictError([conflict], 1)
+    )
+
+    await expect(
+      expandOutlineForChapter(createJitState(), 1, createMockProvider())
+    ).rejects.toBeInstanceOf(BlockingConflictError)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not request author resolution when exhausted JIT conflicts are unstable', async () => {
+    const conflict1 = createConflict({ subject: '角色一', newValue: '位置一' })
+    const conflict2 = createConflict({ subject: '角色二', newValue: '位置二' })
+    const conflict3 = createConflict({ subject: '角色三', newValue: '位置三' })
+    prepareStoryStateForChapterMock
+      .mockRejectedValueOnce(new BlockingConflictError([conflict1], 1))
+      .mockRejectedValueOnce(new BlockingConflictError([conflict2], 1))
+      .mockRejectedValueOnce(new BlockingConflictError([conflict3], 1))
+
+    let caught: unknown
+    try {
+      await expandOutlineForChapter(createJitState(), 1, createMockProvider())
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught).not.toBeInstanceOf(BlockingConflictError)
+    expect((caught as Error).message).toContain('临时大纲候选')
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('compares structured conflicts independently of conflict order', async () => {
+    const conflict1 = createConflict({ subject: '角色一', newValue: '位置一' })
+    const conflict2 = createConflict({ subject: '角色二', newValue: '位置二' })
+    prepareStoryStateForChapterMock
+      .mockRejectedValueOnce(new BlockingConflictError([conflict1, conflict2], 1))
+      .mockRejectedValueOnce(new BlockingConflictError([conflict2, conflict1], 1))
+      .mockRejectedValueOnce(new BlockingConflictError([conflict1, conflict2], 1))
+
+    await expect(
+      expandOutlineForChapter(createJitState(), 1, createMockProvider())
+    ).rejects.toBeInstanceOf(BlockingConflictError)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
   })
 })

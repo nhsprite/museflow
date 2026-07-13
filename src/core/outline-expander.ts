@@ -26,8 +26,7 @@ import { buildPreviousChapterEndingContext } from '../graph/utils/chapter-window
 import type { RuntimeContext } from './context.js'
 import { charactersToString } from '../graph/utils/characters.js'
 import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.js'
-import { generateOutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
-import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
+import type { OutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
 import type { Conflict } from '../types/story-state.js'
 import {
   applyActBoundaryAdjustment,
@@ -807,116 +806,100 @@ async function generateChapterOutlineIfNeeded(
   return { state: { ...state, outline: newOutline }, pendingIssues }
 }
 
-const MAX_AUTO_REVISION_ATTEMPTS = 3
+const MAX_JIT_CONFLICT_CANDIDATES = 3
 
-function conflictsEqual(a: readonly Conflict[], b: readonly Conflict[]): boolean {
-  if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    const ca = a[i]
-    const cb = b[i]
-    if (!ca || !cb) return false
-    if (
-      ca.subject !== cb.subject ||
-      ca.attribute !== cb.attribute ||
-      ca.oldValue !== cb.oldValue ||
-      ca.newValue !== cb.newValue
-    ) {
-      return false
-    }
-  }
-  return true
+function conflictFingerprint(conflicts: readonly Conflict[]): string {
+  return JSON.stringify(
+    conflicts
+      .map(({ type, subject, attribute, oldValue, newValue }) => ({
+        type,
+        subject,
+        attribute,
+        oldValue,
+        newValue,
+      }))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+  )
 }
 
-/**
- * 自动修订与权威事实存在阻断性冲突的章节大纲。
- *
- * 在将大纲交给章节规划前，先运行一次状态协调；若发现 blocking 级冲突，
- * 则调用修订建议生成器改写大纲，并重新校验，最多重试 MAX_AUTO_REVISION_ATTEMPTS 次。
- * 仍无法解决时才把冲突抛给上层/作者裁决。
- */
-async function autoResolveBlockingOutlineConflicts(
+function stateWithOutlineProposal(
   state: ReducedGraphState,
   chapterIndex: number,
-  source: ChapterContextSource
-): Promise<ReducedGraphState> {
-  const provider = getProvider(source)
-  let currentState = state
-  let lastError: BlockingConflictError | undefined
+  proposal: OutlineRevisionProposal
+): ReducedGraphState {
+  const outline = [...state.outline]
+  const current = outline[chapterIndex]
+  outline[chapterIndex] = {
+    ...current,
+    number: current?.number ?? chapterIndex + 1,
+    title: proposal.revisedTitle ?? current?.title ?? `第${chapterIndex + 1}章`,
+    description: proposal.revisedDescription,
+  }
+  return { ...state, outline }
+}
 
-  for (let attempt = 0; attempt < MAX_AUTO_REVISION_ATTEMPTS; attempt++) {
-    try {
-      if (isRuntimeContext(source)) {
-        await prepareStoryStateForChapterCached(currentState, chapterIndex, source)
-      } else {
-        await prepareStoryStateForChapter(currentState, chapterIndex, provider)
-      }
-      if (attempt > 0) {
-        logger.info(`[MuseFlow] 大纲自动修订成功，第 ${chapterIndex + 1} 章冲突已解决`)
-      }
-      return currentState
-    } catch (err) {
-      if (!isBlockingConflictError(err)) {
-        throw err
-      }
+async function validateOutlineState(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  source: ChapterContextSource,
+  proposalMode: 'generate' | 'omit'
+): Promise<void> {
+  if (proposalMode === 'generate' && isRuntimeContext(source)) {
+    await prepareStoryStateForChapterCached(state, chapterIndex, source)
+    return
+  }
+  await prepareStoryStateForChapter(state, chapterIndex, getProvider(source), {
+    proposalMode,
+  })
+}
 
-      // 避免反复陷入同一组冲突（当冲突集合未改变时停止重试）
-      if (lastError && conflictsEqual(lastError.conflicts, err.conflicts)) {
-        logger.warn('[MuseFlow] 自动修订未能改变冲突集合，停止重试')
-        lastError = err
-        break
-      }
-      lastError = err
+type OutlineCandidateResolution =
+  | { status: 'accepted'; state: ReducedGraphState }
+  | { status: 'conflict'; error: BlockingConflictError }
 
-      if (attempt === MAX_AUTO_REVISION_ATTEMPTS - 1) {
-        break
-      }
+async function reconcileOutlineCandidate(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  source: ChapterContextSource,
+  applyValidatedProposal: boolean
+): Promise<OutlineCandidateResolution> {
+  let blockingError: BlockingConflictError
+  try {
+    await validateOutlineState(state, chapterIndex, source, 'generate')
+    return { status: 'accepted', state }
+  } catch (err) {
+    if (!isBlockingConflictError(err)) throw err
+    blockingError = err
+  }
 
-      logger.info(
-        `[MuseFlow] 检测到 ${err.conflicts.length} 个阻断性冲突，尝试自动修订大纲（${attempt + 1}/${MAX_AUTO_REVISION_ATTEMPTS}）...`
-      )
-
-      const proposal = await generateOutlineRevisionProposal(
-        currentState.outline,
-        chapterIndex,
-        [...err.conflicts],
-        currentState.storyState ?? createEmptyStoryState(),
-        provider
-      )
-
-      if (!proposal) {
-        logger.warn('[MuseFlow] 无法生成修订建议，停止自动修订')
-        break
-      }
-
-      const currentDescription = currentState.outline[chapterIndex]?.description ?? ''
-      if (proposal.revisedDescription === currentDescription) {
-        logger.warn('[MuseFlow] 修订建议与原大纲相同，停止自动修订')
-        break
-      }
-
-      const newOutline = [...currentState.outline]
-      const existingOutlineItem = newOutline[chapterIndex]
-      newOutline[chapterIndex] = {
-        ...existingOutlineItem,
-        number: existingOutlineItem?.number ?? chapterIndex + 1,
-        title: proposal.revisedTitle ?? existingOutlineItem?.title ?? `第${chapterIndex + 1}章`,
-        description: proposal.revisedDescription,
-      }
-      currentState = { ...currentState, outline: newOutline }
-
-      logger.info(`[MuseFlow] 已自动修订第 ${chapterIndex + 1} 章大纲`)
-      if (proposal.revisedTitle) {
-        logger.info(`  新标题：${proposal.revisedTitle}`)
-      }
-      logger.info(`  新描述：${proposal.revisedDescription}`)
+  const proposal = blockingError.proposal
+  if (!proposal) {
+    return {
+      status: 'conflict',
+      error: new BlockingConflictError([...blockingError.conflicts], chapterIndex),
     }
   }
 
-  if (lastError) {
-    throw lastError
+  const proposedState = stateWithOutlineProposal(state, chapterIndex, proposal)
+  try {
+    await validateOutlineState(proposedState, chapterIndex, source, 'omit')
+  } catch (err) {
+    if (!isBlockingConflictError(err)) throw err
+    return {
+      status: 'conflict',
+      error: new BlockingConflictError([...blockingError.conflicts], chapterIndex),
+    }
   }
 
-  return currentState
+  if (applyValidatedProposal) {
+    logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章临时大纲修订已通过权威事实校验`)
+    return { status: 'accepted', state: proposedState }
+  }
+
+  return {
+    status: 'conflict',
+    error: new BlockingConflictError([...blockingError.conflicts], chapterIndex, proposal),
+  }
 }
 
 export async function expandOutlineForChapter(
@@ -927,12 +910,70 @@ export async function expandOutlineForChapter(
   const provider = getProvider(source)
   let pendingIssues: Issue[] = []
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
-  const outlineResult = await generateChapterOutlineIfNeeded(state, chapterIndex, provider)
-  state = outlineResult.state
-  if (outlineResult.pendingIssues.length > 0) {
-    pendingIssues = [...pendingIssues, ...outlineResult.pendingIssues]
+  const persistedOutline = Boolean(state.outline[chapterIndex]?.description.trim())
+
+  if (persistedOutline) {
+    const resolution = await reconcileOutlineCandidate(state, chapterIndex, source, false)
+    if (resolution.status === 'conflict') {
+      throw resolution.error
+    }
+    state = resolution.state
+  } else {
+    const jitBaseState = state
+    const failures: BlockingConflictError[] = []
+    let resolved:
+      | {
+          state: ReducedGraphState
+          pendingIssues: Issue[]
+        }
+      | undefined
+
+    for (let attempt = 0; attempt < MAX_JIT_CONFLICT_CANDIDATES; attempt++) {
+      const outlineResult = await generateChapterOutlineIfNeeded(
+        jitBaseState,
+        chapterIndex,
+        provider
+      )
+      const resolution = await reconcileOutlineCandidate(
+        outlineResult.state,
+        chapterIndex,
+        source,
+        true
+      )
+      if (resolution.status === 'accepted') {
+        resolved = {
+          state: resolution.state,
+          pendingIssues: outlineResult.pendingIssues,
+        }
+        break
+      }
+
+      failures.push(resolution.error)
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章临时大纲候选 ${attempt + 1}/${MAX_JIT_CONFLICT_CANDIDATES} 未通过权威事实校验，已丢弃并重新生成`
+      )
+    }
+
+    if (!resolved) {
+      const fingerprints = failures.map((error) => conflictFingerprint(error.conflicts))
+      const firstFingerprint = fingerprints[0]
+      const stable =
+        firstFingerprint !== undefined &&
+        fingerprints.every((fingerprint) => fingerprint === firstFingerprint)
+      if (stable) {
+        const last = failures.at(-1)
+        if (last) {
+          throw new BlockingConflictError([...last.conflicts], chapterIndex)
+        }
+      }
+      throw new Error(
+        `第 ${chapterIndex + 1} 章连续 ${MAX_JIT_CONFLICT_CANDIDATES} 个临时大纲候选均未通过权威事实校验，且冲突集合不稳定；请重新运行本章生成。`
+      )
+    }
+
+    state = resolved.state
+    pendingIssues = resolved.pendingIssues
   }
-  state = await autoResolveBlockingOutlineConflicts(state, chapterIndex, source)
 
   let outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
