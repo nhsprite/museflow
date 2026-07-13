@@ -28,13 +28,15 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 
 {CANONICAL_FACTS_SECTION}
 
+{CURRENT_STATE_SNAPSHOT_SECTION}
+
 {VERIFIED_CONSTRAINTS_SECTION}
 </context>
 
 <instruction>
 1. 生成本章标题和 1–2 句描述（30–60 字）。
 2. 标题和描述必须与当前幕的叙事功能和主题一致。
-3. 必须尊重 <story_state> 和 <canonical_facts> 中的权威事实，不得与之矛盾。
+3. 必须尊重 <story_state>、<canonical_facts> 和 <current_state_snapshot> 中的权威事实，不得与之矛盾。本章 description 中的角色位置、物品位置和时间起点必须与 <current_state_snapshot> 保持一致；如需改变这些状态，必须通过清晰的角色动作完成转移，不得让角色或物品瞬间跳转。
 4. 优先推进当前幕尚未消费的 mandatory beats；如果本章不适合推进任何 beat，请说明原因。
 5. 不得提前执行下一幕的叙事功能，不得提前完成后续幕的 mandatory beats。
 6. 如果当前幕进度偏慢（剩余章节少、pending beats 多），请在本章安排推进至少一个 pending beat。
@@ -114,6 +116,9 @@ export function buildChapterOutlineUserPrompt(
       state.canonicalFacts && state.canonicalFacts.length > 0
         ? `<canonical_facts>\n${JSON.stringify(state.canonicalFacts, null, 2)}\n</canonical_facts>`
         : '',
+    CURRENT_STATE_SNAPSHOT_SECTION: state.currentStateSnapshot
+      ? `<current_state_snapshot>\n<mandatory>【当前状态快照 - 本章大纲必须与之一致】</mandatory>\n${state.currentStateSnapshot}\n</current_state_snapshot>`
+      : '',
     VERIFIED_CONSTRAINTS_SECTION:
       state.verifiedConstraints && state.verifiedConstraints.length > 0
         ? `<verified_constraints>\n${state.verifiedConstraints.join('\n')}\n</verified_constraints>`

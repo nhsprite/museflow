@@ -60,4 +60,8 @@ export interface Issue {
   expectedValue?: string | null
   /** 冲突类 issue 的属性维度，用于 reconcile UI 展示 */
   conflictAttribute?: string
+  /** 原始 aspect（由 consistency agent 等输出），用于判定 issue 分类 */
+  aspect?: string
+  /** 权威来源引用（canonical fact id / outline 条目 / 章节号），用于判定 error 是否成立 */
+  sourceReference?: string
 }

@@ -18,6 +18,7 @@ import type { ModelProvider } from '../../src/model/provider.js'
 import { logger } from '../../src/utils/logger.js'
 import { readChapterContent, writeOutlineContent } from '../../src/storage/filesystem/writer.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
 import type { ForeshadowMemory, StoryEvent } from '../../src/types/story-memory.js'
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-${randomUUID().slice(0, 8)}`)
@@ -49,6 +50,7 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
 
 vi.mock('../../src/utils/context-judge.js', () => ({
   batchValidateTimeAnchors: vi.fn().mockResolvedValue([{ valid: true }]),
+  batchDetectTimeJumps: vi.fn().mockResolvedValue([false]),
 }))
 
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
@@ -241,6 +243,57 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.title).toBe('即时标题')
     expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
     expect(writeOutlineContent).not.toHaveBeenCalled()
+  })
+
+  it('passes current state snapshot to JIT outline agent', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+      storyState: {
+        ...createEmptyStoryState(),
+        storyTime: '清晨',
+        chapterHandoff: {
+          chapterNumber: 1,
+          endTime: '清晨',
+          charactersPresent: ['c-hero'],
+          endScene: '旧宅门口',
+          lastAction: '主角跨出门槛',
+          openQuestions: [],
+        },
+      },
+      storyMemory: {
+        ...createEmptyStoryMemory(),
+        entities: {
+          ...createEmptyStoryMemory().entities,
+          characters: {
+            'c-hero': {
+              id: 'c-hero',
+              name: '主角',
+              locationId: 'l-old-house',
+              status: {},
+              introducedIn: 0,
+            },
+          },
+          locations: {
+            'l-old-house': { id: 'l-old-house', name: '旧宅', introducedIn: 0 },
+          },
+        },
+      },
+    }
+
+    await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      currentStateSnapshot?: string
+    }
+    expect(agentInput.currentStateSnapshot).toContain('清晨')
+    expect(agentInput.currentStateSnapshot).toContain('c-hero')
+    expect(agentInput.currentStateSnapshot).toContain('旧宅')
   })
 
   it('keeps planner fulfillment evidence when it covers the outline claim', async () => {

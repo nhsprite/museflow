@@ -146,11 +146,24 @@ ${state.chapterContract}
       },
     })
 
-    // 强制实施 prompt 约定：severity=error 的 consistency issue 必须携带 subject。
-    // 未携带 subject 的 error 降级为 warning，避免无实体锚定的泛化误报触发 full rewrite。
+    // 强制实施 prompt 约定：
+    // 1. severity=error 的 consistency issue 必须携带 subject；未携带 subject 的 error 降级为 warning。
+    // 2. aspect='outline' 的 error 必须同时携带 subject 和 source_reference，否则视为执行细节差异，降级为 warning 并改 dimension='quality'。
+    //    这样可以避免 LLM 把“旋出”vs“提出”等操作细节差异误判为 structural full rewrite 触发器。
     return issues.map((issue) => {
       if (issue.severity === 'error' && !issue.subject) {
         return { ...issue, severity: 'warning' as const }
+      }
+      if (
+        issue.severity === 'error' &&
+        issue.dimension === 'outline' &&
+        (!issue.sourceReference || issue.sourceReference.trim().length === 0)
+      ) {
+        return {
+          ...issue,
+          severity: 'warning' as const,
+          dimension: 'quality',
+        }
       }
       return issue
     })

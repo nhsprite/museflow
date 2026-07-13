@@ -51,6 +51,8 @@ export interface StateRepairOutcome {
 export interface StateRepairValidationContext {
   knownEntityIds: Set<string>
   locationEntityIds: Set<string>
+  characterEntityIds: Set<string>
+  itemEntityIds: Set<string>
   storyState: StoryState
   /** 当前章 index（0-based）；evidenceChapter 必须 < 当前章号。 */
   currentChapterIndex: number
@@ -87,6 +89,14 @@ function collectKnownEntityIds(memory: StoryMemory): Set<string> {
   ])
 }
 
+function collectCharacterEntityIds(memory: StoryMemory): Set<string> {
+  return new Set(Object.keys(memory.entities.characters))
+}
+
+function collectItemEntityIds(memory: StoryMemory): Set<string> {
+  return new Set(Object.keys(memory.entities.items))
+}
+
 /**
  * 对单条提案做严格结构化校验（精确相等 / 枚举 / 已知 id 集合，不做任何模糊文本匹配）。
  */
@@ -109,8 +119,27 @@ export function validateStateRepairProposal(
   if (newValue.length === 0) {
     return { accepted: false, reason: 'newValue 为空' }
   }
-  if (attribute === 'location' && !ctx.locationEntityIds.has(newValue)) {
-    return { accepted: false, attribute, reason: `newValue ${newValue} 不是已知地点实体 id` }
+  if (attribute === 'location') {
+    const subjectIsItem = ctx.itemEntityIds.has(subject)
+    const subjectIsCharacter = ctx.characterEntityIds.has(subject)
+    const validLocations = subjectIsItem
+      ? new Set([...ctx.locationEntityIds, ...ctx.characterEntityIds, ...ctx.itemEntityIds])
+      : ctx.locationEntityIds
+    if (!validLocations.has(newValue)) {
+      return {
+        accepted: false,
+        attribute,
+        reason: `newValue ${newValue} 不是该实体允许的 location id`,
+      }
+    }
+    // 角色 location 必须是地点；物品 location 可以是地点、持有者或其他物品
+    if (subjectIsCharacter && !ctx.locationEntityIds.has(newValue)) {
+      return {
+        accepted: false,
+        attribute,
+        reason: `newValue ${newValue} 不是已知地点实体 id（角色位置不允许设为其他实体）`,
+      }
+    }
   }
 
   const { evidenceChapter } = proposal
@@ -150,14 +179,39 @@ function buildRepairMessages(input: StateRepairInput, memory: StoryMemory): Mess
   const issuesText = input.issues
     .map((issue) => {
       const dimension = issue.dimension ? `（维度: ${issue.dimension}）` : ''
+      const subject = issue.subject ? `（subject: ${issue.subject}）` : ''
+      const location = issue.location ? `（位置: ${issue.location}）` : ''
+      const actual = issue.actualValue ? `（实际值: ${issue.actualValue}）` : ''
+      const expected = issue.expectedValue ? `（期望值: ${issue.expectedValue}）` : ''
+      const attribute = issue.conflictAttribute ? `（属性: ${issue.conflictAttribute}）` : ''
       const suggestion = issue.suggestion ? `\n  建议: ${issue.suggestion}` : ''
-      return `- [${issue.type}]${dimension} ${issue.description}${suggestion}`
+      return `- [${issue.type}]${dimension}${subject}${attribute}${actual}${expected}${location} ${issue.description}${suggestion}`
     })
     .join('\n')
 
   const knownEntityIds = collectKnownEntityIds(memory)
   const locationIds = Object.keys(memory.entities.locations)
-  const recentSummaries = input.chapterSummaries.slice(-3)
+  const recentSummaries = input.chapterSummaries.slice(-5)
+
+  // 提取问题中涉及的实体，把相关权威事实/被覆盖事实展示给模型，帮助定位历史污染
+  const involvedSubjects = new Set<string>()
+  for (const issue of input.issues) {
+    if (issue.subject) {
+      involvedSubjects.add(issue.subject.split('/')[0]!.trim())
+    }
+    if (issue.actualValue && !issue.actualValue.includes(' ')) {
+      involvedSubjects.add(issue.actualValue)
+    }
+    if (issue.expectedValue && !issue.expectedValue.includes(' ')) {
+      involvedSubjects.add(issue.expectedValue)
+    }
+  }
+  const relevantFacts = (input.storyState.canonicalFacts ?? []).filter((f) =>
+    involvedSubjects.has(f.subject)
+  )
+  const relevantSuperseded = (input.storyState.supersededFacts ?? []).filter((f) =>
+    involvedSubjects.has(f.subject)
+  )
 
   return [
     {
@@ -170,10 +224,13 @@ function buildRepairMessages(input: StateRepairInput, memory: StoryMemory): Mess
 1. 每条提案修正一条状态记录：subject（实体 id）、attribute（属性枚举）、oldValue（当前记录值）、newValue（修正后的值）、evidenceChapter（证据章号，1-based）、rationale（依据说明）。
 2. subject 必须来自【已知实体 id】列表，不得创造新实体。
 3. attribute 必须使用以下枚举值之一，禁止输出中文自然语言标签：location, status, origin, maker, giver, holder, identity, known_info, promise, attitude, dialogue, decision, plan, key_event, event, occurrence, result, twist。
-4. attribute 为 location 时，newValue 必须来自【已知地点 id】列表。
-5. oldValue 必须与【当前状态记录】中该 subject + attribute 的记录值完全一致。
-6. 证据只能来自已定稿章节：evidenceChapter 必须小于当前章号（${chapterNumber}）。
-7. 只修正确有正文证据支持的记录；无法确定正确值时不要提案。不要修改正文，不要推测未发生的情节。
+4. attribute 为 location 时：
+   - 若 subject 是角色，newValue 必须来自【已知地点 id】列表；
+   - 若 subject 是物品，newValue 可以是地点 id、持有者角色 id，或存放它的容器物品 id。
+5. attribute 为 holder 时，subject 必须是物品，newValue 必须是持有者角色 id。
+6. oldValue 必须与【当前状态记录】中该 subject + attribute 的记录值完全一致。
+7. 证据只能来自已定稿章节：evidenceChapter 必须小于当前章号（${chapterNumber}）。
+8. 只修正确有正文证据支持的记录；无法确定正确值时不要提案。不要修改正文，不要推测未发生的情节。
 
 请输出 JSON，格式为 {"proposals": [{"subject": "...", "attribute": "...", "oldValue": "...", "newValue": "...", "evidenceChapter": 1, "rationale": "..."}, ...]}。没有可修正的记录时返回 {"proposals": []}。`,
     },
@@ -187,7 +244,7 @@ ${issuesText}
 【当前状态记录】
 ${formatStoryState(input.storyState, memory.entities)}
 
-【已知实体 id】
+${relevantFacts.length > 0 ? `【相关权威事实（按问题涉及的实体筛选）】\n${relevantFacts.map((f) => `- ${f.subject} / ${f.attribute}: ${f.value}（来源: ${f.source}, 确立于第 ${f.establishedIn + 1} 章${f.retiredIn !== undefined ? `, 废止于第 ${f.retiredIn + 1} 章` : ''}）`).join('\n')}\n\n` : ''}${relevantSuperseded.length > 0 ? `【相关被覆盖事实】\n${relevantSuperseded.map((f) => `- ${f.subject}: ${f.oldFact}（原因: ${f.reason}）`).join('\n')}\n\n` : ''}【已知实体 id】
 ${[...knownEntityIds].join('、')}
 
 【已知地点 id】
@@ -270,6 +327,8 @@ export async function repairCorruptedState(
   const validationCtx: StateRepairValidationContext = {
     knownEntityIds: collectKnownEntityIds(input.storyMemory),
     locationEntityIds: new Set(Object.keys(input.storyMemory.entities.locations)),
+    characterEntityIds: collectCharacterEntityIds(input.storyMemory),
+    itemEntityIds: collectItemEntityIds(input.storyMemory),
     storyState: input.storyState,
     currentChapterIndex: input.currentChapterIndex,
   }

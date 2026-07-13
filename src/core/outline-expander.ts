@@ -491,6 +491,63 @@ export async function validateChapterTimeAnchor(
   return results[0] ?? { valid: true }
 }
 
+function buildCurrentStateSnapshot(state: ReducedGraphState): string {
+  const memory = state.storyMemory
+  const handoff = state.storyState?.chapterHandoff
+  const storyTime = state.storyState?.storyTime
+
+  const parts: string[] = []
+
+  if (handoff?.endTime || storyTime) {
+    parts.push(`【上一章结束时间】${handoff?.endTime ?? storyTime}`)
+  }
+  if (handoff?.charactersPresent && handoff.charactersPresent.length > 0) {
+    parts.push(`【上一章结尾在场角色】${handoff.charactersPresent.join('、')}`)
+  }
+  if (handoff?.endScene) {
+    parts.push(`【上一章结尾场景】${handoff.endScene}`)
+  }
+  if (handoff?.lastAction) {
+    parts.push(`【上一章最后动作】${handoff.lastAction}`)
+  }
+
+  if (memory) {
+    const characterLocations = Object.values(memory.entities.characters)
+      .filter((c) => c.locationId)
+      .map((c) => {
+        const loc = memory.entities.locations[c.locationId!]
+        return `- ${c.id}（${c.name}）: ${loc ? loc.name : c.locationId}`
+      })
+    if (characterLocations.length > 0) {
+      parts.push('【角色当前位置】')
+      parts.push(...characterLocations)
+    }
+
+    const itemLocations = Object.values(memory.entities.items)
+      .filter((item) => item.locationId || item.holderId)
+      .map((item) => {
+        const holder = item.holderId ? memory.entities.characters[item.holderId] : undefined
+        const location = item.locationId ? memory.entities.locations[item.locationId] : undefined
+        const where = holder
+          ? `持有者 ${holder.name}（${item.holderId}）`
+          : location
+            ? `位置 ${location.name}（${item.locationId}）`
+            : `位置 ${item.locationId ?? item.holderId}`
+        return `- ${item.id}（${item.name}）: ${where}`
+      })
+    if (itemLocations.length > 0) {
+      parts.push('【关键物品当前位置/持有者】')
+      parts.push(...itemLocations)
+    }
+  }
+
+  if (parts.length === 0) {
+    return '（暂无结构化状态快照）'
+  }
+
+  return parts.join('\n')
+}
+
 async function generateChapterOutlineIfNeeded(
   state: ReducedGraphState,
   chapterIndex: number,
@@ -573,6 +630,7 @@ async function generateChapterOutlineIfNeeded(
         ? { canonicalFacts: state.storyState.canonicalFacts }
         : {}),
       ...(verifiedConstraints.length > 0 ? { verifiedConstraints } : {}),
+      currentStateSnapshot: buildCurrentStateSnapshot(state),
     }
 
     const output = await agent.run(agentState)

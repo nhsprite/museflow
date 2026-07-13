@@ -288,4 +288,31 @@ describe('ChapterOutlineAgent', () => {
     expect(result.conflict).toBe(true)
     expect(result.conflictReason).toContain('最终对决')
   })
+
+  it('includes current state snapshot when provided', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '过渡',
+        description: '主角整理线索，暂不推进新的强制节拍。',
+        claimedBeats: [],
+      })
+    )
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 1,
+      storyArc,
+      actProgress: { 1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] } },
+      currentStateSnapshot: '【角色当前位置】\n- c-hero（主角）: 旧宅',
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('<current_state_snapshot>')
+    expect(prompt).toContain('旧宅')
+    expect(prompt).toContain('本章大纲必须与之一致')
+  })
 })

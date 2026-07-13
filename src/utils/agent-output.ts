@@ -77,6 +77,10 @@ export async function normalizeIssues(
       }
       if (issue.aspect) {
         result.dimension = issue.aspect
+        result.aspect = issue.aspect
+      }
+      if (issue.source_reference && typeof issue.source_reference === 'string') {
+        result.sourceReference = issue.source_reference
       }
       return result
     })

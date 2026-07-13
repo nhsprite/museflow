@@ -238,7 +238,11 @@ export function projectStoryStateFromMemory(
   }
 
   for (const item of Object.values(memory.entities.items)) {
-    const location = item.holderId ?? item.locationId
+    // locationId is the canonical item location; holderId is supplementary
+    // metadata about who is holding it. Prefer locationId so that a fixed
+    // location (e.g. a drawer) is not overridden just because a character
+    // handled the item there.
+    const location = item.locationId ?? item.holderId
     if (location) {
       keyItemsLocation[item.id] = location
     } else if (itemsWithLocationEvents.has(item.id)) {

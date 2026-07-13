@@ -133,6 +133,8 @@ export type ChapterOutlineAgentInput = AgentInput &
     storyState?: string
     canonicalFacts?: CanonicalFact[]
     verifiedConstraints?: string[]
+    /** 上一章结束时的状态快照，用于让大纲生成时即感知当前角色/物品位置和时间锚点 */
+    currentStateSnapshot?: string
   }
 
 export type ChapterAgentInput = AgentInput &

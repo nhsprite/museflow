@@ -158,6 +158,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 <important>【位置与状态事件区分 - 高频错误】
   - character-location：角色从一个地点移动到另一个地点（如离开、抵达、回家、出门）。只要角色位置发生改变，就必须使用此类型，不得使用 character-status。
   - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。"锁回木箱""放入抽屉""贴身携带"等动作都属于位置变化，必须使用 item-location，并将木箱/抽屉/角色等对应 ID 填入 locationId 或 holderId。
+  - 【关键区分】locationId 是物品的"主位置"（ canonical location ）。物品最终停留在某个固定地点/容器时，locationId 必须是该地点/容器 ID，holderId 必须为 none；物品最终被角色随身携带且其位置就是该角色时，locationId 应填写该角色 ID（与 holderId 一致），而不是某个地点 ID。禁止出现 "locationId=地点ID 但 holderId=角色ID" 这种两者语义矛盾的写法——那会让系统无法判断物品究竟在哪里。
   - item-state：仅用于物品自身属性变化，如破损、开封、浸湿、折叠、密封状态变化、燃烧等，不用于位置变化。
   - 没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
 
@@ -185,7 +186,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 - entityId 必须是机器可读的结构化 ID（如 c-character-id、item-item-id），禁止使用中文名称、描述性短语或自造格式。
 - 只声明本章正文明确引起过位置/状态变化的实体；本章没有任何位置/状态变化时输出空数组 []，但不得省略该区块。
 - attribute 只能是 "location" 或 "status"。
-  - location 的 value 必须是地点或持有者的结构化 ID，禁止自然语言描述。
+  - location 的 value 必须是 STORY_EVENTS 中对应事件 locationId 字段的结构化 ID（物品最终在哪里就写哪里的 ID），禁止自然语言描述。若 item-location 的 locationId 为 null 而 holderId 非 null，才允许写 holderId 的值。
   - status 的 value 必须是 STORY_EVENTS 中对应 character-status / item-state 事件的 value 字段的精确副本（短枚举值、既有状态短语或 JSON 字面量均可，禁止临时编造新表述）。
 - 【 critical 】status 的 value 只写事件值本身，不要把属性名与值拼接。如果 STORY_EVENTS 中的事件是 \`item-state: <item-id> / <attribute> -> <value>\`，则 STORY_FINAL_STATE 中只能写 \`{"entityId": "<item-id>", "attribute": "status", "value": "<value>"}\`，严禁写成 \`"<attribute>=<value>"\`。
 - 每条声明必须与 STORY_EVENTS 一致：该实体该属性在 STORY_EVENTS 中的最后一条事件的值必须与声明的 value 完全相同。系统会逐条校验：有对应事件但终态值不一致将被判为错误并要求重写本章；声明的实体本章无对应事件时仅记为提示。

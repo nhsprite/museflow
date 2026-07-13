@@ -98,13 +98,37 @@ describe('decideNextStep state repair routing (Case 1)', () => {
     expect(result.sessionUpdate.rewriteApproved).toBe(false)
   })
 
-  it('does not route to repair_state when errors include non-state-corruption issues', async () => {
+  it('routes to repair_state when at least one error is state-corruption, even if other errors exist', async () => {
     const ctx: RoutingContext = {
       session: makeSession(),
       pendingIssues: [
         stateCorruptionError('e1'),
         {
           id: 'e2',
+          type: 'consistency',
+          severity: 'error',
+          dimension: 'causality',
+          description: '因果关系不连贯',
+          retryStrategy: 'draft',
+        },
+      ],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: undefined,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step).toEqual({ kind: 'repair_state' })
+    expect(result.sessionUpdate.stateRepairAttempted).toBe(true)
+  })
+
+  it('does not route to repair_state when no error is state-corruption', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession(),
+      pendingIssues: [
+        {
+          id: 'e1',
           type: 'consistency',
           severity: 'error',
           dimension: 'causality',

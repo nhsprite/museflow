@@ -247,7 +247,7 @@ export function applyCanonicalFactsToState(
   const facts = state.canonicalFacts ?? []
 
   for (const fact of facts) {
-    if (fact.attribute === 'location') {
+    if (fact.attribute === 'location' || fact.attribute === 'holder') {
       if (isCharacterSubject(fact.subject, characters)) {
         result.characterLocations[fact.subject] = fact.value
       } else {

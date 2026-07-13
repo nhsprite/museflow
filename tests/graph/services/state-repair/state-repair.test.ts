@@ -49,6 +49,8 @@ function buildValidationCtx(
   return {
     knownEntityIds: new Set(['c-1', 'item-1', 'loc-a', 'loc-b']),
     locationEntityIds: new Set(['loc-a', 'loc-b']),
+    characterEntityIds: new Set(['c-1']),
+    itemEntityIds: new Set(['item-1']),
     storyState: buildState(),
     currentChapterIndex: 24,
     ...overrides,
@@ -117,7 +119,15 @@ describe('validateStateRepairProposal', () => {
       buildValidationCtx()
     )
     expect(verdict.accepted).toBe(false)
-    expect(verdict.reason).toContain('不是已知地点实体 id')
+    expect(verdict.reason).toContain('不是该实体允许的 location id')
+  })
+
+  it('allows an item location newValue to be a known character id', () => {
+    const verdict = validateStateRepairProposal(
+      makeProposal({ newValue: 'c-1' }),
+      buildValidationCtx()
+    )
+    expect(verdict.accepted).toBe(true)
   })
 
   it('rejects an oldValue that does not exactly equal the recorded value', () => {

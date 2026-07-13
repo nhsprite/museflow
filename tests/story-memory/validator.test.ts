@@ -303,7 +303,27 @@ describe('validateChapterEvents', () => {
       expect(result.finalStateMismatches[0]?.actualValue).toBe('loc-drawer-deep')
     })
 
-    it('prefers holderId over locationId for item-location declarations', () => {
+    it('prefers locationId over holderId for item-location declarations', () => {
+      const memory = createEmptyStoryMemory()
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        {
+          id: 'e1',
+          type: 'item-location' as const,
+          itemId: 'i-box',
+          holderId: 'c-linxuan',
+          locationId: 'loc-temple',
+          chapterIndex: 1,
+          source: 'chapter' as const,
+        },
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [{ entityId: 'i-box', attribute: 'location', value: 'loc-temple' }],
+      })
+      expect(result.finalStateMismatches).toEqual([])
+    })
+
+    it('reports a mismatch when the declaration matches only holderId and not locationId', () => {
       const memory = createEmptyStoryMemory()
       const plan = createEmptyChapterPlan(1)
       const actualEvents = [
@@ -320,7 +340,14 @@ describe('validateChapterEvents', () => {
       const result = validateChapterEvents(memory, 1, plan, actualEvents, {
         finalStateDeclarations: [{ entityId: 'i-box', attribute: 'location', value: 'c-linxuan' }],
       })
-      expect(result.finalStateMismatches).toEqual([])
+      expect(result.finalStateMismatches).toEqual([
+        {
+          entityId: 'i-box',
+          attribute: 'location',
+          declaredValue: 'c-linxuan',
+          actualValue: 'loc-temple',
+        },
+      ])
     })
 
     it('validates status declarations against the last status event value', () => {

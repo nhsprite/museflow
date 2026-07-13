@@ -30,11 +30,6 @@ export interface RoutingDeps {
   fingerprintIssue?: (issue: Issue) => Promise<string> | string
 }
 
-function allIssuesMatch(issues: Issue[], predicate: (issue: Issue) => boolean): Promise<boolean> {
-  if (issues.length === 0) return Promise.resolve(false)
-  return Promise.all(issues.map(predicate)).then((results) => results.every(Boolean))
-}
-
 function calculateFingerprintSetSimilarity(prev: string[], curr: string[]): number {
   if (prev.length === 0 || curr.length === 0) return 0
   const prevSet = new Set(prev)
@@ -122,14 +117,14 @@ export async function decideNextStep(
     }
   }
 
-  // Case 1: 重写循环中出现上游状态污染且无法收敛。
-  // 本章尚未尝试过状态修复时，先走 repair_state 自动修复路径；
-  // 已尝试过（修复失败或修后仍报同类错）则退回人工 request_rewrite。
-  if (
-    session.rewriteApproved &&
-    remainingErrors.length > 0 &&
-    (await allIssuesMatch(remainingErrors, deps.rewritePolicy.isStateCorruptionIssue))
-  ) {
+  // Case 1: 重写循环中出现上游状态污染。
+  // 只要剩余 error 中至少有一个是状态污染类问题，就优先尝试自动状态修复；
+  // 本章尚未尝试过状态修复时进入 repair_state，已尝试过则退回人工 request_rewrite。
+  const hasStateCorruptionError = await Promise.all(
+    remainingErrors.map((i) => deps.rewritePolicy.isStateCorruptionIssue(i))
+  ).then((results) => results.some(Boolean))
+
+  if (session.rewriteApproved && remainingErrors.length > 0 && hasStateCorruptionError) {
     if (!session.stateRepairAttempted) {
       return {
         step: { kind: 'repair_state' },

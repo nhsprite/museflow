@@ -314,3 +314,83 @@ describe('ConsistencyAgent canonical facts authority', () => {
     )
   })
 })
+
+describe('ConsistencyAgent outline detail tolerance', () => {
+  it('distinguishes core event deviation from execution detail differences in prompt', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      chapterContent: '正文。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '',
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('核心事件偏离')
+    expect(userMessage).toContain('执行细节差异')
+    expect(userMessage).toContain('大纲执行细节差异')
+  })
+
+  it('downgrades outline execution-detail errors to quality warnings', async () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const output = {
+      success: true,
+      content: '',
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            type: 'consistency',
+            severity: 'error',
+            description: '正文用“提出”印泥盒，大纲用“旋出”，操作细节不同。',
+            aspect: 'outline',
+            subject: 'item-inkpad',
+            location: '第3段',
+          },
+        ],
+      },
+    }
+
+    const issues = await agent.processOutput(output)
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0].severity).toBe('warning')
+    expect(issues[0].dimension).toBe('quality')
+  })
+
+  it('keeps outline core deviation as error when source_reference is provided', async () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const output = {
+      success: true,
+      content: '',
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            type: 'consistency',
+            severity: 'error',
+            description: '本章遗漏大纲要求的主角揭盒盖核心情节。',
+            aspect: 'outline',
+            subject: 'c-hero',
+            source_reference: 'outline:第2章：接头',
+            reader_confusion: '读者会疑惑印泥盒线索如何被发现。',
+          },
+        ],
+      },
+    }
+
+    const issues = await agent.processOutput(output)
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0].severity).toBe('error')
+    expect(issues[0].dimension).not.toBe('quality')
+  })
+})

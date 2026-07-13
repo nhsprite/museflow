@@ -136,6 +136,15 @@ describe('CLI end-to-end integration', () => {
         throw new Error(`process.exit(${String(code)})`)
       })
 
+    let createdStoryId: string | undefined
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      const msg = args.join(' ')
+      const match = /故事已创建，ID:\s*(\S+)/.exec(msg)
+      if (match) {
+        createdStoryId = match[1]
+      }
+    })
+
     try {
       await start(
         {
@@ -150,8 +159,17 @@ describe('CLI end-to-end integration', () => {
       const booksDir = join(process.cwd(), 'books')
       const dirs = readdirSync(booksDir).filter((d) => !preExistingDirs.includes(d))
       expect(dirs.length).toBeGreaterThan(0)
+      expect(createdStoryId).toBeDefined()
 
-      const metaPath = join(booksDir, dirs[0], 'meta.json')
+      const matchedDir = dirs.find((d) => {
+        const metaPath = join(booksDir, d, 'meta.json')
+        if (!existsSync(metaPath)) return false
+        const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+        return meta.story?.id === createdStoryId
+      })
+      expect(matchedDir).toBeDefined()
+
+      const metaPath = join(booksDir, matchedDir!, 'meta.json')
       expect(existsSync(metaPath)).toBe(true)
       const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
       expect(meta.story.title).toBe('候选书名一')
@@ -170,6 +188,7 @@ describe('CLI end-to-end integration', () => {
       expect(meta.storyArc.acts).toHaveLength(1)
     } finally {
       exitSpy.mockRestore()
+      logSpy.mockRestore()
     }
   })
 })

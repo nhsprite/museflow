@@ -1,7 +1,11 @@
 import { diffEvents } from './diff.js'
 import { renderStoryEventLine } from './event-format.js'
 import { countEvidenceParagraphs } from './validator.js'
-import type { StoryEvent } from '../types/story-memory.js'
+import type { StoryEvent, PlotAdvanceEvent } from '../types/story-memory.js'
+import type { StoryArc } from '../types/outline.js'
+import type { ChapterPlan } from '../agents/types.js'
+import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
+import { generateId } from '../utils/id.js'
 
 export interface EventCompletionResult {
   content: string
@@ -74,4 +78,54 @@ export function completeMissingExpectedEvents(
     events: allEvents,
     completedCount: completedEvents.length,
   }
+}
+
+/**
+ * 把本章声称要推进的 mandatory beats 补成 plot-advance 结构化事件。
+ *
+ * 章节规划（chapterPlan.expectedEvents）可能遗漏这些事件，导致 finalization 阶段报
+ * beat_unproven。本函数根据 claimedMandatoryBeatIds 自动为当前幕的每个未覆盖 beat
+ * 生成一条 `plot-advance: act-<n> / <beatId>` 的期望事件，供 prompt 展示和后续
+ * 自动补全使用。
+ */
+export function augmentExpectedEventsWithMandatoryBeats(
+  chapterPlan: ChapterPlan | undefined,
+  storyArc: StoryArc | undefined,
+  chapterIndex: number
+): StoryEvent[] {
+  const expectedEvents = chapterPlan?.expectedEvents ?? []
+  const claimedBeatIds = chapterPlan?.claimedMandatoryBeatIds ?? []
+  if (claimedBeatIds.length === 0 || !storyArc) {
+    return expectedEvents
+  }
+
+  const currentAct = storyArc.acts.find(
+    (act) => chapterIndex + 1 >= act.startChapter && chapterIndex + 1 <= act.endChapter
+  )
+  if (!currentAct) {
+    return expectedEvents
+  }
+
+  const existingBeatIds = new Set(
+    expectedEvents
+      .filter((e): e is PlotAdvanceEvent => e.type === 'plot-advance')
+      .map((e) => e.beatId)
+  )
+
+  const additionalEvents: PlotAdvanceEvent[] = []
+  for (const beatId of claimedBeatIds) {
+    if (existingBeatIds.has(beatId)) continue
+    const lookup = findMandatoryBeatById(storyArc, beatId)
+    if (!lookup || lookup.act.index !== currentAct.index) continue
+    additionalEvents.push({
+      id: generateId('evt'),
+      type: 'plot-advance',
+      chapterIndex,
+      source: 'outline',
+      plotId: `act-${currentAct.index}`,
+      beatId,
+    })
+  }
+
+  return additionalEvents.length > 0 ? [...expectedEvents, ...additionalEvents] : expectedEvents
 }

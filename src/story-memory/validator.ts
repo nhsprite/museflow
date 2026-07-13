@@ -247,9 +247,11 @@ function finalStateEventValue(event: StoryEvent): string | null {
     case 'character-location':
       return event.locationId
     case 'item-location':
-      // The holder determines where the item effectively is; fall back to the
-      // location id when the item is not held by anyone.
-      return event.holderId ?? event.locationId
+      // locationId is the canonical item location. holderId is supplementary
+      // metadata about who is holding the item at that location; it does not
+      // override the item's primary location. This avoids false mismatches when
+      // a character briefly handles an item that remains in a fixed place.
+      return event.locationId ?? event.holderId
     case 'character-status':
     case 'item-state':
       return typeof event.value === 'string' ? event.value : (JSON.stringify(event.value) ?? null)
