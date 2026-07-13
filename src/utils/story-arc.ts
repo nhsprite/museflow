@@ -263,6 +263,57 @@ function calculateForeshadowCapacitySizing(
   }
 }
 
+export function proposeActExtensionAfterForeshadowAdjudication(
+  storyArc: StoryArc,
+  currentChapterIndex: number,
+  memory: StoryMemory,
+  capacity: number,
+  plannedFulfillmentIds: readonly string[]
+): ActBoundaryProposal | undefined {
+  const currentAct = getActForChapter(storyArc, currentChapterIndex)
+  if (!currentAct) return undefined
+
+  const currentChapterNumber = currentChapterIndex + 1
+  assertSafeChapterNumber(currentChapterNumber, '当前章节号')
+  assertSafeChapterNumber(currentAct.endChapter, `第 ${currentAct.index} 幕结束章节`)
+
+  const normalizedCapacity = normalizeForeshadowCapacity(capacity)
+  const plannedFulfillments = new Set(plannedFulfillmentIds)
+  const finalActIndex = storyArc.acts.at(-1)?.index
+  const includeAllRequired = currentAct.index === finalActIndex
+  const existingFutureSlots = currentAct.endChapter - currentChapterNumber
+  let candidateEnd = currentAct.endChapter
+  let remainingBlockingCount = 0
+
+  while (true) {
+    remainingBlockingCount = getRequiredForeshadowsForScheduling(
+      memory,
+      candidateEnd,
+      includeAllRequired
+    ).filter((foreshadow) => !plannedFulfillments.has(foreshadow.id)).length
+
+    const availableFutureSlots = candidateEnd - currentChapterNumber
+    const requiredFutureSlots = Math.ceil(remainingBlockingCount / normalizedCapacity)
+    if (requiredFutureSlots <= availableFutureSlots) break
+
+    const nextCandidateEnd = currentChapterNumber + requiredFutureSlots
+    if (!Number.isSafeInteger(nextCandidateEnd) || nextCandidateEnd <= candidateEnd) {
+      throw new RangeError(
+        `第 ${currentAct.index} 幕伏笔裁决后容量计算无法以安全整数推进：${candidateEnd} -> ${String(nextCandidateEnd)}`
+      )
+    }
+    candidateEnd = nextCandidateEnd
+  }
+
+  if (candidateEnd <= currentAct.endChapter) return undefined
+
+  return {
+    actIndex: currentAct.index,
+    proposedEndChapter: candidateEnd,
+    reason: `第 ${currentAct.index} 幕本章伏笔裁决后容量不足：本章裁决后仍有 ${remainingBlockingCount} 个 required 未回收伏笔，未来 ${existingFutureSlots} 个章节槽位 × 每章 ${normalizedCapacity} 个 = ${existingFutureSlots * normalizedCapacity} 个容量，需延长至第 ${candidateEnd} 章。`,
+  }
+}
+
 export function proposeActBoundaryAdjustments(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,

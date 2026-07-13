@@ -3,6 +3,7 @@ import {
   buildArcStatus,
   buildClosingPhaseConstraint,
   isClosingPhase,
+  proposeActExtensionAfterForeshadowAdjudication,
   proposeActBoundaryAdjustments,
   validateActBoundaryAdjustment,
   applyActBoundaryAdjustment,
@@ -210,6 +211,59 @@ describe('story-arc utilities', () => {
     expect(proposals[0]?.reason).toContain('11 个 required')
     expect(proposals[0]?.reason).toContain('1 个章节槽位')
     expect(proposals[0]?.reason).toContain('每章 3 个')
+  })
+
+  it('extends the act when a boundary chapter defers all due foreshadows', () => {
+    const proposal = proposeActExtensionAfterForeshadowAdjudication(
+      makeStoryArc(),
+      4,
+      memoryWithDueForeshadows(3),
+      3,
+      []
+    )
+
+    expect(proposal).toEqual(expect.objectContaining({ actIndex: 1, proposedEndChapter: 6 }))
+    expect(proposal?.reason).toContain('本章裁决后仍有 3 个 required 未回收伏笔')
+    expect(proposal?.reason).toContain('未来 0 个章节槽位')
+  })
+
+  it('does not reserve future capacity for foreshadows planned in the current chapter', () => {
+    const proposal = proposeActExtensionAfterForeshadowAdjudication(
+      makeStoryArc(),
+      4,
+      memoryWithDueForeshadows(3),
+      3,
+      ['fs-00', 'fs-01', 'fs-02']
+    )
+
+    expect(proposal).toBeUndefined()
+  })
+
+  it('recalculates remaining capacity when post-adjudication extension crosses a deadline', () => {
+    const memory = memoryWithDueForeshadows(4)
+    for (let index = 0; index < 4; index++) {
+      const id = `future-${index}`
+      memory.foreshadows[id] = {
+        id,
+        text: id,
+        kind: 'plot',
+        introducedIn: 0,
+        expectedFulfillChapter: 6,
+        fulfilledIn: null,
+        required: true,
+        beatId: null,
+      }
+    }
+
+    const proposal = proposeActExtensionAfterForeshadowAdjudication(
+      makeStoryArc(),
+      4,
+      memory,
+      3,
+      []
+    )
+
+    expect(proposal?.proposedEndChapter).toBe(8)
   })
 
   it('extends for foreshadow capacity even when the current chapter is far from the boundary', () => {
