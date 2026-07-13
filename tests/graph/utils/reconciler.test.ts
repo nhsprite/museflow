@@ -1145,6 +1145,8 @@ describe('prepareStoryStateForChapter', () => {
     vi.mocked(contextJudge.batchExtractEntityChanges).mockResolvedValue([])
     vi.mocked(contextJudge.batchDetectTimeJumps).mockResolvedValue([false])
     vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValue([false])
+    vi.mocked(outlineRevision.generateOutlineRevisionProposal).mockReset()
+    vi.mocked(outlineRevision.generateOutlineRevisionProposal).mockResolvedValue(null)
   })
 
   function buildBaseSession(overrides: Partial<ChapterSession> = {}): ChapterSession {
@@ -1266,6 +1268,32 @@ describe('prepareStoryStateForChapter', () => {
         explanation: '避免与主角仍在家的权威事实冲突。',
       },
     })
+  })
+
+  it('does not generate a nested proposal when proposalMode is omit', async () => {
+    const state = makeState()
+    const provider = {
+      chat: vi.fn(async (): Promise<string> =>
+        JSON.stringify({
+          conflicts: [
+            {
+              subject: '主角',
+              attribute: 'location',
+              oldValue: '家中',
+              newValue: '京城',
+              severity: 'blocking',
+              description: '大纲要求主角抵达京城，与权威事实冲突',
+            },
+          ],
+          constraints: [],
+        })
+      ),
+    } as unknown as ModelProvider
+
+    await expect(
+      prepareStoryStateForChapter(state, 0, provider, { proposalMode: 'omit' })
+    ).rejects.toMatchObject({ proposal: undefined })
+    expect(outlineRevision.generateOutlineRevisionProposal).not.toHaveBeenCalled()
   })
 
   it('skips blocking conflicts that have an author decision', async () => {

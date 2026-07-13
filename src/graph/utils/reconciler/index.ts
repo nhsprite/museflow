@@ -24,10 +24,15 @@ export interface PreparedStoryState {
   itemLocationConflicts: Array<{ item: string; locations: string[] }>
 }
 
+export interface PrepareStoryStateOptions {
+  proposalMode?: 'generate' | 'omit'
+}
+
 export async function prepareStoryStateForChapter(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider: ModelProvider
+  provider: ModelProvider,
+  options: PrepareStoryStateOptions = {}
 ): Promise<PreparedStoryState> {
   const outlineItem = state.outline[chapterIndex]
   let reconciledState: StoryState = state.storyState ?? createEmptyStoryState()
@@ -88,13 +93,16 @@ export async function prepareStoryStateForChapter(
       ),
     ]
     if (undecidedBlockingConflicts.length > 0) {
-      const proposal = await generateOutlineRevisionProposal(
-        state.outline,
-        chapterIndex,
-        undecidedBlockingConflicts,
-        reconciledState,
-        provider
-      )
+      const proposal =
+        options.proposalMode === 'omit'
+          ? null
+          : await generateOutlineRevisionProposal(
+              state.outline,
+              chapterIndex,
+              undecidedBlockingConflicts,
+              reconciledState,
+              provider
+            )
       throw new BlockingConflictError(
         undecidedBlockingConflicts,
         chapterIndex,
