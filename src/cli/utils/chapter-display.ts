@@ -3,6 +3,7 @@ import type { ChapterReport } from '../../types/chapter-report.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
 import { buildArcStatus } from '../../utils/story-arc.js'
+import { formatActForeshadowBoundaryPressure } from '../formatters/foreshadow-boundary-pressure.js'
 
 function toDisplayChapterNumber(chapterIndex: number): number {
   return chapterIndex + 1
@@ -54,6 +55,7 @@ export function printActProgress(
       console.log(`    ${i + 1}. ${arcStatus.beatsPending[i]}`)
     }
   }
+  for (const line of formatActForeshadowBoundaryPressure(state, act, '  ')) console.log(line)
 }
 
 export function printChapterReport(report: ChapterReport | null | undefined): void {

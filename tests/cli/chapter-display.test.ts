@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEmptyChapterReport } from '../../src/types/chapter-report.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import { printActProgress, printChapterReport } from '../../src/cli/utils/chapter-display.js'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 function buildState(): ReducedGraphState {
   return {
@@ -34,6 +35,31 @@ function buildState(): ReducedGraphState {
     actProgress: {
       2: { consumed: ['节拍二'], pending: ['节拍三', '节拍四'] },
     },
+    storyMemory: {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'fs-a': {
+          id: 'fs-a',
+          text: '伏笔 A',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: 6,
+          fulfilledIn: null,
+          required: true,
+          beatId: null,
+        },
+        'fs-b': {
+          id: 'fs-b',
+          text: '伏笔 B',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: 8,
+          fulfilledIn: null,
+          required: true,
+          beatId: null,
+        },
+      },
+    },
   } as ReducedGraphState
 }
 
@@ -57,6 +83,19 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('  待消费:')
     expect(logSpy).toHaveBeenCalledWith('    1. 节拍三')
     expect(logSpy).toHaveBeenCalledWith('    2. 节拍四')
+    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 2 个 required 伏笔待回收')
+    expect(logSpy).toHaveBeenCalledWith('  待回收伏笔:')
+    expect(logSpy).toHaveBeenCalledWith('    1. fs-a（预计第 6 章）')
+    expect(logSpy).toHaveBeenCalledWith('    2. fs-b（预计第 8 章）')
+  })
+
+  it('prints zero foreshadow boundary pressure for legacy state without story memory', () => {
+    const state = buildState()
+    state.storyMemory = null
+
+    printActProgress(state, 5)
+
+    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 0')
   })
 
   it('prints updated act progress in the chapter completion report', () => {
