@@ -96,6 +96,26 @@ function normalizeReusableChapterPlan(plan: ChapterPlan, chapterIndex: number): 
   }
 }
 
+function reconcileChapterPlanBeatContract(
+  plan: ChapterPlan,
+  outlineItem: ReducedGraphState['outline'][number] | undefined
+): ChapterPlan {
+  if (!outlineItem) return plan
+
+  const claimedMandatoryBeatIds = Array.from(new Set(outlineItem.claimedMandatoryBeatIds ?? []))
+  const claimedBeatIds = Array.from(new Set(outlineItem.claimedBeatIds ?? []))
+  const authorizedBeatIds = new Set([...claimedMandatoryBeatIds, ...claimedBeatIds])
+
+  return {
+    ...plan,
+    claimedMandatoryBeatIds,
+    claimedBeatIds,
+    expectedEvents: (plan.expectedEvents ?? []).filter(
+      (event) => event.type !== 'plot-advance' || authorizedBeatIds.has(event.beatId)
+    ),
+  }
+}
+
 function getScheduledForeshadowIds(state: ReducedGraphState, chapterIndex: number): string[] {
   if (!state.storyMemory) return []
   const act = getActForChapter(state.storyArc, chapterIndex)
@@ -1334,6 +1354,8 @@ export async function expandOutlineForChapter(
   } else if (budgetAttempts > 0) {
     logger.info('[MuseFlow] 重新规划后重心已修正')
   }
+
+  chapterPlan = reconcileChapterPlanBeatContract(chapterPlan, state.outline[chapterIndex])
 
   logger.info(`[MuseFlow] 已动态展开第 ${outlineItem.number} 章详细大纲`)
 

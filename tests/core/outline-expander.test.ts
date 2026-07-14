@@ -353,6 +353,65 @@ describe('expandOutlineForChapter', () => {
     ])
   })
 
+  it('discards beat claims invented by a newly generated plan', async () => {
+    const locationEvent: StoryEvent = {
+      id: 'evt-location',
+      type: 'character-location',
+      characterId: 'c-hero',
+      locationId: 'l-hall',
+      chapterIndex: 1,
+      source: 'chapter',
+    }
+    const hallucinatedBeatEvent: StoryEvent = {
+      id: 'evt-hallucinated-beat',
+      type: 'plot-advance',
+      plotId: 'act-2',
+      beatId: 'A2-B3',
+      chapterIndex: 1,
+      source: 'chapter',
+    }
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        claimedBeatIds: ['A2-B3'],
+        expectedEvents: [locationEvent, hallucinatedBeatEvent],
+      }),
+    })
+
+    const result = await expandOutlineForChapter(baseState, 1, createMockProvider())
+
+    expect(result.outline?.[1]?.claimedBeatIds ?? []).toEqual([])
+    expect(result.chapterPlan.claimedBeatIds).toEqual([])
+    expect(result.chapterPlan.expectedEvents).toEqual([locationEvent])
+  })
+
+  it('discards stale beat claims when reusing a checkpoint plan', async () => {
+    const stalePlan = createCompleteChapterPlan({
+      claimedMandatoryBeatIds: ['A1-M1'],
+      claimedBeatIds: ['A2-B3'],
+      expectedEvents: [
+        {
+          id: 'evt-stale-beat',
+          type: 'plot-advance',
+          plotId: 'act-2',
+          beatId: 'A2-B3',
+          chapterIndex: 1,
+          source: 'chapter',
+        },
+      ],
+    })
+
+    const result = await expandOutlineForChapter(
+      { ...baseState, storyMemory: null, chapterPlan: stalePlan },
+      1,
+      createMockProvider()
+    )
+
+    expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+    expect(result.chapterPlan.claimedMandatoryBeatIds).toEqual([])
+    expect(result.chapterPlan.claimedBeatIds).toEqual([])
+    expect(result.chapterPlan.expectedEvents).toEqual([])
+  })
+
   it('replans a resumed chapter whose legacy event cannot be normalized safely', async () => {
     const legacyPlan = createCompleteChapterPlan({
       chapterIndex: 1,
@@ -1575,7 +1634,7 @@ describe('expandOutlineForChapter', () => {
   })
 
   it('replans when the generated chapter time anchor contradicts the previous chapter', async () => {
-    const invalidPlan: ChapterPlan = {
+    const invalidPlan = createCompleteChapterPlan({
       sections: [
         {
           title: '错误锚点',
@@ -1589,8 +1648,8 @@ describe('expandOutlineForChapter', () => {
       timeline: [],
       outlineCheck: [{ requirement: '承接上一章', fulfilled: true, section: '错误锚点' }],
       chapterTimeAnchor: '声称上一章已经回到教室',
-    }
-    const correctedPlan: ChapterPlan = {
+    })
+    const correctedPlan = createCompleteChapterPlan({
       sections: [
         {
           title: '正确承接',
@@ -1604,7 +1663,7 @@ describe('expandOutlineForChapter', () => {
       timeline: [],
       outlineCheck: [{ requirement: '承接上一章', fulfilled: true, section: '正确承接' }],
       chapterTimeAnchor: '承接上一章结尾',
-    }
+    })
     planChapterWithOverrideMock
       .mockResolvedValueOnce({ chapterPlan: invalidPlan })
       .mockResolvedValueOnce({ chapterPlan: correctedPlan })
