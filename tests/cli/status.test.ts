@@ -153,7 +153,7 @@ describe('status command chapter display', () => {
 
     expect(logSpy).toHaveBeenCalledWith('伏笔边界压力: 1 个 required 伏笔待回收')
     expect(logSpy).toHaveBeenCalledWith('待回收伏笔:')
-    expect(logSpy).toHaveBeenCalledWith('  1. fs-status（预计第 3 章）')
+    expect(logSpy).toHaveBeenCalledWith('  1. fs-status（引入第 1 章，预计第 3 章回收）')
   })
 
   it('shows high risk when overdue key beats exist', async () => {

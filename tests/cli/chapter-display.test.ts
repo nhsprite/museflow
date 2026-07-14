@@ -85,8 +85,8 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('    2. 节拍四')
     expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 2 个 required 伏笔待回收')
     expect(logSpy).toHaveBeenCalledWith('  待回收伏笔:')
-    expect(logSpy).toHaveBeenCalledWith('    1. fs-a（预计第 6 章）')
-    expect(logSpy).toHaveBeenCalledWith('    2. fs-b（预计第 8 章）')
+    expect(logSpy).toHaveBeenCalledWith('    1. fs-a（引入第 1 章，预计第 6 章回收）')
+    expect(logSpy).toHaveBeenCalledWith('    2. fs-b（引入第 1 章，预计第 8 章回收）')
   })
 
   it('prints unavailable foreshadow boundary pressure for legacy state without story memory', () => {
@@ -126,8 +126,8 @@ describe('CLI chapter display', () => {
 
     expect(logSpy).toHaveBeenCalledWith('   伏笔边界压力: 2 个 required 伏笔待回收')
     expect(logSpy).toHaveBeenCalledWith('   待回收伏笔:')
-    expect(logSpy).toHaveBeenCalledWith('     1. fs-a（预计第 6 章）')
-    expect(logSpy).toHaveBeenCalledWith('     2. fs-b（预计第 8 章）')
+    expect(logSpy).toHaveBeenCalledWith('     1. fs-a（引入第 1 章，预计第 6 章回收）')
+    expect(logSpy).toHaveBeenCalledWith('     2. fs-b（引入第 1 章，预计第 8 章回收）')
   })
 
   it('omits foreshadow boundary pressure in the completion report when state is not provided', () => {

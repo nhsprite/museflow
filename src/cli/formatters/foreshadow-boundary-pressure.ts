@@ -23,11 +23,12 @@ export function formatActForeshadowBoundaryPressure(
     `${indent}伏笔边界压力: ${entries.length} 个 required 伏笔待回收`,
     `${indent}待回收伏笔:`,
     ...entries.map((entry, index) => {
+      const introducedChapter = entry.introducedIn + 1
       const deadline =
         entry.expectedFulfillChapter === null
-          ? '（未设预计章节）'
-          : `（预计第 ${entry.expectedFulfillChapter} 章）`
-      return `${indent}  ${index + 1}. ${entry.id}${deadline}`
+          ? '未设预计章节'
+          : `预计第 ${entry.expectedFulfillChapter} 章回收`
+      return `${indent}  ${index + 1}. ${entry.id}（引入第 ${introducedChapter} 章，${deadline}）`
     }),
   ]
 }

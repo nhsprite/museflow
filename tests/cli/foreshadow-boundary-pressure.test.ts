@@ -63,8 +63,8 @@ describe('formatActForeshadowBoundaryPressure', () => {
     ).toEqual([
       '  伏笔边界压力: 2 个 required 伏笔待回收',
       '  待回收伏笔:',
-      '    1. fs-earlier（预计第 2 章）',
-      '    2. fs-boundary（预计第 3 章）',
+      '    1. fs-earlier（引入第 1 章，预计第 2 章回收）',
+      '    2. fs-boundary（引入第 1 章，预计第 3 章回收）',
     ])
   })
 
@@ -106,8 +106,8 @@ describe('formatActForeshadowBoundaryPressure', () => {
     expect(formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct)).toEqual([
       '伏笔边界压力: 2 个 required 伏笔待回收',
       '待回收伏笔:',
-      '  1. fs-future（预计第 30 章）',
-      '  2. fs-unscheduled（未设预计章节）',
+      '  1. fs-future（引入第 1 章，预计第 30 章回收）',
+      '  2. fs-unscheduled（引入第 1 章，未设预计章节）',
     ])
   })
 })

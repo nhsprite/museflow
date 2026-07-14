@@ -196,6 +196,87 @@ describe('parseStoryEventsBlock', () => {
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({ type: 'plot-advance', plotId: 'act-2', beatId: 'A2-M3' })
   })
+
+  it('drops character-location events with non-machine characterId or locationId', () => {
+    const text = `=== STORY_EVENTS ===
+- character-location: 某个中文角色名 -> l-shopfront
+- character-location: c-linxuan -> 某个中文地点
+- character-location: c-linxuan -> l-temple
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: 'character-location',
+      characterId: 'c-linxuan',
+      locationId: 'l-temple',
+    })
+  })
+
+  it('drops character-status events with non-machine characterId', () => {
+    const text = `=== STORY_EVENTS ===
+- character-status: 某个中文角色名 / mood -> suspicious
+- character-status: c-linxuan / health -> injured
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: 'character-status',
+      characterId: 'c-linxuan',
+    })
+  })
+
+  it('drops item-state events with non-machine itemId', () => {
+    const text = `=== STORY_EVENTS ===
+- item-state: 某个中文物品名 / location -> 桌上
+- item-state: i-sword / condition -> broken
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: 'item-state',
+      itemId: 'i-sword',
+    })
+  })
+
+  it('drops foreshadow-fulfill events with non-machine foreshadowId', () => {
+    const text = `=== STORY_EVENTS ===
+- foreshadow-fulfill: 某个中文描述
+- foreshadow-fulfill: fs-oath
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'foreshadow-fulfill', foreshadowId: 'fs-oath' })
+  })
+
+  it('drops plot-advance events with non-machine plotId or beatId', () => {
+    const text = `=== STORY_EVENTS ===
+- plot-advance: 第一章 / A1-M1
+- plot-advance: act-1 / 节拍一
+- plot-advance: act-1 / A1-M1
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'plot-advance', plotId: 'act-1', beatId: 'A1-M1' })
+  })
+
+  it('drops task events with non-machine taskId', () => {
+    const text = `=== STORY_EVENTS ===
+- task-create: 某个中文任务名 / find the key
+- task-resolve: 未完成
+- task-create: t-errand / find the key
+- task-resolve: t-errand
+=== CHAPTER_CONTENT ===
+正文`
+    const events = parseStoryEventsBlock(text, 1)
+    expect(events).toHaveLength(2)
+    expect(events[0]).toMatchObject({ type: 'task-create', taskId: 't-errand' })
+    expect(events[1]).toMatchObject({ type: 'task-resolve', taskId: 't-errand' })
+  })
 })
 
 describe('parseStoryFinalStateBlock', () => {
