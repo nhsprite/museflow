@@ -434,6 +434,26 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(prompt).toContain('"chapterIndex": 25')
   })
 
+  it('renders the unnamed-walk-on exclusion rule for expectedEvents', () => {
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 50,
+      world: '',
+      characters: '',
+      outline: '第26章：底稿',
+      previousChapters: '',
+      chapterIndex: 25,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const prompt = messages[1]?.content ?? ''
+    expect(prompt).toContain('无名角色禁入事件')
+    expect(prompt).toContain('不输出 expectedEvents 的临时龙套')
+  })
+
   it('renders the complete strict StoryEvent JSON contract', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
     const messages = agent.exposePrompt({

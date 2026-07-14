@@ -104,12 +104,16 @@ describe('plan_chapter_with_override', () => {
           expect.objectContaining({
             type: 'outline_invalid',
             severity: 'error',
-            description:
-              'expectedEvents[0] 格式错误：item-state.attribute must be a non-empty string',
+            description: expect.stringContaining(
+              'expectedEvents[0] 格式错误：item-state.attribute must be a non-empty string'
+            ),
           }),
         ],
       })
     )
+    const retryInput = plannerRun.mock.calls[1]?.[0] as { issues: { description: string }[] }
+    expect(retryInput.issues[0]?.description).toContain('修复提示')
+    expect(retryInput.issues[0]?.description).toContain('无名临时角色禁止出现在 expectedEvents 中')
     expect(result.chapterPlan?.expectedEvents).toEqual([])
   })
 

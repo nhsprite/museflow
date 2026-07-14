@@ -125,7 +125,7 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
   11. 【角色执行者规则 - 必须执行】
       - 如果大纲中某动作执行者未指定具体人名（即使用泛指或匿名描述），规划中必须：
         1) 优先从官方角色中选择执行者；
-        2) 若官方角色均不适合，只能使用不露名、不进入 storyState 的临时龙套；
+        2) 若官方角色均不适合，只能使用不露名、不进入 storyState、不输出 expectedEvents 的临时龙套；
         3) 禁止为该动作 invent 新的有名角色或亲属关系。
   12. 【字数控制 - 必须执行】
      - 所有 section 的 wordCount 之和应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间
@@ -141,6 +141,7 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
        2) 不得把本章主场景地点套用到所有出场角色——每个位置事件必须与 section 中描述的具体动作一一对应；
        3) 位置/状态事件的值必须与已有故事记忆一致或体现本章真实变化，禁止编造未在 sections 中出现的移动或状态改变；
        4) 位置变化与状态变化的区分：角色或物品的移动、交接、取出、放回、随身携带、锁回某处等必须使用 location 类型事件（character-location / item-location），不得使用 status/state 类型；item-state / character-status 只用于物品或角色自身的属性变化（如破损、开封、情绪、伤势等）。
+       5) 【无名角色禁入事件】expectedEvents 只允许记录上下文中已有权威 ID 的角色与物品；没有权威 ID 的无名临时角色（功能性路人）即使在本章发生移动或状态变化，也禁止为其输出 character-location / character-status 事件，禁止用中文名、描述性短语或自造 ID 充当 characterId——其动作只写入 sections/timeline 文本，不进入 storyState；
      - foreshadow-introduce 事件必须包含 text、kind、required、expectedFulfillChapter；若与某个节拍绑定，填写 beatId，否则 beatId 为 null。其中 kind 必须是以下枚举值之一：character_arc、environmental_detail、dialogue_hint、object_foreshadow、inner_conflict、plot、other。
      - 每个事件的 source 固定为 "chapter"。
      - expectedEvents 中的所有事件都由本章产生，其内部零基章节索引固定为 {chapterIndex}；不得填写展示章节号 {displayChapterNumber} 或其他章节索引。
