@@ -1,4 +1,5 @@
 import { getForeshadowAlerts, formatForeshadowAlerts } from './foreshadow-alerts.js'
+import { formatActForeshadowBoundaryPressure } from './foreshadow-boundary-pressure.js'
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import { buildArcStatus } from '../../utils/story-arc.js'
 import type { Story } from '../../types/story.js'
@@ -91,6 +92,9 @@ export function printChapterProgress(state: ReducedGraphState): void {
       )
       console.log(`本章位置: 第 ${current + 1}/${state.totalChapters} 章`)
       console.log(`收尾阶段: ${arcStatus.closingPhase ? '是' : '否'}`)
+      for (const line of formatActForeshadowBoundaryPressure(state, arcStatus.currentAct)) {
+        console.log(line)
+      }
     } else {
       console.log('当前幕: 未定位')
     }

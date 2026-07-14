@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ReducedGraphState } from '../../src/graph/state.ts'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.ts'
 import type { Story } from '../../src/types/story.ts'
 
 const getStoryMock = vi.fn<() => Story | null>()
@@ -126,6 +127,33 @@ describe('status command chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('测试幕'))
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('节拍进度'))
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('收尾风险'))
+  })
+
+  it('shows required foreshadow pressure for the current act boundary', async () => {
+    const state = createState(1, 3)
+    state.storyMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'fs-status': {
+          id: 'fs-status',
+          text: 'status fixture',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: 3,
+          fulfilledIn: null,
+          required: true,
+          beatId: null,
+        },
+      },
+    }
+    getStateMock.mockResolvedValue(state)
+    const { status } = await import('../../src/cli/commands/status.ts')
+
+    await status({ storyId: 'story-1' })
+
+    expect(logSpy).toHaveBeenCalledWith('伏笔边界压力: 1 个 required 伏笔待回收')
+    expect(logSpy).toHaveBeenCalledWith('待回收伏笔:')
+    expect(logSpy).toHaveBeenCalledWith('  1. fs-status（预计第 3 章）')
   })
 
   it('shows high risk when overdue key beats exist', async () => {
