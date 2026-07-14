@@ -46,6 +46,7 @@ import {
   renderVerifiedConstraints,
 } from '../utils/verified-constraints.js'
 import {
+  getBoundaryBlockingForeshadowDetails,
   normalizeForeshadowCapacity,
   selectForeshadowsForChapter,
 } from '../story-memory/foreshadow-policy.js'
@@ -131,11 +132,74 @@ function getScheduledForeshadowIds(state: ReducedGraphState, chapterIndex: numbe
   )
 }
 
-function buildScheduledForeshadowConstraint(state: ReducedGraphState, ids: string[]): string {
-  const lines = ids.map((id) => {
+interface ForeshadowConstraintContext {
+  scheduledIds: string[]
+  mustFulfillIds: string[]
+  remainingChapters: number
+  pendingBlockingCount: number
+  strictMode: boolean
+}
+
+function computeForeshadowConstraintContext(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  scheduledIds: string[],
+  strictMode = false
+): ForeshadowConstraintContext {
+  const empty = {
+    scheduledIds,
+    mustFulfillIds: [],
+    remainingChapters: 0,
+    pendingBlockingCount: 0,
+    strictMode,
+  }
+  if (!state.storyArc || !state.storyMemory || scheduledIds.length === 0) return empty
+
+  const currentChapterNumber = chapterIndex + 1
+  const act = getActForChapter(state.storyArc, chapterIndex)
+  if (!act) return empty
+
+  const remainingChapters = act.endChapter - currentChapterNumber + 1
+  const finalActIndex = state.storyArc.acts.at(-1)?.index
+  const blockingForeshadows = getBoundaryBlockingForeshadowDetails(
+    state.storyMemory,
+    act.endChapter,
+    act.index === finalActIndex
+  )
+  const pendingBlockingCount = blockingForeshadows.length
+  if (remainingChapters !== 1 || pendingBlockingCount === 0) {
+    return { ...empty, remainingChapters, pendingBlockingCount }
+  }
+
+  const planningConfig = getChapterPlanningConfig(state.genre)
+  if (pendingBlockingCount > planningConfig.foreshadowMaxFulfillmentsPerChapter) {
+    return { ...empty, remainingChapters, pendingBlockingCount }
+  }
+
+  const blockingIds = new Set(blockingForeshadows.map((f) => f.id))
+  const mustFulfillIds = scheduledIds.filter((id) => blockingIds.has(id))
+  return { scheduledIds, mustFulfillIds, remainingChapters, pendingBlockingCount, strictMode }
+}
+
+function buildScheduledForeshadowConstraint(
+  state: ReducedGraphState,
+  context: ForeshadowConstraintContext
+): string {
+  const { scheduledIds, mustFulfillIds, remainingChapters, pendingBlockingCount, strictMode } =
+    context
+  const mustFulfillSet = new Set(mustFulfillIds)
+
+  const lines = scheduledIds.map((id) => {
     const foreshadow = state.storyMemory?.foreshadows[id]
-    return `- ${id}（预期回收章节：${foreshadow?.expectedFulfillChapter ?? '全书结尾'}）：${foreshadow?.text ?? id}`
+    const deadline = foreshadow?.expectedFulfillChapter ?? '全书结尾'
+    const label = strictMode && mustFulfillSet.has(id) ? '【强制回收】' : '【候选回收】'
+    return `- ${label} ${id}（预期回收章节：${deadline}）：${foreshadow?.text ?? id}`
   })
+
+  if (strictMode && mustFulfillIds.length > 0) {
+    return `【伏笔调度约束】当前幕仅剩 ${remainingChapters} 章，仍有 ${pendingBlockingCount} 个 required 伏笔必须在幕末前回收，处于 tight 模式。\n强制回收项必须放入 fulfilledForeshadowIds，并在 description 中安排正文可验证的真实剧情事件，绝对禁止放入 deferredForeshadowIds 顺延。候选回收项若与本章核心事件不相容可放入 deferredForeshadowIds。每个 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一。\n候选列表：\n${lines.join('\n')}`
+  }
+
   return `【伏笔调度候选】以下伏笔已进入预期回收窗口，作为本章回收候选。请逐一裁决：本章能自然回收的，放入 fulfilledForeshadowIds，并在 description 中安排正文可验证的真实剧情事件，不得虚假声称回收；与本章核心事件不相容、强行回收会损害章节质量的，放入 deferredForeshadowIds 顺延。每个候选 ID 必须出现在且仅出现在这两个列表之一，不得遗漏。候选列表：\n${lines.join('\n')}`
 }
 
@@ -287,13 +351,29 @@ function synchronizeStateWithStoryArc(
   }
 }
 
+interface ApplyAutomaticExtensionResult {
+  state: ReducedGraphState
+  applied: boolean
+  requiresManualResolution: boolean
+  reason: string | undefined
+  proposal: ActBoundaryProposal | undefined
+}
+
 function applyAutomaticActExtensions(
   state: ReducedGraphState,
   chapterIndex: number,
   proposals: readonly ActBoundaryProposal[],
   stage: string
-): ReducedGraphState {
-  if (!state.storyArc || proposals.length === 0) return state
+): ApplyAutomaticExtensionResult {
+  if (!state.storyArc || proposals.length === 0) {
+    return {
+      state,
+      applied: false,
+      requiresManualResolution: false,
+      reason: undefined,
+      proposal: undefined,
+    }
+  }
 
   let updatedStoryArc = state.storyArc
   for (const proposal of proposals) {
@@ -302,21 +382,25 @@ function applyAutomaticActExtensions(
       logger.warn(`[MuseFlow] ${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
       const command = formatActBoundaryAdjustmentCommand(state.story.id, proposal)
       logger.warn(`[MuseFlow] 建议运行：${command}`)
-      if (result.requiresManualResolution) {
-        throw new Error(
-          [
-            `${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason ?? '需要人工调整幕边界。'}`,
-            `请先运行：${command}`,
-          ].join('\n')
-        )
+      return {
+        state: synchronizeStateWithStoryArc(state, updatedStoryArc),
+        applied: false,
+        requiresManualResolution: result.requiresManualResolution ?? false,
+        reason: result.reason,
+        proposal,
       }
-      continue
     }
     updatedStoryArc = result.storyArc
     logger.info(`[MuseFlow] ${stage}${result.reason}`)
   }
 
-  return synchronizeStateWithStoryArc(state, updatedStoryArc)
+  return {
+    state: synchronizeStateWithStoryArc(state, updatedStoryArc),
+    applied: true,
+    requiresManualResolution: false,
+    reason: undefined,
+    proposal: undefined,
+  }
 }
 
 async function autoExtendCurrentActBeforeOutline(
@@ -346,15 +430,32 @@ async function autoExtendCurrentActBeforeOutline(
 
   if (extensionProposals.length === 0) return state
 
-  return applyAutomaticActExtensions(state, chapterIndex, extensionProposals, '写前')
+  const result = applyAutomaticActExtensions(state, chapterIndex, extensionProposals, '写前')
+  if (result.requiresManualResolution) {
+    throw new Error(
+      [
+        `写前自动延长第 ${currentAct.index} 幕失败：${result.reason ?? '需要人工调整幕边界。'}`,
+        `请先运行：${formatActBoundaryAdjustmentCommand(state.story.id, extensionProposals[0]!)}`,
+      ].join('\n')
+    )
+  }
+  return result.state
 }
 
 function ensureActCapacityAfterForeshadowAdjudication(
   state: ReducedGraphState,
   chapterIndex: number,
   plannedFulfillmentIds: readonly string[]
-): ReducedGraphState {
-  if (!state.storyArc || !state.storyMemory) return state
+): ApplyAutomaticExtensionResult {
+  if (!state.storyArc || !state.storyMemory) {
+    return {
+      state,
+      applied: false,
+      requiresManualResolution: false,
+      reason: undefined,
+      proposal: undefined,
+    }
+  }
 
   const planningConfig = getChapterPlanningConfig(state.genre)
   const proposal = proposeActExtensionAfterForeshadowAdjudication(
@@ -364,7 +465,15 @@ function ensureActCapacityAfterForeshadowAdjudication(
     planningConfig.foreshadowMaxFulfillmentsPerChapter,
     plannedFulfillmentIds
   )
-  if (!proposal) return state
+  if (!proposal) {
+    return {
+      state,
+      applied: false,
+      requiresManualResolution: false,
+      reason: undefined,
+      proposal: undefined,
+    }
+  }
 
   return applyAutomaticActExtensions(state, chapterIndex, [proposal], '伏笔裁决后')
 }
@@ -650,7 +759,8 @@ interface GenerateChapterOutlineResult {
 async function generateChapterOutlineIfNeeded(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider: ModelProvider
+  provider: ModelProvider,
+  strictForeshadowMode = false
 ): Promise<GenerateChapterOutlineResult> {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
@@ -674,10 +784,17 @@ async function generateChapterOutlineIfNeeded(
     chapterIndex
   )
   const scheduledForeshadowIds = getScheduledForeshadowIds(state, chapterIndex)
+  const foreshadowConstraintContext = computeForeshadowConstraintContext(
+    state,
+    chapterIndex,
+    scheduledForeshadowIds,
+    strictForeshadowMode
+  )
   const scheduledForeshadowConstraint =
     scheduledForeshadowIds.length > 0
-      ? buildScheduledForeshadowConstraint(state, scheduledForeshadowIds)
+      ? buildScheduledForeshadowConstraint(state, foreshadowConstraintContext)
       : ''
+  const { mustFulfillIds: mustFulfillForeshadowIds } = foreshadowConstraintContext
 
   // 计算本章节拍预算，防止幕前期把全部 mandatory beats 一次性消费完
   const currentAct = getActForChapter(state.storyArc, chapterIndex)
@@ -747,13 +864,21 @@ async function generateChapterOutlineIfNeeded(
       [...(candidate.fulfilledForeshadowIds ?? []), ...(candidate.deferredForeshadowIds ?? [])],
       scheduledForeshadowIds
     )
-    if (missingScheduledForeshadowIds.length > 0) {
-      lastMissingScheduledForeshadowIds = missingScheduledForeshadowIds
+    const deferredMustFulfillIds = strictForeshadowMode
+      ? mustFulfillForeshadowIds.filter((id) => candidate.deferredForeshadowIds?.includes(id))
+      : []
+    if (missingScheduledForeshadowIds.length > 0 || deferredMustFulfillIds.length > 0) {
+      const correctionIds = [...missingScheduledForeshadowIds, ...deferredMustFulfillIds]
+      lastMissingScheduledForeshadowIds = correctionIds
       logger.warn(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决伏笔候选：${missingScheduledForeshadowIds.join(', ')}`
+        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决或错误顺延伏笔候选：${correctionIds.join(', ')}`
       )
+      const mustFulfillHint =
+        strictForeshadowMode && mustFulfillForeshadowIds.length > 0
+          ? `当前幕仅剩 ${foreshadowConstraintContext.remainingChapters} 章，仍有 ${foreshadowConstraintContext.pendingBlockingCount} 个 required 伏笔待回收，处于 tight 模式。强制回收项 ${mustFulfillForeshadowIds.join('、')} 必须放入 fulfilledForeshadowIds，绝对禁止放入 deferredForeshadowIds；`
+          : ''
       correctionConstraints = [
-        `【伏笔调度修正】以下候选伏笔未裁决：${missingScheduledForeshadowIds.join(', ')}。每个候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一；只有本章能自然回收的候选才能放入 fulfilledForeshadowIds，并在 description 中安排正文可验证的真实回收事件，不得虚假声称。`,
+        `【伏笔调度修正】以下候选伏笔未正确裁决：${correctionIds.join(', ')}。${mustFulfillHint}每个候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一；只有本章能自然回收的候选才能放入 fulfilledForeshadowIds，并在 description 中安排正文可验证的真实回收事件，不得虚假声称。`,
       ]
       continue
     }
@@ -764,6 +889,14 @@ async function generateChapterOutlineIfNeeded(
 
   if (!result) {
     if (lastCandidate && lastMissingScheduledForeshadowIds.length > 0) {
+      const nonDeferrableIds = strictForeshadowMode
+        ? lastMissingScheduledForeshadowIds.filter((id) => mustFulfillForeshadowIds.includes(id))
+        : []
+      if (nonDeferrableIds.length > 0) {
+        throw new Error(
+          `第 ${chapterIndex + 1} 章即时大纲无法在幕末前回收必须回收的伏笔：${nonDeferrableIds.join(', ')}。当前幕仅剩 ${foreshadowConstraintContext.remainingChapters} 章，仍有 ${foreshadowConstraintContext.pendingBlockingCount} 个 required 伏笔待回收。请调整幕边界或重写 earlier 章节以回收该伏笔。`
+        )
+      }
       logger.warn(
         `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决伏笔候选，已自动顺延：${lastMissingScheduledForeshadowIds.join(', ')}`
       )
@@ -930,6 +1063,7 @@ export async function expandOutlineForChapter(
   const provider = getProvider(source)
   let pendingIssues: Issue[] = []
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
+  const jitBaseState = state
   const persistedOutline = Boolean(state.outline[chapterIndex]?.description.trim())
 
   if (persistedOutline) {
@@ -939,7 +1073,6 @@ export async function expandOutlineForChapter(
     }
     state = resolution.state
   } else {
-    const jitBaseState = state
     const failures: BlockingConflictError[] = []
     let resolved:
       | {
@@ -1000,21 +1133,73 @@ export async function expandOutlineForChapter(
     throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
   }
 
-  state = ensureActCapacityAfterForeshadowAdjudication(
+  let capacityResult = ensureActCapacityAfterForeshadowAdjudication(
     state,
     chapterIndex,
     outlineItem.fulfilledForeshadowIds ?? []
   )
+  state = capacityResult.state
   outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
     throw new Error(`第 ${chapterIndex + 1} 章大纲在幕边界调整后不存在`)
+  }
+
+  if (capacityResult.requiresManualResolution && !persistedOutline) {
+    logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章大纲顺延后幕自动延长失败，将尝试强制回收模式`)
+    const strictOutlineResult = await generateChapterOutlineIfNeeded(
+      jitBaseState,
+      chapterIndex,
+      provider,
+      true
+    )
+    const strictResolution = await reconcileOutlineCandidate(
+      strictOutlineResult.state,
+      chapterIndex,
+      source,
+      true
+    )
+    if (strictResolution.status === 'conflict') {
+      throw strictResolution.error
+    }
+    state = strictResolution.state
+    pendingIssues = strictOutlineResult.pendingIssues
+    outlineItem = state.outline[chapterIndex]
+    if (!outlineItem) {
+      throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
+    }
+
+    const strictCapacityResult = ensureActCapacityAfterForeshadowAdjudication(
+      state,
+      chapterIndex,
+      outlineItem.fulfilledForeshadowIds ?? []
+    )
+    state = strictCapacityResult.state
+    outlineItem = state.outline[chapterIndex]
+    if (!outlineItem) {
+      throw new Error(`第 ${chapterIndex + 1} 章大纲在幕边界调整后不存在`)
+    }
+    if (strictCapacityResult.requiresManualResolution) {
+      const proposal = strictCapacityResult.proposal
+      const command = proposal
+        ? formatActBoundaryAdjustmentCommand(state.story.id, proposal)
+        : `museflow adjust-act ${state.story.id} --act ... --end-chapter ...`
+      throw new Error(
+        [
+          `伏笔裁决后自动延长第 ${proposal?.actIndex ?? '?'} 幕失败：${strictCapacityResult.reason ?? '需要人工调整幕边界。'}`,
+          `请先运行：${command}`,
+        ].join('\n')
+      )
+    }
   }
 
   const nextItem = state.outline[chapterIndex + 1]
   const scheduledForeshadowIds = getScheduledForeshadowIds(state, chapterIndex)
   const scheduledForeshadowConstraint =
     scheduledForeshadowIds.length > 0
-      ? buildScheduledForeshadowConstraint(state, scheduledForeshadowIds)
+      ? buildScheduledForeshadowConstraint(
+          state,
+          computeForeshadowConstraintContext(state, chapterIndex, scheduledForeshadowIds)
+        )
       : ''
 
   const planningConfig = getChapterPlanningConfig(state.genre)
@@ -1215,11 +1400,24 @@ export async function expandOutlineForChapter(
 
   chapterPlan = planEvaluation.plan
   state = { ...state, chapterPlan }
-  state = ensureActCapacityAfterForeshadowAdjudication(
+  const finalCapacityResult = ensureActCapacityAfterForeshadowAdjudication(
     state,
     chapterIndex,
     chapterPlan.fulfilledForeshadowIds ?? []
   )
+  state = finalCapacityResult.state
+  if (finalCapacityResult.requiresManualResolution) {
+    const proposal = finalCapacityResult.proposal
+    const command = proposal
+      ? formatActBoundaryAdjustmentCommand(state.story.id, proposal)
+      : `museflow adjust-act ${state.story.id} --act ... --end-chapter ...`
+    throw new Error(
+      [
+        `伏笔裁决后自动延长第 ${proposal?.actIndex ?? '?'} 幕失败：${finalCapacityResult.reason ?? '需要人工调整幕边界。'}`,
+        `请先运行：${command}`,
+      ].join('\n')
+    )
+  }
 
   if (chapterIndex > 0) {
     const previousContent = await readChapterContent(state.story.outputDir, chapterIndex)

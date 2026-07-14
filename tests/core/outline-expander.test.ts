@@ -515,7 +515,105 @@ describe('expandOutlineForChapter', () => {
     expect(formattedOutline).toContain('【本章顺延伏笔】fs-b')
   })
 
-  it('extends the act before planning when the boundary outline defers every due candidate', async () => {
+  it('extends the act when mandatory foreshadows are deferred in the last chapter', async () => {
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
+    const state = stateWithScheduledForeshadows(
+      2,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '幕末核心事件',
+        description: '本章完成幕末核心事件，并将不相容的既有线索顺延。',
+        fulfilledForeshadowIds: [],
+        deferredForeshadowIds: foreshadowIds,
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: [],
+        expectedEvents: [],
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
+    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(foreshadowIds)
+    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
+      [1, 4],
+      [5, 5],
+    ])
+    expect(result.totalChapters).toBe(5)
+  })
+
+  it('falls back to strict mode and forces fulfillment when act extension quota is exhausted', async () => {
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
+    const base = stateWithScheduledForeshadows(
+      2,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    const state: ReducedGraphState = {
+      ...base,
+      storyArc: {
+        ...base.storyArc!,
+        acts: [
+          {
+            ...base.storyArc!.acts[0]!,
+            endChapter: 3,
+            autoBoundaryAdjustment: {
+              originalEndChapter: 0,
+              totalExtendedChapters: 3,
+            },
+          },
+          base.storyArc!.acts[1]!,
+        ],
+      },
+    }
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '顺延尝试',
+          description: '本章尝试顺延处理不相容线索。',
+          fulfilledForeshadowIds: [],
+          deferredForeshadowIds: foreshadowIds,
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '强制回收',
+          description: '本章在幕末强制回收全部既有线索。',
+          fulfilledForeshadowIds: foreshadowIds,
+          deferredForeshadowIds: [],
+        },
+      })
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: foreshadowIds,
+        expectedEvents: foreshadowIds.map((id) => createForeshadowFulfillEvent(id, 2)),
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual(foreshadowIds)
+    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual([])
+    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
+      [1, 3],
+      [4, 4],
+    ])
+    expect(result.totalChapters).toBe(4)
+  })
+
+  it('fulfills mandatory foreshadows in the last chapter without extending the act', async () => {
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
     const state = stateWithScheduledForeshadows(
       2,
@@ -526,24 +624,28 @@ describe('expandOutlineForChapter', () => {
       success: true,
       data: {
         title: '幕末核心事件',
-        description: '本章完成幕末核心事件，并将不相容的既有线索顺延。',
-        fulfilledForeshadowIds: [],
-        deferredForeshadowIds: foreshadowIds,
+        description: '本章完成幕末核心事件，并自然回收全部既有线索。',
+        fulfilledForeshadowIds: foreshadowIds,
+        deferredForeshadowIds: [],
       },
     })
     planChapterWithOverrideMock.mockResolvedValueOnce({
-      chapterPlan: createCompleteChapterPlan({ chapterIndex: 2 }),
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: foreshadowIds,
+        expectedEvents: foreshadowIds.map((id) => createForeshadowFulfillEvent(id, 2)),
+      }),
     })
 
     const result = await expandOutlineForChapter(state, 2, createMockProvider())
 
     expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
-      [1, 4],
-      [5, 5],
+      [1, 3],
+      [4, 4],
     ])
-    expect(result.totalChapters).toBe(5)
-    const plannerState = planChapterWithOverrideMock.mock.calls[0]![1] as ReducedGraphState
-    expect(plannerState.storyArc?.acts[0]?.endChapter).toBe(4)
+    expect(result.totalChapters).toBe(4)
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual(foreshadowIds)
+    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual([])
   })
 
   it('extends the act when planner evidence failure changes boundary fulfillments to deferrals', async () => {
@@ -717,10 +819,10 @@ describe('expandOutlineForChapter', () => {
 
       expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
       expect(warnSpy).toHaveBeenCalledWith(
-        '[MuseFlow] 第 2 章即时大纲第 1/3 次存在未裁决伏笔候选：fs-due'
+        '[MuseFlow] 第 2 章即时大纲第 1/3 次存在未裁决或错误顺延伏笔候选：fs-due'
       )
       expect(warnSpy).toHaveBeenCalledWith(
-        '[MuseFlow] 第 2 章即时大纲第 3/3 次存在未裁决伏笔候选：fs-due'
+        '[MuseFlow] 第 2 章即时大纲第 3/3 次存在未裁决或错误顺延伏笔候选：fs-due'
       )
       expect(result.outline?.[1]?.deferredForeshadowIds).toContain('fs-due')
       expect(result.outline?.[1]?.fulfilledForeshadowIds).not.toContain('fs-due')
