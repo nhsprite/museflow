@@ -118,4 +118,32 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('     1. 节拍三')
     expect(logSpy).toHaveBeenCalledWith('     2. 节拍四')
   })
+
+  it('prints pending required foreshadows in the completion report when state is provided', () => {
+    const report = createEmptyChapterReport('story-1', 5)
+
+    printChapterReport(report, buildState())
+
+    expect(logSpy).toHaveBeenCalledWith('   伏笔边界压力: 2 个 required 伏笔待回收')
+    expect(logSpy).toHaveBeenCalledWith('   待回收伏笔:')
+    expect(logSpy).toHaveBeenCalledWith('     1. fs-a（预计第 6 章）')
+    expect(logSpy).toHaveBeenCalledWith('     2. fs-b（预计第 8 章）')
+  })
+
+  it('omits foreshadow boundary pressure in the completion report when state is not provided', () => {
+    const report = createEmptyChapterReport('story-1', 5)
+
+    printChapterReport(report)
+
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('伏笔边界压力'))
+  })
+
+  it('prints foreshadows needing manual attention in the completion report', () => {
+    const report = createEmptyChapterReport('story-1', 5)
+    report.foreshadowsNeedingAttention = ['fs-x']
+
+    printChapterReport(report)
+
+    expect(logSpy).toHaveBeenCalledWith('⚠️  需人工关注的伏笔（deadline 顺延已达上限）：fs-x')
+  })
 })

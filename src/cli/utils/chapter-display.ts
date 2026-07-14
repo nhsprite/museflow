@@ -58,7 +58,10 @@ export function printActProgress(
   for (const line of formatActForeshadowBoundaryPressure(state, act, '  ')) console.log(line)
 }
 
-export function printChapterReport(report: ChapterReport | null | undefined): void {
+export function printChapterReport(
+  report: ChapterReport | null | undefined,
+  state?: ReducedGraphState
+): void {
   if (!report) return
 
   const displayChapter = toDisplayChapterNumber(report.chapterIndex)
@@ -113,6 +116,23 @@ export function printChapterReport(report: ChapterReport | null | undefined): vo
   console.log(`\n🎣 伏笔：埋下 ${report.foreshadowsPlanted} / 回收 ${report.foreshadowsFulfilled}`)
   if (report.foreshadowsOverdue > 0) {
     console.log(`⚠️  逾期伏笔：${report.foreshadowsOverdue} 个`)
+  }
+  if (report.foreshadowsNeedingAttention && report.foreshadowsNeedingAttention.length > 0) {
+    console.log(
+      `⚠️  需人工关注的伏笔（deadline 顺延已达上限）：${report.foreshadowsNeedingAttention.join('、')}`
+    )
+  }
+  if (state?.storyArc) {
+    const arcStatus = buildArcStatus(
+      state.storyArc,
+      state.actProgress ?? {},
+      state.currentChapterIndex
+    )
+    if (arcStatus.currentAct) {
+      for (const line of formatActForeshadowBoundaryPressure(state, arcStatus.currentAct, '   ')) {
+        console.log(line)
+      }
+    }
   }
 
   if (report.wordCount > 0) {

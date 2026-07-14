@@ -143,7 +143,7 @@ async function executeWrite(
     const writtenIndex = result.currentChapterIndex - 1
     const errors = result.pendingIssues.filter((i) => i.severity === 'error')
 
-    printChapterReport(result.chapterReport)
+    printChapterReport(result.chapterReport, result)
 
     // Show file path
     const chapterPath = getChapterFilePath(state.story.outputDir, writtenIndex + 1)

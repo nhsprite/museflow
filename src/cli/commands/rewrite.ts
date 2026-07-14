@@ -139,7 +139,7 @@ async function handleRewrite(
 
     const errors = result.pendingIssues.filter((i) => i.severity === 'error')
 
-    printChapterReport(result.chapterReport)
+    printChapterReport(result.chapterReport, result)
 
     if (errors.length > 0) {
       console.log(`\n状态: 仍有 ${errors.length} 个严重问题`)
