@@ -81,9 +81,17 @@ export function getBoundaryBlockingForeshadows(
   boundaryChapter: number,
   isStoryEnd: boolean
 ): ForeshadowId[] {
-  return getRequiredForeshadowsForScheduling(memory, boundaryChapter, isStoryEnd).map(
+  return getBoundaryBlockingForeshadowDetails(memory, boundaryChapter, isStoryEnd).map(
     (foreshadow) => foreshadow.id
   )
+}
+
+export function getBoundaryBlockingForeshadowDetails(
+  memory: StoryMemory,
+  boundaryChapter: number,
+  isStoryEnd: boolean
+): ForeshadowMemory[] {
+  return getRequiredForeshadowsForScheduling(memory, boundaryChapter, isStoryEnd)
 }
 
 export function getRequiredForeshadowsForScheduling(

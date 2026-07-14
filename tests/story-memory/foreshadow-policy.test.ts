@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyForeshadows,
+  getBoundaryBlockingForeshadowDetails,
   getBoundaryBlockingForeshadows,
   getRequiredForeshadowsForScheduling,
   isValidForeshadowDeadline,
@@ -71,6 +72,29 @@ describe('foreshadow deadline policy', () => {
     }
 
     expect(getBoundaryBlockingForeshadows(memory, 2, false)).toEqual(['due'])
+  })
+
+  it('returns structured boundary blockers in scheduling order', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        later: memoryForeshadow('later', null, true, 4),
+        future: memoryForeshadow('future', null, true, 5),
+        earlier: memoryForeshadow('earlier', null, true, 2),
+        optional: memoryForeshadow('optional', null, false, 2),
+        fulfilled: { ...memoryForeshadow('fulfilled', null, true, 2), fulfilledIn: 1 },
+      },
+    }
+
+    expect(
+      getBoundaryBlockingForeshadowDetails(memory, 4, false).map((entry) => [
+        entry.id,
+        entry.expectedFulfillChapter,
+      ])
+    ).toEqual([
+      ['earlier', 2],
+      ['later', 4],
+    ])
   })
 
   it('blocks every required unresolved foreshadow at story end', () => {
