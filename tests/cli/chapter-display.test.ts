@@ -89,13 +89,13 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('    2. fs-b（预计第 8 章）')
   })
 
-  it('prints zero foreshadow boundary pressure for legacy state without story memory', () => {
+  it('prints unavailable foreshadow boundary pressure for legacy state without story memory', () => {
     const state = buildState()
     state.storyMemory = null
 
     printActProgress(state, 5)
 
-    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 0')
+    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 未知（StoryMemory 不可用）')
   })
 
   it('prints updated act progress in the chapter completion report', () => {

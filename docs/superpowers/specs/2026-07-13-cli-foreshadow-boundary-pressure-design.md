@@ -53,7 +53,7 @@
   伏笔边界压力: 0
 ```
 
-`status` 的故事弧线区域输出同样的信息和条目，仅缩进适配现有 status 格式。旧检查点没有 `storyMemory` 时按无可用压力数据处理，安全输出 0。
+`status` 的故事弧线区域输出同样的信息和条目，仅缩进适配现有 status 格式。旧检查点没有 `storyMemory` 时输出“伏笔边界压力: 未知（StoryMemory 不可用）”，避免把数据缺失误报为已确认没有边界压力。
 
 ### 数据流
 
@@ -67,7 +67,7 @@
 ## 测试
 
 - 伏笔策略单元测试：仅返回 required、未兑现、期限有效且不晚于边界的伏笔，并保持既有调度顺序。
-- 章节状态测试：`printActProgress` 展示数量、ID、预计章节；无 `storyMemory` 时显示 0。
+- 章节状态测试：`printActProgress` 展示数量、ID、预计章节；无 `storyMemory` 时显示“未知（StoryMemory 不可用）”，有效但为空的 `StoryMemory` 仍显示 0。
 - status 测试：故事弧线区域展示相同的边界压力。
 - 回归验证：运行相关 Vitest、完整测试、类型检查和构建。
 

@@ -8,7 +8,7 @@ export function formatActForeshadowBoundaryPressure(
   indent = ''
 ): string[] {
   const memory = state.storyMemory
-  if (!memory) return [`${indent}伏笔边界压力: 0`]
+  if (!memory) return [`${indent}伏笔边界压力: 未知（StoryMemory 不可用）`]
 
   const finalActIndex = state.storyArc?.acts.at(-1)?.index
   const entries = getBoundaryBlockingForeshadowDetails(

@@ -25,10 +25,7 @@ function storyArc(acts: ActArc[]): StoryArc {
   }
 }
 
-function foreshadow(
-  id: string,
-  expectedFulfillChapter: number | null
-): ForeshadowMemory {
+function foreshadow(id: string, expectedFulfillChapter: number | null): ForeshadowMemory {
   return {
     id,
     text: id,
@@ -61,22 +58,34 @@ describe('formatActForeshadowBoundaryPressure', () => {
       },
     }
 
-    expect(formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), firstAct, '  ')).toEqual(
-      [
-        '  伏笔边界压力: 2 个 required 伏笔待回收',
-        '  待回收伏笔:',
-        '    1. fs-earlier（预计第 2 章）',
-        '    2. fs-boundary（预计第 3 章）',
-      ]
-    )
+    expect(
+      formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), firstAct, '  ')
+    ).toEqual([
+      '  伏笔边界压力: 2 个 required 伏笔待回收',
+      '  待回收伏笔:',
+      '    1. fs-earlier（预计第 2 章）',
+      '    2. fs-boundary（预计第 3 章）',
+    ])
   })
 
-  it('formats null story memory as zero pressure', () => {
+  it('formats null story memory as unavailable pressure', () => {
     const currentAct = act(1, 1, 3)
 
     expect(
       formatActForeshadowBoundaryPressure(
         stateWithMemory(null, storyArc([currentAct, act(2, 4, 6)])),
+        currentAct,
+        '  '
+      )
+    ).toEqual(['  伏笔边界压力: 未知（StoryMemory 不可用）'])
+  })
+
+  it('formats empty story memory as zero pressure', () => {
+    const currentAct = act(1, 1, 3)
+
+    expect(
+      formatActForeshadowBoundaryPressure(
+        stateWithMemory(createEmptyStoryMemory(), storyArc([currentAct, act(2, 4, 6)])),
         currentAct,
         '  '
       )
