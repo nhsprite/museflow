@@ -363,8 +363,10 @@ function applyAutomaticActExtensions(
   state: ReducedGraphState,
   chapterIndex: number,
   proposals: readonly ActBoundaryProposal[],
-  stage: string
+  stage: string,
+  options: { logFailure?: boolean } = {}
 ): ApplyAutomaticExtensionResult {
+  const logFailure = options.logFailure ?? true
   if (!state.storyArc || proposals.length === 0) {
     return {
       state,
@@ -379,9 +381,11 @@ function applyAutomaticActExtensions(
   for (const proposal of proposals) {
     const result = applyActBoundaryAdjustment(updatedStoryArc, proposal, chapterIndex)
     if (!result.applied) {
-      logger.warn(`[MuseFlow] ${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
-      const command = formatActBoundaryAdjustmentCommand(state.story.id, proposal)
-      logger.warn(`[MuseFlow] 建议运行：${command}`)
+      if (logFailure) {
+        logger.warn(`[MuseFlow] ${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
+        const command = formatActBoundaryAdjustmentCommand(state.story.id, proposal)
+        logger.warn(`[MuseFlow] 建议运行：${command}`)
+      }
       return {
         state: synchronizeStateWithStoryArc(state, updatedStoryArc),
         applied: false,
@@ -475,7 +479,9 @@ function ensureActCapacityAfterForeshadowAdjudication(
     }
   }
 
-  return applyAutomaticActExtensions(state, chapterIndex, [proposal], '伏笔裁决后')
+  return applyAutomaticActExtensions(state, chapterIndex, [proposal], '伏笔裁决后', {
+    logFailure: false,
+  })
 }
 
 function buildArcStatusConstraint(
@@ -1145,7 +1151,7 @@ export async function expandOutlineForChapter(
   }
 
   if (capacityResult.requiresManualResolution && !persistedOutline) {
-    logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章大纲顺延后幕自动延长失败，将尝试强制回收模式`)
+    logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章大纲顺延后幕自动延长失败，将尝试强制回收模式`)
     const strictOutlineResult = await generateChapterOutlineIfNeeded(
       jitBaseState,
       chapterIndex,
