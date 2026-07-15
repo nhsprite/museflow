@@ -1941,6 +1941,7 @@ describe('finalizeChapter', () => {
 
     const result = await finalizeChapter(state, provider)
 
+    expect(provider.chatStructured).toHaveBeenCalledTimes(1)
     expect(result.rewriteRequested).toBe(true)
     expect(result.pendingIssues).toEqual(
       expect.arrayContaining([
