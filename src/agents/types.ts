@@ -28,6 +28,17 @@ export interface ForeshadowPlanningRejection {
   missingDeclarationIds: ForeshadowId[]
   missingEventIds: ForeshadowId[]
   incorrectlyDeferredIds: ForeshadowId[]
+  semanticRejections?: ForeshadowSemanticPlanningRejection[]
+  currentOutline?: {
+    title: string
+    description: string
+  }
+}
+
+export interface ForeshadowSemanticPlanningRejection {
+  foreshadowId: ForeshadowId
+  verdict: 'not_fulfilled' | 'uncertain'
+  reason: string
 }
 
 export interface ParagraphFix {

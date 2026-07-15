@@ -58,6 +58,7 @@ import {
   type ScheduledForeshadow,
 } from '../story-memory/foreshadow-policy.js'
 import { normalizeStoryEvents } from '../story-memory/event-contract.js'
+import { verifyForeshadowPlan } from '../graph/services/foreshadow-fulfillment/planning-verifier.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -73,6 +74,12 @@ export interface ExpandedOutline {
 type ChapterContextSource = ModelProvider | RuntimeContext
 
 const MAX_JIT_OUTLINE_ATTEMPTS = 2
+const MAX_SEMANTIC_PLANNING_ATTEMPTS = 2
+
+interface SemanticPlanningRetryContext {
+  attempt: number
+  rejection?: ForeshadowPlanningRejection
+}
 
 function isRuntimeContext(source: ChapterContextSource): source is RuntimeContext {
   return 'provider' in source
@@ -285,6 +292,41 @@ interface ScheduledForeshadowPlanEvidence {
 interface ScheduledForeshadowPlanEvaluation {
   missing: ScheduledForeshadowPlanEvidence
   plan: ChapterPlan
+}
+
+function deferForeshadowClaims(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  plan: ChapterPlan,
+  ids: readonly string[]
+): { state: ReducedGraphState; plan: ChapterPlan } {
+  const deferredIds = new Set(ids)
+  const outline = [...state.outline]
+  const item = outline[chapterIndex]
+  if (!item) return { state, plan }
+
+  outline[chapterIndex] = {
+    ...item,
+    fulfilledForeshadowIds: (item.fulfilledForeshadowIds ?? []).filter(
+      (id) => !deferredIds.has(id)
+    ),
+    deferredForeshadowIds: Array.from(
+      new Set([...(item.deferredForeshadowIds ?? []), ...deferredIds])
+    ),
+  }
+
+  return {
+    state: { ...state, outline },
+    plan: {
+      ...plan,
+      fulfilledForeshadowIds: plan.fulfilledForeshadowIds.filter(
+        (id) => !deferredIds.has(id)
+      ),
+      expectedEvents: plan.expectedEvents.filter(
+        (event) => event.type !== 'foreshadow-fulfill' || !deferredIds.has(event.foreshadowId)
+      ),
+    },
+  }
 }
 
 /**
@@ -862,10 +904,16 @@ interface GenerateChapterOutlineResult {
   pendingIssues: Issue[]
 }
 
+interface GenerateChapterOutlineOptions {
+  force?: boolean
+  foreshadowPlanningRejection?: ForeshadowPlanningRejection
+}
+
 async function generateChapterOutlineIfNeeded(
   state: ReducedGraphState,
   chapterIndex: number,
-  provider: ModelProvider
+  provider: ModelProvider,
+  options: GenerateChapterOutlineOptions = {}
 ): Promise<GenerateChapterOutlineResult> {
   const outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
@@ -873,7 +921,7 @@ async function generateChapterOutlineIfNeeded(
   }
 
   // 已有具体描述，不需要重新生成
-  if (outlineItem.description.trim().length > 0) {
+  if (outlineItem.description.trim().length > 0 && !options.force) {
     return { state, pendingIssues: [] }
   }
 
@@ -913,7 +961,7 @@ async function generateChapterOutlineIfNeeded(
       ? `【节拍预算】本章属于第 ${currentAct?.index ?? '?'} 幕，剩余 ${pendingBeats.length} 个 mandatory beats、${currentAct ? currentAct.endChapter - (chapterIndex + 1) : 0} 章未写。本章 description 与 claimedBeats 最多承载 ${beatBudget} 个 mandatory beat，严禁在本章内一次性推进本幕其余所有节拍。`
       : ''
 
-  let foreshadowPlanningRejection: ForeshadowPlanningRejection | undefined
+  let foreshadowPlanningRejection = options.foreshadowPlanningRejection
   let result: ChapterOutlineResult | null = null
   let lastCandidate: ChapterOutlineResult | null = null
   let lastMissingScheduledForeshadowIds: string[] = []
@@ -1000,6 +1048,7 @@ async function generateChapterOutlineIfNeeded(
         `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决或错误顺延伏笔候选：${correctionIds.join(', ')}`
       )
       foreshadowPlanningRejection = {
+        ...(foreshadowPlanningRejection ?? {}),
         missingDeclarationIds: missingScheduledForeshadowIds,
         missingEventIds: [],
         incorrectlyDeferredIds: deferredMustFulfillIds,
@@ -1189,6 +1238,15 @@ export async function expandOutlineForChapter(
   chapterIndex: number,
   source: ChapterContextSource
 ): Promise<ExpandedOutline> {
+  return expandOutlineForChapterInternal(state, chapterIndex, source, { attempt: 0 })
+}
+
+async function expandOutlineForChapterInternal(
+  state: ReducedGraphState,
+  chapterIndex: number,
+  source: ChapterContextSource,
+  semanticRetry: SemanticPlanningRetryContext
+): Promise<ExpandedOutline> {
   const provider = getProvider(source)
   let pendingIssues: Issue[] = []
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
@@ -1301,7 +1359,14 @@ export async function expandOutlineForChapter(
     plannerForeshadowConstraintContext.mustFulfillIds
   )
   const baseForeshadowPlanningInput =
-    foreshadowObligations.length > 0 ? { foreshadowObligations } : undefined
+    foreshadowObligations.length > 0 || semanticRetry.rejection
+      ? {
+          ...(foreshadowObligations.length > 0 ? { foreshadowObligations } : {}),
+          ...(semanticRetry.rejection
+            ? { foreshadowPlanningRejection: semanticRetry.rejection }
+            : {}),
+        }
+      : undefined
   const mustFulfillForeshadowIdSet = new Set(
     foreshadowObligations
       .filter((obligation) => obligation.mustFulfillThisChapter)
@@ -1502,27 +1567,15 @@ export async function expandOutlineForChapter(
         )
       }
 
-      // 自动顺延：从大纲 fulfilled 移除，加入大纲与规划的 deferred
-      const newOutline = [...state.outline]
-      const updatedOutlineItem = { ...outlineItem }
-      const fulfilledSet = new Set(updatedOutlineItem.fulfilledForeshadowIds ?? [])
-      const deferredSet = new Set(updatedOutlineItem.deferredForeshadowIds ?? [])
-      const planFulfilledSet = new Set(planEvaluation.plan.fulfilledForeshadowIds ?? [])
-      for (const id of missingForeshadowIds) {
-        fulfilledSet.delete(id)
-        deferredSet.add(id)
-        planFulfilledSet.delete(id)
-      }
-      updatedOutlineItem.fulfilledForeshadowIds = Array.from(fulfilledSet)
-      updatedOutlineItem.deferredForeshadowIds = Array.from(deferredSet)
-      newOutline[chapterIndex] = updatedOutlineItem
-      state = { ...state, outline: newOutline }
-      outlineItem = updatedOutlineItem
-
-      chapterPlan = {
-        ...planEvaluation.plan,
-        fulfilledForeshadowIds: Array.from(planFulfilledSet),
-      }
+      const deferred = deferForeshadowClaims(
+        state,
+        chapterIndex,
+        planEvaluation.plan,
+        missingForeshadowIds
+      )
+      state = deferred.state
+      outlineItem = state.outline[chapterIndex] ?? outlineItem
+      chapterPlan = deferred.plan
       planEvaluation = { missing: { declarationIds: [], eventIds: [] }, plan: chapterPlan }
 
       if (missingDeadlineIds.length > 0) {
@@ -1703,6 +1756,123 @@ export async function expandOutlineForChapter(
   }
 
   chapterPlan = reconcileChapterPlanBeatContract(chapterPlan, state.outline[chapterIndex])
+
+  const semanticOutline = state.outline[chapterIndex]
+  if (state.storyMemory && semanticOutline) {
+    const semanticJudgments = await verifyForeshadowPlan({
+      provider,
+      memory: state.storyMemory,
+      outline: semanticOutline,
+      plan: chapterPlan,
+      mandatoryIds: Array.from(mustFulfillForeshadowIdSet),
+    })
+    const verificationFailures = semanticJudgments.filter(
+      (judgment) => judgment.verdict === 'verification_failed'
+    )
+    if (verificationFailures.length > 0) {
+      throw new Error(
+        `第 ${chapterIndex + 1} 章伏笔语义规划验证失败：${verificationFailures.map((judgment) => `${judgment.foreshadowId}（${judgment.reason}）`).join('、')}`
+      )
+    }
+
+    const semanticRejections = semanticJudgments.filter(
+      (judgment) =>
+        judgment.verdict === 'not_fulfilled' || judgment.verdict === 'uncertain'
+    )
+    const mandatoryRejections = semanticRejections.filter((judgment) => judgment.mandatory)
+
+    if (mandatoryRejections.length > 0) {
+      const rejectionIds = mandatoryRejections.map((judgment) => judgment.foreshadowId)
+      if (semanticRetry.attempt + 1 >= MAX_SEMANTIC_PLANNING_ATTEMPTS) {
+        throw new Error(
+          `第 ${chapterIndex + 1} 章伏笔语义规划连续 ${MAX_SEMANTIC_PLANNING_ATTEMPTS} 次未通过：${rejectionIds.join(', ')}`
+        )
+      }
+
+      const rejection: ForeshadowPlanningRejection = {
+        missingDeclarationIds: [],
+        missingEventIds: [],
+        incorrectlyDeferredIds: [],
+        currentOutline: {
+          title: semanticOutline.title,
+          description: semanticOutline.description,
+        },
+        semanticRejections: mandatoryRejections.map((judgment) => ({
+          foreshadowId: judgment.foreshadowId,
+          verdict:
+            judgment.verdict === 'not_fulfilled' ? 'not_fulfilled' : ('uncertain' as const),
+          reason: judgment.reason,
+        })),
+      }
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章伏笔语义规划第 ${semanticRetry.attempt + 1}/${MAX_SEMANTIC_PLANNING_ATTEMPTS} 次未通过，将定向修订大纲与计划：${rejectionIds.join(', ')}`
+      )
+
+      const outlineResult = await generateChapterOutlineIfNeeded(
+        { ...state, chapterPlan: null },
+        chapterIndex,
+        provider,
+        {
+          force: true,
+          foreshadowPlanningRejection: rejection,
+        }
+      )
+      const resolution = await reconcileOutlineCandidate(
+        outlineResult.state,
+        chapterIndex,
+        source,
+        true
+      )
+      if (resolution.status === 'conflict') {
+        throw resolution.error
+      }
+
+      const retried = await expandOutlineForChapterInternal(
+        { ...resolution.state, chapterPlan: null },
+        chapterIndex,
+        source,
+        {
+          attempt: semanticRetry.attempt + 1,
+          rejection,
+        }
+      )
+      return {
+        ...retried,
+        pendingIssues: [
+          ...pendingIssues,
+          ...outlineResult.pendingIssues,
+          ...(retried.pendingIssues ?? []),
+        ],
+      }
+    }
+
+    const deferrableIds = semanticRejections.map((judgment) => judgment.foreshadowId)
+    if (deferrableIds.length > 0) {
+      const deferred = deferForeshadowClaims(state, chapterIndex, chapterPlan, deferrableIds)
+      chapterPlan = deferred.plan
+      state = { ...deferred.state, chapterPlan }
+      outlineItem = state.outline[chapterIndex] ?? outlineItem
+
+      const semanticCapacityResult = ensureActCapacityAfterForeshadowAdjudication(
+        state,
+        chapterIndex,
+        chapterPlan.fulfilledForeshadowIds
+      )
+      state = semanticCapacityResult.state
+      if (semanticCapacityResult.requiresManualResolution) {
+        const proposal = semanticCapacityResult.proposal
+        const command = proposal
+          ? formatActBoundaryAdjustmentCommand(state.story.id, proposal)
+          : `museflow adjust-act ${state.story.id} --act ... --end-chapter ...`
+        throw new Error(
+          [
+            `伏笔语义裁决后自动延长第 ${proposal?.actIndex ?? '?'} 幕失败：${semanticCapacityResult.reason ?? '需要人工调整幕边界。'}`,
+            `请先运行：${command}`,
+          ].join('\n')
+        )
+      }
+    }
+  }
 
   logger.info(`[MuseFlow] 已动态展开第 ${outlineItem.number} 章详细大纲`)
 

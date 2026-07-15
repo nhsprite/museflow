@@ -23,8 +23,9 @@ import type { ForeshadowMemory, StoryEvent } from '../../src/types/story-memory.
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-${randomUUID().slice(0, 8)}`)
 
-const { planChapterWithOverrideMock } = vi.hoisted(() => ({
+const { planChapterWithOverrideMock, verifyForeshadowPlanMock } = vi.hoisted(() => ({
   planChapterWithOverrideMock: vi.fn(),
+  verifyForeshadowPlanMock: vi.fn(),
 }))
 
 const mockChat = vi.fn(async (): Promise<string> => '')
@@ -40,6 +41,10 @@ function createMockProvider(): ModelProvider {
 
 vi.mock('../../src/graph/nodes/planning.js', () => ({
   plan_chapter_with_override: planChapterWithOverrideMock,
+}))
+
+vi.mock('../../src/graph/services/foreshadow-fulfillment/planning-verifier.js', () => ({
+  verifyForeshadowPlan: verifyForeshadowPlanMock,
 }))
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
@@ -207,6 +212,7 @@ describe('expandOutlineForChapter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
+    verifyForeshadowPlanMock.mockResolvedValue([])
     mockChatStructured.mockResolvedValue({ results: [true, true] })
     mockChat.mockResolvedValue(JSON.stringify({ results: [true, true] }))
     chapterOutlineRunMock.mockResolvedValue({
@@ -1205,6 +1211,9 @@ describe('expandOutlineForChapter', () => {
       expect(result.outline?.[1]?.deferredForeshadowIds).toContain('fs-due')
       expect(result.outline?.[1]?.fulfilledForeshadowIds).not.toContain('fs-due')
       expect(result.chapterPlan.fulfilledForeshadowIds).not.toContain('fs-due')
+      expect(result.chapterPlan.expectedEvents).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ foreshadowId: 'fs-due' })])
+      )
       expect(result.pendingIssues.some((i) => i.type === 'outline_foreshadow')).toBe(true)
     } finally {
       warnSpy.mockRestore()
@@ -1256,6 +1265,189 @@ describe('expandOutlineForChapter', () => {
       infoSpy.mockRestore()
       warnSpy.mockRestore()
     }
+  })
+
+  it('defers a non-mandatory semantic rejection and removes every fulfillment claim', async () => {
+    const scheduledState = stateWithScheduledForeshadows(1, '既有大纲。', [
+      createRequiredForeshadow('fs-due', 3),
+    ])
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 1 ? { ...item, fulfilledForeshadowIds: ['fs-due'] } : item
+      ),
+    }
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-due'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
+      }),
+    })
+    verifyForeshadowPlanMock.mockResolvedValue([
+      {
+        foreshadowId: 'fs-due',
+        verdict: 'not_fulfilled',
+        reason: '规划动作没有消解原伏笔的不确定性。',
+        mandatory: false,
+      },
+    ])
+
+    const result = await expandOutlineForChapter(state, 1, createMockProvider())
+
+    expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual([])
+    expect(result.outline?.[1]?.deferredForeshadowIds).toContain('fs-due')
+    expect(result.chapterPlan.fulfilledForeshadowIds).toEqual([])
+    expect(result.chapterPlan.expectedEvents).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ foreshadowId: 'fs-due' })])
+    )
+  })
+
+  it('revises an existing outline and regenerates its plan after a mandatory semantic rejection', async () => {
+    const scheduledState = stateWithScheduledForeshadows(2, '灯没有亮，却声明回收旧线索。', [
+      createRequiredForeshadow('fs-hard', 3),
+    ])
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 2 ? { ...item, fulfilledForeshadowIds: ['fs-hard'] } : item
+      ),
+    }
+    const originalPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      sections: [
+        {
+          title: '错误回收',
+          summary: '灯没有亮。',
+          wordCount: 3000,
+          events: ['声明回收'],
+          characters: ['主角'],
+        },
+      ],
+      fulfilledForeshadowIds: ['fs-hard'],
+      expectedEvents: [createForeshadowFulfillEvent('fs-hard', 2)],
+    })
+    const revisedPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      sections: [
+        {
+          title: '真实揭示',
+          summary: '通过核心事件揭示灯持续发亮的原因。',
+          wordCount: 3000,
+          events: ['消解既有不确定性'],
+          characters: ['主角'],
+        },
+      ],
+      fulfilledForeshadowIds: ['fs-hard'],
+      expectedEvents: [createForeshadowFulfillEvent('fs-hard', 2)],
+    })
+    planChapterWithOverrideMock
+      .mockResolvedValueOnce({ chapterPlan: originalPlan })
+      .mockResolvedValue({ chapterPlan: revisedPlan })
+    let semanticVerificationAttempt = 0
+    verifyForeshadowPlanMock.mockImplementation(() => {
+      semanticVerificationAttempt++
+      return Promise.resolve(
+        semanticVerificationAttempt === 1
+          ? [
+              {
+                foreshadowId: 'fs-hard',
+                verdict: 'not_fulfilled',
+                reason: '规划明确否定了原伏笔建立的事实。',
+                mandatory: true,
+              },
+            ]
+          : [
+              {
+                foreshadowId: 'fs-hard',
+                verdict: 'fulfilled',
+                reason: '修订规划给出了可执行的真实解释。',
+                mandatory: true,
+              },
+            ]
+      )
+    })
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '真实回收',
+        description: '本章通过核心事件揭示灯持续发亮的原因。',
+        fulfilledForeshadowIds: ['fs-hard'],
+        deferredForeshadowIds: [],
+      },
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    const revisionInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      foreshadowPlanningRejection?: {
+        currentOutline?: { title: string; description: string }
+        semanticRejections?: Array<{ foreshadowId: string; reason: string }>
+      }
+    }
+    expect(revisionInput.foreshadowPlanningRejection).toMatchObject({
+      currentOutline: {
+        title: '第三章',
+        description: '灯没有亮，却声明回收旧线索。',
+      },
+      semanticRejections: [
+        {
+          foreshadowId: 'fs-hard',
+          reason: '规划明确否定了原伏笔建立的事实。',
+        },
+      ],
+    })
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
+    const retryPlanningInput = planChapterWithOverrideMock.mock.calls[1]![3] as {
+      foreshadowPlanningRejection?: { semanticRejections?: Array<{ foreshadowId: string }> }
+    }
+    expect(retryPlanningInput.foreshadowPlanningRejection?.semanticRejections).toEqual([
+      expect.objectContaining({ foreshadowId: 'fs-hard' }),
+    ])
+    expect(result.outline?.[2]?.title).toBe('真实回收')
+    expect(result.chapterPlan.sections[0]?.title).toBe('真实揭示')
+  })
+
+  it('stops before drafting when a mandatory semantic rejection persists after revision', async () => {
+    const scheduledState = stateWithScheduledForeshadows(2, '既有但错误的大纲。', [
+      createRequiredForeshadow('fs-hard', 3),
+    ])
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 2 ? { ...item, fulfilledForeshadowIds: ['fs-hard'] } : item
+      ),
+    }
+    const invalidPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      fulfilledForeshadowIds: ['fs-hard'],
+      expectedEvents: [createForeshadowFulfillEvent('fs-hard', 2)],
+    })
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: invalidPlan })
+    verifyForeshadowPlanMock.mockResolvedValue([
+      {
+        foreshadowId: 'fs-hard',
+        verdict: 'uncertain',
+        reason: '规划始终没有足够细节。',
+        mandatory: true,
+      },
+    ])
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '仍然含糊',
+        description: '修订后仍未说明如何消解线索。',
+        fulfilledForeshadowIds: ['fs-hard'],
+        deferredForeshadowIds: [],
+      },
+    })
+
+    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
+      '第 3 章伏笔语义规划连续 2 次未通过：fs-hard'
+    )
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
   })
 
   it('extends a boundary by three chapters for eleven due IDs and schedules only the first three', async () => {

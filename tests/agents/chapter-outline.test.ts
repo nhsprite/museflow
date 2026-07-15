@@ -226,6 +226,17 @@ describe('ChapterOutlineAgent', () => {
         missingDeclarationIds: [],
         missingEventIds: [],
         incorrectlyDeferredIds: ['fs-hard'],
+        currentOutline: {
+          title: '错误版本',
+          description: '当前大纲与伏笔含义矛盾。',
+        },
+        semanticRejections: [
+          {
+            foreshadowId: 'fs-hard',
+            verdict: 'not_fulfilled',
+            reason: '规划否定了原伏笔建立的事实。',
+          },
+        ],
       },
     } as ChapterOutlineAgentInput)
 
@@ -240,6 +251,9 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).toContain('mustFulfillThisChapter=true')
     expect(prompt).toContain('<foreshadow_planning_rejection>')
     expect(prompt).toContain('incorrectlyDeferredIds: fs-hard')
+    expect(prompt).toContain('错误版本')
+    expect(prompt).toContain('当前大纲与伏笔含义矛盾。')
+    expect(prompt).toContain('规划否定了原伏笔建立的事实。')
   })
 
   it('fills empty structured declaration arrays when LLM omits them', async () => {

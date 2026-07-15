@@ -81,6 +81,17 @@ describe('ChapterPlannerAgent issues integration', () => {
         missingDeclarationIds: ['fs-hard'],
         missingEventIds: ['fs-hard'],
         incorrectlyDeferredIds: [],
+        currentOutline: {
+          title: '错误版本',
+          description: '当前大纲与伏笔含义矛盾。',
+        },
+        semanticRejections: [
+          {
+            foreshadowId: 'fs-hard',
+            verdict: 'uncertain',
+            reason: '规划没有足够细节。',
+          },
+        ],
       },
     })
 
@@ -94,6 +105,9 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).toContain('<foreshadow_planning_rejection>')
     expect(userMessage).toContain('missingDeclarationIds: fs-hard')
     expect(userMessage).toContain('missingEventIds: fs-hard')
+    expect(userMessage).toContain('错误版本')
+    expect(userMessage).toContain('当前大纲与伏笔含义矛盾。')
+    expect(userMessage).toContain('规划没有足够细节。')
   })
 
   it('includes issues section when issues are provided', () => {

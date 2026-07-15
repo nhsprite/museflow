@@ -22,11 +22,25 @@ ${lines.join('\n')}
 }
 
 function renderRejection(rejection: ForeshadowPlanningRejection): string {
+  const currentOutline = rejection.currentOutline
+    ? `- currentOutline.title: ${rejection.currentOutline.title}\n- currentOutline.description: ${rejection.currentOutline.description}`
+    : ''
+  const semanticRejections =
+    rejection.semanticRejections && rejection.semanticRejections.length > 0
+      ? rejection.semanticRejections
+          .map(
+            (item) =>
+              `- semanticRejection: id=${item.foreshadowId}; verdict=${item.verdict}; reason=${item.reason}`
+          )
+          .join('\n')
+      : ''
   return `<foreshadow_planning_rejection>
-【上一版伏笔规划未通过结构校验】本次必须针对下列精确 ID 重新设计核心事件及结构化证据：
+【上一版伏笔规划未通过结构或语义校验】本次必须针对下列精确 ID 重新设计核心事件及结构化证据：
 - missingDeclarationIds: ${formatIds(rejection.missingDeclarationIds)}
 - missingEventIds: ${formatIds(rejection.missingEventIds)}
 - incorrectlyDeferredIds: ${formatIds(rejection.incorrectlyDeferredIds)}
+${currentOutline}
+${semanticRejections}
 必须修复列出的结构化缺口；不得通过删除义务、改变策略或虚假声明回收来规避。
 </foreshadow_planning_rejection>`
 }
