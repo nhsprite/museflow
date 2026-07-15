@@ -159,9 +159,7 @@ export function selectOpportunisticForeshadowsForChapter(
   memory: StoryMemory,
   options: OpportunisticForeshadowSelectionOptions
 ): ForeshadowId[] {
-  const capacity = Number.isFinite(options.capacity)
-    ? Math.max(0, Math.floor(options.capacity))
-    : 0
+  const capacity = Number.isFinite(options.capacity) ? Math.max(0, Math.floor(options.capacity)) : 0
   if (capacity === 0) return []
 
   const minFulfillDistance = Number.isFinite(options.minFulfillDistance)
@@ -181,8 +179,7 @@ export function selectOpportunisticForeshadowsForChapter(
         options.chapterNumber >= foreshadow.introducedIn + 1 + minFulfillDistance
     )
     .sort((left, right) => {
-      const leftLastConsidered =
-        lastConsideredChapterById.get(left.id) ?? Number.NEGATIVE_INFINITY
+      const leftLastConsidered = lastConsideredChapterById.get(left.id) ?? Number.NEGATIVE_INFINITY
       const rightLastConsidered =
         lastConsideredChapterById.get(right.id) ?? Number.NEGATIVE_INFINITY
       if (leftLastConsidered !== rightLastConsidered) {

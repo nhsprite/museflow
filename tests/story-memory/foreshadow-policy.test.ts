@@ -259,9 +259,7 @@ describe('foreshadow deadline policy', () => {
   })
 
   it('defaults per-chapter opportunistic foreshadow capacity to one', () => {
-    expect(
-      DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowMaxOpportunisticCandidatesPerChapter
-    ).toBe(1)
+    expect(DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowMaxOpportunisticCandidatesPerChapter).toBe(1)
   })
 
   it('selects only eligible active null-deadline foreshadows as natural opportunities', () => {
