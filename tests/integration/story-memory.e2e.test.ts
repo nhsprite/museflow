@@ -4,8 +4,12 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { runStory } from '../../src/core/runner.js'
 import { runOneChapter } from '../../src/core/runner.js'
+import { prepareChapter } from '../../src/graph/services/chapter-orchestration/preparation.js'
 import { createStory } from '../../src/storage/meta/stores/story.js'
 import { JsonCheckpointer } from '../../src/graph/checkpointer.js'
+import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import { getCanonicalForeshadows } from '../../src/story-memory/foreshadow-alias.js'
+import { getBoundaryBlockingForeshadows } from '../../src/story-memory/foreshadow-policy.js'
 import type { ModelProvider, Message, JsonSchema } from '../../src/model/provider.js'
 import type { RuntimeContext } from '../../src/core/context.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
@@ -34,6 +38,58 @@ const mockChatStructured = vi.fn(
 
 function createMockProvider(): ModelProvider {
   return { chat: mockChat, chatStructured: mockChatStructured }
+}
+
+function createEquivalenceProvider(): ModelProvider {
+  return {
+    chat: vi.fn(),
+    chatStructured: vi.fn().mockResolvedValue({
+      groups: [
+        {
+          ids: ['fs-later', 'fs-earliest'],
+          reason: 'Both records represent one unresolved obligation.',
+        },
+      ],
+    }),
+  }
+}
+
+function stateWithTwoEquivalentActiveIds(): ReducedGraphState {
+  const storyMemory = applyEvents(createEmptyStoryMemory(), [
+    {
+      id: 'introduce-earliest',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-earliest',
+      text: 'An unresolved obligation is recorded.',
+      kind: 'other',
+      expectedFulfillChapter: 4,
+      resolutionPolicy: 'must_resolve',
+      required: true,
+      chapterIndex: 0,
+      source: 'outline',
+    },
+    {
+      id: 'introduce-later',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-later',
+      text: 'The same unresolved obligation is recorded again.',
+      kind: 'other',
+      expectedFulfillChapter: 4,
+      resolutionPolicy: 'must_resolve',
+      required: true,
+      chapterIndex: 1,
+      source: 'outline',
+    },
+  ])
+
+  return {
+    currentChapterIndex: 2,
+    totalChapters: 4,
+    pendingIssues: [],
+    foreshadowStack: [],
+    verifiedConstraints: [],
+    storyMemory,
+  } as unknown as ReducedGraphState
 }
 
 function createMockContext(): RuntimeContext {
@@ -231,6 +287,48 @@ describe('StoryMemory end-to-end', () => {
     if (outputDir && existsSync(outputDir)) {
       rmSync(outputDir, { recursive: true, force: true })
     }
+  })
+
+  it('repairs equivalent active IDs once and exposes one canonical story-end obligation', async () => {
+    const state = stateWithTwoEquivalentActiveIds()
+    const inputSnapshot = structuredClone(state)
+    const provider = createEquivalenceProvider()
+
+    const prepared = await prepareChapter(state, provider)
+    const preparedState = { ...state, ...prepared }
+    const preparedSnapshot = structuredClone(preparedState)
+    const memory = preparedState.storyMemory!
+
+    expect(state).toEqual(inputSnapshot)
+    expect(getCanonicalForeshadows(memory).map((foreshadow) => foreshadow.id)).toEqual([
+      'fs-earliest',
+    ])
+    expect(memory.foreshadows['fs-later']?.mergedInto).toBe('fs-earliest')
+    expect(getBoundaryBlockingForeshadows(memory, preparedState.totalChapters, true)).toEqual([
+      'fs-earliest',
+    ])
+    expect(preparedState.foreshadowStack.map((foreshadow) => foreshadow.id)).toEqual([
+      'fs-earliest',
+    ])
+    expect(
+      preparedState.verifiedConstraints.filter(
+        (constraint) =>
+          constraint.kind === 'generic' && constraint.id === 'memory:foreshadow:fs-earliest'
+      )
+    ).toHaveLength(1)
+    expect(memory.events.filter((event) => event.type === 'foreshadow-merge')).toHaveLength(1)
+
+    const rerun = await prepareChapter(preparedState, provider)
+    const rerunState = { ...preparedState, ...rerun }
+
+    expect(preparedState).toEqual(preparedSnapshot)
+    expect(provider.chatStructured).toHaveBeenCalledTimes(1)
+    expect(
+      rerunState.storyMemory?.events.filter((event) => event.type === 'foreshadow-merge')
+    ).toHaveLength(1)
+    expect(
+      getBoundaryBlockingForeshadows(rerunState.storyMemory!, rerunState.totalChapters, true)
+    ).toEqual(['fs-earliest'])
   })
 
   it(
