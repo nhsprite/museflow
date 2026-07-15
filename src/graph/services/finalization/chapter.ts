@@ -8,7 +8,7 @@ import {
   ensureBeatsHaveActIndex,
   projectStoryStateFromMemory,
 } from '../../../story-memory/projector.js'
-import type { StoryEvent } from '../../../types/story-memory.js'
+import type { ForeshadowMergeEvent, StoryEvent } from '../../../types/story-memory.js'
 import type { ChapterHandoff } from '../../../types/story-state.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import {
@@ -290,6 +290,13 @@ export async function finalizeChapter(
   const newForeshadowIntroduceEvents: Array<Extract<StoryEvent, { type: 'foreshadow-introduce' }>> =
     []
   let updatedForeshadowEquivalenceAudit: ReducedGraphState['foreshadowEquivalenceAudit']
+  let pendingForeshadowEquivalenceLog:
+    | {
+        mergeEvents: ForeshadowMergeEvent[]
+        activeCanonicalCountBeforeMerge: number
+        activeCanonicalCountAfterMerge: number
+      }
+    | undefined
 
   // Authoritative source of events: the writer already emitted them in the
   // STORY_EVENTS block. Apply them before asking SummaryAgent to avoid losing
@@ -327,14 +334,11 @@ export async function finalizeChapter(
         updatedStoryMemory = reconciled.memory
         updatedForeshadowEquivalenceAudit = reconciled.audit
         if (reconciled.mergeEvents.length > 0) {
-          for (const event of reconciled.mergeEvents) {
-            logger.info(
-              `[MuseFlow] 伏笔等价合并 ${event.duplicateForeshadowId} -> ${event.canonicalForeshadowId}`
-            )
+          pendingForeshadowEquivalenceLog = {
+            mergeEvents: reconciled.mergeEvents,
+            activeCanonicalCountBeforeMerge: reconciled.activeCanonicalCountBeforeMerge,
+            activeCanonicalCountAfterMerge: reconciled.audit.activeCanonicalIds.length,
           }
-          logger.info(
-            `[MuseFlow] 伏笔等价审计：活跃规范义务 ${reconciled.activeCanonicalCountBeforeMerge} -> ${reconciled.audit.activeCanonicalIds.length}`
-          )
         }
       } catch (error) {
         if (!(error instanceof ForeshadowEquivalenceError)) throw error
@@ -910,6 +914,17 @@ export async function finalizeChapter(
   )
   if (boundaryProposals.length > 0) {
     chapterReport.actBoundaryProposals = boundaryProposals
+  }
+
+  if (pendingForeshadowEquivalenceLog) {
+    for (const event of pendingForeshadowEquivalenceLog.mergeEvents) {
+      logger.info(
+        `[MuseFlow] 伏笔等价合并 ${event.duplicateForeshadowId} -> ${event.canonicalForeshadowId}`
+      )
+    }
+    logger.info(
+      `[MuseFlow] 伏笔等价审计：活跃规范义务 ${pendingForeshadowEquivalenceLog.activeCanonicalCountBeforeMerge} -> ${pendingForeshadowEquivalenceLog.activeCanonicalCountAfterMerge}`
+    )
   }
 
   return {

@@ -1912,6 +1912,55 @@ describe('finalizeChapter', () => {
     expect(equivalenceLogs.join('\n')).not.toContain('same resolved obligation')
   })
 
+  it('does not log equivalent draft merges when a later structured blocker aborts finalization', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({
+        groups: [
+          {
+            ids: ['fs-second', 'fs-first'],
+            reason: 'same blocked obligation',
+          },
+        ],
+      }),
+    }
+    const state = buildState(tmpDir, {
+      storyMemory: createEmptyStoryMemory(),
+      draftChapterEvents: [
+        introduceForeshadow('fs-first', 0, 'first blocked record'),
+        introduceForeshadow('fs-second', 0, 'duplicate blocked record'),
+        {
+          ...introduceForeshadow('fs-invalid', 0, 'invalid deadline record'),
+          expectedFulfillChapter: 0,
+        },
+      ],
+    })
+    const inputSnapshot = structuredClone(state)
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'foreshadow_invalid_deadline',
+          subject: 'fs-invalid',
+        }),
+      ])
+    )
+    expect(result).not.toHaveProperty('storyMemory')
+    expect(result).not.toHaveProperty('foreshadowStack')
+    expect(result).not.toHaveProperty('foreshadowEquivalenceAudit')
+    expect(result).not.toHaveProperty('currentChapterIndex')
+    expect(state).toEqual(inputSnapshot)
+    const equivalenceLogs = infoSpy.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes('伏笔等价'))
+    expect(equivalenceLogs).toEqual([])
+  })
+
   it('merges two introductions from one draft batch deterministically and applies the batch once', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
     const first = introduceForeshadow('fs-first', 0, 'first duplicate record')
