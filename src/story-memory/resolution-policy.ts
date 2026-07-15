@@ -19,12 +19,38 @@ export interface LegacyStoryMemoryV1 extends Omit<StoryMemory, 'version' | 'fore
   foreshadows: Record<string, LegacyForeshadowMemoryV1>
 }
 
+export interface NormalizedLegacyForeshadowFields {
+  resolutionPolicy: ForeshadowResolutionPolicy
+  expectedFulfillChapter: number | null
+}
+
+export function normalizeLegacyForeshadowFields(
+  required: boolean | undefined,
+  expectedFulfillChapter: number | null
+): NormalizedLegacyForeshadowFields {
+  if (required === false) {
+    return {
+      resolutionPolicy: 'may_remain_open',
+      expectedFulfillChapter: null,
+    }
+  }
+  if (Number.isInteger(expectedFulfillChapter)) {
+    return {
+      resolutionPolicy: 'must_resolve',
+      expectedFulfillChapter,
+    }
+  }
+  return {
+    resolutionPolicy: 'should_resolve',
+    expectedFulfillChapter: null,
+  }
+}
+
 export function policyFromLegacyFields(
   required: boolean | undefined,
   expectedFulfillChapter: number | null
 ): ForeshadowResolutionPolicy {
-  if (Number.isInteger(expectedFulfillChapter)) return 'must_resolve'
-  return required === false ? 'may_remain_open' : 'should_resolve'
+  return normalizeLegacyForeshadowFields(required, expectedFulfillChapter).resolutionPolicy
 }
 
 export function policyFromLegacyStackFields(
@@ -58,14 +84,18 @@ export function migrateStoryMemoryToV2(memory: StoryMemory | LegacyStoryMemoryV1
 
   const foreshadows = Object.fromEntries(
     Object.entries(memory.foreshadows).map(([id, item]) => {
-      const resolutionPolicy =
-        item.resolutionPolicy ?? policyFromLegacyFields(item.required, item.expectedFulfillChapter)
+      const normalized = item.resolutionPolicy
+        ? {
+            resolutionPolicy: item.resolutionPolicy,
+            expectedFulfillChapter: item.expectedFulfillChapter,
+          }
+        : normalizeLegacyForeshadowFields(item.required, item.expectedFulfillChapter)
       return [
         id,
         {
           ...item,
-          resolutionPolicy,
-          required: deriveLegacyRequired(resolutionPolicy),
+          ...normalized,
+          required: deriveLegacyRequired(normalized.resolutionPolicy),
         },
       ]
     })

@@ -13,7 +13,7 @@ import type { StoryArc } from '../types/outline.js'
 import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import { isValidForeshadowDeadline } from './foreshadow-policy.js'
-import { deriveLegacyRequired, policyFromLegacyFields } from './resolution-policy.js'
+import { deriveLegacyRequired, normalizeLegacyForeshadowFields } from './resolution-policy.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
   return {
@@ -293,19 +293,22 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         continue
       }
       const existing = foreshadows[event.foreshadowId]
-      const resolutionPolicy =
-        event.resolutionPolicy ??
-        policyFromLegacyFields(event.required, event.expectedFulfillChapter)
+      const normalized = event.resolutionPolicy
+        ? {
+            resolutionPolicy: event.resolutionPolicy,
+            expectedFulfillChapter: event.expectedFulfillChapter,
+          }
+        : normalizeLegacyForeshadowFields(event.required, event.expectedFulfillChapter)
       foreshadows[event.foreshadowId] = {
         ...existing,
         id: event.foreshadowId,
         text: event.text ?? existing?.text ?? event.foreshadowId,
         kind: event.kind ?? existing?.kind ?? null,
         introducedIn: event.chapterIndex,
-        expectedFulfillChapter: event.expectedFulfillChapter,
+        expectedFulfillChapter: normalized.expectedFulfillChapter,
         fulfilledIn: existing?.fulfilledIn ?? null,
-        resolutionPolicy,
-        required: deriveLegacyRequired(resolutionPolicy),
+        resolutionPolicy: normalized.resolutionPolicy,
+        required: deriveLegacyRequired(normalized.resolutionPolicy),
         beatId: event.beatId ?? existing?.beatId ?? null,
       }
     } else if (event.type === 'foreshadow-fulfill') {

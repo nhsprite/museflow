@@ -2,7 +2,7 @@ import type { ForeshadowKind, StoryEvent, StoryEventEvidence } from '../types/st
 import {
   deriveLegacyRequired,
   isForeshadowResolutionPolicy,
-  policyFromLegacyFields,
+  normalizeLegacyForeshadowFields,
   validatePolicyDeadline,
 } from './resolution-policy.js'
 
@@ -267,13 +267,17 @@ export function normalizeStoryEvent(
       ) {
         return invalid('foreshadow-introduce.resolutionPolicy is invalid')
       }
-      const resolutionPolicy = isForeshadowResolutionPolicy(value.resolutionPolicy)
-        ? value.resolutionPolicy
-        : policyFromLegacyFields(
+      const normalizedForeshadow = isForeshadowResolutionPolicy(value.resolutionPolicy)
+        ? {
+            resolutionPolicy: value.resolutionPolicy,
+            expectedFulfillChapter: value.expectedFulfillChapter,
+          }
+        : normalizeLegacyForeshadowFields(
             typeof value.required === 'boolean' ? value.required : undefined,
             value.expectedFulfillChapter
           )
-      if (!validatePolicyDeadline(resolutionPolicy, value.expectedFulfillChapter)) {
+      const { resolutionPolicy, expectedFulfillChapter } = normalizedForeshadow
+      if (!validatePolicyDeadline(resolutionPolicy, expectedFulfillChapter)) {
         return invalid('foreshadow-introduce policy and deadline are inconsistent')
       }
       const required = deriveLegacyRequired(resolutionPolicy)
@@ -281,12 +285,15 @@ export function normalizeStoryEvent(
       return {
         ok: true,
         normalized:
-          base.normalized || value.resolutionPolicy === undefined || value.required !== required,
+          base.normalized ||
+          value.resolutionPolicy === undefined ||
+          value.required !== required ||
+          value.expectedFulfillChapter !== expectedFulfillChapter,
         event: {
           ...eventBase(base),
           type: value.type,
           foreshadowId: value.foreshadowId,
-          expectedFulfillChapter: value.expectedFulfillChapter,
+          expectedFulfillChapter,
           resolutionPolicy,
           ...(value.text !== undefined ? { text: value.text } : {}),
           ...(value.kind !== undefined ? { kind: value.kind as ForeshadowKind } : {}),

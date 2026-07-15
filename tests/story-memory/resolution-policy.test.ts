@@ -28,13 +28,34 @@ describe('foreshadow resolution policy v2', () => {
   })
 
   it.each([
-    [true, 12, 'must_resolve'],
-    [false, 12, 'must_resolve'],
-    [true, null, 'should_resolve'],
-    [false, null, 'may_remain_open'],
-  ] as const)('maps required=%s deadline=%s to %s', (required, deadline, expected) => {
-    expect(resolutionPolicy.policyFromLegacyFields(required, deadline)).toBe(expected)
-  })
+    [true, 12, 'must_resolve', 12],
+    [false, 12, 'may_remain_open', null],
+    [true, null, 'should_resolve', null],
+    [false, null, 'may_remain_open', null],
+    [undefined, 12, 'must_resolve', 12],
+    [undefined, null, 'should_resolve', null],
+  ] as const)(
+    'normalizes required=%s deadline=%s to %s/%s',
+    (required, deadline, expectedPolicy, expectedDeadline) => {
+      expect(resolutionPolicy.policyFromLegacyFields(required, deadline)).toBe(expectedPolicy)
+      expect(
+        (
+          resolutionPolicy as unknown as {
+            normalizeLegacyForeshadowFields: (
+              required: boolean | undefined,
+              deadline: number | null
+            ) => {
+              resolutionPolicy: ForeshadowResolutionPolicy
+              expectedFulfillChapter: number | null
+            }
+          }
+        ).normalizeLegacyForeshadowFields(required, deadline)
+      ).toEqual({
+        resolutionPolicy: expectedPolicy,
+        expectedFulfillChapter: expectedDeadline,
+      })
+    }
+  )
 
   it('requires a finite deadline only for must_resolve', () => {
     const validate = (
@@ -100,7 +121,11 @@ describe('foreshadow resolution policy v2', () => {
     expect(migrate).toBeTypeOf('function')
     const migrated = migrate?.(v1)
     expect(migrated?.version).toBe('2')
-    expect(migrated?.foreshadows.deadline?.resolutionPolicy).toBe('must_resolve')
+    expect(migrated?.foreshadows.deadline).toMatchObject({
+      resolutionPolicy: 'may_remain_open',
+      expectedFulfillChapter: null,
+      required: false,
+    })
     expect(migrated?.foreshadows.open?.resolutionPolicy).toBe('should_resolve')
     expect(migrated?.foreshadows.explicit?.resolutionPolicy).toBe('may_remain_open')
     expect(migrate?.(migrated)).toBe(migrated)

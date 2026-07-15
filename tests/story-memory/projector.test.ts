@@ -506,10 +506,10 @@ describe('projectMemory foreshadows', () => {
       id: 'f-1',
       text: '门后的争执声暗示某个尚未公开的约定',
       kind: 'dialogue_hint',
-      resolutionPolicy: 'must_resolve',
-      required: true,
+      resolutionPolicy: 'may_remain_open',
+      required: false,
       beatId: 'A1-M2',
-      expectedFulfillChapter: 5,
+      expectedFulfillChapter: null,
       introducedIn: 1,
       fulfilledIn: null,
     })

@@ -50,6 +50,55 @@ describe('normalizeStoryEvent', () => {
     })
   })
 
+  it('normalizes a legacy optional finite-deadline clue to an open clue without a deadline', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-legacy-optional-foreshadow',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-legacy-optional',
+        expectedFulfillChapter: 12,
+        required: false,
+        chapterIndex: 4,
+      },
+      { chapterIndex: 4, mode: 'legacy' }
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      normalized: true,
+      event: {
+        id: 'evt-legacy-optional-foreshadow',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-legacy-optional',
+        expectedFulfillChapter: null,
+        resolutionPolicy: 'may_remain_open',
+        required: false,
+        chapterIndex: 4,
+        source: 'chapter',
+      },
+    })
+  })
+
+  it('rejects an explicit open policy with a finite deadline in strict mode', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-invalid-open-deadline',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-open',
+        expectedFulfillChapter: 12,
+        resolutionPolicy: 'may_remain_open',
+        chapterIndex: 4,
+        source: 'chapter',
+      },
+      { chapterIndex: 4, mode: 'strict' }
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'foreshadow-introduce policy and deadline are inconsistent',
+    })
+  })
+
   it('rejects a deadline-free must_resolve introduction', () => {
     const result = normalizeStoryEvent(
       {
