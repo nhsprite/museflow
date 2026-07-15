@@ -22,6 +22,7 @@ export type IssueType =
   | 'foreshadow_invalid_deadline'
   | 'foreshadow_boundary_unresolved'
   | 'foreshadow_final_act_introduce'
+  | 'foreshadow_equivalence_failed'
   | 'event_missing'
   | 'event_unexpected'
   | 'event_evidence_missing'

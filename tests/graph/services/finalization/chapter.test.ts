@@ -12,6 +12,7 @@ import type { ChapterPlan } from '@/agents/types.js'
 import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/utils/story-arc.js'
 import { logger } from '@/utils/logger.js'
 import { createEmptyStoryMemory, applyEvents } from '@/story-memory/projector.js'
+import { getCanonicalForeshadows } from '@/story-memory/foreshadow-alias.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -156,6 +157,27 @@ function makeStoryMemory(
     foreshadows,
     beats: {},
     tasks: {},
+  }
+}
+
+function introduceForeshadow(
+  foreshadowId: string,
+  chapterIndex: number,
+  text = `${foreshadowId} text`
+): Extract<StoryEvent, { type: 'foreshadow-introduce' }> {
+  return {
+    id: `evt-introduce-${foreshadowId}`,
+    type: 'foreshadow-introduce',
+    foreshadowId,
+    text,
+    kind: 'other',
+    expectedFulfillChapter: 3,
+    resolutionPolicy: 'must_resolve',
+    required: true,
+    beatId: null,
+    chapterIndex,
+    source: 'chapter',
+    evidence: { paragraphIndex: 1 },
   }
 }
 
@@ -1634,6 +1656,222 @@ describe('finalizeChapter', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       '[MuseFlow] 建议运行：museflow adjust-act test-story --act 1 --end-chapter 5'
     )
+  })
+
+  it('merges a new introduction into its historical canonical root before commit', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 2, '第二章正文。')
+    const base = buildState(tmpDir)
+    const historicalMemory = applyEvents(createEmptyStoryMemory(), [
+      introduceForeshadow('fs-existing', 0, 'historical obligation'),
+    ])
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({
+        groups: [
+          {
+            ids: ['fs-new', 'fs-existing'],
+            reason: 'same unresolved obligation',
+          },
+        ],
+      }),
+    }
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 1,
+      chapters: [
+        {
+          ...base.chapters[0]!,
+          summary: '第一章摘要',
+          status: 'completed',
+        },
+        {
+          ...base.chapters[0]!,
+          id: 'ch-2',
+          number: 2,
+          title: '遇敌',
+          outline: '主角遭遇敌人。',
+        },
+      ],
+      session: { chapterIndex: 1 },
+      storyMemory: historicalMemory,
+      foreshadowEquivalenceAudit: {
+        protocolVersion: 1,
+        activeCanonicalIds: ['fs-existing'],
+      },
+      draftChapterEvents: [introduceForeshadow('fs-new', 1, 'duplicate obligation')],
+    })
+
+    const result = await finalizeChapter(state, provider)
+    const mergeEvents = result.storyMemory?.events.filter(
+      (event) => event.type === 'foreshadow-merge'
+    )
+
+    expect(mergeEvents).toMatchObject([
+      {
+        canonicalForeshadowId: 'fs-existing',
+        duplicateForeshadowId: 'fs-new',
+        reason: 'same unresolved obligation',
+      },
+    ])
+    expect(getCanonicalForeshadows(result.storyMemory!)).toMatchObject([{ id: 'fs-existing' }])
+    expect(result.foreshadowStack?.map((entry) => entry.id)).toEqual(['fs-existing'])
+    expect(result.foreshadowEquivalenceAudit?.activeCanonicalIds).toEqual(['fs-existing'])
+    expect(provider.chatStructured).toHaveBeenCalledTimes(1)
+  })
+
+  it('merges two introductions from one draft batch deterministically and applies the batch once', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const first = introduceForeshadow('fs-first', 0, 'first duplicate record')
+    const second = introduceForeshadow('fs-second', 0, 'second duplicate record')
+    const task: StoryEvent = {
+      id: 'evt-task-in-same-batch',
+      type: 'task-create',
+      taskId: 'task-in-same-batch',
+      description: 'non-foreshadow event in the atomic batch',
+      chapterIndex: 0,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({
+        groups: [
+          {
+            ids: ['fs-second', 'fs-first'],
+            reason: 'same draft obligation',
+          },
+        ],
+      }),
+    }
+    const state = buildState(tmpDir, {
+      storyMemory: createEmptyStoryMemory(),
+      draftChapterEvents: [first, task, second],
+    })
+
+    const result = await finalizeChapter(state, provider)
+    const eventIds = result.storyMemory?.events.map((event) => event.id) ?? []
+    const mergeEvents = result.storyMemory?.events.filter(
+      (event) => event.type === 'foreshadow-merge'
+    )
+
+    expect(mergeEvents).toMatchObject([
+      {
+        canonicalForeshadowId: 'fs-first',
+        duplicateForeshadowId: 'fs-second',
+        reason: 'same draft obligation',
+      },
+    ])
+    expect(eventIds.filter((id) => id === first.id)).toHaveLength(1)
+    expect(eventIds.filter((id) => id === second.id)).toHaveLength(1)
+    expect(eventIds.filter((id) => id === task.id)).toHaveLength(1)
+    expect(result.storyMemory?.tasks[task.taskId]).toBeDefined()
+    expect(getCanonicalForeshadows(result.storyMemory!)).toMatchObject([{ id: 'fs-first' }])
+    expect(provider.chatStructured).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails atomically when new-introduction equivalence detection fails', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 2, '第二章正文。')
+    const base = buildState(tmpDir)
+    const historicalMemory = applyEvents(createEmptyStoryMemory(), [
+      introduceForeshadow('fs-existing', 0, 'historical obligation'),
+    ])
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockRejectedValue(new Error('detector unavailable')),
+    }
+    const task: StoryEvent = {
+      id: 'evt-atomic-task',
+      type: 'task-create',
+      taskId: 'atomic-task',
+      description: 'must not be partially committed',
+      chapterIndex: 1,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 1,
+      chapters: [
+        {
+          ...base.chapters[0]!,
+          summary: '第一章摘要',
+          status: 'completed',
+        },
+        {
+          ...base.chapters[0]!,
+          id: 'ch-2',
+          number: 2,
+          title: '遇敌',
+          outline: '主角遭遇敌人。',
+        },
+      ],
+      session: { chapterIndex: 1 },
+      storyMemory: historicalMemory,
+      foreshadowEquivalenceAudit: {
+        protocolVersion: 1,
+        activeCanonicalIds: ['fs-existing'],
+      },
+      draftChapterEvents: [introduceForeshadow('fs-new', 1, 'new obligation'), task],
+    })
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual([
+      expect.objectContaining({
+        type: 'foreshadow_equivalence_failed',
+        severity: 'error',
+        source: 'foreshadowing',
+        retryStrategy: 'manual',
+        description: '第 2 章伏笔等价检测失败：Foreshadow equivalence provider call failed',
+      }),
+    ])
+    expect(result.storyMemory).toBeUndefined()
+    expect(result.foreshadowStack).toBeUndefined()
+    expect(result.foreshadowEquivalenceAudit).toBeUndefined()
+    expect(result.currentChapterIndex).toBeUndefined()
+    expect(result.chapterReport).toBeUndefined()
+    expect(result.timeline).toBeUndefined()
+    expect(state.storyMemory).toEqual(historicalMemory)
+    expect(state.storyMemory?.tasks['atomic-task']).toBeUndefined()
+  })
+
+  it('rejects operational foreshadow merges proposed by SummaryAgent', async () => {
+    const historicalMemory = applyEvents(createEmptyStoryMemory(), [
+      introduceForeshadow('fs-root', 0),
+      introduceForeshadow('fs-duplicate', 0),
+    ])
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-summary-merge',
+              type: 'foreshadow-merge',
+              canonicalForeshadowId: 'fs-root',
+              duplicateForeshadowId: 'fs-duplicate',
+              reason: 'agent must not create operational merges',
+              chapterIndex: 0,
+              source: 'chapter',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const result = await finalizeChapter(
+      buildState(tmpDir, { storyMemory: historicalMemory }),
+      createMockProvider()
+    )
+
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-summary-merge')).toBe(false)
+    expect(getCanonicalForeshadows(result.storyMemory!).map((entry) => entry.id)).toEqual([
+      'fs-root',
+      'fs-duplicate',
+    ])
   })
 })
 

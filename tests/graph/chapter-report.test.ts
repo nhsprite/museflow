@@ -9,6 +9,7 @@ import type { ChapterSession } from '../../src/core/chapter-generation/routing/t
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 import type { RuntimeContext } from '../../src/core/context.js'
+import { createEmptyIssueSummary, summarizeIssues } from '../../src/types/chapter-report.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -154,6 +155,23 @@ function buildState(
   } as unknown as ReducedGraphState
   return base
 }
+
+describe('chapter issue summary', () => {
+  it('initializes and counts foreshadow equivalence failures', () => {
+    expect(createEmptyIssueSummary().byType.foreshadow_equivalence_failed).toBe(0)
+
+    const summary = summarizeIssues([
+      {
+        id: 'foreshadow-equivalence-failed',
+        type: 'foreshadow_equivalence_failed',
+        severity: 'error',
+        description: 'equivalence detector unavailable',
+      },
+    ])
+
+    expect(summary.byType.foreshadow_equivalence_failed).toBe(1)
+  })
+})
 
 describe('chapter report generation', () => {
   let tmpDir: string

@@ -61,6 +61,8 @@ import {
   getMandatoryBeatEntries,
   getMandatoryBeatTextById,
 } from '../../../utils/mandatory-beat-ids.js'
+import { reconcileForeshadowEquivalence } from '../foreshadow-equivalence/reconcile.js'
+import { ForeshadowEquivalenceError } from '../foreshadow-equivalence/detector.js'
 
 function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
@@ -155,6 +157,8 @@ const FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES: ReadonlySet<StoryEvent['type']> = 
   'foreshadow-deadline-extend',
   // 放弃回收是作者决策（CLI），agent 无权产生。
   'foreshadow-waive',
+  // 等价合并是定稿门禁的审计决策，SummaryAgent 不得产生。
+  'foreshadow-merge',
 ])
 
 function filterSummaryFallbackEvents(
@@ -285,6 +289,7 @@ export async function finalizeChapter(
   > = []
   const newForeshadowIntroduceEvents: Array<Extract<StoryEvent, { type: 'foreshadow-introduce' }>> =
     []
+  let updatedForeshadowEquivalenceAudit: ReducedGraphState['foreshadowEquivalenceAudit']
 
   // Authoritative source of events: the writer already emitted them in the
   // STORY_EVENTS block. Apply them before asking SummaryAgent to avoid losing
@@ -308,7 +313,39 @@ export async function finalizeChapter(
           e.type === 'foreshadow-introduce'
       )
     )
-    updatedStoryMemory = applyEvents(updatedStoryMemory ?? createEmptyStoryMemory(), draftEvents)
+    if (newForeshadowIntroduceEvents.length > 0) {
+      try {
+        const reconciled = await reconcileForeshadowEquivalence({
+          provider,
+          memory: updatedStoryMemory,
+          chapterIndex,
+          ...(state.foreshadowEquivalenceAudit !== undefined
+            ? { audit: state.foreshadowEquivalenceAudit }
+            : {}),
+          proposedEvents: draftEvents,
+        })
+        updatedStoryMemory = reconciled.memory
+        updatedForeshadowEquivalenceAudit = reconciled.audit
+      } catch (error) {
+        if (!(error instanceof ForeshadowEquivalenceError)) throw error
+        return {
+          pendingIssues: [
+            ...state.pendingIssues,
+            {
+              id: `foreshadow-equivalence-failed-${chapterIndex}-${generateId()}`,
+              type: 'foreshadow_equivalence_failed',
+              severity: 'error',
+              description: `第 ${chapterIndex + 1} 章伏笔等价检测失败：${error.message}`,
+              source: 'foreshadowing',
+              retryStrategy: 'manual',
+            },
+          ],
+          rewriteRequested: true,
+        }
+      }
+    } else {
+      updatedStoryMemory = applyEvents(updatedStoryMemory, draftEvents)
+    }
     const draftVerifiedBeats = deriveVerifiedBeatsFromPlotAdvanceEvents(draftEvents, state.storyArc)
     const draftVerifiedMandatoryBeatIds = deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents(
       draftEvents,
@@ -877,6 +914,9 @@ export async function finalizeChapter(
     storyArc: updatedStoryArc,
     canonicalFactsDelta: undefined,
     supersededFactsDelta: undefined,
+    ...(updatedForeshadowEquivalenceAudit !== undefined
+      ? { foreshadowEquivalenceAudit: updatedForeshadowEquivalenceAudit }
+      : {}),
   }
 }
 
