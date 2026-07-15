@@ -45,6 +45,11 @@ const chapter1Events: StoryEvent[] = [
     type: 'foreshadow-introduce',
     foreshadowId: 'fs-locket',
     expectedFulfillChapter: 2,
+    resolutionPolicy: 'must_resolve',
+    required: true,
+    text: '待回收的结构化线索',
+    kind: 'other',
+    beatId: null,
     chapterIndex: 0,
     source: 'chapter',
     evidence: { paragraphIndex: 1 },
@@ -248,7 +253,7 @@ describe('StoryMemory end-to-end', () => {
       )
 
       expect(startResult.storyMemory).not.toBeNull()
-      expect(startResult.storyMemory?.version).toBe('1')
+      expect(startResult.storyMemory?.version).toBe('2')
       expect(startResult.storyMemory?.events).toHaveLength(0)
 
       const chapter1Result = await runOneChapter(
@@ -268,6 +273,9 @@ describe('StoryMemory end-to-end', () => {
       expect(chapter1Result.storyMemory!.foreshadows['fs-locket']).toBeDefined()
       expect(chapter1Result.storyMemory!.foreshadows['fs-locket'].introducedIn).toBe(0)
       expect(chapter1Result.storyMemory!.foreshadows['fs-locket'].fulfilledIn).toBeNull()
+      expect(chapter1Result.storyMemory!.foreshadows['fs-locket'].resolutionPolicy).toBe(
+        'must_resolve'
+      )
       expect(chapter1Result.storyMemory!.beats['beat-1']).toBeDefined()
       expect(chapter1Result.storyMemory!.beats['beat-1'].provenByEventIds).toContain('evt-beat-1')
 
