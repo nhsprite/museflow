@@ -24,6 +24,7 @@ export interface StructuredValidationResult {
   unfulfilledRequiredForeshadows: ForeshadowId[]
   overdueForeshadows: ForeshadowId[]
   falseFulfillments: ForeshadowId[]
+  foreshadowFulfillmentRejections: ForeshadowFulfillmentRejection[]
 
   unclaimedMandatoryBeats: BeatId[]
   claimedButUnprovenBeats: BeatId[]
@@ -31,6 +32,13 @@ export interface StructuredValidationResult {
   stateConflicts: StateConflict[]
   finalStateMismatches: FinalStateMismatch[]
   finalStateUncorroborated: FinalStateMismatch[]
+}
+
+export interface ForeshadowFulfillmentRejection {
+  foreshadowId: ForeshadowId
+  evidenceParagraphIndex: number | null
+  verdict: 'not_fulfilled' | 'uncertain' | 'verification_failed'
+  reason: string
 }
 
 export interface FinalStateMismatch {
@@ -134,6 +142,7 @@ export function validateChapterEvents(
     unfulfilledRequiredForeshadows,
     overdueForeshadows,
     falseFulfillments,
+    foreshadowFulfillmentRejections: [],
     unclaimedMandatoryBeats,
     claimedButUnprovenBeats,
     stateConflicts: detectStateConflicts(acceptedEvents),

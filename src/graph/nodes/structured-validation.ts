@@ -26,6 +26,7 @@ export async function validateChapterStructured(
         unfulfilledRequiredForeshadows: [],
         overdueForeshadows: [],
         falseFulfillments: [],
+        foreshadowFulfillmentRejections: [],
         unclaimedMandatoryBeats: [],
         claimedButUnprovenBeats: [],
         stateConflicts: [],
