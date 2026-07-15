@@ -478,9 +478,11 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-due'])
     expect(result.outline?.[1]?.deferredForeshadowIds).toEqual([])
     const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
-      verifiedConstraints?: string[]
+      foreshadowObligations?: Array<{ id: string; schedulingMode: string }>
     }
-    expect(jitInput.verifiedConstraints?.join('\n')).toContain('fs-due')
+    expect(jitInput.foreshadowObligations).toEqual([
+      expect.objectContaining({ id: 'fs-due', schedulingMode: 'mandatory' }),
+    ])
   })
 
   it('passes without retry when every scheduled candidate is adjudicated', async () => {
@@ -542,10 +544,19 @@ describe('expandOutlineForChapter', () => {
 
     expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual(['fs-natural'])
     const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
-      verifiedConstraints?: string[]
+      foreshadowObligations?: Array<{
+        id: string
+        schedulingMode: string
+        mustFulfillThisChapter: boolean
+      }>
     }
-    expect(jitInput.verifiedConstraints?.join('\n')).toContain('【自然回收机会】')
-    expect(jitInput.verifiedConstraints?.join('\n')).toContain('fs-natural')
+    expect(jitInput.foreshadowObligations).toEqual([
+      expect.objectContaining({
+        id: 'fs-natural',
+        schedulingMode: 'opportunity',
+        mustFulfillThisChapter: false,
+      }),
+    ])
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
     expect(formattedOutline).toContain('【本章自然回收候选】fs-natural')
     expect(formattedOutline).not.toContain('【本章伏笔调度候选】fs-natural')
@@ -573,6 +584,83 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
     expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(['fs-natural'])
     expect(result.pendingIssues.some((issue) => issue.type === 'outline_foreshadow')).toBe(false)
+  })
+
+  it('treats eleven should_resolve clues as bounded opportunities at chapter 58', async () => {
+    const foreshadows = Array.from({ length: 11 }, (_, index) =>
+      createRequiredForeshadow(`fs-soft-${index + 1}`, null)
+    )
+    const outline = Array.from({ length: 61 }, (_, index) => ({
+      number: index + 1,
+      title: `第 ${index + 1} 章`,
+      description: index === 57 ? '' : '既有大纲。',
+    }))
+    const state: ReducedGraphState = {
+      ...baseState,
+      currentChapterIndex: 57,
+      totalChapters: 61,
+      story: { ...baseState.story, totalChapters: 61 },
+      storyArc: {
+        totalChapters: 61,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 55,
+            title: '前四幕',
+            theme: '展开',
+            function: '展开故事',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 56,
+            endChapter: 61,
+            title: '最终幕',
+            theme: '收束',
+            function: '完成结局',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline,
+      actProgress: {
+        1: { consumed: [], pending: [] },
+        2: { consumed: [], pending: [] },
+      },
+      chapters: Array.from({ length: 61 }, () => null),
+      storyMemory: {
+        ...createEmptyStoryMemory(),
+        foreshadows: Object.fromEntries(
+          foreshadows.map((foreshadow) => [foreshadow.id, foreshadow])
+        ),
+      },
+    }
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({ chapterIndex: 57 }),
+    })
+
+    const result = await expandOutlineForChapter(state, 57, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    const input = chapterOutlineRunMock.mock.calls[0]![0] as {
+      foreshadowObligations?: Array<{
+        resolutionPolicy: string
+        schedulingMode: string
+        mustFulfillThisChapter: boolean
+      }>
+    }
+    expect(input.foreshadowObligations).toHaveLength(1)
+    expect(input.foreshadowObligations).toEqual([
+      expect.objectContaining({
+        resolutionPolicy: 'should_resolve',
+        schedulingMode: 'opportunity',
+        mustFulfillThisChapter: false,
+      }),
+    ])
+    expect(result.storyArc?.acts[1]?.endChapter).toBe(61)
+    expect(result.totalChapters).toBe(61)
   })
 
   it('ignores the current chapter stale deferral when rotating natural opportunities on rewrite', async () => {
@@ -628,12 +716,13 @@ describe('expandOutlineForChapter', () => {
 
     expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-a', 'fs-b', 'fs-c'])
     const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
-      verifiedConstraints?: string[]
+      foreshadowObligations?: Array<{ id: string; mustFulfillThisChapter: boolean }>
     }
-    const constraints = jitInput.verifiedConstraints?.join('\n') ?? ''
-    expect(constraints).toContain('【强制回收】')
-    expect(constraints).toContain('tight 模式')
-    expect(constraints).not.toContain('【伏笔调度候选】以下伏笔已进入预期回收窗口')
+    expect(jitInput.foreshadowObligations).toEqual([
+      expect.objectContaining({ id: 'fs-a', mustFulfillThisChapter: true }),
+      expect.objectContaining({ id: 'fs-b', mustFulfillThisChapter: true }),
+      expect.objectContaining({ id: 'fs-c', mustFulfillThisChapter: true }),
+    ])
   })
 
   it('stays in advisory mode when remaining capacity can hold pending foreshadows', async () => {
@@ -662,15 +751,15 @@ describe('expandOutlineForChapter', () => {
     await expandOutlineForChapter(state, 1, createMockProvider())
 
     const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
-      verifiedConstraints?: string[]
+      foreshadowObligations?: Array<{ id: string; mustFulfillThisChapter: boolean }>
     }
-    const constraints = jitInput.verifiedConstraints?.join('\n') ?? ''
-    expect(constraints).toContain('【伏笔调度候选】')
-    expect(constraints).not.toContain('【强制回收】')
-    expect(constraints).not.toContain('tight 模式')
+    expect(jitInput.foreshadowObligations).toEqual([
+      expect.objectContaining({ id: 'fs-a', mustFulfillThisChapter: false }),
+      expect.objectContaining({ id: 'fs-b', mustFulfillThisChapter: false }),
+    ])
   })
 
-  it('extends the act when mandatory foreshadows are deferred in the last chapter', async () => {
+  it('rejects mandatory deferral after one structured correction', async () => {
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
     const state = stateWithScheduledForeshadows(
       2,
@@ -694,18 +783,21 @@ describe('expandOutlineForChapter', () => {
       }),
     })
 
-    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
+      '第 3 章即时大纲无法在幕末前回收必须回收的伏笔：fs-a, fs-b, fs-c'
+    )
 
-    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
-    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(foreshadowIds)
-    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
-      [1, 4],
-      [5, 5],
-    ])
-    expect(result.totalChapters).toBe(5)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    const correction = chapterOutlineRunMock.mock.calls[1]![0] as {
+      foreshadowPlanningRejection?: {
+        incorrectlyDeferredIds: string[]
+      }
+    }
+    expect(correction.foreshadowPlanningRejection?.incorrectlyDeferredIds).toEqual(foreshadowIds)
+    expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
   })
 
-  it('falls back to strict mode and forces fulfillment when act extension quota is exhausted', async () => {
+  it('fulfills a tight mandatory batch on the single correction attempt', async () => {
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
     const base = stateWithScheduledForeshadows(
       2,
@@ -759,6 +851,13 @@ describe('expandOutlineForChapter', () => {
     const result = await expandOutlineForChapter(state, 2, createMockProvider())
 
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(
+      (
+        chapterOutlineRunMock.mock.calls[1]![0] as {
+          foreshadowPlanningRejection?: { incorrectlyDeferredIds: string[] }
+        }
+      ).foreshadowPlanningRejection?.incorrectlyDeferredIds
+    ).toEqual(foreshadowIds)
     expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual(foreshadowIds)
     expect(result.outline?.[2]?.deferredForeshadowIds).toEqual([])
     expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
@@ -803,7 +902,7 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[2]?.deferredForeshadowIds).toEqual([])
   })
 
-  it('extends the act when planner evidence failure changes boundary fulfillments to deferrals', async () => {
+  it('rejects missing planner evidence for must-fulfill obligations after one correction', async () => {
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
     const state = stateWithScheduledForeshadows(
       2,
@@ -827,16 +926,20 @@ describe('expandOutlineForChapter', () => {
       }),
     })
 
-    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
+      '第 3 章章节规划无法为本章必须回收的伏笔生成结构化证据：fs-a, fs-b, fs-c'
+    )
 
-    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
-    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(foreshadowIds)
-    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
-      [1, 4],
-      [5, 5],
-    ])
-    expect(result.boundaryHints.join('\n')).not.toContain('下一章将进入第 2 幕')
-    expect(result.boundaryHints.join('\n')).toContain('下一章为第4章')
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
+    expect(planChapterWithOverrideMock.mock.calls[1]![3]).toEqual(
+      expect.objectContaining({
+        foreshadowPlanningRejection: {
+          missingDeclarationIds: [],
+          missingEventIds: foreshadowIds,
+          incorrectlyDeferredIds: [],
+        },
+      })
+    )
   })
 
   it('retries JIT outline generation when a scheduled obligation is omitted', async () => {
@@ -874,9 +977,17 @@ describe('expandOutlineForChapter', () => {
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
     expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual(['fs-due'])
     const retryInput = chapterOutlineRunMock.mock.calls[1]![0] as {
-      verifiedConstraints?: string[]
+      foreshadowPlanningRejection?: {
+        missingDeclarationIds: string[]
+        missingEventIds: string[]
+        incorrectlyDeferredIds: string[]
+      }
     }
-    expect(retryInput.verifiedConstraints?.join('\n')).toContain('fs-due')
+    expect(retryInput.foreshadowPlanningRejection).toEqual({
+      missingDeclarationIds: ['fs-due'],
+      missingEventIds: [],
+      incorrectlyDeferredIds: [],
+    })
   })
 
   it('passes bounded scheduled IDs to planning when an outline already exists', async () => {
@@ -903,18 +1014,17 @@ describe('expandOutlineForChapter', () => {
     await expandOutlineForChapter(state, 1, createMockProvider())
 
     expect(chapterOutlineRunMock).not.toHaveBeenCalled()
-    const planState = planChapterWithOverrideMock.mock.calls[0]![1] as ReducedGraphState
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
+    const planningInput = planChapterWithOverrideMock.mock.calls[0]![3] as {
+      foreshadowObligations?: Array<{ id: string; schedulingMode: string }>
+    }
     expect(formattedOutline).toContain('【本章伏笔调度候选】fs-a, fs-b, fs-c')
     expect(formattedOutline).toContain('【本章兑现伏笔】fs-d')
-    expect(planState.verifiedConstraints).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'generic',
-          text: expect.stringContaining('fs-a'),
-        }),
-      ])
-    )
+    expect(planningInput.foreshadowObligations).toEqual([
+      expect.objectContaining({ id: 'fs-a', schedulingMode: 'mandatory' }),
+      expect.objectContaining({ id: 'fs-b', schedulingMode: 'mandatory' }),
+      expect.objectContaining({ id: 'fs-c', schedulingMode: 'mandatory' }),
+    ])
   })
 
   it('excludes unscheduled clues in an ordinary act and includes future/null clues in the final act', async () => {
@@ -972,12 +1082,12 @@ describe('expandOutlineForChapter', () => {
     try {
       const result = await expandOutlineForChapter(state, 1, createMockProvider())
 
-      expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+      expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
       expect(warnSpy).toHaveBeenCalledWith(
-        '[MuseFlow] 第 2 章即时大纲第 1/3 次存在未裁决或错误顺延伏笔候选：fs-due'
+        '[MuseFlow] 第 2 章即时大纲第 1/2 次存在未裁决或错误顺延伏笔候选：fs-due'
       )
       expect(warnSpy).toHaveBeenCalledWith(
-        '[MuseFlow] 第 2 章即时大纲第 3/3 次存在未裁决或错误顺延伏笔候选：fs-due'
+        '[MuseFlow] 第 2 章即时大纲第 2/2 次存在未裁决或错误顺延伏笔候选：fs-due'
       )
       expect(result.outline?.[1]?.deferredForeshadowIds).toContain('fs-due')
       expect(result.outline?.[1]?.fulfilledForeshadowIds).not.toContain('fs-due')
@@ -1169,15 +1279,13 @@ describe('expandOutlineForChapter', () => {
         .map((event) => event.foreshadowId)
     ).toEqual([...scheduledIds, foreshadowIds[3]!])
     const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
-      verifiedConstraints?: string[]
+      foreshadowObligations?: Array<{ id: string }>
     }
-    const jitConstraints = jitInput.verifiedConstraints?.join('\n') ?? ''
+    const obligationIds = jitInput.foreshadowObligations?.map(({ id }) => id) ?? []
     const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
-    for (const id of scheduledIds) expect(jitConstraints).toContain(id)
+    expect(obligationIds).toEqual(scheduledIds)
     for (const id of [...scheduledIds, foreshadowIds[3]!]) expect(formattedOutline).toContain(id)
-    for (const id of foreshadowIds.slice(3)) {
-      expect(jitConstraints).not.toContain(id)
-    }
+    for (const id of foreshadowIds.slice(4)) expect(obligationIds).not.toContain(id)
     for (const id of foreshadowIds.slice(4)) {
       expect(formattedOutline).not.toContain(id)
     }
@@ -1210,7 +1318,42 @@ describe('expandOutlineForChapter', () => {
     expect(writeOutlineContent).not.toHaveBeenCalled()
   })
 
-  it('requires manual adjustment when planner auto-deferral exceeds act extension limits', async () => {
+  it('stops before outline generation when mandatory capacity exceeds extension quota', async () => {
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c', 'fs-d']
+    const base = stateWithScheduledForeshadows(
+      2,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    const state: ReducedGraphState = {
+      ...base,
+      storyArc: {
+        ...base.storyArc!,
+        acts: [
+          {
+            ...base.storyArc!.acts[0]!,
+            autoBoundaryAdjustment: {
+              originalEndChapter: 0,
+              totalExtendedChapters: 3,
+            },
+          },
+          base.storyArc!.acts[1]!,
+        ],
+        autoBoundaryAdjustment: {
+          originalTotalChapters: 1,
+          totalExtendedChapters: 3,
+        },
+      },
+    }
+
+    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
+      /"actIndex":1.*"proposedEndChapter":4.*"availableExtensions":0.*"affectedForeshadowIds":\["fs-a","fs-b","fs-c","fs-d"\]/
+    )
+    expect(chapterOutlineRunMock).not.toHaveBeenCalled()
+    expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+  })
+
+  it('does not auto-defer a tight mandatory batch after planner correction fails', async () => {
     const foreshadowIds = Array.from(
       { length: 11 },
       (_, index) => `fs-${String(index + 1).padStart(2, '0')}`
@@ -1237,7 +1380,7 @@ describe('expandOutlineForChapter', () => {
     })
 
     await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
-      '请先运行：museflow adjust-act story-1 --act 1 --end-chapter 7'
+      '第 3 章章节规划无法为本章必须回收的伏笔生成结构化证据：fs-01, fs-02, fs-03'
     )
 
     expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)

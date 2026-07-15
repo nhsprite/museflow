@@ -1,5 +1,6 @@
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { renderTemplate } from '../../utils/template.js'
+import { buildForeshadowPlanningSection } from './fragments/index.js'
 
 const CHAPTER_OUTLINE_SYSTEM_PROMPT =
   '你是一位严谨的小说章节策划。你的任务是在每章动笔前，根据当前幕结构、权威事实和叙事进度，即时生成该章的具体大纲。你绝不提前执行后续幕的内容，也绝不与已确立的权威事实冲突。'
@@ -31,6 +32,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 {CURRENT_STATE_SNAPSHOT_SECTION}
 
 {VERIFIED_CONSTRAINTS_SECTION}
+
+{FORESHADOW_PLANNING_SECTION}
 </context>
 
 <instruction>
@@ -50,13 +53,13 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
    - touchedLocationIds: 本章出现的地点 EntityId 列表
    - claimedMandatoryBeatIds: 本章推进的 mandatory beat ID 列表，必须严格引用 <current_act> 中给出的精确 ID（如 A2-M3），不得使用描述文本或自造 ID
    - claimedBeatIds: 本章推进的全局 keyBeat ID 列表，只能引用上方 <story_arc> 中 keyBeats 给出的精确 ID（如 A2-B3）；没有推进全局 keyBeat 时输出空数组
-   - fulfilledForeshadowIds: 本章兑现的 ForeshadowId 列表；若存在【伏笔调度候选】约束，只收录其中本章确实能自然回收的候选 ID
-   - deferredForeshadowIds: 本章顺延的候选伏笔 ForeshadowId 列表；仅在存在【伏笔调度候选】约束时使用，收录与本章核心事件不相容、强行回收会损害章节质量的候选 ID
+   - fulfilledForeshadowIds: 本章兑现的 ForeshadowId 列表；只收录本章有真实、可验证回收事件的 ID
+   - deferredForeshadowIds: 本章顺延的候选伏笔 ForeshadowId 列表；收录允许顺延且与本章核心事件不相容的候选 ID
    - introducedForeshadowIds: 本章埋下的 ForeshadowId 列表
    - resolvedTaskIds: 本章关闭的 TaskId 列表
    - createdTaskIds: 本章开启的 TaskId 列表
-12. 若存在【伏笔调度候选】约束：每个候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一，不得遗漏、不得重复；放入 fulfilledForeshadowIds 的候选必须是本章正文可验证的真实剧情事件，不得虚假声称回收。
-13. 若存在【自然回收机会】约束：只有本章核心事件本身能够自然承载真实、可验证的回收时，才把对应 ID 放入 fulfilledForeshadowIds；不得为自然回收机会改变本章核心事件。当前章不适合时放入 deferredForeshadowIds，不需要额外制造剧情。
+12. 若存在 <foreshadow_obligations>：每个 schedulingMode=mandatory 的候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一；mustFulfillThisChapter=true 的 ID 只能兑现，不能顺延。
+13. schedulingMode=opportunity 或 ambient 的候选，只有本章核心事件本身能够自然承载真实、可验证的回收时，才放入 fulfilledForeshadowIds；不得为自然回收机会改变本章核心事件。当前章不适合时放入 deferredForeshadowIds，不需要额外制造剧情。
 14. 输出 JSON 格式：
    {
      "title": "章节标题",
@@ -124,5 +127,6 @@ export function buildChapterOutlineUserPrompt(
       state.verifiedConstraints && state.verifiedConstraints.length > 0
         ? `<verified_constraints>\n${state.verifiedConstraints.join('\n')}\n</verified_constraints>`
         : '',
+    FORESHADOW_PLANNING_SECTION: buildForeshadowPlanningSection(state),
   })
 }

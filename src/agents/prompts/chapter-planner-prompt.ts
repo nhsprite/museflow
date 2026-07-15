@@ -3,6 +3,7 @@ import {
   OFFICIAL_CHARACTER_RULES,
   FORESHADOW_DISCIPLINE_RULES,
   buildCharacterWhitelistSection,
+  buildForeshadowPlanningSection,
   buildPlannerStoryEventContract,
 } from './fragments/index.js'
 import { isClosingPhase } from '../../utils/story-arc.js'
@@ -25,6 +26,8 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
 {issuesSection}
 
 {verifiedConstraintsSection}
+
+{foreshadowPlanningSection}
 
 {closingPhaseSection}
 
@@ -226,6 +229,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
 export interface ChapterPlannerPromptSections {
   issuesSection: string
   verifiedConstraintsSection: string
+  foreshadowPlanningSection: string
   closingPhaseSection: string
   storyStateSection: string
   chapterContractSection: string
@@ -352,6 +356,7 @@ export function buildChapterPlannerUserPrompt(
   const sections: ChapterPlannerPromptSections = {
     issuesSection: buildIssuesSection(state),
     verifiedConstraintsSection: buildVerifiedConstraintsSection(state.verifiedConstraints),
+    foreshadowPlanningSection: buildForeshadowPlanningSection(state),
     closingPhaseSection: buildClosingPhaseSection(
       state.totalChapters,
       chapterIndex,

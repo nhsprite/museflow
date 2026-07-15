@@ -193,6 +193,49 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).toContain('不得为自然回收机会改变本章核心事件')
   })
 
+  it('renders typed foreshadow obligations and a structured correction', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '定向修正',
+        description: '本章在核心事件中完成既有线索的兑现。',
+        fulfilledForeshadowIds: ['fs-hard'],
+      })
+    )
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 5,
+      storyArc,
+      actProgress: { 2: { consumed: [], pending: [] } },
+      foreshadowObligations: [
+        {
+          id: 'fs-hard',
+          resolutionPolicy: 'must_resolve',
+          deadlineChapter: 6,
+          schedulingMode: 'mandatory',
+          mustFulfillThisChapter: true,
+        },
+      ],
+      foreshadowPlanningRejection: {
+        missingDeclarationIds: [],
+        missingEventIds: [],
+        incorrectlyDeferredIds: ['fs-hard'],
+      },
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('<foreshadow_obligations>')
+    expect(prompt).toContain('fs-hard')
+    expect(prompt).toContain('must_resolve')
+    expect(prompt).toContain('mustFulfillThisChapter=true')
+    expect(prompt).toContain('<foreshadow_planning_rejection>')
+    expect(prompt).toContain('incorrectlyDeferredIds: fs-hard')
+  })
+
   it('fills empty structured declaration arrays when LLM omits them', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(

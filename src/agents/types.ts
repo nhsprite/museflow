@@ -4,7 +4,27 @@ import type { Character } from '../types/character.js'
 import type { CanonicalFact } from '../types/story-state.js'
 import type { StoryArc } from '../types/outline.js'
 import type { WorldDirection, WritingConstraints } from '../types/story.js'
-import type { StoryEvent, BeatId, ForeshadowId, TaskId } from '../types/story-memory.js'
+import type {
+  StoryEvent,
+  BeatId,
+  ForeshadowId,
+  ForeshadowResolutionPolicy,
+  TaskId,
+} from '../types/story-memory.js'
+
+export interface ForeshadowPlanningObligation {
+  id: ForeshadowId
+  resolutionPolicy: ForeshadowResolutionPolicy
+  deadlineChapter: number | null
+  schedulingMode: 'mandatory' | 'opportunity' | 'ambient'
+  mustFulfillThisChapter: boolean
+}
+
+export interface ForeshadowPlanningRejection {
+  missingDeclarationIds: ForeshadowId[]
+  missingEventIds: ForeshadowId[]
+  incorrectlyDeferredIds: ForeshadowId[]
+}
 
 export interface ParagraphFix {
   index: number
@@ -90,6 +110,8 @@ export interface AgentInput {
   chapterTimeAnchor?: string
   issues?: Issue[]
   verifiedConstraints?: string[]
+  foreshadowObligations?: ForeshadowPlanningObligation[]
+  foreshadowPlanningRejection?: ForeshadowPlanningRejection
   charactersList?: Character[]
   outlineCharacters?: Character[]
   establishedCharacters?: Character[]

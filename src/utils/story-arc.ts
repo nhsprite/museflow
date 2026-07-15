@@ -448,6 +448,8 @@ export interface ApplyActBoundaryAdjustmentResult {
   applied: boolean
   reason?: string
   requiresManualResolution?: boolean
+  requestedExtension?: number
+  availableExtensions?: number
 }
 
 function shiftActRange(act: ActArc, delta: number): ActArc {
@@ -558,6 +560,8 @@ export function applyActBoundaryAdjustment(
       storyArc,
       applied: false,
       requiresManualResolution: true,
+      requestedExtension: rawDelta,
+      availableExtensions: availableAutomaticExtension,
       reason: `${bindingLimits.join('、')}不足：请求延长 ${rawDelta} 章，但可用自动延长额度仅 ${availableAutomaticExtension} 章。该调整未部分应用，请人工调整幕边界或重新平衡结构。建议依据：${proposal.reason}`,
     }
   }

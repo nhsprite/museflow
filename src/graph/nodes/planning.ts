@@ -1,5 +1,10 @@
 import type { ReducedGraphState } from '../state.js'
-import type { ChapterPlan, ChapterPlannerAgentInput } from '../../agents/types.js'
+import type {
+  ChapterPlan,
+  ChapterPlannerAgentInput,
+  ForeshadowPlanningObligation,
+  ForeshadowPlanningRejection,
+} from '../../agents/types.js'
 import { getChapterPlannerAgent } from '../agent-factory.js'
 import { buildNextChapterBoundaryHint } from '../../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
@@ -11,7 +16,11 @@ import { renderVerifiedConstraints } from '../../utils/verified-constraints.js'
 async function runPlanChapter(
   provider: ModelProvider,
   state: ReducedGraphState,
-  outlineOverride?: string
+  outlineOverride?: string,
+  foreshadowPlanning?: {
+    foreshadowObligations?: ForeshadowPlanningObligation[]
+    foreshadowPlanningRejection?: ForeshadowPlanningRejection
+  }
 ): Promise<Partial<ReducedGraphState>> {
   const agent = getChapterPlannerAgent(provider)
   const chapterIndex = state.currentChapterIndex
@@ -26,6 +35,12 @@ async function runPlanChapter(
       ? { issues: state.pendingIssues }
       : {}),
     ...(verifiedConstraints.length > 0 ? { verifiedConstraints } : {}),
+    ...(foreshadowPlanning?.foreshadowObligations
+      ? { foreshadowObligations: foreshadowPlanning.foreshadowObligations }
+      : {}),
+    ...(foreshadowPlanning?.foreshadowPlanningRejection
+      ? { foreshadowPlanningRejection: foreshadowPlanning.foreshadowPlanningRejection }
+      : {}),
   }) as ChapterPlannerAgentInput
 
   let output: Awaited<ReturnType<typeof agent.run>> | undefined
@@ -84,9 +99,13 @@ async function runPlanChapter(
 export async function plan_chapter_with_override(
   provider: ModelProvider,
   state: ReducedGraphState,
-  outlineOverride: string
+  outlineOverride: string,
+  foreshadowPlanning?: {
+    foreshadowObligations?: ForeshadowPlanningObligation[]
+    foreshadowPlanningRejection?: ForeshadowPlanningRejection
+  }
 ): Promise<Partial<ReducedGraphState>> {
-  return runPlanChapter(provider, state, outlineOverride)
+  return runPlanChapter(provider, state, outlineOverride, foreshadowPlanning)
 }
 
 export function formatChapterOutlineForAgent(

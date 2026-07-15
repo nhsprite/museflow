@@ -51,6 +51,45 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).not.toContain('必须在本次规划中修复')
   })
 
+  it('renders typed foreshadow obligations and missing planning evidence', () => {
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 3,
+      world: '',
+      characters: '',
+      outline: '第3章：兑现线索',
+      previousChapters: '',
+      chapterIndex: 2,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      foreshadowObligations: [
+        {
+          id: 'fs-hard',
+          resolutionPolicy: 'must_resolve',
+          deadlineChapter: 3,
+          schedulingMode: 'mandatory',
+          mustFulfillThisChapter: true,
+        },
+      ],
+      foreshadowPlanningRejection: {
+        missingDeclarationIds: ['fs-hard'],
+        missingEventIds: ['fs-hard'],
+        incorrectlyDeferredIds: [],
+      },
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('<foreshadow_obligations>')
+    expect(userMessage).toContain('fs-hard')
+    expect(userMessage).toContain('mustFulfillThisChapter=true')
+    expect(userMessage).toContain('<foreshadow_planning_rejection>')
+    expect(userMessage).toContain('missingDeclarationIds: fs-hard')
+    expect(userMessage).toContain('missingEventIds: fs-hard')
+  })
+
   it('includes issues section when issues are provided', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
 

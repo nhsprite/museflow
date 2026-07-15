@@ -29,6 +29,7 @@ function memoryWithForeshadow(overrides: Partial<StoryMemory['foreshadows'][stri
         introducedIn: 1,
         expectedFulfillChapter: 4,
         fulfilledIn: null,
+        resolutionPolicy: 'must_resolve',
         required: true,
         beatId: 'beat-act1',
         ...overrides,
@@ -59,6 +60,7 @@ function memoryWithDueForeshadows(count: number): StoryMemory {
       introducedIn: 0,
       expectedFulfillChapter: 5,
       fulfilledIn: null,
+      resolutionPolicy: 'must_resolve',
       required: true,
       beatId: null,
     }
@@ -250,6 +252,7 @@ describe('story-arc utilities', () => {
         introducedIn: 0,
         expectedFulfillChapter: 6,
         fulfilledIn: null,
+        resolutionPolicy: 'must_resolve',
         required: true,
         beatId: null,
       }
@@ -313,6 +316,7 @@ describe('story-arc utilities', () => {
         introducedIn: 0,
         expectedFulfillChapter: 6,
         fulfilledIn: null,
+        resolutionPolicy: 'must_resolve',
         required: true,
         beatId: null,
       }
@@ -329,7 +333,7 @@ describe('story-arc utilities', () => {
     expect(proposals[0]?.proposedEndChapter).toBe(7)
   })
 
-  it('includes unscheduled and future finite obligations in final-act capacity', () => {
+  it('includes future finite obligations but excludes null-deadline clues from final-act capacity', () => {
     const memory = memoryWithDueForeshadows(1)
     memory.foreshadows.future = {
       ...memory.foreshadows['fs-00']!,
@@ -342,6 +346,7 @@ describe('story-arc utilities', () => {
       id: 'unscheduled',
       text: 'unscheduled',
       expectedFulfillChapter: null,
+      resolutionPolicy: 'should_resolve',
     }
 
     const proposals = proposeActBoundaryAdjustments(
@@ -352,7 +357,7 @@ describe('story-arc utilities', () => {
       1
     )
 
-    expect(proposals).toEqual([expect.objectContaining({ actIndex: 4, proposedEndChapter: 22 })])
+    expect(proposals).toEqual([expect.objectContaining({ actIndex: 4, proposedEndChapter: 21 })])
   })
 
   it('fails explicitly when a corrupt act boundary is not a safe integer', () => {
