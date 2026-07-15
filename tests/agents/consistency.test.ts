@@ -52,7 +52,7 @@ describe('ConsistencyAgent time anchor', () => {
 })
 
 describe('ConsistencyAgent foreshadow deadlines', () => {
-  it('keeps optional overdue foreshadows out of mandatory deadline sections', () => {
+  it('keeps may_remain_open foreshadows out of mandatory deadline sections', () => {
     const agent = new TestableConsistencyAgent(createMockProvider())
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -74,16 +74,18 @@ describe('ConsistencyAgent foreshadow deadlines', () => {
           createdAtChapter: 1,
           status: 'planted',
           isExplicit: true,
+          resolutionPolicy: 'must_resolve',
           required: true,
         },
         {
           id: 'fs-optional',
           text: '可选环境细节',
-          expectedFulfillChapter: 5,
+          expectedFulfillChapter: Number.MAX_SAFE_INTEGER,
           createdAt: 0,
           createdAtChapter: 1,
           status: 'planted',
           isExplicit: false,
+          resolutionPolicy: 'may_remain_open',
           required: false,
         },
       ],

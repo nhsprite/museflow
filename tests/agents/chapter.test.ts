@@ -57,7 +57,7 @@ describe('ChapterAgent chapter numbering', () => {
     expect(messages[1]?.content).toContain('允许少量超出（约 10% 以内')
   })
 
-  it('keeps optional overdue foreshadows out of the mandatory overdue section', () => {
+  it('keeps may_remain_open foreshadows out of the mandatory overdue section', () => {
     const agent = new TestableChapterAgent(createMockProvider())
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -79,16 +79,18 @@ describe('ChapterAgent chapter numbering', () => {
           createdAtChapter: 1,
           status: 'planted',
           isExplicit: true,
+          resolutionPolicy: 'must_resolve',
           required: true,
         },
         {
           id: 'fs-optional',
           text: '可选环境细节',
-          expectedFulfillChapter: 5,
+          expectedFulfillChapter: Number.MAX_SAFE_INTEGER,
           createdAt: 0,
           createdAtChapter: 1,
           status: 'planted',
           isExplicit: false,
+          resolutionPolicy: 'may_remain_open',
           required: false,
         },
       ],
