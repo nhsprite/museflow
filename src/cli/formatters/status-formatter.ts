@@ -8,6 +8,7 @@ import {
   foreshadowMemoryToItem,
   groupActiveForeshadowsByPolicy,
 } from '../../story-memory/foreshadow-policy.js'
+import { getCanonicalForeshadows } from '../../story-memory/foreshadow-alias.js'
 
 export interface ChapterIssue {
   chapterNumber: number
@@ -208,7 +209,7 @@ export function printForeshadowStatus(state: ReducedGraphState): void {
       ].map(foreshadowMemoryToItem)
     : state.foreshadowStack.filter((foreshadow) => !foreshadow.fulfilledChapter)
   const fulfilled = state.storyMemory
-    ? Object.values(state.storyMemory.foreshadows)
+    ? getCanonicalForeshadows(state.storyMemory)
         .filter(
           (foreshadow) => foreshadow.fulfilledIn !== null && foreshadow.waivedIn === undefined
         )

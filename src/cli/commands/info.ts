@@ -7,6 +7,7 @@ import {
   foreshadowMemoryToItem,
   groupActiveForeshadowsByPolicy,
 } from '../../story-memory/foreshadow-policy.js'
+import { getCanonicalForeshadows } from '../../story-memory/foreshadow-alias.js'
 
 interface InfoOptions {}
 
@@ -93,7 +94,7 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
       const groups = groupActiveForeshadowsByPolicy(state.storyMemory)
       const activeCount =
         groups.mustResolve.length + groups.shouldResolve.length + groups.mayRemainOpen.length
-      const fulfilled = Object.values(state.storyMemory.foreshadows)
+      const fulfilled = getCanonicalForeshadows(state.storyMemory)
         .filter(
           (foreshadow) => foreshadow.fulfilledIn !== null && foreshadow.waivedIn === undefined
         )

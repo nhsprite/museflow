@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { rebuildStoryMemoryVerifiedConstraints } from '../../src/utils/story-memory-constraints.js'
 import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
-import { projectForeshadowStack } from '../../src/story-memory/foreshadow-policy.js'
+import {
+  foreshadowMemoryToItem,
+  projectForeshadowStack,
+} from '../../src/story-memory/foreshadow-policy.js'
 import type { StoryEvent } from '../../src/types/story-memory.js'
 import type { VerifiedConstraint } from '../../src/types/verified-constraint.js'
 
@@ -65,7 +68,10 @@ function buildMemory() {
 describe('rebuildStoryMemoryVerifiedConstraints', () => {
   it('rebuilds canonical memory and boundary constraints while preserving unrelated constraints', () => {
     const memory = buildMemory()
-    const stack = projectForeshadowStack(memory)
+    const stack = [
+      ...projectForeshadowStack(memory),
+      foreshadowMemoryToItem(memory.foreshadows['fs-alias']!),
+    ]
     const unrelated: VerifiedConstraint[] = [
       { kind: 'generic', id: 'manual:keep', text: 'manual constraint' },
       { kind: 'generic', text: 'routing constraint' },

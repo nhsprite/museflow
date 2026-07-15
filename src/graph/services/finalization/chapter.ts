@@ -326,6 +326,16 @@ export async function finalizeChapter(
         })
         updatedStoryMemory = reconciled.memory
         updatedForeshadowEquivalenceAudit = reconciled.audit
+        if (reconciled.mergeEvents.length > 0) {
+          for (const event of reconciled.mergeEvents) {
+            logger.info(
+              `[MuseFlow] 伏笔等价合并 ${event.duplicateForeshadowId} -> ${event.canonicalForeshadowId}`
+            )
+          }
+          logger.info(
+            `[MuseFlow] 伏笔等价审计：活跃规范义务 ${reconciled.audit.activeCanonicalIds.length + reconciled.mergeEvents.length} -> ${reconciled.audit.activeCanonicalIds.length}`
+          )
+        }
       } catch (error) {
         if (!(error instanceof ForeshadowEquivalenceError)) throw error
         return {
@@ -836,7 +846,12 @@ export async function finalizeChapter(
       `[MuseFlow] 第 ${chapterIndex + 1} 章定稿失败：存在 ${blockingErrors.length} 个严重问题，无法进入下一章。`
     )
     const failureReport = buildChapterReport(
-      { ...state, pendingIssues: updatedPendingIssues },
+      {
+        ...state,
+        storyMemory: updatedStoryMemory,
+        foreshadowStack: updatedForeshadowStack,
+        pendingIssues: updatedPendingIssues,
+      },
       updatedChapter ?? existingChapter ?? null,
       chapterContent,
       state.storyState,

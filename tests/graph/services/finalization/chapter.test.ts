@@ -13,6 +13,7 @@ import { proposeActBoundaryAdjustments, applyActBoundaryAdjustment } from '@/uti
 import { logger } from '@/utils/logger.js'
 import { createEmptyStoryMemory, applyEvents } from '@/story-memory/projector.js'
 import { getCanonicalForeshadows } from '@/story-memory/foreshadow-alias.js'
+import { foreshadowMemoryToItem } from '@/story-memory/foreshadow-policy.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -1358,6 +1359,139 @@ describe('finalizeChapter', () => {
     expect(boundaryIssues.map((issue) => issue.subject)).toEqual(['fs-hard'])
   })
 
+  it('counts planted, fulfilled, and overdue canonical obligations once in a blocking report', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 5, 'Neutral report fixture.')
+    const base = buildState(tmpDir)
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        ...introduceForeshadow('fs-planted-early', 4, 'planted canonical fixture'),
+        expectedFulfillChapter: 6,
+      },
+      {
+        ...introduceForeshadow('fs-planted-late', 4, 'planted alias fixture'),
+        expectedFulfillChapter: 6,
+      },
+      {
+        id: 'merge-planted',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-planted-early',
+        duplicateForeshadowId: 'fs-planted-late',
+        reason: 'same planted neutral fixture',
+        chapterIndex: 4,
+        source: 'outline',
+      },
+      {
+        ...introduceForeshadow('fs-fulfilled-early', 0, 'fulfilled canonical fixture'),
+        expectedFulfillChapter: 6,
+      },
+      {
+        ...introduceForeshadow('fs-fulfilled-late', 1, 'fulfilled alias fixture'),
+        expectedFulfillChapter: 6,
+      },
+      {
+        id: 'fulfill-alias',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-fulfilled-late',
+        chapterIndex: 4,
+        source: 'chapter',
+        evidence: { paragraphIndex: 1 },
+      },
+      {
+        id: 'merge-fulfilled',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-fulfilled-early',
+        duplicateForeshadowId: 'fs-fulfilled-late',
+        reason: 'same fulfilled neutral fixture',
+        chapterIndex: 4,
+        source: 'outline',
+      },
+      {
+        ...introduceForeshadow('fs-overdue-early', 0, 'overdue canonical fixture'),
+        expectedFulfillChapter: 3,
+      },
+      {
+        ...introduceForeshadow('fs-overdue-late', 0, 'overdue alias fixture'),
+        expectedFulfillChapter: 3,
+      },
+      {
+        id: 'merge-overdue',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-overdue-early',
+        duplicateForeshadowId: 'fs-overdue-late',
+        reason: 'same overdue neutral fixture',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 4,
+      totalChapters: 6,
+      story: { ...base.story, totalChapters: 6 },
+      chapters: [
+        null,
+        null,
+        null,
+        null,
+        {
+          ...base.chapters[0]!,
+          id: 'ch-5',
+          number: 5,
+          title: 'Neutral report fixture',
+          outline: 'Neutral report fixture.',
+        },
+      ],
+      outline: [
+        { number: 1, title: 'One', description: '' },
+        { number: 2, title: 'Two', description: '' },
+        { number: 3, title: 'Three', description: '' },
+        { number: 4, title: 'Four', description: '' },
+        { number: 5, title: 'Five', description: '' },
+        { number: 6, title: 'Six', description: '' },
+      ],
+      storyArc: {
+        totalChapters: 6,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 5,
+            title: 'First',
+            theme: '',
+            function: '',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 6,
+            endChapter: 6,
+            title: 'Second',
+            theme: '',
+            function: '',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [],
+      },
+      actProgress: {
+        1: { consumed: [], pending: [] },
+        2: { consumed: [], pending: [] },
+      },
+      storyMemory: memory,
+      foreshadowStack: Object.values(memory.foreshadows).map(foreshadowMemoryToItem),
+      session: { chapterIndex: 4 },
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.chapterReport).toMatchObject({
+      foreshadowsPlanted: 1,
+      foreshadowsFulfilled: 1,
+      foreshadowsOverdue: 1,
+    })
+  })
+
   it('does not block a waived required foreshadow at story end and drops it from the stack projection', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
     await writeChapter(tmpDir, 3, '全书结尾正文。')
@@ -1660,6 +1794,7 @@ describe('finalizeChapter', () => {
 
   it('merges a new introduction into its historical canonical root before commit', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
     await writeChapter(tmpDir, 2, '第二章正文。')
     const base = buildState(tmpDir)
     const historicalMemory = applyEvents(createEmptyStoryMemory(), [
@@ -1717,6 +1852,14 @@ describe('finalizeChapter', () => {
     expect(result.foreshadowStack?.map((entry) => entry.id)).toEqual(['fs-existing'])
     expect(result.foreshadowEquivalenceAudit?.activeCanonicalIds).toEqual(['fs-existing'])
     expect(provider.chatStructured).toHaveBeenCalledTimes(1)
+    const equivalenceLogs = infoSpy.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes('伏笔等价'))
+    expect(equivalenceLogs).toEqual([
+      '[MuseFlow] 伏笔等价合并 fs-new -> fs-existing',
+      '[MuseFlow] 伏笔等价审计：活跃规范义务 2 -> 1',
+    ])
+    expect(equivalenceLogs.join('\n')).not.toContain('same unresolved obligation')
   })
 
   it('merges two introductions from one draft batch deterministically and applies the batch once', async () => {

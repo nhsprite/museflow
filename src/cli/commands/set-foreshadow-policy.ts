@@ -20,6 +20,7 @@ import type {
   StoryEvent,
   StoryMemory,
 } from '../../types/story-memory.js'
+import { resolveCanonicalForeshadowId } from '../../story-memory/foreshadow-alias.js'
 
 export interface SetForeshadowPolicyOptions {
   foreshadow?: string
@@ -95,11 +96,16 @@ export async function setForeshadowPolicy(
   const memory = migrateStoryMemoryToV3(
     state.storyMemory as StoryMemory | LegacyStoryMemoryV2 | LegacyStoryMemoryV1
   )
-  const foreshadow = memory.foreshadows[foreshadowId]
-  if (!foreshadow) {
+  const canonicalForeshadowId = resolveCanonicalForeshadowId(memory, foreshadowId)
+  if (canonicalForeshadowId === null) {
     fail(`伏笔 ${foreshadowId} 不存在`)
     return
   }
+  if (canonicalForeshadowId !== foreshadowId) {
+    fail(`伏笔 ${foreshadowId} 已归并到 ${canonicalForeshadowId}；请使用 canonical ID 操作`)
+    return
+  }
+  const foreshadow = memory.foreshadows[canonicalForeshadowId]!
   if (foreshadow.fulfilledIn !== null) {
     fail(`伏笔 ${foreshadowId} 已在第 ${foreshadow.fulfilledIn + 1} 章回收，不能调整策略`)
     return
@@ -117,7 +123,7 @@ export async function setForeshadowPolicy(
   const event: StoryEvent = {
     id: generateId('evt'),
     type: 'foreshadow-policy-set',
-    foreshadowId,
+    foreshadowId: canonicalForeshadowId,
     resolutionPolicy: policy,
     expectedFulfillChapter: deadline,
     chapterIndex: state.currentChapterIndex,
@@ -125,11 +131,15 @@ export async function setForeshadowPolicy(
   }
   const newMemory = applyEvents(memory, [event])
   const newPendingIssues = (state.pendingIssues ?? []).filter(
-    (issue) => !(issue.type === 'foreshadow_boundary_unresolved' && issue.subject === foreshadowId)
+    (issue) =>
+      !(issue.type === 'foreshadow_boundary_unresolved' && issue.subject === canonicalForeshadowId)
   )
   const newVerifiedConstraints = (state.verifiedConstraints ?? []).filter(
     (constraint) =>
-      !(constraint.kind === 'generic' && constraint.id === `foreshadow-boundary:${foreshadowId}`)
+      !(
+        constraint.kind === 'generic' &&
+        constraint.id === `foreshadow-boundary:${canonicalForeshadowId}`
+      )
   )
 
   await checkpointService.updateLatestState({
@@ -140,7 +150,7 @@ export async function setForeshadowPolicy(
   })
   await exportMetaFromCheckpoint(story.outputDir)
 
-  console.log(`[MuseFlow] 已调整伏笔策略：${foreshadowId}`)
+  console.log(`[MuseFlow] 已调整伏笔策略：${canonicalForeshadowId}`)
   console.log(`  内容：${foreshadow.text}`)
   console.log(`  策略：${policyLabel(policy)} (${policy})`)
   if (deadline !== null) console.log(`  截止章节：第 ${deadline} 章`)

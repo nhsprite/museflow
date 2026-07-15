@@ -99,6 +99,38 @@ function makeMemory(): StoryMemory {
   ])
 }
 
+function makeAliasedMemory(): StoryMemory {
+  return applyEvents(makeMemory(), [
+    {
+      id: 'e-intro-early',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-early',
+      text: 'canonical fixture',
+      expectedFulfillChapter: null,
+      chapterIndex: 0,
+      source: 'outline',
+    },
+    {
+      id: 'e-intro-late',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-late',
+      text: 'alias fixture',
+      expectedFulfillChapter: null,
+      chapterIndex: 1,
+      source: 'outline',
+    },
+    {
+      id: 'e-merge-late',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'same neutral fixture obligation',
+      chapterIndex: 2,
+      source: 'outline',
+    },
+  ])
+}
+
 function makeState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
   return {
     story: makeStory(),
@@ -212,6 +244,28 @@ describe('set-foreshadow-policy command', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(message))
     expect(exitSpy).toHaveBeenCalledWith(1)
     expect(updateLatestStateMock).not.toHaveBeenCalled()
+    exitSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('rejects an alias id with exact canonical-id guidance and does not mutate state', async () => {
+    getTupleMock.mockResolvedValue({
+      checkpoint: { channel_values: makeState({ storyMemory: makeAliasedMemory() }) },
+    })
+    const { setForeshadowPolicy } = await import('../../src/cli/commands/set-foreshadow-policy.js')
+    const { exitSpy, errorSpy } = spyOnExit()
+
+    await setForeshadowPolicy('story-1', {
+      foreshadow: 'fs-late',
+      policy: 'may_remain_open',
+    })
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[MuseFlow] 错误: 伏笔 fs-late 已归并到 fs-early；请使用 canonical ID 操作'
+    )
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    expect(updateLatestStateMock).not.toHaveBeenCalled()
+    expect(exportMetaFromCheckpointMock).not.toHaveBeenCalled()
     exitSpy.mockRestore()
     errorSpy.mockRestore()
   })

@@ -5,6 +5,7 @@ import { applyEvents } from '../../story-memory/projector.js'
 import { generateId } from '../../utils/id.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { StoryEvent } from '../../types/story-memory.js'
+import { resolveCanonicalForeshadowId } from '../../story-memory/foreshadow-alias.js'
 
 export async function waiveForeshadow(
   storyId: string,
@@ -37,12 +38,20 @@ export async function waiveForeshadow(
     return
   }
 
-  const foreshadow = memory.foreshadows[foreshadowId]
-  if (!foreshadow) {
+  const canonicalForeshadowId = resolveCanonicalForeshadowId(memory, foreshadowId)
+  if (canonicalForeshadowId === null) {
     console.error(`[MuseFlow] 错误: 伏笔 ${foreshadowId} 不存在`)
     process.exit(1)
     return
   }
+  if (canonicalForeshadowId !== foreshadowId) {
+    console.error(
+      `[MuseFlow] 错误: 伏笔 ${foreshadowId} 已归并到 ${canonicalForeshadowId}；请使用 canonical ID 操作`
+    )
+    process.exit(1)
+    return
+  }
+  const foreshadow = memory.foreshadows[canonicalForeshadowId]!
   if (foreshadow.fulfilledIn !== null) {
     console.error(
       `[MuseFlow] 错误: 伏笔 ${foreshadowId} 已在第 ${foreshadow.fulfilledIn + 1} 章回收，无需放弃`
@@ -60,7 +69,7 @@ export async function waiveForeshadow(
   const event: StoryEvent = {
     id: generateId('evt'),
     type: 'foreshadow-waive',
-    foreshadowId,
+    foreshadowId: canonicalForeshadowId,
     chapterIndex: state.currentChapterIndex,
     source: 'outline',
     ...(options.reason ? { reason: options.reason } : {}),
@@ -69,10 +78,11 @@ export async function waiveForeshadow(
 
   // 边界阻断类问题随放弃决策一并解除（与 adjust-act 的 resolvedIssueFilter 同理）。
   const newPendingIssues = state.pendingIssues.filter(
-    (issue) => !(issue.type === 'foreshadow_boundary_unresolved' && issue.subject === foreshadowId)
+    (issue) =>
+      !(issue.type === 'foreshadow_boundary_unresolved' && issue.subject === canonicalForeshadowId)
   )
   const newForeshadowStack = (state.foreshadowStack ?? []).filter(
-    (item) => item.id !== foreshadowId
+    (item) => item.id !== canonicalForeshadowId
   )
 
   await checkpointService.updateLatestState({
@@ -83,7 +93,7 @@ export async function waiveForeshadow(
 
   await exportMetaFromCheckpoint(story.outputDir)
 
-  console.log(`[MuseFlow] 已放弃回收伏笔：${foreshadowId}`)
+  console.log(`[MuseFlow] 已放弃回收伏笔：${canonicalForeshadowId}`)
   console.log(`  内容：${foreshadow.text}`)
   if (options.reason) {
     console.log(`  原因：${options.reason}`)

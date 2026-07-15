@@ -4,6 +4,8 @@ import {
   formatExpectedFulfillChapter,
 } from '../../src/utils/foreshadow-constraints.js'
 import type { ForeshadowItem } from '../../src/types/foreshadow.js'
+import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import { projectForeshadowStack } from '../../src/story-memory/foreshadow-policy.js'
 
 function makeForeshadow(overrides: Partial<ForeshadowItem> = {}): ForeshadowItem {
   return {
@@ -49,6 +51,44 @@ describe('generateForeshadowConstraints', () => {
     expect(constraint?.id).toBe('foreshadow-boundary:fs-open')
     expect(constraint?.text).toContain('全书结尾')
     expect(constraint?.text).not.toContain('9007199254740991')
+  })
+
+  it('generates one root constraint from a canonical StoryMemory stack projection', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'intro-root',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-root',
+        text: 'canonical neutral fixture',
+        expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'intro-alias',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-alias',
+        text: 'alias neutral fixture',
+        expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'merge-alias',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-root',
+        duplicateForeshadowId: 'fs-alias',
+        reason: 'same neutral fixture obligation',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+
+    expect(generateForeshadowConstraints(projectForeshadowStack(memory), 2)).toEqual([
+      expect.objectContaining({ id: 'foreshadow-boundary:fs-root' }),
+    ])
   })
 })
 

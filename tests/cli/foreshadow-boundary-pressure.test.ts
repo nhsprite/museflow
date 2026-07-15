@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { formatActForeshadowBoundaryPressure } from '../../src/cli/formatters/foreshadow-boundary-pressure.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
-import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 import type { ForeshadowMemory, StoryMemory } from '../../src/types/story-memory.js'
 import type { ActArc, StoryArc } from '../../src/types/outline.js'
 
@@ -140,5 +140,49 @@ describe('formatActForeshadowBoundaryPressure', () => {
     expect(output).toContain('fs-hard')
     expect(output).not.toContain('fs-soft')
     expect(output).not.toContain('fs-open')
+  })
+
+  it('reports a canonical boundary obligation once and never lists its alias id', () => {
+    const finalAct = act(2, 4, 6)
+    const arc = storyArc([act(1, 1, 3), finalAct])
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'intro-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        text: 'canonical neutral fixture',
+        expectedFulfillChapter: 6,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'intro-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        text: 'alias neutral fixture',
+        expectedFulfillChapter: 6,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'merge-late',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'same neutral fixture obligation',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    const output = formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct).join(
+      '\n'
+    )
+
+    expect(output).toContain('1 个 must_resolve')
+    expect(output).toContain('fs-early')
+    expect(output).not.toContain('fs-late')
   })
 })

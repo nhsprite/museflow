@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ReducedGraphState } from '../../src/graph/state.ts'
-import { createEmptyStoryMemory } from '../../src/story-memory/projector.ts'
+import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.ts'
 import { projectForeshadowStack } from '../../src/story-memory/foreshadow-policy.ts'
 import type { Story } from '../../src/types/story.ts'
+import type { StoryMemory } from '../../src/types/story-memory.ts'
 
 const getStoryMock = vi.fn<() => Story | null>()
 const getStateMock = vi.fn<() => Promise<ReducedGraphState | null>>()
@@ -83,6 +84,76 @@ function createState(currentChapterIndex: number, totalChapters: number): Reduce
     rewriteApproved: false,
     rewriteRequested: false,
   }
+}
+
+function createAliasedForeshadowMemory(): StoryMemory {
+  return applyEvents(createEmptyStoryMemory(), [
+    {
+      id: 'intro-active-early',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-active-early',
+      text: 'active canonical fixture',
+      expectedFulfillChapter: null,
+      resolutionPolicy: 'should_resolve',
+      chapterIndex: 0,
+      source: 'outline',
+    },
+    {
+      id: 'intro-active-late',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-active-late',
+      text: 'active alias fixture',
+      expectedFulfillChapter: null,
+      resolutionPolicy: 'should_resolve',
+      chapterIndex: 1,
+      source: 'outline',
+    },
+    {
+      id: 'merge-active',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-active-early',
+      duplicateForeshadowId: 'fs-active-late',
+      reason: 'same active neutral fixture',
+      chapterIndex: 1,
+      source: 'outline',
+    },
+    {
+      id: 'intro-fulfilled-early',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-fulfilled-early',
+      text: 'fulfilled canonical fixture',
+      expectedFulfillChapter: 3,
+      resolutionPolicy: 'must_resolve',
+      chapterIndex: 0,
+      source: 'outline',
+    },
+    {
+      id: 'intro-fulfilled-late',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-fulfilled-late',
+      text: 'fulfilled alias fixture',
+      expectedFulfillChapter: 3,
+      resolutionPolicy: 'must_resolve',
+      chapterIndex: 1,
+      source: 'outline',
+    },
+    {
+      id: 'fulfill-late',
+      type: 'foreshadow-fulfill',
+      foreshadowId: 'fs-fulfilled-late',
+      chapterIndex: 2,
+      source: 'chapter',
+    },
+    {
+      id: 'merge-fulfilled',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-fulfilled-early',
+      duplicateForeshadowId: 'fs-fulfilled-late',
+      reason: 'same fulfilled neutral fixture',
+      chapterIndex: 2,
+      source: 'outline',
+    },
+  ])
 }
 
 describe('status command chapter display', () => {
@@ -198,6 +269,22 @@ describe('status command chapter display', () => {
     expect(output).toContain('建议自然回收: 1')
     expect(output).toContain('可保持开放: 1')
     expect(output).not.toContain('⏳ 正常')
+  })
+
+  it('reports active and fulfilled canonical obligations once without listing alias records', async () => {
+    const state = createState(2, 3)
+    state.storyMemory = createAliasedForeshadowMemory()
+    state.foreshadowStack = projectForeshadowStack(state.storyMemory)
+    getStateMock.mockResolvedValue(state)
+    const { status } = await import('../../src/cli/commands/status.ts')
+
+    await status({ storyId: 'story-1' })
+
+    const output = logSpy.mock.calls.map(([value]) => String(value)).join('\n')
+    expect(output).toContain('伏笔: 1 个已回收, 1 个未结')
+    expect(output).toContain('fulfilled canonical fixture')
+    expect(output).not.toContain('active alias fixture')
+    expect(output).not.toContain('fulfilled alias fixture')
   })
 
   it('shows high risk when overdue key beats exist', async () => {
