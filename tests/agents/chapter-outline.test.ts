@@ -226,6 +226,8 @@ describe('ChapterOutlineAgent', () => {
         missingDeclarationIds: [],
         missingEventIds: [],
         incorrectlyDeferredIds: ['fs-hard'],
+        conflictingDecisionIds: ['fs-conflict'],
+        forbiddenFulfillmentIds: ['fs-deferred'],
         currentOutline: {
           title: '错误版本',
           description: '当前大纲与伏笔含义矛盾。',
@@ -251,6 +253,8 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).toContain('mustFulfillThisChapter=true')
     expect(prompt).toContain('<foreshadow_planning_rejection>')
     expect(prompt).toContain('incorrectlyDeferredIds: fs-hard')
+    expect(prompt).toContain('conflictingDecisionIds: fs-conflict')
+    expect(prompt).toContain('forbiddenFulfillmentIds: fs-deferred')
     expect(prompt).toContain('错误版本')
     expect(prompt).toContain('当前大纲与伏笔含义矛盾。')
     expect(prompt).toContain('规划否定了原伏笔建立的事实。')

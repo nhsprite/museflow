@@ -315,6 +315,7 @@ function getMissingScheduledForeshadowIds(
 interface ScheduledForeshadowPlanEvidence {
   declarationIds: string[]
   eventIds: string[]
+  forbiddenFulfillmentIds: string[]
 }
 
 interface ScheduledForeshadowPlanEvaluation {
@@ -330,6 +331,20 @@ interface ForeshadowClaimOutline {
 interface CanonicalizedForeshadowPlan {
   plan: ChapterPlan
   conflictingEventIds: ForeshadowId[]
+}
+
+function getConflictingForeshadowDecisionIds(outline: ForeshadowClaimOutline): ForeshadowId[] {
+  const deferredIds = new Set(outline.deferredForeshadowIds ?? [])
+  const seen = new Set<ForeshadowId>()
+  const conflictingIds: ForeshadowId[] = []
+
+  for (const id of outline.fulfilledForeshadowIds ?? []) {
+    if (!deferredIds.has(id) || seen.has(id)) continue
+    seen.add(id)
+    conflictingIds.push(id)
+  }
+
+  return conflictingIds
 }
 
 function canonicalizeForeshadowClaimIds(
@@ -401,7 +416,12 @@ function canonicalizeChapterForeshadowClaims<T extends ForeshadowClaimOutline>(
   memory: StoryMemory,
   outline: T,
   plan: ChapterPlan | null
-): { outline: T; plan: ChapterPlan | null; conflictingEventIds: ForeshadowId[] } {
+): {
+  outline: T
+  plan: ChapterPlan | null
+  conflictingEventIds: ForeshadowId[]
+  conflictingDecisionIds: ForeshadowId[]
+} {
   const canonicalOutline = {
     ...outline,
     ...(outline.fulfilledForeshadowIds
@@ -427,6 +447,7 @@ function canonicalizeChapterForeshadowClaims<T extends ForeshadowClaimOutline>(
     outline: canonicalOutline,
     plan: canonicalPlan?.plan ?? null,
     conflictingEventIds: canonicalPlan?.conflictingEventIds ?? [],
+    conflictingDecisionIds: getConflictingForeshadowDecisionIds(canonicalOutline),
   }
 }
 
@@ -493,17 +514,24 @@ function deferForeshadowClaims(
 function evaluateScheduledForeshadowPlanEvidence(
   chapterPlan: ChapterPlan,
   outlineFulfilledForeshadowIds: string[],
+  outlineDeferredForeshadowIds: string[],
   requestedChapterIndex: number,
   memory: StoryMemory | null | undefined
 ): ScheduledForeshadowPlanEvaluation {
   const canonicalized = memory
     ? canonicalizeChapterForeshadowClaims(
         memory,
-        { fulfilledForeshadowIds: outlineFulfilledForeshadowIds },
+        {
+          fulfilledForeshadowIds: outlineFulfilledForeshadowIds,
+          deferredForeshadowIds: outlineDeferredForeshadowIds,
+        },
         chapterPlan
       )
     : {
-        outline: { fulfilledForeshadowIds: outlineFulfilledForeshadowIds },
+        outline: {
+          fulfilledForeshadowIds: outlineFulfilledForeshadowIds,
+          deferredForeshadowIds: outlineDeferredForeshadowIds,
+        },
         plan: chapterPlan,
         conflictingEventIds: Array.from(
           new Set([
@@ -511,9 +539,14 @@ function evaluateScheduledForeshadowPlanEvidence(
             ...findForeshadowFulfillmentConflictIds(undefined, chapterPlan.expectedEvents ?? []),
           ])
         ),
+        conflictingDecisionIds: getConflictingForeshadowDecisionIds({
+          fulfilledForeshadowIds: outlineFulfilledForeshadowIds,
+          deferredForeshadowIds: outlineDeferredForeshadowIds,
+        }),
       }
   const canonicalPlan = canonicalized.plan ?? chapterPlan
   const canonicalOutlineFulfilledIds = canonicalized.outline.fulfilledForeshadowIds ?? []
+  const canonicalOutlineDeferredIds = new Set(canonicalized.outline.deferredForeshadowIds ?? [])
   const declarationIds = getMissingScheduledForeshadowIds(
     canonicalPlan.fulfilledForeshadowIds,
     canonicalOutlineFulfilledIds
@@ -524,6 +557,18 @@ function evaluateScheduledForeshadowPlanEvidence(
       eventForeshadowIds.add(event.foreshadowId)
     }
   }
+  const forbiddenFulfillmentIds = new Set<string>()
+  for (const id of canonicalPlan.fulfilledForeshadowIds ?? []) {
+    if (canonicalOutlineDeferredIds.has(id)) forbiddenFulfillmentIds.add(id)
+  }
+  for (const event of canonicalPlan.expectedEvents ?? []) {
+    if (
+      event.type === 'foreshadow-fulfill' &&
+      canonicalOutlineDeferredIds.has(event.foreshadowId)
+    ) {
+      forbiddenFulfillmentIds.add(event.foreshadowId)
+    }
+  }
   const missing = {
     declarationIds,
     eventIds: Array.from(
@@ -532,6 +577,7 @@ function evaluateScheduledForeshadowPlanEvidence(
         ...canonicalized.conflictingEventIds,
       ])
     ),
+    forbiddenFulfillmentIds: Array.from(forbiddenFulfillmentIds),
   }
   return { missing, plan: { ...canonicalPlan, chapterIndex: requestedChapterIndex } }
 }
@@ -539,7 +585,11 @@ function evaluateScheduledForeshadowPlanEvidence(
 function hasMissingScheduledForeshadowPlanEvidence(
   missing: ScheduledForeshadowPlanEvidence
 ): boolean {
-  return missing.declarationIds.length > 0 || missing.eventIds.length > 0
+  return (
+    missing.declarationIds.length > 0 ||
+    missing.eventIds.length > 0 ||
+    missing.forbiddenFulfillmentIds.length > 0
+  )
 }
 
 function formatMissingScheduledForeshadowPlanEvidence(
@@ -548,6 +598,9 @@ function formatMissingScheduledForeshadowPlanEvidence(
   return [
     `fulfilledForeshadowIds：${missing.declarationIds.join(', ') || '（无遗漏）'}`,
     `expectedEvents.foreshadow-fulfill：${missing.eventIds.join(', ') || '（无遗漏）'}`,
+    ...(missing.forbiddenFulfillmentIds.length > 0
+      ? [`禁止兑现：${missing.forbiddenFulfillmentIds.join(', ')}`]
+      : []),
   ].join('；')
 }
 
@@ -576,7 +629,9 @@ function logScheduledForeshadowPlanAttempt(
 }
 
 function getMissingForeshadowPlanEvidenceIds(missing: ScheduledForeshadowPlanEvidence): string[] {
-  return Array.from(new Set([...missing.declarationIds, ...missing.eventIds]))
+  return Array.from(
+    new Set([...missing.declarationIds, ...missing.eventIds, ...missing.forbiddenFulfillmentIds])
+  )
 }
 
 function buildScheduledForeshadowPlanError(
@@ -1145,6 +1200,7 @@ async function generateChapterOutlineIfNeeded(
   let result: ChapterOutlineResult | null = null
   let lastCandidate: ChapterOutlineResult | null = null
   let lastMissingScheduledForeshadowIds: string[] = []
+  let lastConflictingDecisionIds: string[] = []
   let autoDeferredForeshadowIds: string[] = []
 
   for (let attempt = 0; attempt < MAX_JIT_OUTLINE_ATTEMPTS; attempt++) {
@@ -1188,9 +1244,13 @@ async function generateChapterOutlineIfNeeded(
     }
 
     const rawCandidate = output.data as ChapterOutlineResult
-    const candidate = state.storyMemory
-      ? canonicalizeChapterForeshadowClaims(state.storyMemory, rawCandidate, null).outline
-      : rawCandidate
+    const canonicalCandidate = state.storyMemory
+      ? canonicalizeChapterForeshadowClaims(state.storyMemory, rawCandidate, null)
+      : {
+          outline: rawCandidate,
+          conflictingDecisionIds: getConflictingForeshadowDecisionIds(rawCandidate),
+        }
+    const candidate = canonicalCandidate.outline
     if (candidate.conflict) {
       throw new Error(
         `第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`
@@ -1222,11 +1282,21 @@ async function generateChapterOutlineIfNeeded(
     const deferredMustFulfillIds = mustFulfillForeshadowIds.filter((id) =>
       normalizedCandidate.deferredForeshadowIds?.includes(id)
     )
-    if (missingScheduledForeshadowIds.length > 0 || deferredMustFulfillIds.length > 0) {
+    const conflictingDecisionIds = canonicalCandidate.conflictingDecisionIds
+    if (
+      missingScheduledForeshadowIds.length > 0 ||
+      deferredMustFulfillIds.length > 0 ||
+      conflictingDecisionIds.length > 0
+    ) {
       const correctionIds = Array.from(
-        new Set([...missingScheduledForeshadowIds, ...deferredMustFulfillIds])
+        new Set([
+          ...missingScheduledForeshadowIds,
+          ...deferredMustFulfillIds,
+          ...conflictingDecisionIds,
+        ])
       )
       lastMissingScheduledForeshadowIds = correctionIds
+      lastConflictingDecisionIds = conflictingDecisionIds
       logger.warn(
         `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决或错误顺延伏笔候选：${correctionIds.join(', ')}`
       )
@@ -1235,6 +1305,7 @@ async function generateChapterOutlineIfNeeded(
         missingDeclarationIds: missingScheduledForeshadowIds,
         missingEventIds: [],
         incorrectlyDeferredIds: deferredMustFulfillIds,
+        ...(conflictingDecisionIds.length > 0 ? { conflictingDecisionIds } : {}),
       }
       continue
     }
@@ -1244,6 +1315,11 @@ async function generateChapterOutlineIfNeeded(
   }
 
   if (!result) {
+    if (lastConflictingDecisionIds.length > 0) {
+      throw new Error(
+        `第 ${chapterIndex + 1} 章即时大纲无法裁决相互冲突的伏笔决策：${lastConflictingDecisionIds.join(', ')}。已完成一次定向纠正，请人工确认每个 ID 仅保留兑现或顺延其中一种决策。`
+      )
+    }
     if (lastCandidate && lastMissingScheduledForeshadowIds.length > 0) {
       const nonDeferrableIds = lastMissingScheduledForeshadowIds.filter((id) =>
         mustFulfillForeshadowIds.includes(id)
@@ -1499,6 +1575,46 @@ async function expandOutlineForChapterInternal(
     pendingIssues = resolved.pendingIssues
   }
 
+  const currentOutline = state.outline[chapterIndex]
+  const conflictingDecisionIds = currentOutline
+    ? getConflictingForeshadowDecisionIds(currentOutline)
+    : []
+  if (currentOutline && conflictingDecisionIds.length > 0) {
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章大纲存在相互冲突的伏笔裁决，将定向修订：${conflictingDecisionIds.join(', ')}`
+    )
+    const rejection: ForeshadowPlanningRejection = {
+      missingDeclarationIds: [],
+      missingEventIds: [],
+      incorrectlyDeferredIds: [],
+      conflictingDecisionIds,
+      currentOutline: {
+        title: currentOutline.title,
+        description: currentOutline.description,
+      },
+    }
+    const outlineResult = await generateChapterOutlineIfNeeded(
+      { ...state, chapterPlan: null },
+      chapterIndex,
+      provider,
+      {
+        force: true,
+        foreshadowPlanningRejection: rejection,
+      }
+    )
+    const resolution = await reconcileOutlineCandidate(
+      outlineResult.state,
+      chapterIndex,
+      source,
+      true
+    )
+    if (resolution.status === 'conflict') {
+      throw resolution.error
+    }
+    state = resolution.state
+    pendingIssues = [...pendingIssues, ...outlineResult.pendingIssues]
+  }
+
   let outlineItem = state.outline[chapterIndex]
   if (!outlineItem) {
     throw new Error(`第 ${chapterIndex + 1} 章大纲不存在`)
@@ -1667,9 +1783,11 @@ async function expandOutlineForChapterInternal(
   }
 
   const outlineFulfilledForeshadowIds = outlineItem.fulfilledForeshadowIds ?? []
+  const outlineDeferredForeshadowIds = outlineItem.deferredForeshadowIds ?? []
   let planEvaluation = evaluateScheduledForeshadowPlanEvidence(
     chapterPlan,
     outlineFulfilledForeshadowIds,
+    outlineDeferredForeshadowIds,
     chapterIndex,
     state.storyMemory
   )
@@ -1685,10 +1803,25 @@ async function expandOutlineForChapterInternal(
       firstMissingEvidenceIds.length > 0 &&
         firstMissingEvidenceIds.every((id) => opportunityForeshadowIdSet.has(id))
     )
+    const missingEvidenceIds = Array.from(
+      new Set([...planEvaluation.missing.declarationIds, ...planEvaluation.missing.eventIds])
+    )
+    const correctionInstructions = [
+      ...(missingEvidenceIds.length > 0
+        ? [
+            `必须将缺失证据的精确 ID ${missingEvidenceIds.join(', ')} 同时写入 fulfilledForeshadowIds，并在 expectedEvents 中生成对应的 foreshadow-fulfill 事件。`,
+          ]
+        : []),
+      ...(planEvaluation.missing.forbiddenFulfillmentIds.length > 0
+        ? [
+            `必须从 fulfilledForeshadowIds 和 foreshadow-fulfill expectedEvents 中移除大纲已顺延的精确 ID：${planEvaluation.missing.forbiddenFulfillmentIds.join(', ')}。`,
+          ]
+        : []),
+    ]
     currentConstraints = [
       ...currentConstraints,
       createGenericVerifiedConstraint(
-        `【伏笔兑现修正】章节规划缺少大纲声称伏笔的结构化证据：${formatMissingScheduledForeshadowPlanEvidence(planEvaluation.missing)}。必须将这些精确 ID 同时写入 fulfilledForeshadowIds，并在 expectedEvents 中生成对应的 foreshadow-fulfill 事件。`
+        `【伏笔兑现修正】章节规划未通过结构化证据校验：${formatMissingScheduledForeshadowPlanEvidence(planEvaluation.missing)}。${correctionInstructions.join('')}`
       ),
     ]
     const planState: ReducedGraphState = {
@@ -1703,6 +1836,9 @@ async function expandOutlineForChapterInternal(
         missingDeclarationIds: planEvaluation.missing.declarationIds,
         missingEventIds: planEvaluation.missing.eventIds,
         incorrectlyDeferredIds: [],
+        ...(planEvaluation.missing.forbiddenFulfillmentIds.length > 0
+          ? { forbiddenFulfillmentIds: planEvaluation.missing.forbiddenFulfillmentIds }
+          : {}),
       },
     })
     const replanned = planResult.chapterPlan ?? null
@@ -1712,6 +1848,7 @@ async function expandOutlineForChapterInternal(
     planEvaluation = evaluateScheduledForeshadowPlanEvidence(
       replanned,
       outlineFulfilledForeshadowIds,
+      outlineDeferredForeshadowIds,
       chapterIndex,
       state.storyMemory
     )
@@ -1762,7 +1899,10 @@ async function expandOutlineForChapterInternal(
       state = deferred.state
       outlineItem = state.outline[chapterIndex] ?? outlineItem
       chapterPlan = deferred.plan
-      planEvaluation = { missing: { declarationIds: [], eventIds: [] }, plan: chapterPlan }
+      planEvaluation = {
+        missing: { declarationIds: [], eventIds: [], forbiddenFulfillmentIds: [] },
+        plan: chapterPlan,
+      }
 
       if (missingDeadlineIds.length > 0) {
         pendingIssues.push({
@@ -1853,6 +1993,7 @@ async function expandOutlineForChapterInternal(
       const replanEvaluation = evaluateScheduledForeshadowPlanEvidence(
         replanned,
         outlineFulfilledForeshadowIds,
+        outlineDeferredForeshadowIds,
         chapterIndex,
         state.storyMemory
       )
@@ -1904,6 +2045,7 @@ async function expandOutlineForChapterInternal(
     const replanEvaluation = evaluateScheduledForeshadowPlanEvidence(
       replanned,
       outlineFulfilledForeshadowIds,
+      outlineDeferredForeshadowIds,
       chapterIndex,
       state.storyMemory
     )

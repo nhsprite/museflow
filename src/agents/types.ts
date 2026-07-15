@@ -28,6 +28,8 @@ export interface ForeshadowPlanningRejection {
   missingDeclarationIds: ForeshadowId[]
   missingEventIds: ForeshadowId[]
   incorrectlyDeferredIds: ForeshadowId[]
+  conflictingDecisionIds?: ForeshadowId[]
+  forbiddenFulfillmentIds?: ForeshadowId[]
   semanticRejections?: ForeshadowSemanticPlanningRejection[]
   currentOutline?: {
     title: string
