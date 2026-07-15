@@ -4,6 +4,10 @@ import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import { buildArcStatus } from '../../utils/story-arc.js'
 import type { Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'
+import {
+  foreshadowMemoryToItem,
+  groupActiveForeshadowsByPolicy,
+} from '../../story-memory/foreshadow-policy.js'
 
 export interface ChapterIssue {
   chapterNumber: number
@@ -195,14 +199,35 @@ export function printWorldBuildingStatus(state: ReducedGraphState): void {
 
 export function printForeshadowStatus(state: ReducedGraphState): void {
   console.log('')
-  if (state.foreshadowStack.length === 0) return
+  const policyGroups = state.storyMemory ? groupActiveForeshadowsByPolicy(state.storyMemory) : null
+  const activeItems = policyGroups
+    ? [
+        ...policyGroups.mustResolve,
+        ...policyGroups.shouldResolve,
+        ...policyGroups.mayRemainOpen,
+      ].map(foreshadowMemoryToItem)
+    : state.foreshadowStack.filter((foreshadow) => !foreshadow.fulfilledChapter)
+  const fulfilled = state.storyMemory
+    ? Object.values(state.storyMemory.foreshadows)
+        .filter(
+          (foreshadow) => foreshadow.fulfilledIn !== null && foreshadow.waivedIn === undefined
+        )
+        .map(foreshadowMemoryToItem)
+    : state.foreshadowStack.filter((foreshadow) => foreshadow.fulfilledChapter)
+  if (activeItems.length === 0 && fulfilled.length === 0) return
 
-  const unfulfilled = state.foreshadowStack.filter((f) => !f.fulfilledChapter)
-  const fulfilled = state.foreshadowStack.filter((f) => f.fulfilledChapter)
-  console.log(`伏笔: ${fulfilled.length} 个已回收, ${unfulfilled.length} 个待回收`)
+  console.log(`伏笔: ${fulfilled.length} 个已回收, ${activeItems.length} 个未结`)
+  if (policyGroups) {
+    console.log(`  必须回收: ${policyGroups.mustResolve.length}`)
+    console.log(`  建议自然回收: ${policyGroups.shouldResolve.length}`)
+    console.log(`  可保持开放: ${policyGroups.mayRemainOpen.length}`)
+  }
 
-  if (unfulfilled.length > 0) {
-    const alerts = getForeshadowAlerts(state.foreshadowStack, state.currentChapterIndex + 1)
+  const alertItems = policyGroups
+    ? policyGroups.mustResolve.map(foreshadowMemoryToItem)
+    : activeItems
+  if (alertItems.length > 0) {
+    const alerts = getForeshadowAlerts(alertItems, state.currentChapterIndex + 1)
     console.log('')
     console.log(formatForeshadowAlerts(alerts))
   }

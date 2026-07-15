@@ -16,6 +16,37 @@ export interface ForeshadowBuckets {
   optional: ForeshadowItem[]
 }
 
+export interface ActiveForeshadowsByPolicy {
+  mustResolve: ForeshadowMemory[]
+  shouldResolve: ForeshadowMemory[]
+  mayRemainOpen: ForeshadowMemory[]
+}
+
+export function groupActiveForeshadowsByPolicy(memory: StoryMemory): ActiveForeshadowsByPolicy {
+  const groups: ActiveForeshadowsByPolicy = {
+    mustResolve: [],
+    shouldResolve: [],
+    mayRemainOpen: [],
+  }
+
+  for (const foreshadow of Object.values(memory.foreshadows)) {
+    if (foreshadow.fulfilledIn !== null || foreshadow.waivedIn !== undefined) continue
+    switch (foreshadow.resolutionPolicy) {
+      case 'must_resolve':
+        groups.mustResolve.push(foreshadow)
+        break
+      case 'should_resolve':
+        groups.shouldResolve.push(foreshadow)
+        break
+      case 'may_remain_open':
+        groups.mayRemainOpen.push(foreshadow)
+        break
+    }
+  }
+
+  return groups
+}
+
 export function foreshadowMemoryToItem(memory: ForeshadowMemory): ForeshadowItem {
   const item: ForeshadowItem = {
     id: memory.id,

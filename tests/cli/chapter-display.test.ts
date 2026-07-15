@@ -45,6 +45,7 @@ function buildState(): ReducedGraphState {
           introducedIn: 0,
           expectedFulfillChapter: 6,
           fulfilledIn: null,
+          resolutionPolicy: 'must_resolve',
           required: true,
           beatId: null,
         },
@@ -55,6 +56,7 @@ function buildState(): ReducedGraphState {
           introducedIn: 0,
           expectedFulfillChapter: 8,
           fulfilledIn: null,
+          resolutionPolicy: 'must_resolve',
           required: true,
           beatId: null,
         },
@@ -83,8 +85,8 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('  待消费:')
     expect(logSpy).toHaveBeenCalledWith('    1. 节拍三')
     expect(logSpy).toHaveBeenCalledWith('    2. 节拍四')
-    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 2 个 required 伏笔待回收')
-    expect(logSpy).toHaveBeenCalledWith('  待回收伏笔:')
+    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 2 个 must_resolve 硬义务待回收')
+    expect(logSpy).toHaveBeenCalledWith('  必须回收伏笔:')
     expect(logSpy).toHaveBeenCalledWith('    1. fs-a（引入第 1 章，预计第 6 章回收）')
     expect(logSpy).toHaveBeenCalledWith('    2. fs-b（引入第 1 章，预计第 8 章回收）')
   })
@@ -124,8 +126,8 @@ describe('CLI chapter display', () => {
 
     printChapterReport(report, buildState())
 
-    expect(logSpy).toHaveBeenCalledWith('   伏笔边界压力: 2 个 required 伏笔待回收')
-    expect(logSpy).toHaveBeenCalledWith('   待回收伏笔:')
+    expect(logSpy).toHaveBeenCalledWith('   伏笔边界压力: 2 个 must_resolve 硬义务待回收')
+    expect(logSpy).toHaveBeenCalledWith('   必须回收伏笔:')
     expect(logSpy).toHaveBeenCalledWith('     1. fs-a（引入第 1 章，预计第 6 章回收）')
     expect(logSpy).toHaveBeenCalledWith('     2. fs-b（引入第 1 章，预计第 8 章回收）')
   })

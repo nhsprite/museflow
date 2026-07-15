@@ -2,7 +2,7 @@ import type { StoryMemory, ForeshadowId, BeatId, TaskId, EntityId } from '../typ
 
 export function getActiveForeshadows(memory: StoryMemory): ForeshadowId[] {
   return Object.values(memory.foreshadows)
-    .filter((f) => f.fulfilledIn === null)
+    .filter((f) => f.fulfilledIn === null && f.waivedIn === undefined)
     .map((f) => f.id)
 }
 
@@ -11,6 +11,7 @@ export function getOverdueForeshadows(memory: StoryMemory, currentChapter: numbe
     .filter(
       (f) =>
         f.fulfilledIn === null &&
+        f.waivedIn === undefined &&
         f.resolutionPolicy === 'must_resolve' &&
         f.expectedFulfillChapter !== null &&
         currentChapter > f.expectedFulfillChapter

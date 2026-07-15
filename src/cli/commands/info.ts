@@ -3,6 +3,10 @@ import { getState } from '../../core/runner.js'
 import { getGenreSkill } from '../../genres/registry.js'
 import { loadConfig } from '../../config/store.js'
 import { getCurrentChapterDisplayNumber } from '../../utils/chapter-display.js'
+import {
+  foreshadowMemoryToItem,
+  groupActiveForeshadowsByPolicy,
+} from '../../story-memory/foreshadow-policy.js'
 
 interface InfoOptions {}
 
@@ -85,7 +89,63 @@ export async function info(storyId?: string, _options?: InfoOptions): Promise<vo
       console.log('')
     }
 
-    if (state.foreshadowStack.length > 0) {
+    if (state.storyMemory) {
+      const groups = groupActiveForeshadowsByPolicy(state.storyMemory)
+      const activeCount =
+        groups.mustResolve.length + groups.shouldResolve.length + groups.mayRemainOpen.length
+      const fulfilled = Object.values(state.storyMemory.foreshadows)
+        .filter(
+          (foreshadow) => foreshadow.fulfilledIn !== null && foreshadow.waivedIn === undefined
+        )
+        .map(foreshadowMemoryToItem)
+
+      if (activeCount > 0 || fulfilled.length > 0) {
+        console.log(`伏笔: ${activeCount} 个未结, ${fulfilled.length} 个已回收`)
+        console.log(`  必须回收: ${groups.mustResolve.length}`)
+        console.log(`  建议自然回收: ${groups.shouldResolve.length}`)
+        console.log(`  可保持开放: ${groups.mayRemainOpen.length}`)
+        console.log('')
+      }
+
+      if (groups.mustResolve.length > 0) {
+        console.log('必须回收伏笔:')
+        for (const fs of groups.mustResolve.slice(0, 3)) {
+          const createdCh = fs.introducedIn + 1
+          console.log(
+            `  - 第${fs.expectedFulfillChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`
+          )
+        }
+        if (groups.mustResolve.length > 3) {
+          console.log(`  ... 还有 ${groups.mustResolve.length - 3} 个`)
+        }
+        console.log('')
+      }
+
+      if (groups.shouldResolve.length > 0) {
+        console.log('建议自然回收（不阻断边界）:')
+        for (const fs of groups.shouldResolve.slice(0, 3)) {
+          console.log(`  - [${fs.id}] "${fs.text.substring(0, 30)}..."`)
+        }
+        if (groups.shouldResolve.length > 3) {
+          console.log(`  ... 还有 ${groups.shouldResolve.length - 3} 个`)
+        }
+        console.log('')
+      }
+
+      if (fulfilled.length > 0) {
+        console.log('已回收伏笔:')
+        for (const fs of fulfilled.slice(0, 3)) {
+          const createdCh = fs.createdAtChapter || '?'
+          console.log(
+            `  ✓ 第${fs.fulfilledChapter}章回收 | 第${createdCh}章埋下: "${fs.text.substring(0, 30)}..."`
+          )
+        }
+        if (fulfilled.length > 3) {
+          console.log(`  ... 还有 ${fulfilled.length - 3} 个`)
+        }
+        console.log('')
+      }
+    } else if (state.foreshadowStack.length > 0) {
       const unfulfilled = state.foreshadowStack.filter((f) => !f.fulfilledChapter)
       const fulfilled = state.foreshadowStack.filter((f) => f.fulfilledChapter)
       console.log(`伏笔: ${unfulfilled.length} 个待回收, ${fulfilled.length} 个已回收`)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyForeshadows,
+  groupActiveForeshadowsByPolicy,
   getBoundaryBlockingForeshadowDetails,
   getBoundaryBlockingForeshadows,
   getRequiredForeshadowsForScheduling,
@@ -28,6 +29,28 @@ function item(overrides: Partial<ForeshadowItem> = {}): ForeshadowItem {
 }
 
 describe('foreshadow deadline policy', () => {
+  it('groups only active, non-waived foreshadows by resolution policy', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        hard: policyForeshadow('hard', 'must_resolve', 10),
+        soft: policyForeshadow('soft', 'should_resolve', null),
+        ambient: policyForeshadow('ambient', 'may_remain_open', null),
+        fulfilled: {
+          ...policyForeshadow('fulfilled', 'should_resolve', null),
+          fulfilledIn: 4,
+        },
+        waived: { ...policyForeshadow('waived', 'should_resolve', null), waivedIn: 4 },
+      },
+    }
+
+    const groups = groupActiveForeshadowsByPolicy(memory)
+
+    expect(groups.mustResolve.map((entry) => entry.id)).toEqual(['hard'])
+    expect(groups.shouldResolve.map((entry) => entry.id)).toEqual(['soft'])
+    expect(groups.mayRemainOpen.map((entry) => entry.id)).toEqual(['ambient'])
+  })
+
   it('uses only must_resolve clues for story-end boundary pressure', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),

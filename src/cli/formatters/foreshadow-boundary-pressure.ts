@@ -20,8 +20,8 @@ export function formatActForeshadowBoundaryPressure(
   if (entries.length === 0) return [`${indent}伏笔边界压力: 0`]
 
   return [
-    `${indent}伏笔边界压力: ${entries.length} 个 required 伏笔待回收`,
-    `${indent}待回收伏笔:`,
+    `${indent}伏笔边界压力: ${entries.length} 个 must_resolve 硬义务待回收`,
+    `${indent}必须回收伏笔:`,
     ...entries.map((entry, index) => {
       const introducedChapter = entry.introducedIn + 1
       const deadline =

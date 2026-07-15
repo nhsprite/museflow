@@ -64,8 +64,8 @@ describe('formatActForeshadowBoundaryPressure', () => {
     expect(
       formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), firstAct, '  ')
     ).toEqual([
-      '  伏笔边界压力: 2 个 required 伏笔待回收',
-      '  待回收伏笔:',
+      '  伏笔边界压力: 2 个 must_resolve 硬义务待回收',
+      '  必须回收伏笔:',
       '    1. fs-earlier（引入第 1 章，预计第 2 章回收）',
       '    2. fs-boundary（引入第 1 章，预计第 3 章回收）',
     ])
@@ -107,9 +107,38 @@ describe('formatActForeshadowBoundaryPressure', () => {
     }
 
     expect(formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct)).toEqual([
-      '伏笔边界压力: 1 个 required 伏笔待回收',
-      '待回收伏笔:',
+      '伏笔边界压力: 1 个 must_resolve 硬义务待回收',
+      '必须回收伏笔:',
       '  1. fs-future（引入第 1 章，预计第 30 章回收）',
     ])
+  })
+
+  it('never reports soft policies as final-act boundary pressure', () => {
+    const finalAct = act(2, 4, 6)
+    const arc = storyArc([act(1, 1, 3), finalAct])
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        hard: foreshadow('fs-hard', 6),
+        soft: {
+          ...foreshadow('fs-soft', null),
+          resolutionPolicy: 'should_resolve',
+        },
+        open: {
+          ...foreshadow('fs-open', null),
+          resolutionPolicy: 'may_remain_open',
+          required: false,
+        },
+      },
+    }
+
+    const output = formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct).join(
+      '\n'
+    )
+
+    expect(output).toContain('1 个 must_resolve')
+    expect(output).toContain('fs-hard')
+    expect(output).not.toContain('fs-soft')
+    expect(output).not.toContain('fs-open')
   })
 })

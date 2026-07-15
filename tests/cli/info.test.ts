@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ReducedGraphState } from '../../src/graph/state.ts'
 import type { Story } from '../../src/types/story.ts'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.ts'
+import { projectForeshadowStack } from '../../src/story-memory/foreshadow-policy.ts'
 
 const getStoryMock = vi.fn<() => Story | null>()
 const getStateMock = vi.fn<() => Promise<ReducedGraphState | null>>()
@@ -95,5 +97,59 @@ describe('info command chapter display', () => {
     await info({ storyId: 'story-1' })
 
     expect(logSpy).toHaveBeenCalledWith('  当前章节: 3/3')
+  })
+
+  it('reports active foreshadows by policy without treating soft clues as deadlines', async () => {
+    const state = createState(1, 3)
+    state.storyMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        hard: {
+          id: 'fs-hard',
+          text: 'hard fixture',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: 3,
+          fulfilledIn: null,
+          resolutionPolicy: 'must_resolve',
+          required: true,
+          beatId: null,
+        },
+        soft: {
+          id: 'fs-soft',
+          text: 'soft fixture',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          resolutionPolicy: 'should_resolve',
+          required: true,
+          beatId: null,
+        },
+        open: {
+          id: 'fs-open',
+          text: 'open fixture',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          resolutionPolicy: 'may_remain_open',
+          required: false,
+          beatId: null,
+        },
+      },
+    }
+    state.foreshadowStack = projectForeshadowStack(state.storyMemory)
+    getStateMock.mockResolvedValue(state)
+    const { info } = await import('../../src/cli/commands/info.ts')
+
+    await info({ storyId: 'story-1' })
+
+    const output = logSpy.mock.calls.map(([value]) => String(value)).join('\n')
+    expect(output).toContain('必须回收: 1')
+    expect(output).toContain('建议自然回收: 1')
+    expect(output).toContain('可保持开放: 1')
+    expect(output).toContain('第3章回收')
+    expect(output).not.toContain(`第${Number.MAX_SAFE_INTEGER}章回收`)
   })
 })

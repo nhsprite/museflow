@@ -39,6 +39,29 @@ describe('queries', () => {
     expect(getOverdueForeshadows(memory, 5)).toContain('f-1')
   })
 
+  it('excludes waived foreshadows from active and overdue queries', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e-intro-waived',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-waived',
+        expectedFulfillChapter: 3,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'e-waive',
+        type: 'foreshadow-waive',
+        foreshadowId: 'f-waived',
+        chapterIndex: 4,
+        source: 'outline',
+      },
+    ])
+
+    expect(getActiveForeshadows(memory)).not.toContain('f-waived')
+    expect(getOverdueForeshadows(memory, 5)).not.toContain('f-waived')
+  })
+
   it('does not treat a non-mandatory policy as overdue even if required is stale', () => {
     const memory = applyEvents(createEmptyStoryMemory(), [
       {

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ReducedGraphState } from '../../src/graph/state.ts'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.ts'
+import { projectForeshadowStack } from '../../src/story-memory/foreshadow-policy.ts'
 import type { Story } from '../../src/types/story.ts'
 
 const getStoryMock = vi.fn<() => Story | null>()
@@ -141,6 +142,7 @@ describe('status command chapter display', () => {
           introducedIn: 0,
           expectedFulfillChapter: 3,
           fulfilledIn: null,
+          resolutionPolicy: 'must_resolve',
           required: true,
           beatId: null,
         },
@@ -151,9 +153,51 @@ describe('status command chapter display', () => {
 
     await status({ storyId: 'story-1' })
 
-    expect(logSpy).toHaveBeenCalledWith('伏笔边界压力: 1 个 required 伏笔待回收')
-    expect(logSpy).toHaveBeenCalledWith('待回收伏笔:')
+    expect(logSpy).toHaveBeenCalledWith('伏笔边界压力: 1 个 must_resolve 硬义务待回收')
+    expect(logSpy).toHaveBeenCalledWith('必须回收伏笔:')
     expect(logSpy).toHaveBeenCalledWith('  1. fs-status（引入第 1 章，预计第 3 章回收）')
+  })
+
+  it('shows soft policy counts without deadline alerts', async () => {
+    const state = createState(1, 3)
+    state.storyMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        soft: {
+          id: 'fs-soft',
+          text: 'soft fixture',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          resolutionPolicy: 'should_resolve',
+          required: true,
+          beatId: null,
+        },
+        open: {
+          id: 'fs-open',
+          text: 'open fixture',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          resolutionPolicy: 'may_remain_open',
+          required: false,
+          beatId: null,
+        },
+      },
+    }
+    state.foreshadowStack = projectForeshadowStack(state.storyMemory)
+    getStateMock.mockResolvedValue(state)
+    const { status } = await import('../../src/cli/commands/status.ts')
+
+    await status({ storyId: 'story-1' })
+
+    const output = logSpy.mock.calls.map(([value]) => String(value)).join('\n')
+    expect(output).toContain('必须回收: 0')
+    expect(output).toContain('建议自然回收: 1')
+    expect(output).toContain('可保持开放: 1')
+    expect(output).not.toContain('⏳ 正常')
   })
 
   it('shows high risk when overdue key beats exist', async () => {
