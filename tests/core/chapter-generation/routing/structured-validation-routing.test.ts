@@ -79,7 +79,7 @@ describe('decideNextStep structured validation routing', () => {
       session: makeSession(),
       pendingIssues: [],
       genre: 'general',
-      chapterFileExists: false,
+      chapterFileExists: true,
       structuredValidationResult: makeStructuredResult({
         stateConflicts: [
           {
@@ -110,6 +110,7 @@ describe('decideNextStep structured validation routing', () => {
     const result = await decideNextStep(ctx, makeDeps())
 
     expect(result.step).toMatchObject({ kind: 'draft_chapter', discardPlan: false })
+    expect(result.sessionUpdate.forceStructuralRewrite).not.toBe(true)
     expect(result.sessionUpdate.errorRewriteAttempts).toBe(1)
     expect(result.processedIssues).toHaveLength(1)
     expect(result.processedIssues[0]?.type).toBe('state_conflict')
@@ -141,7 +142,7 @@ describe('decideNextStep structured validation routing', () => {
       session: makeSession(),
       pendingIssues: [],
       genre: 'general',
-      chapterFileExists: false,
+      chapterFileExists: true,
       structuredValidationResult: makeStructuredResult({
         falseFulfillments: ['fs-1'],
       }),
@@ -149,7 +150,8 @@ describe('decideNextStep structured validation routing', () => {
 
     const result = await decideNextStep(ctx, makeDeps())
 
-    expect(result.step.kind).toBe('draft_chapter')
+    expect(result.step).toMatchObject({ kind: 'draft_chapter', discardPlan: true })
+    expect(result.sessionUpdate.forceStructuralRewrite).toBe(true)
     expect(result.processedIssues).toHaveLength(1)
     expect(result.processedIssues[0]?.type).toBe('foreshadow_false_fulfillment')
     expect(result.processedIssues[0]?.description).toContain('fs-1')

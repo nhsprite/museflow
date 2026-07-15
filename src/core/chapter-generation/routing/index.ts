@@ -68,6 +68,10 @@ function decideStrategyFromRetryStrategies(errors: Issue[]): 'draft' | 'fix' | '
   return 'draft'
 }
 
+function requiresForeshadowReplan(issues: readonly Issue[]): boolean {
+  return issues.some((issue) => issue.type === 'foreshadow_false_fulfillment')
+}
+
 export async function decideNextStep(
   ctx: RoutingContext,
   deps: RoutingDeps
@@ -236,10 +240,12 @@ export async function decideNextStep(
   const retryStrategy = decideStrategyFromRetryStrategies(remainingErrors)
 
   if (!ctx.chapterFileExists) {
+    const discardPlan = requiresForeshadowReplan(remainingErrors)
     return {
-      step: { kind: 'draft_chapter', discardPlan: false, feedbackIssues: remainingErrors },
+      step: { kind: 'draft_chapter', discardPlan, feedbackIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
+        forceStructuralRewrite: policyResult.forceStructuralRewrite || discardPlan,
         issueFingerprintHistory: nextFingerprintHistory,
       },
       processedIssues: policyResult.issues,
@@ -276,10 +282,12 @@ export async function decideNextStep(
   }
 
   if (remainingErrors.some((issue) => STRUCTURED_ISSUE_TYPES.has(issue.type))) {
+    const discardPlan = requiresForeshadowReplan(remainingErrors)
     return {
-      step: { kind: 'draft_chapter', discardPlan: false, feedbackIssues: remainingErrors },
+      step: { kind: 'draft_chapter', discardPlan, feedbackIssues: remainingErrors },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
+        forceStructuralRewrite: policyResult.forceStructuralRewrite || discardPlan,
         issueFingerprintHistory: nextFingerprintHistory,
       },
       processedIssues: policyResult.issues,
