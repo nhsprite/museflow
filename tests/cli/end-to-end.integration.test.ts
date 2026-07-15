@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { rmSync, readdirSync, readFileSync, existsSync } from 'node:fs'
+import { rmSync, readdirSync, readFileSync, existsSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { start } from '../../src/cli/commands/start.ts'
 import type { ModelProvider } from '../../src/model/provider.js'
@@ -112,21 +113,18 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
 }))
 
 describe('CLI end-to-end integration', () => {
-  let preExistingDirs: string[]
+  let testProjectDir: string
+  let restoreCwd: () => void
 
   beforeEach(() => {
-    const booksDir = join(process.cwd(), 'books')
-    preExistingDirs = existsSync(booksDir) ? readdirSync(booksDir) : []
+    testProjectDir = mkdtempSync(join(tmpdir(), 'museflow-cli-e2e-'))
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(testProjectDir)
+    restoreCwd = () => cwdSpy.mockRestore()
   })
 
   afterEach(() => {
-    const booksDir = join(process.cwd(), 'books')
-    if (!existsSync(booksDir)) return
-    for (const entry of readdirSync(booksDir)) {
-      if (!preExistingDirs.includes(entry)) {
-        rmSync(join(booksDir, entry), { recursive: true, force: true })
-      }
-    }
+    restoreCwd()
+    rmSync(testProjectDir, { recursive: true, force: true })
   })
 
   it('start command creates a story in non-interactive mode', { timeout: 60000 }, async () => {
@@ -157,7 +155,7 @@ describe('CLI end-to-end integration', () => {
       )
 
       const booksDir = join(process.cwd(), 'books')
-      const dirs = readdirSync(booksDir).filter((d) => !preExistingDirs.includes(d))
+      const dirs = readdirSync(booksDir)
       expect(dirs.length).toBeGreaterThan(0)
       expect(createdStoryId).toBeDefined()
 
@@ -172,6 +170,7 @@ describe('CLI end-to-end integration', () => {
       const metaPath = join(booksDir, matchedDir!, 'meta.json')
       expect(existsSync(metaPath)).toBe(true)
       const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+      expect(meta.story.outputDir).toBe(join(testProjectDir, 'books', matchedDir!))
       expect(meta.story.title).toBe('候选书名一')
       expect(meta.story.synopsis).toBe('候选书名一的新书简介。')
       expect(meta.story.writingConstraints).toEqual({
