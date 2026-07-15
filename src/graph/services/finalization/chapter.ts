@@ -21,12 +21,13 @@ import type {
   BeatId,
 } from '../../../types/story-memory.js'
 import type { ChapterHandoff } from '../../../types/story-state.js'
-import type { ForeshadowItem } from '../../../types/foreshadow.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import {
   classifyForeshadows,
+  foreshadowMemoryToItem,
   getBoundaryBlockingForeshadows,
   partitionInvalidForeshadowIntroductions,
+  projectForeshadowStack,
 } from '../../../story-memory/foreshadow-policy.js'
 import { generateId } from '../../../utils/id.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
@@ -268,35 +269,6 @@ function buildVerifiedConstraints(
       constraints.push({ id: `memory:beat:${id}`, text: `未推进节拍 [${id}]: ${beat.description}` })
   }
   return constraints
-}
-
-export function foreshadowMemoryToItem(
-  memory: import('../../../types/story-memory.js').ForeshadowMemory
-): ForeshadowItem {
-  const item: ForeshadowItem = {
-    id: memory.id,
-    text: memory.text,
-    expectedFulfillChapter: memory.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER,
-    createdAt: 0,
-    createdAtChapter: memory.introducedIn + 1,
-    status: memory.fulfilledIn !== null ? 'recalled' : 'planted',
-    isExplicit: true,
-    resolutionPolicy: memory.resolutionPolicy,
-    required: memory.required,
-  }
-  if (memory.kind) {
-    item.kind = memory.kind
-  }
-  if (memory.fulfilledIn !== null) {
-    item.fulfilledChapter = memory.fulfilledIn + 1
-  }
-  if (memory.beatId) {
-    item.beatId = memory.beatId
-  }
-  if (memory.deadlineExtensions !== undefined) {
-    item.deadlineExtensions = memory.deadlineExtensions
-  }
-  return item
 }
 
 export async function finalizeChapter(
@@ -611,9 +583,7 @@ export async function finalizeChapter(
     const memoryForeshadows = Object.values(updatedStoryMemory.foreshadows)
     updatedForeshadowStack =
       hasInputStoryMemory || memoryForeshadows.length > 0
-        ? memoryForeshadows
-            .filter((foreshadow) => foreshadow.waivedIn === undefined)
-            .map(foreshadowMemoryToItem)
+        ? projectForeshadowStack(updatedStoryMemory)
         : state.foreshadowStack
     const activeForeshadows = getActiveForeshadows(updatedStoryMemory)
     const openTasks = getOpenTasks(updatedStoryMemory)

@@ -16,6 +16,33 @@ export interface ForeshadowBuckets {
   optional: ForeshadowItem[]
 }
 
+export function foreshadowMemoryToItem(memory: ForeshadowMemory): ForeshadowItem {
+  const item: ForeshadowItem = {
+    id: memory.id,
+    text: memory.text,
+    expectedFulfillChapter: memory.expectedFulfillChapter ?? Number.MAX_SAFE_INTEGER,
+    createdAt: 0,
+    createdAtChapter: memory.introducedIn + 1,
+    status: memory.fulfilledIn !== null ? 'recalled' : 'planted',
+    isExplicit: true,
+    resolutionPolicy: memory.resolutionPolicy,
+    required: memory.required,
+  }
+  if (memory.kind) item.kind = memory.kind
+  if (memory.fulfilledIn !== null) item.fulfilledChapter = memory.fulfilledIn + 1
+  if (memory.beatId) item.beatId = memory.beatId
+  if (memory.deadlineExtensions !== undefined) {
+    item.deadlineExtensions = memory.deadlineExtensions
+  }
+  return item
+}
+
+export function projectForeshadowStack(memory: StoryMemory): ForeshadowItem[] {
+  return Object.values(memory.foreshadows)
+    .filter((foreshadow) => foreshadow.waivedIn === undefined)
+    .map(foreshadowMemoryToItem)
+}
+
 export function isValidForeshadowDeadline(
   introducedChapterIndex: number,
   expectedFulfillChapter: number | null

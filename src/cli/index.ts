@@ -13,6 +13,7 @@ import { list } from './commands/list.js'
 import { del } from './commands/delete.js'
 import { adjustAct } from './commands/adjust-act.js'
 import { waiveForeshadow } from './commands/waive-foreshadow.js'
+import { setForeshadowPolicy } from './commands/set-foreshadow-policy.js'
 import { registerMigrateMemoryCommand } from './commands/migrate-memory.js'
 import { setDebugEnabled } from '../utils/logger.js'
 
@@ -85,6 +86,15 @@ program
   .requiredOption('--foreshadow <id>', '要放弃的伏笔ID')
   .option('--reason <text>', '放弃原因（可选）')
   .action(waiveForeshadow)
+
+program
+  .command('set-foreshadow-policy')
+  .description('调整伏笔的回收策略')
+  .argument('<story-id>', '故事ID')
+  .requiredOption('--foreshadow <id>', '要调整的伏笔ID')
+  .requiredOption('--policy <policy>', '回收策略 (must_resolve|should_resolve|may_remain_open)')
+  .option('--deadline <chapter>', 'must_resolve 的截止章节', Number)
+  .action(setForeshadowPolicy)
 
 program
   .command('info')
