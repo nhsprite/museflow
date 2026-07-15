@@ -11,6 +11,10 @@ import type { StoryState } from '../../types/story-state.js'
 import type { StateSnapshot } from '../../types/timeline.js'
 import type { StoryMemory } from '../../types/story-memory.js'
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
+import {
+  migrateStoryMemoryToV2,
+  type LegacyStoryMemoryV1,
+} from '../../story-memory/resolution-policy.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { logger } from '../../utils/logger.js'
 import { writeFileAtomic, ensureDir } from '../../utils/fs.js'
@@ -94,12 +98,21 @@ export async function exportMetaFromCheckpoint(
   outputDir: string,
   checkpointer?: BaseCheckpointSaver<string>
 ): Promise<void> {
-  const state = await loadLatestCheckpointState(outputDir, checkpointer)
+  const loadedState = await loadLatestCheckpointState(outputDir, checkpointer)
 
-  if (!state) {
+  if (!loadedState) {
     logger.debug(`[MuseFlow] No checkpoint found at ${outputDir}, skipping meta export`)
     return
   }
+
+  const state = loadedState.storyMemory
+    ? {
+        ...loadedState,
+        storyMemory: migrateStoryMemoryToV2(
+          loadedState.storyMemory as StoryMemory | LegacyStoryMemoryV1
+        ),
+      }
+    : loadedState
 
   const existing = readExistingMeta(outputDir)
 

@@ -163,7 +163,18 @@ describe('exportMetaFromCheckpoint', () => {
           source: 'chapter',
         },
       ],
-      foreshadows: {},
+      foreshadows: {
+        legacy: {
+          id: 'legacy',
+          text: 'legacy',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          required: true,
+          beatId: null,
+        },
+      },
       beats: {},
       tasks: {},
     }
@@ -179,7 +190,8 @@ describe('exportMetaFromCheckpoint', () => {
     const storyMemoryPath = join(tmpDir, 'story-memory.json')
     expect(existsSync(storyMemoryPath)).toBe(true)
     const storyMemory = JSON.parse(readFileSync(storyMemoryPath, 'utf-8'))
-    expect(storyMemory.version).toBe('1')
+    expect(storyMemory.version).toBe('2')
+    expect(storyMemory.foreshadows.legacy.resolutionPolicy).toBe('should_resolve')
     expect(storyMemory.events).toHaveLength(1)
   })
 })

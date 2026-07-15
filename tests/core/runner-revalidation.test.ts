@@ -848,6 +848,57 @@ describe('runner revalidation', () => {
     )
   })
 
+  it('migrates eleven legacy null-deadline required clues before graph invocation', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    const foreshadows = Object.fromEntries(
+      Array.from({ length: 11 }, (_, index) => {
+        const id = `legacy-${String(index + 1).padStart(2, '0')}`
+        return [
+          id,
+          {
+            id,
+            text: id,
+            kind: null,
+            introducedIn: index,
+            expectedFulfillChapter: null,
+            fulfilledIn: null,
+            required: true,
+            beatId: null,
+          },
+        ]
+      })
+    )
+    const storyMemory = {
+      version: '1',
+      lastChapterIndex: 57,
+      entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+      events: [],
+      foreshadows,
+      beats: {},
+      tasks: {},
+    }
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        currentChapterIndex: 57,
+        totalChapters: 61,
+        chapters: new Array(61).fill(null),
+        storyMemory,
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-legacy' } },
+    })
+
+    await runOneChapter('story-1', { mode: 'draft' }, createMockContext())
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, any>
+    expect(invokedState.storyMemory.version).toBe('2')
+    expect(
+      Object.values(invokedState.storyMemory.foreshadows).map(
+        (entry: any) => entry.resolutionPolicy
+      )
+    ).toEqual(new Array(11).fill('should_resolve'))
+  })
+
   it('applies the shared rewrite cleanup (pendingTasks, foreshadow fulfillment, timeline) to the graph input', async () => {
     const { runOneChapter } = await import('../../src/core/runner.js')
 

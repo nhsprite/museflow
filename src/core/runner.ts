@@ -30,6 +30,17 @@ import { projectVerifiedClaimedBeatIdsIntoActProgress } from './act-progress-pro
 import { formatActBoundaryAdjustmentCommand } from '../utils/story-arc.js'
 import { createChapterSession } from './chapter-generation/routing/session.js'
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
+import {
+  migrateStoryMemoryToV2,
+  type LegacyStoryMemoryV1,
+} from '../story-memory/resolution-policy.js'
+import type { StoryMemory } from '../types/story-memory.js'
+
+export function normalizeRuntimeStoryMemory(state: ReducedGraphState): ReducedGraphState {
+  if (!state.storyMemory) return state
+  const storyMemory = migrateStoryMemoryToV2(state.storyMemory as StoryMemory | LegacyStoryMemoryV1)
+  return storyMemory === state.storyMemory ? state : { ...state, storyMemory }
+}
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
   const booksDir = getOutputsDir()
@@ -309,7 +320,7 @@ export async function runOneChapter(
   const snapshot = await graph.getState({
     configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
   })
-  const checkpointState = snapshot.values as ReducedGraphState
+  const checkpointState = normalizeRuntimeStoryMemory(snapshot.values as ReducedGraphState)
 
   const targetIndex = options.targetChapterIndex ?? checkpointState.currentChapterIndex
 
@@ -535,7 +546,7 @@ export async function getState(
   }
   try {
     const state = await graph.getState(config)
-    const graphState = state.values as unknown as ReducedGraphState
+    const graphState = normalizeRuntimeStoryMemory(state.values as unknown as ReducedGraphState)
 
     // Checkpoint 是运行时唯一真相源。不再从 meta.json 覆盖任何字段。
     // 清除过时的 draft_failure 问题，避免阻断后续生成。
