@@ -13,7 +13,7 @@ import type {
 import type { StoryArc } from '../types/outline.js'
 import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
-import { isValidForeshadowDeadline } from './foreshadow-policy.js'
+import { isProjectableForeshadowIntroduction } from './foreshadow-policy.js'
 import {
   compareCanonicalOrder,
   ForeshadowMergeValidationError,
@@ -296,7 +296,7 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
 
   for (const event of events) {
     if (event.type === 'foreshadow-introduce') {
-      if (!isValidForeshadowDeadline(event.chapterIndex, event.expectedFulfillChapter)) {
+      if (!isProjectableForeshadowIntroduction(event)) {
         continue
       }
       introducedIds.add(event.foreshadowId)

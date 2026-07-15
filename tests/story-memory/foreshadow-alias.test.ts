@@ -121,6 +121,24 @@ describe('foreshadow aliases', () => {
     ])
   })
 
+  it('uses the first projectable introduction when an earlier introduction is invalid', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        ...introduceEvent('fs-later-valid', 0, 'introduce-invalid'),
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 1,
+      },
+      introduceEvent('fs-earlier-valid', 1, 'introduce-earlier-valid'),
+      introduceEvent('fs-later-valid', 2, 'introduce-later-valid'),
+    ])
+
+    expect(compareCanonicalOrder(memory, 'fs-earlier-valid', 'fs-later-valid')).toBeLessThan(0)
+    expect(getCanonicalForeshadows(memory).map((item) => item.id)).toEqual([
+      'fs-earlier-valid',
+      'fs-later-valid',
+    ])
+  })
+
   it('uses lexical ids as the final deterministic ordering tie-breaker', () => {
     const memory = createEmptyStoryMemory()
     memory.foreshadows = {

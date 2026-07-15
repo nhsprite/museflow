@@ -1,4 +1,5 @@
 import type { ForeshadowId, ForeshadowMemory, StoryMemory } from '../types/story-memory.js'
+import { isProjectableForeshadowIntroduction } from './foreshadow-policy.js'
 
 interface ForeshadowIntroductionOrder {
   chapterIndex: number
@@ -87,7 +88,11 @@ function compareNumbers(left: number, right: number): number {
 function getIntroductionOrder(memory: StoryMemory, id: ForeshadowId): ForeshadowIntroductionOrder {
   for (let eventPosition = 0; eventPosition < memory.events.length; eventPosition += 1) {
     const event = memory.events[eventPosition]
-    if (event?.type === 'foreshadow-introduce' && event.foreshadowId === id) {
+    if (
+      event?.type === 'foreshadow-introduce' &&
+      event.foreshadowId === id &&
+      isProjectableForeshadowIntroduction(event)
+    ) {
       return { chapterIndex: event.chapterIndex, eventPosition }
     }
   }

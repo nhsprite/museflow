@@ -884,6 +884,92 @@ describe('projectMemory foreshadows', () => {
     ).toThrow(ForeshadowMergeValidationError)
   })
 
+  it('rejects reversed order when an earlier raw canonical introduction was invalid', () => {
+    expect(() =>
+      applyEvents(createEmptyStoryMemory(), [
+        {
+          id: 'introduce-canonical-invalid',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-canonical',
+          resolutionPolicy: 'must_resolve',
+          expectedFulfillChapter: 1,
+          chapterIndex: 0,
+          source: 'outline',
+        },
+        {
+          id: 'introduce-duplicate-valid',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-duplicate',
+          resolutionPolicy: 'should_resolve',
+          expectedFulfillChapter: null,
+          chapterIndex: 1,
+          source: 'outline',
+        },
+        {
+          id: 'introduce-canonical-valid',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-canonical',
+          resolutionPolicy: 'should_resolve',
+          expectedFulfillChapter: null,
+          chapterIndex: 2,
+          source: 'outline',
+        },
+        {
+          id: 'merge-reversed-valid-order',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: 'fs-canonical',
+          duplicateForeshadowId: 'fs-duplicate',
+          reason: 'The records describe one obligation',
+          chapterIndex: 3,
+          source: 'outline',
+        },
+      ])
+    ).toThrow(ForeshadowMergeValidationError)
+  })
+
+  it('accepts canonical order based on a later valid introduction after an invalid one', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-canonical-invalid',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-canonical',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 1,
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-canonical-valid',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-canonical',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-duplicate-valid',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-duplicate',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 3,
+        source: 'outline',
+      },
+      {
+        id: 'merge-valid-order',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-canonical',
+        duplicateForeshadowId: 'fs-duplicate',
+        reason: 'The records describe one obligation',
+        chapterIndex: 4,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['fs-duplicate']?.mergedInto).toBe('fs-canonical')
+  })
+
   it('rejects a duplicate that was already merged', () => {
     const introduced = applyEvents(createEmptyStoryMemory(), [
       {

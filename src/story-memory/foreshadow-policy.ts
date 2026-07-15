@@ -85,6 +85,10 @@ export function isValidForeshadowDeadline(
   )
 }
 
+export function isProjectableForeshadowIntroduction(event: ForeshadowIntroduceEvent): boolean {
+  return isValidForeshadowDeadline(event.chapterIndex, event.expectedFulfillChapter)
+}
+
 export function classifyForeshadows(
   stack: ForeshadowItem[],
   currentChapter: number
@@ -125,10 +129,7 @@ export function partitionInvalidForeshadowIntroductions(events: StoryEvent[]): {
   const invalid: ForeshadowIntroduceEvent[] = []
 
   for (const event of events) {
-    if (
-      event.type === 'foreshadow-introduce' &&
-      !isValidForeshadowDeadline(event.chapterIndex, event.expectedFulfillChapter)
-    ) {
+    if (event.type === 'foreshadow-introduce' && !isProjectableForeshadowIntroduction(event)) {
       invalid.push(event)
     } else {
       valid.push(event)
