@@ -572,6 +572,30 @@ describe('expandOutlineForChapter', () => {
     expect(result.pendingIssues.some((issue) => issue.type === 'outline_foreshadow')).toBe(false)
   })
 
+  it('ignores the current chapter stale deferral when rotating natural opportunities on rewrite', async () => {
+    const scheduledState = stateWithScheduledForeshadows(2, '既有大纲。', [
+      createRequiredForeshadow('fs-a', null),
+      createRequiredForeshadow('fs-b', null),
+    ])
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) => {
+        if (index === 0) return { ...item, deferredForeshadowIds: ['fs-a'] }
+        if (index === 2) return { ...item, deferredForeshadowIds: ['fs-b'] }
+        return item
+      }),
+    }
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({ chapterIndex: 2 }),
+    })
+
+    await expandOutlineForChapter(state, 2, createMockProvider())
+
+    const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
+    expect(formattedOutline).toContain('【本章自然回收候选】fs-b')
+    expect(formattedOutline).not.toContain('【本章自然回收候选】fs-a')
+  })
+
   it('enters tight mode before the last chapter when remaining capacity cannot hold pending foreshadows', async () => {
     // 第 2 章（幕结束于第 3 章，剩余 2 章），4 个待回收伏笔 > 后续 1 章 × 3 容量 → tight
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c', 'fs-d']

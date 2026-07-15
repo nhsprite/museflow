@@ -1733,7 +1733,7 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
 
     tmpDir = path.join(process.cwd(), 'tests', 'tmp', `finalize-defer-${Date.now()}`)
     await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
-    for (const chapterNumber of [DEFAULT_CHAPTER_INDEX + 1, 62]) {
+    for (const chapterNumber of [DEFAULT_CHAPTER_INDEX + 1, 20, 62]) {
       await fs.writeFile(
         path.join(tmpDir, 'chapters', `chapter_${chapterNumber}.md`),
         `# 第${chapterNumber}章\n\n主角继续前行，路途漫长。`,
@@ -1751,7 +1751,7 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
     return applyEvents(createEmptyStoryMemory(), events)
   }
 
-  function introduceEvent(id: string, expectedFulfillChapter: number): StoryEvent {
+  function introduceEvent(id: string, expectedFulfillChapter: number | null): StoryEvent {
     return {
       id: `evt-introduce-${id}`,
       type: 'foreshadow-introduce',
@@ -1904,6 +1904,23 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
       )
     ).toBe(false)
     expect(result.storyMemory?.foreshadows['fs-1']?.expectedFulfillChapter).toBe(10)
+  })
+
+  it('does not invent a deadline or attention report for a null-deadline deferral at story end', async () => {
+    const storyMemory = buildMemoryWithForeshadows([introduceEvent('fs-natural', null)])
+    const state = buildLateChapterState(storyMemory, ['fs-natural'], 19, 20)
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(
+      (result.storyMemory?.events ?? []).some(
+        (event) => event.type === 'foreshadow-deadline-extend'
+      )
+    ).toBe(false)
+    expect(state.storyMemory?.foreshadows['fs-natural']?.expectedFulfillChapter).toBeNull()
+    expect(result.storyMemory?.foreshadows['fs-natural']?.deadlineExtensions).toBeUndefined()
+    expect(result.chapterReport?.foreshadowsNeedingAttention).toBeUndefined()
+    expect(result.rewriteRequested).toBe(true)
   })
 
   it('does not extend a deferred foreshadow that is already fulfilled', async () => {
