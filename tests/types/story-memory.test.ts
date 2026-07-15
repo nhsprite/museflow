@@ -15,7 +15,7 @@ import type {
 describe('StoryMemory types', () => {
   it('can construct a minimal StoryMemory', () => {
     const memory: StoryMemory = {
-      version: '1',
+      version: '2',
       lastChapterIndex: 0,
       entities: {
         characters: {},
@@ -29,7 +29,7 @@ describe('StoryMemory types', () => {
       beats: {},
       tasks: {},
     }
-    expect(memory.version).toBe('1')
+    expect(memory.version).toBe('2')
   })
 
   it('event type discriminates correctly', () => {
@@ -101,6 +101,7 @@ describe('StoryMemory types', () => {
       introducedIn: 1,
       expectedFulfillChapter: 5,
       fulfilledIn: null,
+      resolutionPolicy: 'must_resolve',
       required: true,
       beatId: 'b-1',
     }

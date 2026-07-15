@@ -13,10 +13,11 @@ import type { StoryArc } from '../types/outline.js'
 import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import { isValidForeshadowDeadline } from './foreshadow-policy.js'
+import { deriveLegacyRequired, policyFromLegacyFields } from './resolution-policy.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
   return {
-    version: '1',
+    version: '2',
     lastChapterIndex: 0,
     entities: {
       characters: {},
@@ -292,6 +293,9 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         continue
       }
       const existing = foreshadows[event.foreshadowId]
+      const resolutionPolicy =
+        event.resolutionPolicy ??
+        policyFromLegacyFields(event.required, event.expectedFulfillChapter)
       foreshadows[event.foreshadowId] = {
         ...existing,
         id: event.foreshadowId,
@@ -300,7 +304,8 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         introducedIn: event.chapterIndex,
         expectedFulfillChapter: event.expectedFulfillChapter,
         fulfilledIn: existing?.fulfilledIn ?? null,
-        required: event.required ?? existing?.required ?? true,
+        resolutionPolicy,
+        required: deriveLegacyRequired(resolutionPolicy),
         beatId: event.beatId ?? existing?.beatId ?? null,
       }
     } else if (event.type === 'foreshadow-fulfill') {
@@ -312,7 +317,8 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         introducedIn: existing?.introducedIn ?? event.chapterIndex,
         expectedFulfillChapter: existing?.expectedFulfillChapter ?? null,
         fulfilledIn: event.chapterIndex,
-        required: existing?.required ?? true,
+        resolutionPolicy: existing?.resolutionPolicy ?? 'should_resolve',
+        required: deriveLegacyRequired(existing?.resolutionPolicy ?? 'should_resolve'),
         beatId: existing?.beatId ?? null,
         ...(existing?.deadlineExtensions !== undefined
           ? { deadlineExtensions: existing.deadlineExtensions }

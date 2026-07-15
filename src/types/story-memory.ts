@@ -12,6 +12,8 @@ export type ForeshadowKind =
   | 'plot'
   | 'other'
 
+export type ForeshadowResolutionPolicy = 'must_resolve' | 'should_resolve' | 'may_remain_open'
+
 export interface StoryEventEvidence {
   /** 1-based prose paragraph index in CHAPTER_CONTENT, excluding markdown headings. */
   paragraphIndex: number
@@ -32,7 +34,7 @@ export interface ChapterFinalStateDeclaration {
 }
 
 export interface StoryMemory {
-  version: '1'
+  version: '2'
   lastChapterIndex: number
   entities: {
     characters: Record<EntityId, CharacterMemory>
@@ -104,6 +106,8 @@ export interface ForeshadowIntroduceEvent extends BaseEvent {
   type: 'foreshadow-introduce'
   foreshadowId: ForeshadowId
   expectedFulfillChapter: number | null
+  /** Required for newly generated events; omitted only by legacy persisted events. */
+  resolutionPolicy?: ForeshadowResolutionPolicy
   text?: string
   kind?: ForeshadowKind
   required?: boolean
@@ -185,6 +189,8 @@ export interface ForeshadowMemory {
   introducedIn: number
   expectedFulfillChapter: number | null
   fulfilledIn: number | null
+  resolutionPolicy: ForeshadowResolutionPolicy
+  /** Compatibility projection only. Runtime decisions use resolutionPolicy. */
   required: boolean
   beatId: BeatId | null
   deadlineExtensions?: number
