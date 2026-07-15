@@ -146,3 +146,54 @@ export function selectForeshadowsForChapter(
     .slice(0, normalizedCapacity)
     .map((foreshadow) => foreshadow.id)
 }
+
+export interface OpportunisticForeshadowSelectionOptions {
+  chapterNumber: number
+  minFulfillDistance: number
+  capacity: number
+  excludedIds?: ReadonlySet<ForeshadowId>
+  lastConsideredChapterById?: ReadonlyMap<ForeshadowId, number>
+}
+
+export function selectOpportunisticForeshadowsForChapter(
+  memory: StoryMemory,
+  options: OpportunisticForeshadowSelectionOptions
+): ForeshadowId[] {
+  const capacity = Number.isFinite(options.capacity)
+    ? Math.max(0, Math.floor(options.capacity))
+    : 0
+  if (capacity === 0) return []
+
+  const minFulfillDistance = Number.isFinite(options.minFulfillDistance)
+    ? Math.max(0, Math.floor(options.minFulfillDistance))
+    : 0
+  const excludedIds = options.excludedIds ?? new Set<ForeshadowId>()
+  const lastConsideredChapterById =
+    options.lastConsideredChapterById ?? new Map<ForeshadowId, number>()
+
+  return Object.values(memory.foreshadows)
+    .filter(
+      (foreshadow) =>
+        foreshadow.expectedFulfillChapter === null &&
+        foreshadow.fulfilledIn === null &&
+        foreshadow.waivedIn === undefined &&
+        !excludedIds.has(foreshadow.id) &&
+        options.chapterNumber >= foreshadow.introducedIn + 1 + minFulfillDistance
+    )
+    .sort((left, right) => {
+      const leftLastConsidered =
+        lastConsideredChapterById.get(left.id) ?? Number.NEGATIVE_INFINITY
+      const rightLastConsidered =
+        lastConsideredChapterById.get(right.id) ?? Number.NEGATIVE_INFINITY
+      if (leftLastConsidered !== rightLastConsidered) {
+        return leftLastConsidered - rightLastConsidered
+      }
+      if (left.required !== right.required) return left.required ? -1 : 1
+      return (
+        left.introducedIn - right.introducedIn ||
+        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+      )
+    })
+    .slice(0, capacity)
+    .map((foreshadow) => foreshadow.id)
+}

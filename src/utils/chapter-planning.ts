@@ -35,6 +35,7 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   foreshadowMaxFulfillDistance: 8,
   foreshadowMaxStackSize: 20,
   foreshadowMaxFulfillmentsPerChapter: 3,
+  foreshadowMaxOpportunisticCandidatesPerChapter: 1,
   closingPhaseRatio: 0.15,
   maxErrorRewriteAttempts: 3,
   issueSetSimilarityThreshold: 0.5,

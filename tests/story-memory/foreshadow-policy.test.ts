@@ -6,6 +6,7 @@ import {
   getRequiredForeshadowsForScheduling,
   isValidForeshadowDeadline,
   selectForeshadowsForChapter,
+  selectOpportunisticForeshadowsForChapter,
 } from '../../src/story-memory/foreshadow-policy.js'
 import type { ForeshadowItem } from '../../src/types/foreshadow.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
@@ -255,6 +256,96 @@ describe('foreshadow deadline policy', () => {
 
   it('defaults per-chapter foreshadow scheduling capacity to three', () => {
     expect(DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowMaxFulfillmentsPerChapter).toBe(3)
+  })
+
+  it('defaults per-chapter opportunistic foreshadow capacity to one', () => {
+    expect(
+      DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowMaxOpportunisticCandidatesPerChapter
+    ).toBe(1)
+  })
+
+  it('selects only eligible active null-deadline foreshadows as natural opportunities', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'eligible-required': {
+          ...memoryForeshadow('eligible-required', null, true, null),
+          introducedIn: 1,
+        },
+        'eligible-optional': {
+          ...memoryForeshadow('eligible-optional', null, false, null),
+          introducedIn: 0,
+        },
+        'too-young': {
+          ...memoryForeshadow('too-young', null, true, null),
+          introducedIn: 3,
+        },
+        finite: memoryForeshadow('finite', null, true, 8),
+        fulfilled: {
+          ...memoryForeshadow('fulfilled', null, true, null),
+          fulfilledIn: 3,
+        },
+        waived: {
+          ...memoryForeshadow('waived', null, true, null),
+          waivedIn: 3,
+        },
+        excluded: memoryForeshadow('excluded', null, true, null),
+      },
+    }
+
+    expect(
+      selectOpportunisticForeshadowsForChapter(memory, {
+        chapterNumber: 5,
+        minFulfillDistance: 2,
+        capacity: 3,
+        excludedIds: new Set(['excluded']),
+      })
+    ).toEqual(['eligible-required', 'eligible-optional'])
+  })
+
+  it('rotates never-considered opportunities ahead of recently considered required clues', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'required-never': memoryForeshadow('required-never', null, true, null),
+        'optional-never': memoryForeshadow('optional-never', null, false, null),
+        'required-recent': memoryForeshadow('required-recent', null, true, null),
+      },
+    }
+
+    expect(
+      selectOpportunisticForeshadowsForChapter(memory, {
+        chapterNumber: 5,
+        minFulfillDistance: 2,
+        capacity: 3,
+        lastConsideredChapterById: new Map([['required-recent', 4]]),
+      })
+    ).toEqual(['required-never', 'optional-never', 'required-recent'])
+  })
+
+  it('allows zero opportunistic capacity and floors positive fractional capacity', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        first: memoryForeshadow('first', null, true, null),
+        second: memoryForeshadow('second', null, true, null),
+      },
+    }
+
+    expect(
+      selectOpportunisticForeshadowsForChapter(memory, {
+        chapterNumber: 5,
+        minFulfillDistance: 2,
+        capacity: 0,
+      })
+    ).toEqual([])
+    expect(
+      selectOpportunisticForeshadowsForChapter(memory, {
+        chapterNumber: 5,
+        minFulfillDistance: 2,
+        capacity: 1.9,
+      })
+    ).toEqual(['first'])
   })
 
   it('excludes waived foreshadows from scheduling and boundary blocking', () => {
