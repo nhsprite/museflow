@@ -366,6 +366,114 @@ describe('diffMemorySnapshots', () => {
     expect(diff.characterLocations).toHaveLength(1)
     expect(diff.characterLocations[0]?.after).toBe('l-2')
   })
+
+  it('does not report a new obligation when a new duplicate merges into a historical root', () => {
+    const before = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+    const after = applyEvents(before, [
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        expectedFulfillChapter: 5,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'merge',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'same structured obligation',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    expect(diffMemorySnapshots(before, after).newForeshadows).toEqual([])
+  })
+
+  it('reports two newly equivalent IDs as one canonical addition', () => {
+    const before = createEmptyStoryMemory()
+    const after = applyEvents(before, [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        expectedFulfillChapter: 5,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'merge',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'same structured obligation',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    expect(diffMemorySnapshots(before, after).newForeshadows).toEqual(['fs-early'])
+  })
+
+  it('reports an alias fulfillment under the canonical ID only', () => {
+    const before = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        expectedFulfillChapter: 5,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'merge',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'same structured obligation',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+    const after = applyEvents(before, [
+      {
+        id: 'fulfill-alias',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-late',
+        chapterIndex: 4,
+        source: 'chapter',
+      },
+    ])
+
+    expect(diffMemorySnapshots(before, after).fulfilledForeshadows).toEqual(['fs-early'])
+  })
 })
 
 describe('diffMemorySnapshots — chapter index 0 transitions (falsy bug regression)', () => {

@@ -1,4 +1,5 @@
 import type { StoryEvent, StoryMemory, EntityId } from '../types/story-memory.js'
+import { getCanonicalForeshadows, resolveCanonicalForeshadowId } from './foreshadow-alias.js'
 
 export interface EventDiff {
   missing: StoryEvent[]
@@ -145,15 +146,31 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
     }
   }
 
-  const newForeshadows = Object.values(after.foreshadows)
-    .filter((f) => !before.foreshadows[f.id])
-    .map((f) => f.id)
+  const canonicalAfterForeshadows = getCanonicalForeshadows(after)
+  const beforeRootsByAfterRoot = new Map<string, Set<string>>()
+  for (const afterForeshadow of canonicalAfterForeshadows) {
+    const beforeRoots = new Set<string>()
+    for (const id of Object.keys(after.foreshadows)) {
+      if (resolveCanonicalForeshadowId(after, id) !== afterForeshadow.id) continue
+      const beforeRoot = resolveCanonicalForeshadowId(before, id)
+      if (beforeRoot !== null) beforeRoots.add(beforeRoot)
+    }
+    beforeRootsByAfterRoot.set(afterForeshadow.id, beforeRoots)
+  }
 
-  const fulfilledForeshadows = Object.values(after.foreshadows)
-    .filter(
-      (f) => f.fulfilledIn !== null && (before.foreshadows[f.id]?.fulfilledIn ?? null) === null
-    )
-    .map((f) => f.id)
+  const newForeshadows = canonicalAfterForeshadows
+    .filter((foreshadow) => (beforeRootsByAfterRoot.get(foreshadow.id)?.size ?? 0) === 0)
+    .map((foreshadow) => foreshadow.id)
+
+  const fulfilledForeshadows = canonicalAfterForeshadows
+    .filter((foreshadow) => {
+      if (foreshadow.fulfilledIn === null) return false
+      const beforeRoots = beforeRootsByAfterRoot.get(foreshadow.id) ?? new Set<string>()
+      return !Array.from(beforeRoots).some(
+        (beforeRoot) => before.foreshadows[beforeRoot]?.fulfilledIn !== null
+      )
+    })
+    .map((foreshadow) => foreshadow.id)
 
   const newTasks = Object.values(after.tasks)
     .filter((t) => !before.tasks[t.id])

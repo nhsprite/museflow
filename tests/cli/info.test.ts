@@ -104,7 +104,7 @@ describe('info command chapter display', () => {
     state.storyMemory = {
       ...createEmptyStoryMemory(),
       foreshadows: {
-        hard: {
+        'fs-hard': {
           id: 'fs-hard',
           text: 'hard fixture',
           kind: null,
@@ -115,7 +115,7 @@ describe('info command chapter display', () => {
           required: true,
           beatId: null,
         },
-        soft: {
+        'fs-soft': {
           id: 'fs-soft',
           text: 'soft fixture',
           kind: null,
@@ -126,7 +126,7 @@ describe('info command chapter display', () => {
           required: true,
           beatId: null,
         },
-        open: {
+        'fs-open': {
           id: 'fs-open',
           text: 'open fixture',
           kind: null,

@@ -31,6 +31,7 @@ import {
 import { diffMemorySnapshots } from '../../story-memory/diff.js'
 import { applyEvents } from '../../story-memory/projector.js'
 import type { StoryMemory } from '../../types/story-memory.js'
+import { getActiveForeshadows } from '../../story-memory/queries.js'
 
 const CONTINUITY_CHECK_SCHEMA: JsonSchema = {
   type: 'object',
@@ -55,7 +56,7 @@ function normalizeContinuitySeverity(severity: string | undefined): Issue['sever
   return 'error'
 }
 
-function buildContinuityContext(state: ReducedGraphState): string {
+export function buildContinuityContext(state: ReducedGraphState): string {
   const sections: string[] = []
   const characters = charactersToString(state.characters).trim()
   if (characters.length > 0) {
@@ -102,9 +103,10 @@ ${openTasks.map((task) => `- ${task.id}: ${task.description}`).join('\n')}
 </open_tasks>`)
     }
 
-    const activeForeshadows = Object.values(memory.foreshadows).filter(
-      (fs) => fs.fulfilledIn === null
-    )
+    const activeForeshadows = getActiveForeshadows(memory).flatMap((id) => {
+      const foreshadow = memory.foreshadows[id]
+      return foreshadow ? [foreshadow] : []
+    })
     if (activeForeshadows.length > 0) {
       sections.push(`<active_foreshadows>
 【未回收伏笔】

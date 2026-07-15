@@ -59,6 +59,13 @@ import {
 } from '../story-memory/foreshadow-policy.js'
 import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 import { verifyForeshadowPlan } from '../graph/services/foreshadow-fulfillment/planning-verifier.js'
+import { resolveCanonicalForeshadowId } from '../story-memory/foreshadow-alias.js'
+import type {
+  ForeshadowFulfillEvent,
+  ForeshadowId,
+  StoryEvent,
+  StoryMemory,
+} from '../types/story-memory.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -138,6 +145,7 @@ interface ForeshadowScheduleContext {
 }
 
 function getLastForeshadowConsideredChapterById(
+  memory: StoryMemory,
   outline: ReducedGraphState['outline'],
   chapterIndex: number
 ): Map<string, number> {
@@ -149,7 +157,8 @@ function getLastForeshadowConsideredChapterById(
       ...(item.fulfilledForeshadowIds ?? []),
       ...(item.deferredForeshadowIds ?? []),
     ]) {
-      lastConsideredChapterById.set(id, index + 1)
+      const canonicalId = resolveCanonicalForeshadowId(memory, id) ?? id
+      lastConsideredChapterById.set(canonicalId, index + 1)
     }
   }
   return lastConsideredChapterById
@@ -181,7 +190,11 @@ function getForeshadowScheduleContext(
     minFulfillDistance: planningConfig.foreshadowMinFulfillDistance,
     capacity: planningConfig.foreshadowMaxOpportunisticCandidatesPerChapter,
     excludedIds: new Set(deadlineCandidateIds),
-    lastConsideredChapterById: getLastForeshadowConsideredChapterById(state.outline, chapterIndex),
+    lastConsideredChapterById: getLastForeshadowConsideredChapterById(
+      state.storyMemory,
+      state.outline,
+      chapterIndex
+    ),
   })
   return {
     deadlineCandidateIds,
@@ -294,6 +307,148 @@ interface ScheduledForeshadowPlanEvaluation {
   plan: ChapterPlan
 }
 
+interface ForeshadowClaimOutline {
+  fulfilledForeshadowIds?: ForeshadowId[]
+  deferredForeshadowIds?: ForeshadowId[]
+}
+
+interface CanonicalizedForeshadowPlan {
+  plan: ChapterPlan
+  conflictingEventIds: ForeshadowId[]
+}
+
+function canonicalizeForeshadowClaimIds(
+  memory: StoryMemory,
+  ids: readonly ForeshadowId[]
+): ForeshadowId[] {
+  const canonicalIds: ForeshadowId[] = []
+  const seen = new Set<ForeshadowId>()
+
+  for (const id of ids) {
+    const canonicalId = resolveCanonicalForeshadowId(memory, id) ?? id
+    if (seen.has(canonicalId)) continue
+    seen.add(canonicalId)
+    canonicalIds.push(canonicalId)
+  }
+
+  return canonicalIds
+}
+
+function areFulfillmentEventsStructurallyCompatible(
+  left: ForeshadowFulfillEvent,
+  right: ForeshadowFulfillEvent
+): boolean {
+  return (
+    left.chapterIndex === right.chapterIndex &&
+    left.source === right.source &&
+    left.evidence?.paragraphIndex === right.evidence?.paragraphIndex
+  )
+}
+
+function canonicalizePlanForeshadowClaims(
+  memory: StoryMemory,
+  plan: ChapterPlan
+): CanonicalizedForeshadowPlan {
+  const expectedEvents: StoryEvent[] = []
+  const firstEventByCanonicalId = new Map<
+    ForeshadowId,
+    { event: ForeshadowFulfillEvent; originalId: ForeshadowId }
+  >()
+  const conflictingEventIds = new Set<ForeshadowId>()
+
+  for (const event of plan.expectedEvents ?? []) {
+    if (event.type !== 'foreshadow-fulfill') {
+      expectedEvents.push(event)
+      continue
+    }
+
+    const canonicalId = resolveCanonicalForeshadowId(memory, event.foreshadowId)
+    if (canonicalId === null) {
+      expectedEvents.push(event)
+      continue
+    }
+
+    const canonicalEvent = { ...event, foreshadowId: canonicalId }
+    const firstEvent = firstEventByCanonicalId.get(canonicalId)
+    if (!firstEvent) {
+      firstEventByCanonicalId.set(canonicalId, {
+        event: canonicalEvent,
+        originalId: event.foreshadowId,
+      })
+      expectedEvents.push(canonicalEvent)
+      continue
+    }
+    if (firstEvent.originalId === event.foreshadowId) {
+      if (areFulfillmentEventsStructurallyCompatible(firstEvent.event, canonicalEvent)) continue
+      expectedEvents.push(canonicalEvent)
+      continue
+    }
+    if (areFulfillmentEventsStructurallyCompatible(firstEvent.event, canonicalEvent)) continue
+
+    conflictingEventIds.add(canonicalId)
+    expectedEvents.push(canonicalEvent)
+  }
+
+  return {
+    plan: {
+      ...plan,
+      fulfilledForeshadowIds: canonicalizeForeshadowClaimIds(
+        memory,
+        plan.fulfilledForeshadowIds ?? []
+      ),
+      expectedEvents,
+    },
+    conflictingEventIds: Array.from(conflictingEventIds),
+  }
+}
+
+function canonicalizeChapterForeshadowClaims<T extends ForeshadowClaimOutline>(
+  memory: StoryMemory,
+  outline: T,
+  plan: ChapterPlan | null
+): { outline: T; plan: ChapterPlan | null; conflictingEventIds: ForeshadowId[] } {
+  const canonicalOutline = {
+    ...outline,
+    ...(outline.fulfilledForeshadowIds
+      ? {
+          fulfilledForeshadowIds: canonicalizeForeshadowClaimIds(
+            memory,
+            outline.fulfilledForeshadowIds
+          ),
+        }
+      : {}),
+    ...(outline.deferredForeshadowIds
+      ? {
+          deferredForeshadowIds: canonicalizeForeshadowClaimIds(
+            memory,
+            outline.deferredForeshadowIds
+          ),
+        }
+      : {}),
+  }
+
+  const canonicalPlan = plan ? canonicalizePlanForeshadowClaims(memory, plan) : null
+  return {
+    outline: canonicalOutline,
+    plan: canonicalPlan?.plan ?? null,
+    conflictingEventIds: canonicalPlan?.conflictingEventIds ?? [],
+  }
+}
+
+function canonicalizeStateForeshadowClaims(
+  state: ReducedGraphState,
+  chapterIndex: number
+): ReducedGraphState {
+  const memory = state.storyMemory
+  const outlineItem = state.outline[chapterIndex]
+  if (!memory || !outlineItem) return state
+
+  const canonical = canonicalizeChapterForeshadowClaims(memory, outlineItem, null)
+  const outline = [...state.outline]
+  outline[chapterIndex] = canonical.outline
+  return { ...state, outline }
+}
+
 function deferForeshadowClaims(
   state: ReducedGraphState,
   chapterIndex: number,
@@ -335,23 +490,42 @@ function deferForeshadowClaims(
 function evaluateScheduledForeshadowPlanEvidence(
   chapterPlan: ChapterPlan,
   outlineFulfilledForeshadowIds: string[],
-  requestedChapterIndex: number
+  requestedChapterIndex: number,
+  memory: StoryMemory | null | undefined
 ): ScheduledForeshadowPlanEvaluation {
+  const canonicalized = memory
+    ? canonicalizeChapterForeshadowClaims(
+        memory,
+        { fulfilledForeshadowIds: outlineFulfilledForeshadowIds },
+        chapterPlan
+      )
+    : {
+        outline: { fulfilledForeshadowIds: outlineFulfilledForeshadowIds },
+        plan: chapterPlan,
+        conflictingEventIds: [],
+      }
+  const canonicalPlan = canonicalized.plan ?? chapterPlan
+  const canonicalOutlineFulfilledIds = canonicalized.outline.fulfilledForeshadowIds ?? []
   const declarationIds = getMissingScheduledForeshadowIds(
-    chapterPlan.fulfilledForeshadowIds,
-    outlineFulfilledForeshadowIds
+    canonicalPlan.fulfilledForeshadowIds,
+    canonicalOutlineFulfilledIds
   )
   const eventForeshadowIds = new Set<string>()
-  for (const event of chapterPlan.expectedEvents ?? []) {
+  for (const event of canonicalPlan.expectedEvents ?? []) {
     if (event.type === 'foreshadow-fulfill' && event.chapterIndex === requestedChapterIndex) {
       eventForeshadowIds.add(event.foreshadowId)
     }
   }
   const missing = {
     declarationIds,
-    eventIds: outlineFulfilledForeshadowIds.filter((id) => !eventForeshadowIds.has(id)),
+    eventIds: Array.from(
+      new Set([
+        ...canonicalOutlineFulfilledIds.filter((id) => !eventForeshadowIds.has(id)),
+        ...canonicalized.conflictingEventIds,
+      ])
+    ),
   }
-  return { missing, plan: { ...chapterPlan, chapterIndex: requestedChapterIndex } }
+  return { missing, plan: { ...canonicalPlan, chapterIndex: requestedChapterIndex } }
 }
 
 function hasMissingScheduledForeshadowPlanEvidence(
@@ -1005,7 +1179,10 @@ async function generateChapterOutlineIfNeeded(
       throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：${output.error || '未知错误'}`)
     }
 
-    const candidate = output.data as ChapterOutlineResult
+    const rawCandidate = output.data as ChapterOutlineResult
+    const candidate = state.storyMemory
+      ? canonicalizeChapterForeshadowClaims(state.storyMemory, rawCandidate, null).outline
+      : rawCandidate
     if (candidate.conflict) {
       throw new Error(
         `第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`
@@ -1247,6 +1424,7 @@ async function expandOutlineForChapterInternal(
 ): Promise<ExpandedOutline> {
   const provider = getProvider(source)
   let pendingIssues: Issue[] = []
+  state = canonicalizeStateForeshadowClaims(state, chapterIndex)
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
   const jitBaseState = state
   const persistedOutline = Boolean(state.outline[chapterIndex]?.description.trim())
@@ -1484,7 +1662,8 @@ async function expandOutlineForChapterInternal(
   let planEvaluation = evaluateScheduledForeshadowPlanEvidence(
     chapterPlan,
     outlineFulfilledForeshadowIds,
-    chapterIndex
+    chapterIndex,
+    state.storyMemory
   )
   if (hasMissingScheduledForeshadowPlanEvidence(planEvaluation.missing)) {
     const firstMissingEvidenceIds = getMissingForeshadowPlanEvidenceIds(planEvaluation.missing)
@@ -1525,7 +1704,8 @@ async function expandOutlineForChapterInternal(
     planEvaluation = evaluateScheduledForeshadowPlanEvidence(
       replanned,
       outlineFulfilledForeshadowIds,
-      chapterIndex
+      chapterIndex,
+      state.storyMemory
     )
     if (hasMissingScheduledForeshadowPlanEvidence(planEvaluation.missing)) {
       const secondMissingEvidenceIds = getMissingForeshadowPlanEvidenceIds(planEvaluation.missing)
@@ -1665,7 +1845,8 @@ async function expandOutlineForChapterInternal(
       const replanEvaluation = evaluateScheduledForeshadowPlanEvidence(
         replanned,
         outlineFulfilledForeshadowIds,
-        chapterIndex
+        chapterIndex,
+        state.storyMemory
       )
       if (hasMissingScheduledForeshadowPlanEvidence(replanEvaluation.missing)) {
         throw buildScheduledForeshadowPlanError(
@@ -1715,7 +1896,8 @@ async function expandOutlineForChapterInternal(
     const replanEvaluation = evaluateScheduledForeshadowPlanEvidence(
       replanned,
       outlineFulfilledForeshadowIds,
-      chapterIndex
+      chapterIndex,
+      state.storyMemory
     )
     if (hasMissingScheduledForeshadowPlanEvidence(replanEvaluation.missing)) {
       throw buildScheduledForeshadowPlanError(

@@ -1,13 +1,14 @@
 import type { StoryMemory, ForeshadowId, BeatId, TaskId, EntityId } from '../types/story-memory.js'
+import { getCanonicalForeshadows } from './foreshadow-alias.js'
 
 export function getActiveForeshadows(memory: StoryMemory): ForeshadowId[] {
-  return Object.values(memory.foreshadows)
+  return getCanonicalForeshadows(memory)
     .filter((f) => f.fulfilledIn === null && f.waivedIn === undefined)
     .map((f) => f.id)
 }
 
 export function getOverdueForeshadows(memory: StoryMemory, currentChapter: number): ForeshadowId[] {
-  return Object.values(memory.foreshadows)
+  return getCanonicalForeshadows(memory)
     .filter(
       (f) =>
         f.fulfilledIn === null &&

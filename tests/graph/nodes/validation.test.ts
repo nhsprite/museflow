@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { vi } from 'vitest'
 import { normalizeIssues } from '../../../src/utils/agent-output.js'
 import type { ModelProvider } from '../../../src/model/provider.js'
+import * as validationNode from '../../../src/graph/nodes/validation.js'
+import type { ReducedGraphState } from '../../../src/graph/state.js'
+import { createEmptyStoryMemory } from '../../../src/story-memory/projector.js'
 
 describe('normalizeIssues', () => {
   it('keeps issue text when no structured model judge is available', async () => {
@@ -43,5 +46,55 @@ describe('normalizeIssues', () => {
     )
 
     expect(issues).toHaveLength(0)
+  })
+})
+
+describe('continuity context', () => {
+  it('renders one active obligation using only its canonical foreshadow record', () => {
+    const buildContinuityContext = (
+      validationNode as typeof validationNode & {
+        buildContinuityContext?: (state: ReducedGraphState) => string
+      }
+    ).buildContinuityContext
+    expect(buildContinuityContext).toBeTypeOf('function')
+    if (!buildContinuityContext) return
+
+    const memory = createEmptyStoryMemory()
+    memory.foreshadows = {
+      'fs-early': {
+        id: 'fs-early',
+        text: 'canonical planted text',
+        kind: 'plot',
+        introducedIn: 1,
+        expectedFulfillChapter: 5,
+        fulfilledIn: null,
+        resolutionPolicy: 'must_resolve',
+        required: true,
+        beatId: null,
+      },
+      'fs-late': {
+        id: 'fs-late',
+        text: 'duplicate planted text',
+        kind: 'plot',
+        introducedIn: 2,
+        expectedFulfillChapter: 5,
+        fulfilledIn: null,
+        resolutionPolicy: 'must_resolve',
+        required: true,
+        beatId: null,
+        mergedInto: 'fs-early',
+      },
+    }
+
+    const context = buildContinuityContext({
+      characters: [],
+      storyMemory: memory,
+      storyState: null,
+    } as ReducedGraphState)
+
+    expect(context.match(/fs-early/g)).toHaveLength(1)
+    expect(context).toContain('canonical planted text')
+    expect(context).not.toContain('fs-late')
+    expect(context).not.toContain('duplicate planted text')
   })
 })

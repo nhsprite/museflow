@@ -356,8 +356,11 @@ describe('foreshadow deadline policy', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
       foreshadows: {
-        unscheduled: { ...memoryForeshadow('a-unscheduled', null, true, null), introducedIn: 0 },
-        finite: {
+        'a-unscheduled': {
+          ...memoryForeshadow('a-unscheduled', null, true, null),
+          introducedIn: 0,
+        },
+        'z-finite': {
           ...memoryForeshadow('z-finite', null, true, Number.MAX_SAFE_INTEGER),
           introducedIn: 5,
         },
@@ -373,10 +376,10 @@ describe('foreshadow deadline policy', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
       foreshadows: {
-        accentedLower: memoryForeshadow('éclair', null, true, 5),
-        asciiLower: memoryForeshadow('apple', null, true, 5),
-        asciiUpper: memoryForeshadow('Zoo', null, true, 5),
-        accentedUpper: memoryForeshadow('Äther', null, true, 5),
+        éclair: memoryForeshadow('éclair', null, true, 5),
+        apple: memoryForeshadow('apple', null, true, 5),
+        Zoo: memoryForeshadow('Zoo', null, true, 5),
+        Äther: memoryForeshadow('Äther', null, true, 5),
       },
     }
 

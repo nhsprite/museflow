@@ -7,6 +7,7 @@ import {
   type ModelProvider,
 } from '../../../model/provider.js'
 import { splitContentParagraphs } from '../../../utils/text.js'
+import { resolveCanonicalForeshadowId } from '../../../story-memory/foreshadow-alias.js'
 
 export interface VerifyForeshadowFulfillmentsInput {
   provider: ModelProvider
@@ -65,34 +66,69 @@ export async function verifyForeshadowFulfillments(
   const paragraphs = splitContentParagraphs(input.chapterContent)
   const prepared: VerificationCandidate[] = []
   const preflightRejections: ForeshadowFulfillmentRejection[] = []
+  const candidateByCanonicalId = new Map<
+    string,
+    {
+      prepared?: VerificationCandidate
+      rejection?: ForeshadowFulfillmentRejection
+    }
+  >()
 
   for (const event of input.candidates) {
     const paragraphIndex = event.evidence?.paragraphIndex ?? null
-    const planted = input.memory.foreshadows[event.foreshadowId]
+    const canonicalId = resolveCanonicalForeshadowId(input.memory, event.foreshadowId)
+    if (canonicalId === null) {
+      if (!candidateByCanonicalId.has(event.foreshadowId)) {
+        candidateByCanonicalId.set(event.foreshadowId, {
+          rejection: verificationFailure(
+            event.foreshadowId,
+            paragraphIndex,
+            '伏笔源记录不可用于回收验证'
+          ),
+        })
+      }
+      continue
+    }
+
+    const existing = candidateByCanonicalId.get(canonicalId)
+    if (existing?.prepared) continue
+
+    const planted = input.memory.foreshadows[canonicalId]
     const evidenceParagraph =
       paragraphIndex !== null && Number.isInteger(paragraphIndex)
         ? paragraphs[paragraphIndex - 1]
         : undefined
 
     if (!planted || planted.fulfilledIn !== null || planted.waivedIn !== undefined) {
-      preflightRejections.push(
-        verificationFailure(event.foreshadowId, paragraphIndex, '伏笔源记录不可用于回收验证')
-      )
+      candidateByCanonicalId.set(canonicalId, {
+        rejection:
+          existing?.rejection ??
+          verificationFailure(canonicalId, paragraphIndex, '伏笔源记录不可用于回收验证'),
+      })
       continue
     }
     if (paragraphIndex === null || evidenceParagraph === undefined) {
-      preflightRejections.push(
-        verificationFailure(event.foreshadowId, paragraphIndex, '回收事件缺少有效证据段落')
-      )
+      candidateByCanonicalId.set(canonicalId, {
+        rejection:
+          existing?.rejection ??
+          verificationFailure(canonicalId, paragraphIndex, '回收事件缺少有效证据段落'),
+      })
       continue
     }
 
-    prepared.push({
-      foreshadowId: event.foreshadowId,
-      plantedText: planted.text,
-      evidenceParagraphIndex: paragraphIndex,
-      evidenceParagraph,
+    candidateByCanonicalId.set(canonicalId, {
+      prepared: {
+        foreshadowId: canonicalId,
+        plantedText: planted.text,
+        evidenceParagraphIndex: paragraphIndex,
+        evidenceParagraph,
+      },
     })
+  }
+
+  for (const candidate of candidateByCanonicalId.values()) {
+    if (candidate.prepared) prepared.push(candidate.prepared)
+    else if (candidate.rejection) preflightRejections.push(candidate.rejection)
   }
 
   if (prepared.length === 0) return preflightRejections

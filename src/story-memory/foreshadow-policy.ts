@@ -39,7 +39,7 @@ export function groupActiveForeshadowsByPolicy(memory: StoryMemory): ActiveFores
     mayRemainOpen: [],
   }
 
-  for (const foreshadow of Object.values(memory.foreshadows)) {
+  for (const foreshadow of getCanonicalForeshadows(memory)) {
     if (foreshadow.fulfilledIn !== null || foreshadow.waivedIn !== undefined) continue
     switch (foreshadow.resolutionPolicy) {
       case 'must_resolve':
@@ -166,7 +166,7 @@ export function getRequiredForeshadowsForScheduling(
 }
 
 export function getMandatoryForeshadows(memory: StoryMemory): ForeshadowMemory[] {
-  return Object.values(memory.foreshadows)
+  return getCanonicalForeshadows(memory)
     .filter(
       (foreshadow) =>
         foreshadow.resolutionPolicy === 'must_resolve' &&
@@ -236,7 +236,7 @@ export function selectOpportunityForeshadowsForChapter(
   const excludedIds = options.excludedIds ?? new Set<ForeshadowId>()
   const lastConsideredChapterById =
     options.lastConsideredChapterById ?? new Map<ForeshadowId, number>()
-  const eligible = Object.values(memory.foreshadows).filter(
+  const eligible = getCanonicalForeshadows(memory).filter(
     (foreshadow) =>
       (foreshadow.resolutionPolicy === 'should_resolve' ||
         foreshadow.resolutionPolicy === 'may_remain_open') &&

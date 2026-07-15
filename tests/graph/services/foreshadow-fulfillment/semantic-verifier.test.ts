@@ -22,6 +22,13 @@ function foreshadow(id: string, text: string): ForeshadowMemory {
   }
 }
 
+function mergedMemory(): StoryMemory {
+  return memoryWithForeshadows(foreshadow('fs-early', 'canonical planted text'), {
+    ...foreshadow('fs-late', 'duplicate planted text'),
+    mergedInto: 'fs-early',
+  })
+}
+
 function memoryWithForeshadows(...items: ForeshadowMemory[]): StoryMemory {
   return {
     ...createEmptyStoryMemory(),
@@ -201,5 +208,58 @@ describe('verifyForeshadowFulfillments', () => {
         reason: expect.stringContaining('provider unavailable'),
       },
     ])
+  })
+
+  it('resolves raw alias events to one canonical candidate and keeps the first valid evidence', async () => {
+    const provider = providerWithStructuredResponse({
+      judgments: [{ foreshadowId: 'fs-early', verdict: 'not_fulfilled', reason: '证据尚未闭环。' }],
+    })
+
+    const rejections = await verifyForeshadowFulfillments({
+      provider,
+      memory: mergedMemory(),
+      chapterContent: '第一段证据。\n\n第二段证据。',
+      candidates: [fulfillment('fs-late', 2), fulfillment('fs-early', 1)],
+    })
+
+    expect(rejections).toEqual([
+      {
+        foreshadowId: 'fs-early',
+        evidenceParagraphIndex: 2,
+        verdict: 'not_fulfilled',
+        reason: '证据尚未闭环。',
+      },
+    ])
+
+    const chatStructured = vi.mocked(provider.chatStructured!)
+    expect(chatStructured).toHaveBeenCalledTimes(1)
+    const prompt = chatStructured.mock.calls[0]?.[0].map((message) => message.content).join('\n')
+    expect(prompt).toContain('canonical planted text')
+    expect(prompt).not.toContain('duplicate planted text')
+    expect(prompt?.match(/"foreshadowId": "fs-early"/g)).toHaveLength(1)
+    expect(prompt).not.toContain('fs-late')
+    expect(prompt).toContain('第二段证据。')
+    expect(prompt).not.toContain('第一段证据。')
+  })
+
+  it('uses the first structurally valid event when an earlier alias has invalid evidence', async () => {
+    const provider = providerWithStructuredResponse({
+      judgments: [{ foreshadowId: 'fs-early', verdict: 'fulfilled', reason: '证据完整。' }],
+    })
+
+    const rejections = await verifyForeshadowFulfillments({
+      provider,
+      memory: mergedMemory(),
+      chapterContent: '唯一有效证据。',
+      candidates: [fulfillment('fs-late', 4), fulfillment('fs-early', 1)],
+    })
+
+    expect(rejections).toEqual([])
+    const prompt = vi
+      .mocked(provider.chatStructured!)
+      .mock.calls[0]?.[0].map((message) => message.content)
+      .join('\n')
+    expect(prompt).toContain('唯一有效证据。')
+    expect(prompt).toContain('"evidenceParagraphIndex": 1')
   })
 })

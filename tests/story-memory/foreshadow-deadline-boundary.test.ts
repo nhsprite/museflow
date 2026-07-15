@@ -103,4 +103,30 @@ describe('foreshadow deadline boundary', () => {
     expect(corrected.foreshadows['fs-active']?.expectedFulfillChapter).toBe(61)
     expect(buildForeshadowDeadlineBoundaryCorrectionEvents(corrected, 61, 58)).toEqual([])
   })
+
+  it('corrects an aliased obligation only once under its canonical ID', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      introduce('fs-early'),
+      extend('fs-early'),
+      introduce('fs-late'),
+      extend('fs-late'),
+      {
+        id: 'evt-merge',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'same structured obligation',
+        chapterIndex: 57,
+        source: 'outline',
+      },
+    ])
+
+    expect(buildForeshadowDeadlineBoundaryCorrectionEvents(memory, 61, 58)).toEqual([
+      expect.objectContaining({
+        type: 'foreshadow-policy-set',
+        foreshadowId: 'fs-early',
+        expectedFulfillChapter: 61,
+      }),
+    ])
+  })
 })

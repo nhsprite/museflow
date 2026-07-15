@@ -8,6 +8,51 @@ import {
   getItemHolder,
 } from '../../src/story-memory/queries.js'
 import { createEmptyStoryMemory, applyEvents } from '../../src/story-memory/projector.js'
+import {
+  getBoundaryBlockingForeshadowDetails,
+  getMandatoryForeshadows,
+  groupActiveForeshadowsByPolicy,
+  selectOpportunityForeshadowsForChapter,
+} from '../../src/story-memory/foreshadow-policy.js'
+import type { StoryEvent } from '../../src/types/story-memory.js'
+
+function mergedForeshadowMemory(
+  resolutionPolicy: 'must_resolve' | 'should_resolve' = 'must_resolve'
+) {
+  const expectedFulfillChapter = resolutionPolicy === 'must_resolve' ? 5 : null
+  const events: StoryEvent[] = [
+    {
+      id: 'introduce-early',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-early',
+      text: 'canonical planted text',
+      resolutionPolicy,
+      expectedFulfillChapter,
+      chapterIndex: 1,
+      source: 'outline',
+    },
+    {
+      id: 'introduce-late',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-late',
+      text: 'duplicate planted text',
+      resolutionPolicy,
+      expectedFulfillChapter,
+      chapterIndex: 2,
+      source: 'outline',
+    },
+    {
+      id: 'merge-foreshadows',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'same structured obligation',
+      chapterIndex: 3,
+      source: 'outline',
+    },
+  ]
+  return applyEvents(createEmptyStoryMemory(), events)
+}
 
 describe('queries', () => {
   it('returns active foreshadows', () => {
@@ -37,6 +82,31 @@ describe('queries', () => {
     ])
     memory.foreshadows['f-1']!.required = true
     expect(getOverdueForeshadows(memory, 5)).toContain('f-1')
+  })
+
+  it('returns only the canonical active and mandatory foreshadow obligation', () => {
+    const memory = mergedForeshadowMemory()
+
+    expect(getActiveForeshadows(memory)).toEqual(['fs-early'])
+    expect(getMandatoryForeshadows(memory).map(({ id }) => id)).toEqual(['fs-early'])
+    expect(getBoundaryBlockingForeshadowDetails(memory, 5, false).map(({ id }) => id)).toEqual([
+      'fs-early',
+    ])
+    expect(groupActiveForeshadowsByPolicy(memory).mustResolve.map(({ id }) => id)).toEqual([
+      'fs-early',
+    ])
+  })
+
+  it('offers an aliased opportunity only once under its canonical ID', () => {
+    const memory = mergedForeshadowMemory('should_resolve')
+
+    expect(
+      selectOpportunityForeshadowsForChapter(memory, {
+        chapterNumber: 5,
+        minFulfillDistance: 0,
+        capacity: 3,
+      }).map(({ foreshadow }) => foreshadow.id)
+    ).toEqual(['fs-early'])
   })
 
   it('excludes waived foreshadows from active and overdue queries', () => {

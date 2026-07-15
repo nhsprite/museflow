@@ -7,6 +7,7 @@ import {
 } from '../../../model/provider.js'
 import type { ChapterOutline } from '../../../types/outline.js'
 import type { StoryMemory } from '../../../types/story-memory.js'
+import { resolveCanonicalForeshadowId } from '../../../story-memory/foreshadow-alias.js'
 
 export type ForeshadowPlanningVerdict =
   'fulfilled' | 'not_fulfilled' | 'uncertain' | 'verification_failed'
@@ -75,10 +76,12 @@ const SYSTEM_PROMPT = `你是独立的长篇叙事伏笔规划审校员。请逐
 export async function verifyForeshadowPlan(
   input: VerifyForeshadowPlanInput
 ): Promise<ForeshadowPlanningJudgment[]> {
-  const claimedIds = collectClaimedForeshadowIds(input.outline, input.plan)
+  const claimedIds = collectClaimedForeshadowIds(input.memory, input.outline, input.plan)
   if (claimedIds.length === 0) return []
 
-  const mandatoryIds = new Set(input.mandatoryIds)
+  const mandatoryIds = new Set(
+    canonicalizeIdsPreservingUnresolved(input.memory, input.mandatoryIds)
+  )
   const prepared: VerificationCandidate[] = []
   const preflightJudgments: ForeshadowPlanningJudgment[] = []
 
@@ -103,8 +106,10 @@ export async function verifyForeshadowPlan(
         description: input.outline.description,
       },
       plannedSections: input.plan.sections,
-      expectedFulfillmentEvents: input.plan.expectedEvents.filter(
-        (event) => event.type === 'foreshadow-fulfill' && event.foreshadowId === foreshadowId
+      expectedFulfillmentEvents: getExpectedFulfillmentEvents(
+        input.memory,
+        input.plan,
+        foreshadowId
       ),
     })
   }
@@ -165,17 +170,52 @@ export async function verifyForeshadowPlan(
   ]
 }
 
-function collectClaimedForeshadowIds(outline: ChapterOutline, plan: ChapterPlan): string[] {
+function collectClaimedForeshadowIds(
+  memory: StoryMemory,
+  outline: ChapterOutline,
+  plan: ChapterPlan
+): string[] {
   const eventIds = plan.expectedEvents.flatMap((event) =>
     event.type === 'foreshadow-fulfill' ? [event.foreshadowId] : []
   )
-  return Array.from(
-    new Set([
-      ...(outline.fulfilledForeshadowIds ?? []),
-      ...plan.fulfilledForeshadowIds,
-      ...eventIds,
-    ])
-  )
+  return canonicalizeIdsPreservingUnresolved(memory, [
+    ...(outline.fulfilledForeshadowIds ?? []),
+    ...plan.fulfilledForeshadowIds,
+    ...eventIds,
+  ])
+}
+
+function getExpectedFulfillmentEvents(
+  memory: StoryMemory,
+  plan: ChapterPlan,
+  canonicalId: string
+): ChapterPlan['expectedEvents'] {
+  for (const event of plan.expectedEvents) {
+    if (
+      event.type === 'foreshadow-fulfill' &&
+      resolveCanonicalForeshadowId(memory, event.foreshadowId) === canonicalId
+    ) {
+      return [{ ...event, foreshadowId: canonicalId }]
+    }
+  }
+  return []
+}
+
+function canonicalizeIdsPreservingUnresolved(
+  memory: StoryMemory,
+  ids: readonly string[]
+): string[] {
+  const canonicalIds: string[] = []
+  const seen = new Set<string>()
+
+  for (const id of ids) {
+    const canonicalId = resolveCanonicalForeshadowId(memory, id) ?? id
+    if (seen.has(canonicalId)) continue
+    seen.add(canonicalId)
+    canonicalIds.push(canonicalId)
+  }
+
+  return canonicalIds
 }
 
 function parseCompleteJudgments(

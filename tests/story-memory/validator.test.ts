@@ -184,6 +184,69 @@ describe('validateChapterEvents', () => {
     expect(result.falseFulfillments).toContain('f-1')
   })
 
+  it('treats canonical and alias fulfillment claims as one satisfied obligation', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        text: 'canonical planted text',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 3,
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        text: 'duplicate planted text',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 3,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'merge',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'same structured obligation',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+    const plan = createEmptyChapterPlan(2, {
+      fulfilledForeshadowIds: ['fs-late', 'fs-early'],
+      expectedEvents: [
+        {
+          id: 'expected-canonical',
+          type: 'foreshadow-fulfill',
+          foreshadowId: 'fs-early',
+          chapterIndex: 2,
+          source: 'chapter',
+        },
+      ],
+    })
+    const actualEvents = [
+      {
+        id: 'actual-alias',
+        type: 'foreshadow-fulfill' as const,
+        foreshadowId: 'fs-late',
+        chapterIndex: 2,
+        source: 'chapter' as const,
+      },
+    ]
+
+    const result = validateChapterEvents(memory, 2, plan, actualEvents)
+
+    expect(result.missingEvents).toEqual([])
+    expect(result.unexpectedEvents).toEqual([])
+    expect(result.falseFulfillments).toEqual([])
+    expect(result.overdueForeshadows).toEqual([])
+    expect(result.unfulfilledRequiredForeshadows).toEqual([])
+  })
+
   it('detects claimed but unproven beats', () => {
     const memory = createEmptyStoryMemory()
     const plan = createEmptyChapterPlan(2, {

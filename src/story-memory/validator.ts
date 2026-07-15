@@ -11,6 +11,7 @@ import { diffEvents } from './diff.js'
 import { applyEvents } from './projector.js'
 import { partitionInvalidForeshadowIntroductions } from './foreshadow-policy.js'
 import { splitContentParagraphs } from '../utils/text.js'
+import { getCanonicalForeshadows, resolveCanonicalForeshadowId } from './foreshadow-alias.js'
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -78,15 +79,17 @@ export function validateChapterEvents(
   const { valid: acceptedEvents, invalid: invalidDeadlineEvents } =
     partitionInvalidForeshadowIntroductions(validEvents)
   const effectiveMemory = applyNewChapterEvents(memory, acceptedEvents)
+  const canonicalExpected = canonicalizeForeshadowFulfillmentEvents(memory, chapterExpected)
+  const canonicalAccepted = canonicalizeForeshadowFulfillmentEvents(memory, acceptedEvents)
 
-  const { missing, unexpected } = diffEvents(chapterExpected, acceptedEvents)
+  const { missing, unexpected } = diffEvents(canonicalExpected, canonicalAccepted)
 
   const unfulfilledRequiredForeshadows: ForeshadowId[] = []
   const overdueForeshadows: ForeshadowId[] = []
   const falseFulfillments: ForeshadowId[] = []
   const currentChapter = chapterIndex + 1
 
-  for (const fs of Object.values(effectiveMemory.foreshadows)) {
+  for (const fs of getCanonicalForeshadows(effectiveMemory)) {
     if (
       fs.resolutionPolicy === 'must_resolve' &&
       fs.fulfilledIn === null &&
@@ -105,10 +108,16 @@ export function validateChapterEvents(
     }
   }
 
-  for (const id of plan.fulfilledForeshadowIds ?? []) {
-    const actualFulfilled = acceptedEvents.some(
-      (e) => e.type === 'foreshadow-fulfill' && e.foreshadowId === id
+  const actualFulfilledIds = new Set(
+    canonicalAccepted.flatMap((event) =>
+      event.type === 'foreshadow-fulfill' ? [event.foreshadowId] : []
     )
+  )
+  for (const id of canonicalizeKnownForeshadowIds(
+    effectiveMemory,
+    plan.fulfilledForeshadowIds ?? []
+  )) {
+    const actualFulfilled = actualFulfilledIds.has(id)
     if (!actualFulfilled) {
       falseFulfillments.push(id)
     }
@@ -148,6 +157,46 @@ export function validateChapterEvents(
     stateConflicts: detectStateConflicts(acceptedEvents),
     ...validateFinalStateDeclarations(acceptedEvents, options.finalStateDeclarations ?? []),
   }
+}
+
+function canonicalizeForeshadowFulfillmentEvents(
+  memory: StoryMemory,
+  events: readonly StoryEvent[]
+): StoryEvent[] {
+  const canonicalEvents: StoryEvent[] = []
+  const seenForeshadowIds = new Set<ForeshadowId>()
+
+  for (const event of events) {
+    if (event.type !== 'foreshadow-fulfill') {
+      canonicalEvents.push(event)
+      continue
+    }
+
+    const foreshadowId = resolveCanonicalForeshadowId(memory, event.foreshadowId)
+    const canonicalId = foreshadowId ?? event.foreshadowId
+    if (seenForeshadowIds.has(canonicalId)) continue
+    seenForeshadowIds.add(canonicalId)
+    canonicalEvents.push({ ...event, foreshadowId: canonicalId })
+  }
+
+  return canonicalEvents
+}
+
+function canonicalizeKnownForeshadowIds(
+  memory: StoryMemory,
+  ids: readonly ForeshadowId[]
+): ForeshadowId[] {
+  const canonicalIds: ForeshadowId[] = []
+  const seen = new Set<ForeshadowId>()
+
+  for (const id of ids) {
+    const canonicalId = resolveCanonicalForeshadowId(memory, id) ?? id
+    if (seen.has(canonicalId)) continue
+    seen.add(canonicalId)
+    canonicalIds.push(canonicalId)
+  }
+
+  return canonicalIds
 }
 
 function filterEventsByEvidence(

@@ -24,6 +24,13 @@ function foreshadow(id: string, text: string): ForeshadowMemory {
   }
 }
 
+function mergedMemory(): StoryMemory {
+  return memoryWithForeshadows(foreshadow('fs-early', 'canonical planted text'), {
+    ...foreshadow('fs-late', 'duplicate planted text'),
+    mergedInto: 'fs-early',
+  })
+}
+
 function memoryWithForeshadows(...items: ForeshadowMemory[]): StoryMemory {
   return {
     ...createEmptyStoryMemory(),
@@ -265,5 +272,39 @@ describe('verifyForeshadowPlan', () => {
       },
     ])
     expect(provider.chatStructured).not.toHaveBeenCalled()
+  })
+
+  it('canonicalizes and deduplicates alias claims before semantic planning verification', async () => {
+    const provider = providerWithStructuredResponse({
+      judgments: [{ foreshadowId: 'fs-early', verdict: 'not_fulfilled', reason: '规划仍不完整。' }],
+    })
+
+    const judgments = await verifyForeshadowPlan({
+      provider,
+      memory: mergedMemory(),
+      outline: outline(['fs-late', 'fs-early']),
+      plan: plan({
+        fulfilledForeshadowIds: ['fs-early', 'fs-late'],
+        expectedEvents: [fulfillment('fs-late'), fulfillment('fs-early')],
+      }),
+      mandatoryIds: ['fs-late'],
+    })
+
+    expect(judgments).toEqual([
+      {
+        foreshadowId: 'fs-early',
+        verdict: 'not_fulfilled',
+        reason: '规划仍不完整。',
+        mandatory: true,
+      },
+    ])
+
+    const chatStructured = vi.mocked(provider.chatStructured!)
+    expect(chatStructured).toHaveBeenCalledTimes(1)
+    const prompt = chatStructured.mock.calls[0]?.[0].map((message) => message.content).join('\n')
+    expect(prompt).toContain('canonical planted text')
+    expect(prompt).not.toContain('duplicate planted text')
+    expect(prompt?.match(/"foreshadowId": "fs-early"/g)).toHaveLength(2)
+    expect(prompt).not.toContain('"foreshadowId": "fs-late"')
   })
 })

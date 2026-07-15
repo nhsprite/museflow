@@ -1,5 +1,6 @@
 import type { StoryArc } from '../types/outline.js'
 import type { ForeshadowPolicySetEvent, StoryMemory } from '../types/story-memory.js'
+import { getCanonicalForeshadows } from './foreshadow-alias.js'
 import { isValidForeshadowDeadline } from './foreshadow-introduction.js'
 
 export interface StoryBoundarySources {
@@ -46,7 +47,7 @@ export function buildForeshadowDeadlineBoundaryCorrectionEvents(
 ): ForeshadowPolicySetEvent[] {
   if (!isValidBoundaryChapter(boundaryChapter)) return []
 
-  return Object.values(memory.foreshadows)
+  return getCanonicalForeshadows(memory)
     .filter(
       (foreshadow) =>
         foreshadow.resolutionPolicy === 'must_resolve' &&

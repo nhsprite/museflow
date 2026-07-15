@@ -55,9 +55,9 @@ describe('formatActForeshadowBoundaryPressure', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
       foreshadows: {
-        later: foreshadow('fs-later', 4),
-        boundary: foreshadow('fs-boundary', 3),
-        earlier: foreshadow('fs-earlier', 2),
+        'fs-later': foreshadow('fs-later', 4),
+        'fs-boundary': foreshadow('fs-boundary', 3),
+        'fs-earlier': foreshadow('fs-earlier', 2),
       },
     }
 
@@ -101,8 +101,8 @@ describe('formatActForeshadowBoundaryPressure', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
       foreshadows: {
-        unscheduled: foreshadow('fs-unscheduled', null),
-        future: foreshadow('fs-future', 30),
+        'fs-unscheduled': foreshadow('fs-unscheduled', null),
+        'fs-future': foreshadow('fs-future', 30),
       },
     }
 
@@ -119,12 +119,12 @@ describe('formatActForeshadowBoundaryPressure', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
       foreshadows: {
-        hard: foreshadow('fs-hard', 6),
-        soft: {
+        'fs-hard': foreshadow('fs-hard', 6),
+        'fs-soft': {
           ...foreshadow('fs-soft', null),
           resolutionPolicy: 'should_resolve',
         },
-        open: {
+        'fs-open': {
           ...foreshadow('fs-open', null),
           resolutionPolicy: 'may_remain_open',
           required: false,
