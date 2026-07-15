@@ -33,6 +33,7 @@ export async function reconcileForeshadowEquivalence(input: {
   memory: StoryMemory
   audit: ForeshadowEquivalenceAudit
   mergeEvents: ForeshadowMergeEvent[]
+  activeCanonicalCountBeforeMerge: number
 }> {
   const proposedEvents = [...(input.proposedEvents ?? [])]
   const candidateMemory = applyEventsWithMergeValidation(input.memory, proposedEvents)
@@ -47,6 +48,7 @@ export async function reconcileForeshadowEquivalence(input: {
       memory: candidateMemory,
       audit: createAudit(activeCanonicalIds),
       mergeEvents: [],
+      activeCanonicalCountBeforeMerge: activeCanonicalIds.length,
     }
   }
 
@@ -64,6 +66,7 @@ export async function reconcileForeshadowEquivalence(input: {
       memory: candidateMemory,
       audit: createAudit(activeCanonicalIds),
       mergeEvents: [],
+      activeCanonicalCountBeforeMerge: activeCanonicalIds.length,
     }
   }
 
@@ -86,6 +89,7 @@ export async function reconcileForeshadowEquivalence(input: {
     memory: reconciledMemory,
     audit: createAudit(collectActiveCanonicalIds(reconciledMemory)),
     mergeEvents,
+    activeCanonicalCountBeforeMerge: activeCanonicalIds.length,
   }
 }
 

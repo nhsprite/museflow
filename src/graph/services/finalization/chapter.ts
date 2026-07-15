@@ -333,7 +333,7 @@ export async function finalizeChapter(
             )
           }
           logger.info(
-            `[MuseFlow] 伏笔等价审计：活跃规范义务 ${reconciled.audit.activeCanonicalIds.length + reconciled.mergeEvents.length} -> ${reconciled.audit.activeCanonicalIds.length}`
+            `[MuseFlow] 伏笔等价审计：活跃规范义务 ${reconciled.activeCanonicalCountBeforeMerge} -> ${reconciled.audit.activeCanonicalIds.length}`
           )
         }
       } catch (error) {

@@ -1862,6 +1862,56 @@ describe('finalizeChapter', () => {
     expect(equivalenceLogs.join('\n')).not.toContain('same unresolved obligation')
   })
 
+  it('logs an exact zero-to-zero active count when equivalent draft introductions are fulfilled', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({
+        groups: [
+          {
+            ids: ['fs-second', 'fs-first'],
+            reason: 'same resolved obligation',
+          },
+        ],
+      }),
+    }
+    const state = buildState(tmpDir, {
+      storyMemory: createEmptyStoryMemory(),
+      draftChapterEvents: [
+        introduceForeshadow('fs-first', 0, 'first resolved record'),
+        introduceForeshadow('fs-second', 0, 'duplicate resolved record'),
+        {
+          id: 'evt-fulfill-fs-first',
+          type: 'foreshadow-fulfill',
+          foreshadowId: 'fs-first',
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        },
+        {
+          id: 'evt-fulfill-fs-second',
+          type: 'foreshadow-fulfill',
+          foreshadowId: 'fs-second',
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        },
+      ],
+    })
+
+    await finalizeChapter(state, provider)
+
+    const equivalenceLogs = infoSpy.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes('伏笔等价'))
+    expect(equivalenceLogs).toEqual([
+      '[MuseFlow] 伏笔等价合并 fs-second -> fs-first',
+      '[MuseFlow] 伏笔等价审计：活跃规范义务 0 -> 0',
+    ])
+    expect(equivalenceLogs.join('\n')).not.toContain('same resolved obligation')
+  })
+
   it('merges two introductions from one draft batch deterministically and applies the batch once', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
     const first = introduceForeshadow('fs-first', 0, 'first duplicate record')

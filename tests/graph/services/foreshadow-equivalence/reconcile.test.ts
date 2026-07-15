@@ -79,6 +79,7 @@ describe('reconcileForeshadowEquivalence', () => {
       },
     ])
     expect(resolveCanonicalForeshadowId(first.memory, 'fs-b')).toBe('fs-a')
+    expect(first.activeCanonicalCountBeforeMerge).toBe(2)
     expect(first.audit).toEqual(audit(['fs-a']))
     expect(second.memory).toBe(first.memory)
     expect(second.mergeEvents).toEqual([])
@@ -238,6 +239,76 @@ describe('reconcileForeshadowEquivalence', () => {
     expect(result.mergeEvents).toHaveLength(1)
     expect(result.memory.foreshadows['fs-a']?.fulfilledIn).toBe(2)
     expect(resolveCanonicalForeshadowId(result.memory, 'fs-b')).toBe('fs-a')
+    expect(result.audit).toEqual(audit([]))
+  })
+
+  it('counts immediately fulfilled proposed candidates as inactive before their merge', async () => {
+    const proposed: StoryEvent[] = [
+      introduce('fs-a', 0, 'first resolved record'),
+      introduce('fs-b', 0, 'duplicate resolved record'),
+      {
+        id: 'fulfill-fs-a',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-a',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      {
+        id: 'fulfill-fs-b',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-b',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+    ]
+    const provider = providerWithGroups([
+      { ids: ['fs-b', 'fs-a'], reason: 'same resolved obligation' },
+    ])
+
+    const result = await reconcileForeshadowEquivalence({
+      provider,
+      memory: createEmptyStoryMemory(),
+      chapterIndex: 0,
+      proposedEvents: proposed,
+    })
+
+    expect(result.activeCanonicalCountBeforeMerge).toBe(0)
+    expect(result.mergeEvents).toHaveLength(1)
+    expect(result.audit).toEqual(audit([]))
+  })
+
+  it('counts waived proposed candidates as inactive before their merge', async () => {
+    const proposed: StoryEvent[] = [
+      introduce('fs-a', 0, 'first waived record'),
+      introduce('fs-b', 0, 'duplicate waived record'),
+      {
+        id: 'waive-fs-a',
+        type: 'foreshadow-waive',
+        foreshadowId: 'fs-a',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'waive-fs-b',
+        type: 'foreshadow-waive',
+        foreshadowId: 'fs-b',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+    ]
+    const provider = providerWithGroups([
+      { ids: ['fs-b', 'fs-a'], reason: 'same waived obligation' },
+    ])
+
+    const result = await reconcileForeshadowEquivalence({
+      provider,
+      memory: createEmptyStoryMemory(),
+      chapterIndex: 0,
+      proposedEvents: proposed,
+    })
+
+    expect(result.activeCanonicalCountBeforeMerge).toBe(0)
+    expect(result.mergeEvents).toHaveLength(1)
     expect(result.audit).toEqual(audit([]))
   })
 

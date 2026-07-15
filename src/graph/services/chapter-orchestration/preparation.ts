@@ -5,7 +5,6 @@ import type { ModelProvider } from '../../../model/provider.js'
 import { reconcileForeshadowEquivalence } from '../foreshadow-equivalence/reconcile.js'
 import { projectForeshadowStack } from '../../../story-memory/foreshadow-policy.js'
 import { rebuildStoryMemoryVerifiedConstraints } from '../../../utils/story-memory-constraints.js'
-import { getCanonicalForeshadows } from '../../../story-memory/foreshadow-alias.js'
 import { logger } from '../../../utils/logger.js'
 
 /**
@@ -36,9 +35,6 @@ export async function prepareChapter(
     }
   }
 
-  const beforeActiveCount = getCanonicalForeshadows(state.storyMemory).filter(
-    (foreshadow) => foreshadow.fulfilledIn === null && foreshadow.waivedIn === undefined
-  ).length
   const reconciled = await reconcileForeshadowEquivalence({
     provider,
     memory: state.storyMemory,
@@ -67,7 +63,7 @@ export async function prepareChapter(
     )
   }
   logger.info(
-    `[MuseFlow] 伏笔等价审计：活跃规范义务 ${beforeActiveCount} -> ${reconciled.audit.activeCanonicalIds.length}`
+    `[MuseFlow] 伏笔等价审计：活跃规范义务 ${reconciled.activeCanonicalCountBeforeMerge} -> ${reconciled.audit.activeCanonicalIds.length}`
   )
 
   // 同章重跑（rewrite 循环或 checkpoint 恢复）时保留 session，
