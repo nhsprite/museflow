@@ -515,6 +515,63 @@ describe('expandOutlineForChapter', () => {
     expect(formattedOutline).toContain('【本章顺延伏笔】fs-b')
   })
 
+  it('offers an eligible null-deadline foreshadow as a natural recovery opportunity', async () => {
+    const state = stateWithScheduledForeshadows(2, '', [
+      createRequiredForeshadow('fs-natural', null),
+    ])
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '顺势揭示',
+        description: '本章核心事件自然揭示既有线索的真实含义。',
+        fulfilledForeshadowIds: ['fs-natural'],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: ['fs-natural'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-natural', 2)],
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual(['fs-natural'])
+    const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      verifiedConstraints?: string[]
+    }
+    expect(jitInput.verifiedConstraints?.join('\n')).toContain('【自然回收机会】')
+    expect(jitInput.verifiedConstraints?.join('\n')).toContain('fs-natural')
+    const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
+    expect(formattedOutline).toContain('【本章自然回收候选】fs-natural')
+    expect(formattedOutline).not.toContain('【本章伏笔调度候选】fs-natural')
+  })
+
+  it('auto-defers an omitted natural opportunity without retry or warning issue', async () => {
+    const state = stateWithScheduledForeshadows(2, '', [
+      createRequiredForeshadow('fs-natural', null),
+    ])
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '暂不揭示',
+        description: '本章核心事件尚不适合揭示既有线索。',
+        fulfilledForeshadowIds: [],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({ chapterIndex: 2 }),
+    })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[2]?.fulfilledForeshadowIds).toEqual([])
+    expect(result.outline?.[2]?.deferredForeshadowIds).toEqual(['fs-natural'])
+    expect(result.pendingIssues.some((issue) => issue.type === 'outline_foreshadow')).toBe(false)
+  })
+
   it('enters tight mode before the last chapter when remaining capacity cannot hold pending foreshadows', async () => {
     // 第 2 章（幕结束于第 3 章，剩余 2 章），4 个待回收伏笔 > 后续 1 章 × 3 容量 → tight
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c', 'fs-d']

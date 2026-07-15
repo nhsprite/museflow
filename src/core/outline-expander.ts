@@ -49,6 +49,7 @@ import {
   getBoundaryBlockingForeshadowDetails,
   normalizeForeshadowCapacity,
   selectForeshadowsForChapter,
+  selectOpportunisticForeshadowsForChapter,
 } from '../story-memory/foreshadow-policy.js'
 import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 
@@ -117,19 +118,54 @@ function reconcileChapterPlanBeatContract(
   }
 }
 
-function getScheduledForeshadowIds(state: ReducedGraphState, chapterIndex: number): string[] {
-  if (!state.storyMemory) return []
+interface ForeshadowScheduleContext {
+  deadlineCandidateIds: string[]
+  opportunityCandidateIds: string[]
+}
+
+function getLastForeshadowConsideredChapterById(
+  outline: ReducedGraphState['outline'],
+  chapterIndex: number
+): Map<string, number> {
+  const lastConsideredChapterById = new Map<string, number>()
+  for (let index = 0; index < chapterIndex; index++) {
+    const item = outline[index]
+    if (!item) continue
+    for (const id of [
+      ...(item.fulfilledForeshadowIds ?? []),
+      ...(item.deferredForeshadowIds ?? []),
+    ]) {
+      lastConsideredChapterById.set(id, index + 1)
+    }
+  }
+  return lastConsideredChapterById
+}
+
+function getForeshadowScheduleContext(
+  state: ReducedGraphState,
+  chapterIndex: number
+): ForeshadowScheduleContext {
+  const empty = { deadlineCandidateIds: [], opportunityCandidateIds: [] }
+  if (!state.storyMemory) return empty
   const act = getActForChapter(state.storyArc, chapterIndex)
-  if (!act) return []
+  if (!act) return empty
   const chapterNumber = chapterIndex + 1
   const finalActIndex = state.storyArc?.acts.at(-1)?.index
   const planningConfig = getChapterPlanningConfig(state.genre)
-  return selectForeshadowsForChapter(
+  const deadlineCandidateIds = selectForeshadowsForChapter(
     state.storyMemory,
     chapterNumber,
     planningConfig.foreshadowMaxFulfillmentsPerChapter,
     act.index === finalActIndex
   )
+  const opportunityCandidateIds = selectOpportunisticForeshadowsForChapter(state.storyMemory, {
+    chapterNumber,
+    minFulfillDistance: planningConfig.foreshadowMinFulfillDistance,
+    capacity: planningConfig.foreshadowMaxOpportunisticCandidatesPerChapter,
+    excludedIds: new Set(deadlineCandidateIds),
+    lastConsideredChapterById: getLastForeshadowConsideredChapterById(state.outline, chapterIndex),
+  })
+  return { deadlineCandidateIds, opportunityCandidateIds }
 }
 
 interface ForeshadowConstraintContext {
@@ -203,6 +239,17 @@ function buildScheduledForeshadowConstraint(
   }
 
   return `【伏笔调度候选】以下伏笔已进入预期回收窗口，作为本章回收候选。请逐一裁决：本章能自然回收的，放入 fulfilledForeshadowIds，并在 description 中安排正文可验证的真实剧情事件，不得虚假声称回收；与本章核心事件不相容、强行回收会损害章节质量的，放入 deferredForeshadowIds 顺延。每个候选 ID 必须出现在且仅出现在这两个列表之一，不得遗漏。候选列表：\n${lines.join('\n')}`
+}
+
+function buildOpportunisticForeshadowConstraint(
+  state: ReducedGraphState,
+  opportunityCandidateIds: string[]
+): string {
+  const lines = opportunityCandidateIds.map((id) => {
+    const foreshadow = state.storyMemory?.foreshadows[id]
+    return `- ${id}：${foreshadow?.text ?? id}`
+  })
+  return `【自然回收机会】以下无硬截止伏笔已满足最短铺垫距离。只有本章核心事件能够自然承载正文可验证的真实回收时，才将 ID 放入 fulfilledForeshadowIds；不得为清理伏笔改变本章核心事件。不适合本章回收时可放入 deferredForeshadowIds，无需制造额外剧情。候选列表：\n${lines.join('\n')}`
 }
 
 function getMissingScheduledForeshadowIds(
@@ -791,7 +838,9 @@ async function generateChapterOutlineIfNeeded(
     state.storyArc,
     chapterIndex
   )
-  const scheduledForeshadowIds = getScheduledForeshadowIds(state, chapterIndex)
+  const foreshadowSchedule = getForeshadowScheduleContext(state, chapterIndex)
+  const scheduledForeshadowIds = foreshadowSchedule.deadlineCandidateIds
+  const opportunityForeshadowIds = foreshadowSchedule.opportunityCandidateIds
   const foreshadowConstraintContext = computeForeshadowConstraintContext(
     state,
     chapterIndex,
@@ -801,6 +850,10 @@ async function generateChapterOutlineIfNeeded(
   const scheduledForeshadowConstraint =
     scheduledForeshadowIds.length > 0
       ? buildScheduledForeshadowConstraint(state, foreshadowConstraintContext)
+      : ''
+  const opportunisticForeshadowConstraint =
+    opportunityForeshadowIds.length > 0
+      ? buildOpportunisticForeshadowConstraint(state, opportunityForeshadowIds)
       : ''
   const { mustFulfillIds: mustFulfillForeshadowIds } = foreshadowConstraintContext
 
@@ -825,6 +878,7 @@ async function generateChapterOutlineIfNeeded(
       ...renderVerifiedConstraints(baseVerifiedConstraints),
       ...(beatBudgetConstraint ? [beatBudgetConstraint] : []),
       ...(scheduledForeshadowConstraint ? [scheduledForeshadowConstraint] : []),
+      ...(opportunisticForeshadowConstraint ? [opportunisticForeshadowConstraint] : []),
       ...correctionConstraints,
     ]
     const previousChapters = [
@@ -861,19 +915,36 @@ async function generateChapterOutlineIfNeeded(
     }
 
     const candidate = output.data as ChapterOutlineResult
-    lastCandidate = candidate
     if (candidate.conflict) {
       throw new Error(
         `第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`
       )
     }
 
+    const adjudicatedForeshadowIds = new Set([
+      ...(candidate.fulfilledForeshadowIds ?? []),
+      ...(candidate.deferredForeshadowIds ?? []),
+    ])
+    const omittedOpportunityIds = opportunityForeshadowIds.filter(
+      (id) => !adjudicatedForeshadowIds.has(id)
+    )
+    const normalizedCandidate: ChapterOutlineResult = {
+      ...candidate,
+      deferredForeshadowIds: Array.from(
+        new Set([...(candidate.deferredForeshadowIds ?? []), ...omittedOpportunityIds])
+      ),
+    }
+    lastCandidate = normalizedCandidate
+
     const missingScheduledForeshadowIds = getMissingScheduledForeshadowIds(
-      [...(candidate.fulfilledForeshadowIds ?? []), ...(candidate.deferredForeshadowIds ?? [])],
+      [
+        ...(normalizedCandidate.fulfilledForeshadowIds ?? []),
+        ...(normalizedCandidate.deferredForeshadowIds ?? []),
+      ],
       scheduledForeshadowIds
     )
     const deferredMustFulfillIds = mustFulfillForeshadowIds.filter((id) =>
-      candidate.deferredForeshadowIds?.includes(id)
+      normalizedCandidate.deferredForeshadowIds?.includes(id)
     )
     if (missingScheduledForeshadowIds.length > 0 || deferredMustFulfillIds.length > 0) {
       const correctionIds = [...missingScheduledForeshadowIds, ...deferredMustFulfillIds]
@@ -891,7 +962,7 @@ async function generateChapterOutlineIfNeeded(
       continue
     }
 
-    result = finalizeChapterOutlineCandidate(candidate, state, chapterIndex, beatBudget)
+    result = finalizeChapterOutlineCandidate(normalizedCandidate, state, chapterIndex, beatBudget)
     break
   }
 
@@ -1206,13 +1277,19 @@ export async function expandOutlineForChapter(
   }
 
   const nextItem = state.outline[chapterIndex + 1]
-  const scheduledForeshadowIds = getScheduledForeshadowIds(state, chapterIndex)
+  const foreshadowSchedule = getForeshadowScheduleContext(state, chapterIndex)
+  const scheduledForeshadowIds = foreshadowSchedule.deadlineCandidateIds
+  const opportunityForeshadowIds = foreshadowSchedule.opportunityCandidateIds
   const scheduledForeshadowConstraint =
     scheduledForeshadowIds.length > 0
       ? buildScheduledForeshadowConstraint(
           state,
           computeForeshadowConstraintContext(state, chapterIndex, scheduledForeshadowIds)
         )
+      : ''
+  const opportunisticForeshadowConstraint =
+    opportunityForeshadowIds.length > 0
+      ? buildOpportunisticForeshadowConstraint(state, opportunityForeshadowIds)
       : ''
 
   const planningConfig = getChapterPlanningConfig(state.genre)
@@ -1253,6 +1330,7 @@ export async function expandOutlineForChapter(
 
   const declarations = [
     { label: '【本章伏笔调度候选】', ids: scheduledForeshadowIds },
+    { label: '【本章自然回收候选】', ids: opportunityForeshadowIds },
     { label: '【本章兑现伏笔】', ids: outlineItem.fulfilledForeshadowIds },
     { label: '【本章顺延伏笔】', ids: outlineItem.deferredForeshadowIds },
     { label: '【本章认领 mandatory beats】', ids: outlineItem.claimedMandatoryBeatIds },
@@ -1291,6 +1369,12 @@ export async function expandOutlineForChapter(
     currentConstraints = [
       ...currentConstraints,
       createGenericVerifiedConstraint(scheduledForeshadowConstraint),
+    ]
+  }
+  if (opportunisticForeshadowConstraint) {
+    currentConstraints = [
+      ...currentConstraints,
+      createGenericVerifiedConstraint(opportunisticForeshadowConstraint),
     ]
   }
 
