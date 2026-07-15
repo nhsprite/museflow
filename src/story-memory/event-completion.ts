@@ -60,10 +60,11 @@ export function completeMissingExpectedEvents(
   actualEvents: StoryEvent[],
   chapterIndex: number
 ): EventCompletionResult {
-  const { missing } = diffEvents(expectedEvents, actualEvents)
+  const chapterActualEvents = actualEvents.filter(isChapterEmittableStoryEvent)
+  const { missing } = diffEvents(expectedEvents, chapterActualEvents)
   const completableMissing = missing.filter(isChapterEmittableStoryEvent)
   if (completableMissing.length === 0) {
-    return { content, events: actualEvents, completedCount: 0 }
+    return { content, events: chapterActualEvents, completedCount: 0 }
   }
 
   const paragraphCount = Math.max(countEvidenceParagraphs(content), 1)
@@ -77,7 +78,7 @@ export function completeMissingExpectedEvents(
     },
   }))
 
-  const allEvents = [...actualEvents, ...completedEvents]
+  const allEvents = [...chapterActualEvents, ...completedEvents]
   const updatedContent = injectEventsIntoStoryEventsBlock(content, completedEvents)
 
   return {

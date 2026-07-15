@@ -198,6 +198,51 @@ check
     expect(result.events).toEqual([])
     expect(result.content).toBe(content)
   })
+
+  it('removes an outline-only foreshadow-merge supplied as an actual chapter event', () => {
+    const merge: StoryEvent = {
+      id: 'evt-merge-actual',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'Same unresolved obligation.',
+      chapterIndex: 0,
+      source: 'outline',
+    }
+
+    const result = completeMissingExpectedEvents(content, [], [merge], 0)
+
+    expect(result.completedCount).toBe(0)
+    expect(result.events).toEqual([])
+    expect(result.content).toBe(content)
+  })
+
+  it('preserves ordinary actual chapter events while removing foreshadow-merge', () => {
+    const ordinary: StoryEvent = {
+      id: 'evt-character-actual',
+      type: 'character-location',
+      characterId: 'c-1',
+      locationId: 'loc-2',
+      chapterIndex: 0,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const merge: StoryEvent = {
+      id: 'evt-merge-actual',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'Same unresolved obligation.',
+      chapterIndex: 0,
+      source: 'outline',
+    }
+
+    const result = completeMissingExpectedEvents(content, [], [ordinary, merge], 0)
+
+    expect(result.completedCount).toBe(0)
+    expect(result.events).toEqual([ordinary])
+    expect(result.content).toBe(content)
+  })
 })
 
 describe('augmentExpectedEventsWithMandatoryBeats', () => {
