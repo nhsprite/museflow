@@ -39,6 +39,23 @@ describe('queries', () => {
     expect(getOverdueForeshadows(memory, 5)).toContain('f-1')
   })
 
+  it('does not treat a non-mandatory policy as overdue even if required is stale', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e-soft',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-soft',
+        expectedFulfillChapter: 3,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+    memory.foreshadows['f-soft']!.resolutionPolicy = 'should_resolve'
+    memory.foreshadows['f-soft']!.required = true
+
+    expect(getOverdueForeshadows(memory, 5)).not.toContain('f-soft')
+  })
+
   it('returns unproven mandatory beats', () => {
     const memory = applyEvents(createEmptyStoryMemory(), [
       {

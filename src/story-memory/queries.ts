@@ -11,7 +11,7 @@ export function getOverdueForeshadows(memory: StoryMemory, currentChapter: numbe
     .filter(
       (f) =>
         f.fulfilledIn === null &&
-        f.required &&
+        f.resolutionPolicy === 'must_resolve' &&
         f.expectedFulfillChapter !== null &&
         currentChapter > f.expectedFulfillChapter
     )

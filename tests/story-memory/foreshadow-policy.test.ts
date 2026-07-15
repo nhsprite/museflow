@@ -28,6 +28,42 @@ function item(overrides: Partial<ForeshadowItem> = {}): ForeshadowItem {
 }
 
 describe('foreshadow deadline policy', () => {
+  it('uses only must_resolve clues for story-end boundary pressure', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        hard: policyForeshadow('hard', 'must_resolve', 10),
+        soft: policyForeshadow('soft', 'should_resolve', null),
+        ambient: policyForeshadow('ambient', 'may_remain_open', null),
+      },
+    }
+
+    expect(getBoundaryBlockingForeshadows(memory, 10, true)).toEqual(['hard'])
+    expect(getRequiredForeshadowsForScheduling(memory, 10, true).map((entry) => entry.id)).toEqual([
+      'hard',
+    ])
+  })
+
+  it('fills opportunity capacity with should_resolve before ambient clues', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'should-new': policyForeshadow('should-new', 'should_resolve', null),
+        'should-recent': policyForeshadow('should-recent', 'should_resolve', null),
+        'ambient-new': policyForeshadow('ambient-new', 'may_remain_open', null),
+      },
+    }
+
+    expect(
+      selectOpportunisticForeshadowsForChapter(memory, {
+        chapterNumber: 5,
+        minFulfillDistance: 2,
+        capacity: 3,
+        lastConsideredChapterById: new Map([['should-recent', 4]]),
+      })
+    ).toEqual(['should-new', 'should-recent', 'ambient-new'])
+  })
+
   it('accepts only null or a 1-based deadline after the introduction chapter', () => {
     expect(isValidForeshadowDeadline(9, 0)).toBe(false)
     expect(isValidForeshadowDeadline(9, 10)).toBe(false)
@@ -40,7 +76,12 @@ describe('foreshadow deadline policy', () => {
     const buckets = classifyForeshadows(
       [
         item({ id: 'required-overdue', expectedFulfillChapter: 5 }),
-        item({ id: 'optional-overdue', expectedFulfillChapter: 5, required: false }),
+        item({
+          id: 'optional-overdue',
+          expectedFulfillChapter: Number.MAX_SAFE_INTEGER,
+          resolutionPolicy: 'may_remain_open',
+          required: false,
+        }),
         item({ id: 'invalid', expectedFulfillChapter: 0 }),
         item({ id: 'next-chapter-deadline', expectedFulfillChapter: 2 }),
         item({ id: 'fulfilled', expectedFulfillChapter: 5, fulfilledChapter: 6 }),
@@ -54,6 +95,23 @@ describe('foreshadow deadline policy', () => {
     expect(buckets.normalRequired).toEqual([])
   })
 
+  it('classifies legacy-stack alerts by resolutionPolicy instead of required', () => {
+    const buckets = classifyForeshadows(
+      [
+        item({
+          id: 'ambient',
+          expectedFulfillChapter: Number.MAX_SAFE_INTEGER,
+          resolutionPolicy: 'may_remain_open',
+          required: true,
+        } as Partial<ForeshadowItem>),
+      ],
+      10
+    )
+
+    expect(buckets.optional.map((entry) => entry.id)).toEqual(['ambient'])
+    expect(buckets.normalRequired).toEqual([])
+  })
+
   it('uses explicit fulfillment chapters instead of beat ownership at act boundaries', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
@@ -61,7 +119,7 @@ describe('foreshadow deadline policy', () => {
         due: memoryForeshadow('due', 'beat-act-1', true, 2),
         future: memoryForeshadow('future', 'beat-act-1', true, 4),
         unscheduled: memoryForeshadow('unscheduled', 'beat-act-1', true, null),
-        optional: memoryForeshadow('optional', 'beat-act-1', false, 2),
+        optional: policyForeshadow('optional', 'may_remain_open', null),
         fulfilled: {
           ...memoryForeshadow('fulfilled', 'beat-act-1', true, 2),
           fulfilledIn: 1,
@@ -82,7 +140,7 @@ describe('foreshadow deadline policy', () => {
         later: memoryForeshadow('later', null, true, 4),
         future: memoryForeshadow('future', null, true, 5),
         earlier: memoryForeshadow('earlier', null, true, 2),
-        optional: memoryForeshadow('optional', null, false, 2),
+        optional: policyForeshadow('optional', 'may_remain_open', null),
         fulfilled: { ...memoryForeshadow('fulfilled', null, true, 2), fulfilledIn: 1 },
       },
     }
@@ -105,7 +163,7 @@ describe('foreshadow deadline policy', () => {
         'fs-act-1': memoryForeshadow('fs-act-1', 'beat-act-1'),
         'fs-act-2': memoryForeshadow('fs-act-2', 'beat-act-2'),
         'fs-unbound': memoryForeshadow('fs-unbound', null),
-        'fs-optional': memoryForeshadow('fs-optional', null, false),
+        'fs-optional': policyForeshadow('fs-optional', 'may_remain_open', null),
       },
       beats: {
         'beat-act-1': memoryBeat('beat-act-1', 1),
@@ -149,7 +207,7 @@ describe('foreshadow deadline policy', () => {
         earlier: { ...memoryForeshadow('earlier', null, true, 6), introducedIn: 1 },
         future: memoryForeshadow('future', null, true, 9),
         unscheduled: memoryForeshadow('unscheduled', null, true, null),
-        optional: memoryForeshadow('optional', null, false, 5),
+        optional: policyForeshadow('optional', 'may_remain_open', null),
         fulfilled: { ...memoryForeshadow('fulfilled', null, true, 5), fulfilledIn: 4 },
         invalid: { ...memoryForeshadow('invalid', null, true, 1), introducedIn: 0 },
       },
@@ -213,11 +271,10 @@ describe('foreshadow deadline policy', () => {
     expect(getRequiredForeshadowsForScheduling(memory, 20, true).map((entry) => entry.id)).toEqual([
       'due',
       'future',
-      'unscheduled',
     ])
   })
 
-  it('orders an unscheduled foreshadow after the largest finite deadline', () => {
+  it('keeps a null-deadline soft clue out of mandatory ordering', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
       foreshadows: {
@@ -231,7 +288,6 @@ describe('foreshadow deadline policy', () => {
 
     expect(getRequiredForeshadowsForScheduling(memory, 20, true).map((entry) => entry.id)).toEqual([
       'z-finite',
-      'a-unscheduled',
     ])
   })
 
@@ -318,7 +374,7 @@ describe('foreshadow deadline policy', () => {
         capacity: 3,
         lastConsideredChapterById: new Map([['required-recent', 4]]),
       })
-    ).toEqual(['required-never', 'optional-never', 'required-recent'])
+    ).toEqual(['required-never', 'required-recent', 'optional-never'])
   })
 
   it('allows zero opportunistic capacity and floors positive fractional capacity', () => {
@@ -372,6 +428,12 @@ function memoryForeshadow(
   required = true,
   expectedFulfillChapter: number | null = 3
 ) {
+  const resolutionPolicy =
+    expectedFulfillChapter !== null
+      ? ('must_resolve' as const)
+      : required
+        ? ('should_resolve' as const)
+        : ('may_remain_open' as const)
   return {
     id,
     text: id,
@@ -379,7 +441,8 @@ function memoryForeshadow(
     introducedIn: 0,
     expectedFulfillChapter,
     fulfilledIn: null,
-    required,
+    resolutionPolicy,
+    required: resolutionPolicy !== 'may_remain_open',
     beatId,
   }
 }
@@ -393,5 +456,23 @@ function memoryBeat(id: string, actIndex: number) {
     required: true,
     claimedIn: null,
     provenByEventIds: [],
+  }
+}
+
+function policyForeshadow(
+  id: string,
+  resolutionPolicy: 'must_resolve' | 'should_resolve' | 'may_remain_open',
+  expectedFulfillChapter: number | null
+) {
+  return {
+    id,
+    text: id,
+    kind: null,
+    introducedIn: 0,
+    expectedFulfillChapter,
+    fulfilledIn: null,
+    resolutionPolicy,
+    required: resolutionPolicy !== 'may_remain_open',
+    beatId: null,
   }
 }

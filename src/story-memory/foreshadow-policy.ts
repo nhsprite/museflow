@@ -5,6 +5,7 @@ import type {
   StoryEvent,
   StoryMemory,
 } from '../types/story-memory.js'
+import { policyFromLegacyStackFields } from './resolution-policy.js'
 
 type ForeshadowIntroduceEvent = Extract<StoryEvent, { type: 'foreshadow-introduce' }>
 
@@ -41,7 +42,10 @@ export function classifyForeshadows(
     if (item.fulfilledChapter !== undefined) continue
     if (!isValidForeshadowDeadline(item.createdAtChapter, item.expectedFulfillChapter)) continue
 
-    if (!item.required) {
+    const resolutionPolicy =
+      item.resolutionPolicy ??
+      policyFromLegacyStackFields(item.required, item.expectedFulfillChapter)
+    if (resolutionPolicy !== 'must_resolve') {
       buckets.optional.push(item)
     } else if (currentChapter > item.expectedFulfillChapter + 1) {
       buckets.overdueRequired.push(item)
@@ -99,36 +103,37 @@ export function getRequiredForeshadowsForScheduling(
   chapterNumber: number,
   includeAllRequired: boolean
 ): ForeshadowMemory[] {
+  return getMandatoryForeshadows(memory).filter(
+    (foreshadow) =>
+      includeAllRequired ||
+      (foreshadow.expectedFulfillChapter !== null &&
+        foreshadow.expectedFulfillChapter <= chapterNumber)
+  )
+}
+
+export function getMandatoryForeshadows(memory: StoryMemory): ForeshadowMemory[] {
   return Object.values(memory.foreshadows)
-    .filter((foreshadow) => {
-      if (
-        !foreshadow.required ||
-        foreshadow.fulfilledIn !== null ||
-        foreshadow.waivedIn !== undefined ||
-        !isValidForeshadowDeadline(foreshadow.introducedIn, foreshadow.expectedFulfillChapter)
-      ) {
-        return false
-      }
+    .filter(
+      (foreshadow) =>
+        foreshadow.resolutionPolicy === 'must_resolve' &&
+        foreshadow.expectedFulfillChapter !== null &&
+        foreshadow.fulfilledIn === null &&
+        foreshadow.waivedIn === undefined &&
+        isValidForeshadowDeadline(foreshadow.introducedIn, foreshadow.expectedFulfillChapter)
+    )
+    .sort(compareMandatoryForeshadows)
+}
 
-      return (
-        includeAllRequired ||
-        (foreshadow.expectedFulfillChapter !== null &&
-          foreshadow.expectedFulfillChapter <= chapterNumber)
-      )
-    })
-    .sort((left, right) => {
-      const leftDeadline = left.expectedFulfillChapter
-      const rightDeadline = right.expectedFulfillChapter
-
-      if (leftDeadline === null && rightDeadline !== null) return 1
-      if (leftDeadline !== null && rightDeadline === null) return -1
-
-      return (
-        (leftDeadline ?? 0) - (rightDeadline ?? 0) ||
-        left.introducedIn - right.introducedIn ||
-        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
-      )
-    })
+export function selectMandatoryForeshadowsForChapter(
+  memory: StoryMemory,
+  chapterNumber: number,
+  capacity: number,
+  includeAllMandatory = false
+): ForeshadowMemory[] {
+  return getRequiredForeshadowsForScheduling(memory, chapterNumber, includeAllMandatory).slice(
+    0,
+    normalizeForeshadowCapacity(capacity)
+  )
 }
 
 export function normalizeForeshadowCapacity(capacity: number): number {
@@ -141,10 +146,12 @@ export function selectForeshadowsForChapter(
   capacity: number,
   includeAllRequired: boolean
 ): ForeshadowId[] {
-  const normalizedCapacity = normalizeForeshadowCapacity(capacity)
-  return getRequiredForeshadowsForScheduling(memory, chapterNumber, includeAllRequired)
-    .slice(0, normalizedCapacity)
-    .map((foreshadow) => foreshadow.id)
+  return selectMandatoryForeshadowsForChapter(
+    memory,
+    chapterNumber,
+    capacity,
+    includeAllRequired
+  ).map((foreshadow) => foreshadow.id)
 }
 
 export interface OpportunisticForeshadowSelectionOptions {
@@ -155,10 +162,17 @@ export interface OpportunisticForeshadowSelectionOptions {
   lastConsideredChapterById?: ReadonlyMap<ForeshadowId, number>
 }
 
-export function selectOpportunisticForeshadowsForChapter(
+export type ForeshadowSchedulingMode = 'mandatory' | 'opportunity' | 'ambient'
+
+export interface ScheduledForeshadow {
+  foreshadow: ForeshadowMemory
+  schedulingMode: ForeshadowSchedulingMode
+}
+
+export function selectOpportunityForeshadowsForChapter(
   memory: StoryMemory,
   options: OpportunisticForeshadowSelectionOptions
-): ForeshadowId[] {
+): ScheduledForeshadow[] {
   const capacity = Number.isFinite(options.capacity) ? Math.max(0, Math.floor(options.capacity)) : 0
   if (capacity === 0) return []
 
@@ -168,29 +182,63 @@ export function selectOpportunisticForeshadowsForChapter(
   const excludedIds = options.excludedIds ?? new Set<ForeshadowId>()
   const lastConsideredChapterById =
     options.lastConsideredChapterById ?? new Map<ForeshadowId, number>()
+  const eligible = Object.values(memory.foreshadows).filter(
+    (foreshadow) =>
+      (foreshadow.resolutionPolicy === 'should_resolve' ||
+        foreshadow.resolutionPolicy === 'may_remain_open') &&
+      foreshadow.expectedFulfillChapter === null &&
+      foreshadow.fulfilledIn === null &&
+      foreshadow.waivedIn === undefined &&
+      !excludedIds.has(foreshadow.id) &&
+      options.chapterNumber >= foreshadow.introducedIn + 1 + minFulfillDistance
+  )
 
-  return Object.values(memory.foreshadows)
-    .filter(
-      (foreshadow) =>
-        foreshadow.expectedFulfillChapter === null &&
-        foreshadow.fulfilledIn === null &&
-        foreshadow.waivedIn === undefined &&
-        !excludedIds.has(foreshadow.id) &&
-        options.chapterNumber >= foreshadow.introducedIn + 1 + minFulfillDistance
+  const compareOpportunity = (left: ForeshadowMemory, right: ForeshadowMemory): number => {
+    const leftLastConsidered = lastConsideredChapterById.get(left.id) ?? Number.NEGATIVE_INFINITY
+    const rightLastConsidered = lastConsideredChapterById.get(right.id) ?? Number.NEGATIVE_INFINITY
+    return (
+      leftLastConsidered - rightLastConsidered ||
+      left.introducedIn - right.introducedIn ||
+      compareForeshadowIds(left.id, right.id)
     )
-    .sort((left, right) => {
-      const leftLastConsidered = lastConsideredChapterById.get(left.id) ?? Number.NEGATIVE_INFINITY
-      const rightLastConsidered =
-        lastConsideredChapterById.get(right.id) ?? Number.NEGATIVE_INFINITY
-      if (leftLastConsidered !== rightLastConsidered) {
-        return leftLastConsidered - rightLastConsidered
-      }
-      if (left.required !== right.required) return left.required ? -1 : 1
-      return (
-        left.introducedIn - right.introducedIn ||
-        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
-      )
-    })
-    .slice(0, capacity)
-    .map((foreshadow) => foreshadow.id)
+  }
+
+  const shouldResolve = eligible
+    .filter((foreshadow) => foreshadow.resolutionPolicy === 'should_resolve')
+    .sort(compareOpportunity)
+  const ambient = eligible
+    .filter((foreshadow) => foreshadow.resolutionPolicy === 'may_remain_open')
+    .sort(compareOpportunity)
+
+  return [
+    ...shouldResolve.map((foreshadow) => ({
+      foreshadow,
+      schedulingMode: 'opportunity' as const,
+    })),
+    ...ambient.map((foreshadow) => ({
+      foreshadow,
+      schedulingMode: 'ambient' as const,
+    })),
+  ].slice(0, capacity)
+}
+
+export function selectOpportunisticForeshadowsForChapter(
+  memory: StoryMemory,
+  options: OpportunisticForeshadowSelectionOptions
+): ForeshadowId[] {
+  return selectOpportunityForeshadowsForChapter(memory, options).map(
+    ({ foreshadow }) => foreshadow.id
+  )
+}
+
+function compareMandatoryForeshadows(left: ForeshadowMemory, right: ForeshadowMemory): number {
+  return (
+    (left.expectedFulfillChapter ?? 0) - (right.expectedFulfillChapter ?? 0) ||
+    left.introducedIn - right.introducedIn ||
+    compareForeshadowIds(left.id, right.id)
+  )
+}
+
+function compareForeshadowIds(left: ForeshadowId, right: ForeshadowId): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }

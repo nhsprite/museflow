@@ -80,7 +80,7 @@ export function validateChapterEvents(
 
   for (const fs of Object.values(effectiveMemory.foreshadows)) {
     if (
-      fs.required &&
+      fs.resolutionPolicy === 'must_resolve' &&
       fs.fulfilledIn === null &&
       fs.expectedFulfillChapter !== null &&
       currentChapter > fs.expectedFulfillChapter
@@ -88,7 +88,7 @@ export function validateChapterEvents(
       overdueForeshadows.push(fs.id)
     }
     if (
-      fs.required &&
+      fs.resolutionPolicy === 'must_resolve' &&
       fs.fulfilledIn === null &&
       fs.expectedFulfillChapter !== null &&
       currentChapter >= fs.expectedFulfillChapter

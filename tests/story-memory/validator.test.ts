@@ -137,6 +137,26 @@ describe('validateChapterEvents', () => {
     expect(result.overdueForeshadows).toContain('f-1')
   })
 
+  it('does not report a stale required flag when policy is non-mandatory', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e-soft',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-soft',
+        expectedFulfillChapter: 3,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+    memory.foreshadows['f-soft']!.resolutionPolicy = 'should_resolve'
+    memory.foreshadows['f-soft']!.required = true
+
+    const result = validateChapterEvents(memory, 5, createEmptyChapterPlan(5), [])
+
+    expect(result.overdueForeshadows).not.toContain('f-soft')
+    expect(result.unfulfilledRequiredForeshadows).not.toContain('f-soft')
+  })
+
   it('rejects a foreshadow deadline that is not after the introduction chapter', () => {
     const memory = createEmptyStoryMemory()
     const plan = createEmptyChapterPlan(9)

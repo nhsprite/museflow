@@ -27,6 +27,14 @@ export function policyFromLegacyFields(
   return required === false ? 'may_remain_open' : 'should_resolve'
 }
 
+export function policyFromLegacyStackFields(
+  required: boolean | undefined,
+  expectedFulfillChapter: number
+): ForeshadowResolutionPolicy {
+  const deadline = expectedFulfillChapter >= Number.MAX_SAFE_INTEGER ? null : expectedFulfillChapter
+  return policyFromLegacyFields(required, deadline)
+}
+
 export function isForeshadowResolutionPolicy(value: unknown): value is ForeshadowResolutionPolicy {
   return FORESHADOW_RESOLUTION_POLICIES.some((policy) => policy === value)
 }

@@ -136,6 +136,8 @@ function createRequiredForeshadow(
   expectedFulfillChapter: number | null,
   introducedIn = 0
 ): ForeshadowMemory {
+  const resolutionPolicy =
+    expectedFulfillChapter === null ? ('should_resolve' as const) : ('must_resolve' as const)
   return {
     id,
     text: `structured clue ${id}`,
@@ -143,6 +145,7 @@ function createRequiredForeshadow(
     introducedIn,
     expectedFulfillChapter,
     fulfilledIn: null,
+    resolutionPolicy,
     required: true,
     beatId: null,
   }

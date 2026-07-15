@@ -26,6 +26,8 @@ function storyArc(acts: ActArc[]): StoryArc {
 }
 
 function foreshadow(id: string, expectedFulfillChapter: number | null): ForeshadowMemory {
+  const resolutionPolicy =
+    expectedFulfillChapter === null ? ('should_resolve' as const) : ('must_resolve' as const)
   return {
     id,
     text: id,
@@ -33,6 +35,7 @@ function foreshadow(id: string, expectedFulfillChapter: number | null): Foreshad
     introducedIn: 0,
     expectedFulfillChapter,
     fulfilledIn: null,
+    resolutionPolicy,
     required: true,
     beatId: null,
   }
@@ -104,10 +107,9 @@ describe('formatActForeshadowBoundaryPressure', () => {
     }
 
     expect(formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct)).toEqual([
-      '伏笔边界压力: 2 个 required 伏笔待回收',
+      '伏笔边界压力: 1 个 required 伏笔待回收',
       '待回收伏笔:',
       '  1. fs-future（引入第 1 章，预计第 30 章回收）',
-      '  2. fs-unscheduled（引入第 1 章，未设预计章节）',
     ])
   })
 })
