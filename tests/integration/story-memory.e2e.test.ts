@@ -92,7 +92,7 @@ function stateWithEquivalentAndIndependentActiveIds(): ReducedGraphState {
       expectedFulfillChapter: null,
       resolutionPolicy: 'may_remain_open',
       required: false,
-      chapterIndex: 2,
+      chapterIndex: 1,
       source: 'outline',
     },
   ])
