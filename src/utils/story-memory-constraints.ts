@@ -15,6 +15,7 @@ export function rebuildStoryMemoryVerifiedConstraints(input: {
   existingConstraints: readonly VerifiedConstraintLike[] | undefined
   memory: StoryMemory
   foreshadowStack: readonly ForeshadowItem[]
+  foreshadowStackSource: 'canonical_memory' | 'legacy_compatibility'
   currentChapter: number
 }): VerifiedConstraint[] {
   const carriedConstraints = normalizeVerifiedConstraints(input.existingConstraints).filter(
@@ -30,7 +31,10 @@ export function rebuildStoryMemoryVerifiedConstraints(input: {
     (foreshadow) => foreshadow.fulfilledIn === null && foreshadow.waivedIn === undefined
   )
   const canonicalIds = new Set(canonicalForeshadows.map((foreshadow) => foreshadow.id))
-  const canonicalStack = input.foreshadowStack.filter((item) => canonicalIds.has(item.id))
+  const boundaryStack =
+    input.foreshadowStackSource === 'legacy_compatibility'
+      ? input.foreshadowStack
+      : input.foreshadowStack.filter((item) => canonicalIds.has(item.id))
   const memoryConstraints: VerifiedConstraint[] = []
 
   for (const foreshadow of activeCanonicalForeshadows) {
@@ -65,7 +69,7 @@ export function rebuildStoryMemoryVerifiedConstraints(input: {
   }
 
   const boundaryConstraints = generateForeshadowConstraints(
-    [...canonicalStack],
+    [...boundaryStack],
     input.currentChapter
   ).map((record) => createGenericVerifiedConstraint(record.text, record.id))
 

@@ -52,6 +52,7 @@ export async function prepareChapter(
     existingConstraints: state.verifiedConstraints,
     memory: reconciled.memory,
     foreshadowStack: reconciledStack,
+    foreshadowStackSource: 'canonical_memory',
     currentChapter: state.currentChapterIndex + 1,
   })
   const reconciliationUpdate: Partial<ReducedGraphState> = {
@@ -62,7 +63,7 @@ export async function prepareChapter(
   }
   for (const event of reconciled.mergeEvents) {
     logger.info(
-      `[MuseFlow] 伏笔等价合并 ${event.duplicateForeshadowId} -> ${event.canonicalForeshadowId}：${event.reason}`
+      `[MuseFlow] 伏笔等价合并 ${event.duplicateForeshadowId} -> ${event.canonicalForeshadowId}`
     )
   }
   logger.info(

@@ -196,9 +196,8 @@ describe('prepareChapter', () => {
 
   it('reconciles historical duplicates and rebuilds canonical planning inputs before session creation', async () => {
     const memory = duplicateMemory()
-    const provider = createProvider([
-      { ids: ['fs-b', 'fs-a'], reason: 'same unresolved obligation' },
-    ])
+    const detectorReason = 'model reason\n[MuseFlow] injected-control\u0007'
+    const provider = createProvider([{ ids: ['fs-b', 'fs-a'], reason: detectorReason }])
     const state = makeState({
       currentChapterIndex: 2,
       session: makeSession({ chapterIndex: 1 }),
@@ -234,9 +233,10 @@ describe('prepareChapter', () => {
       )
     ).toBe(true)
     expect(vi.mocked(logger.info).mock.calls).toEqual([
-      ['[MuseFlow] 伏笔等价合并 fs-b -> fs-a：same unresolved obligation'],
+      ['[MuseFlow] 伏笔等价合并 fs-b -> fs-a'],
       ['[MuseFlow] 伏笔等价审计：活跃规范义务 2 -> 1'],
     ])
+    expect(result.storyMemory?.events.at(-1)).toMatchObject({ reason: detectorReason })
   })
 
   it('still reconciles and returns planning inputs on a same-chapter rerun', async () => {

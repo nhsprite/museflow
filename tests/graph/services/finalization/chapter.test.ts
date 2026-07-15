@@ -825,12 +825,25 @@ describe('finalizeChapter', () => {
           required: true,
         },
       ],
+      verifiedConstraints: [
+        {
+          kind: 'generic',
+          id: 'foreshadow-boundary:semantic-only',
+          text: 'stale legacy boundary',
+        },
+      ],
     })
     const provider = createMockProvider()
 
     const result = await finalizeChapter(state, provider)
 
     expect(result.foreshadowStack).toEqual([])
+    expect(
+      result.verifiedConstraints?.some(
+        (constraint) =>
+          constraint.kind === 'generic' && constraint.id === 'foreshadow-boundary:semantic-only'
+      )
+    ).toBe(false)
   })
 
   it('projects StoryMemory chapter indexes to one-based foreshadow item chapters', async () => {
@@ -2195,6 +2208,41 @@ describe('finalizeChapter — canonical facts delta & regenerable constraints', 
     expect(constraints.some((c) => c.kind === 'generic' && c.id === 'memory:task:task-1')).toBe(
       true
     )
+  })
+
+  it('rebuilds legacy stack boundary constraints when StoryMemory is absent', async () => {
+    const state = buildState(tmpDir, {
+      storyMemory: null,
+      foreshadowStack: [
+        {
+          id: 'legacy-fs',
+          text: 'legacy unresolved obligation',
+          expectedFulfillChapter: 3,
+          createdAt: 0,
+          createdAtChapter: 1,
+          status: 'planted',
+          isExplicit: true,
+          required: true,
+        },
+      ],
+      verifiedConstraints: [
+        {
+          kind: 'generic',
+          id: 'foreshadow-boundary:legacy-fs',
+          text: 'stale legacy boundary',
+        },
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const boundary = result.verifiedConstraints?.filter(
+      (constraint) =>
+        constraint.kind === 'generic' && constraint.id === 'foreshadow-boundary:legacy-fs'
+    )
+    expect(boundary).toHaveLength(1)
+    expect(boundary?.[0]?.text).toContain('legacy unresolved obligation')
+    expect(boundary?.[0]?.text).not.toBe('stale legacy boundary')
   })
 
   it('replaces a carried boundary constraint with the fresh copy (single entry)', async () => {

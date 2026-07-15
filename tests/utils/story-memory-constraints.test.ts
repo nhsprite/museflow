@@ -84,6 +84,7 @@ describe('rebuildStoryMemoryVerifiedConstraints', () => {
       existingConstraints: existing,
       memory,
       foreshadowStack: stack,
+      foreshadowStackSource: 'canonical_memory',
       currentChapter: 2,
     })
 
@@ -129,12 +130,14 @@ describe('rebuildStoryMemoryVerifiedConstraints', () => {
       existingConstraints: [],
       memory,
       foreshadowStack: stack,
+      foreshadowStackSource: 'canonical_memory',
       currentChapter: 4,
     })
     const atDeadline = rebuildStoryMemoryVerifiedConstraints({
       existingConstraints: beforeDeadline,
       memory,
       foreshadowStack: stack,
+      foreshadowStackSource: 'canonical_memory',
       currentChapter: 5,
     })
 

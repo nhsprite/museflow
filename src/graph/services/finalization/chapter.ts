@@ -586,6 +586,9 @@ export async function finalizeChapter(
     existingConstraints: state.verifiedConstraints,
     memory: updatedStoryMemory,
     foreshadowStack: updatedForeshadowStack,
+    // An explicitly present (even empty) StoryMemory remains authoritative.
+    // Only checkpoints with no StoryMemory retain legacy stack boundaries.
+    foreshadowStackSource: hasInputStoryMemory ? 'canonical_memory' : 'legacy_compatibility',
     currentChapter: currentDisplayChapter,
   })
 
