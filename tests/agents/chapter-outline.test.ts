@@ -166,6 +166,33 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).toContain('不适合推进某个 mandatory beat')
   })
 
+  it('instructs the model not to change the core event for a natural recovery opportunity', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '顺势推进',
+        description: '主角继续处理当前冲突，不强行揭示无关线索。',
+        fulfilledForeshadowIds: [],
+        deferredForeshadowIds: ['fs-natural'],
+      })
+    )
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 1,
+      storyArc,
+      actProgress: { 1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] } },
+      verifiedConstraints: ['【自然回收机会】fs-natural'],
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('【自然回收机会】')
+    expect(prompt).toContain('不得为自然回收机会改变本章核心事件')
+  })
+
   it('fills empty structured declaration arrays when LLM omits them', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(

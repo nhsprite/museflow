@@ -56,7 +56,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
    - resolvedTaskIds: 本章关闭的 TaskId 列表
    - createdTaskIds: 本章开启的 TaskId 列表
 12. 若存在【伏笔调度候选】约束：每个候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一，不得遗漏、不得重复；放入 fulfilledForeshadowIds 的候选必须是本章正文可验证的真实剧情事件，不得虚假声称回收。
-13. 输出 JSON 格式：
+13. 若存在【自然回收机会】约束：只有本章核心事件本身能够自然承载真实、可验证的回收时，才把对应 ID 放入 fulfilledForeshadowIds；不得为自然回收机会改变本章核心事件。当前章不适合时放入 deferredForeshadowIds，不需要额外制造剧情。
+14. 输出 JSON 格式：
    {
      "title": "章节标题",
      "description": "本章具体执行描述",

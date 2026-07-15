@@ -1046,6 +1046,53 @@ describe('expandOutlineForChapter', () => {
     }
   })
 
+  it('silently defers a natural opportunity when planner evidence correction is exhausted', async () => {
+    const scheduledState = stateWithScheduledForeshadows(2, '既有大纲。', [
+      createRequiredForeshadow('fs-natural', null),
+    ])
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 2 ? { ...item, fulfilledForeshadowIds: ['fs-natural'] } : item
+      ),
+    }
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    planChapterWithOverrideMock
+      .mockResolvedValueOnce({
+        chapterPlan: createCompleteChapterPlan({
+          chapterIndex: 2,
+          fulfilledForeshadowIds: ['fs-natural'],
+        }),
+      })
+      .mockResolvedValueOnce({
+        chapterPlan: createCompleteChapterPlan({
+          chapterIndex: 2,
+          expectedEvents: [createForeshadowFulfillEvent('fs-natural', 2)],
+        }),
+      })
+
+    try {
+      const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+      expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
+      expect(result.outline?.[2]?.deferredForeshadowIds).toContain('fs-natural')
+      expect(result.outline?.[2]?.fulfilledForeshadowIds).not.toContain('fs-natural')
+      expect(result.chapterPlan.fulfilledForeshadowIds).not.toContain('fs-natural')
+      expect(result.pendingIssues.some((issue) => issue.type === 'outline_foreshadow')).toBe(false)
+      expect(result.storyArc?.acts.map((act) => act.endChapter)).toEqual([3, 4])
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.stringContaining('自然回收机会 fs-natural 未形成完整规划证据，已无损顺延')
+      )
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('fs-natural 未形成完整规划证据')
+      )
+    } finally {
+      infoSpy.mockRestore()
+      warnSpy.mockRestore()
+    }
+  })
+
   it('extends a boundary by three chapters for eleven due IDs and schedules only the first three', async () => {
     const foreshadowIds = Array.from(
       { length: 11 },

@@ -325,11 +325,19 @@ function logScheduledForeshadowPlanAttempt(
   attempt: number,
   maxAttempts: number,
   missing: ScheduledForeshadowPlanEvidence,
-  capacity: number
+  capacity: number,
+  informational = false
 ): void {
-  logger.warn(
-    `[MuseFlow] 第 ${chapterIndex + 1} 章${stage}第 ${attempt}/${maxAttempts} 次遗漏大纲声称的伏笔兑现证据：${formatScheduledForeshadowPlanDiagnostic(missing, capacity)}`
-  )
+  const message = `[MuseFlow] 第 ${chapterIndex + 1} 章${stage}第 ${attempt}/${maxAttempts} 次遗漏大纲声称的伏笔兑现证据：${formatScheduledForeshadowPlanDiagnostic(missing, capacity)}`
+  if (informational) {
+    logger.info(message)
+  } else {
+    logger.warn(message)
+  }
+}
+
+function getMissingForeshadowPlanEvidenceIds(missing: ScheduledForeshadowPlanEvidence): string[] {
+  return Array.from(new Set([...missing.declarationIds, ...missing.eventIds]))
 }
 
 function buildScheduledForeshadowPlanError(
@@ -1296,6 +1304,7 @@ export async function expandOutlineForChapter(
   const foreshadowCapacity = normalizeForeshadowCapacity(
     planningConfig.foreshadowMaxFulfillmentsPerChapter
   )
+  const opportunityForeshadowIdSet = new Set(opportunityForeshadowIds)
 
   const judgeCoreSections: CoreSectionJudge = (description, sections) =>
     judgeCoreSectionsWithModel(provider, description, sections)
@@ -1416,13 +1425,16 @@ export async function expandOutlineForChapter(
     chapterIndex
   )
   if (hasMissingScheduledForeshadowPlanEvidence(planEvaluation.missing)) {
+    const firstMissingEvidenceIds = getMissingForeshadowPlanEvidenceIds(planEvaluation.missing)
     logScheduledForeshadowPlanAttempt(
       chapterIndex,
       '章节规划',
       1,
       2,
       planEvaluation.missing,
-      foreshadowCapacity
+      foreshadowCapacity,
+      firstMissingEvidenceIds.length > 0 &&
+        firstMissingEvidenceIds.every((id) => opportunityForeshadowIdSet.has(id))
     )
     currentConstraints = [
       ...currentConstraints,
@@ -1447,20 +1459,34 @@ export async function expandOutlineForChapter(
       chapterIndex
     )
     if (hasMissingScheduledForeshadowPlanEvidence(planEvaluation.missing)) {
+      const secondMissingEvidenceIds = getMissingForeshadowPlanEvidenceIds(planEvaluation.missing)
       logScheduledForeshadowPlanAttempt(
         chapterIndex,
         '章节规划',
         2,
         2,
         planEvaluation.missing,
-        foreshadowCapacity
+        foreshadowCapacity,
+        secondMissingEvidenceIds.length > 0 &&
+          secondMissingEvidenceIds.every((id) => opportunityForeshadowIdSet.has(id))
       )
-      const missingForeshadowIds = Array.from(
-        new Set([...planEvaluation.missing.declarationIds, ...planEvaluation.missing.eventIds])
+      const missingForeshadowIds = secondMissingEvidenceIds
+      const missingOpportunityIds = missingForeshadowIds.filter((id) =>
+        opportunityForeshadowIdSet.has(id)
       )
-      logger.warn(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章章节规划连续 2 次无法为大纲声称伏笔生成结构化证据，已自动顺延：${missingForeshadowIds.join(', ')}`
+      const missingDeadlineIds = missingForeshadowIds.filter(
+        (id) => !opportunityForeshadowIdSet.has(id)
       )
+      if (missingDeadlineIds.length > 0) {
+        logger.warn(
+          `[MuseFlow] 第 ${chapterIndex + 1} 章章节规划连续 2 次无法为大纲声称伏笔生成结构化证据，已自动顺延：${missingDeadlineIds.join(', ')}`
+        )
+      }
+      if (missingOpportunityIds.length > 0) {
+        logger.info(
+          `[MuseFlow] 第 ${chapterIndex + 1} 章自然回收机会 ${missingOpportunityIds.join(', ')} 未形成完整规划证据，已无损顺延`
+        )
+      }
 
       // 自动顺延：从大纲 fulfilled 移除，加入大纲与规划的 deferred
       const newOutline = [...state.outline]
@@ -1485,13 +1511,15 @@ export async function expandOutlineForChapter(
       }
       planEvaluation = { missing: { declarationIds: [], eventIds: [] }, plan: chapterPlan }
 
-      pendingIssues.push({
-        id: `plan-foreshadow-auto-deferred-${chapterIndex}`,
-        type: 'outline_foreshadow',
-        severity: 'warning',
-        description: `章节规划连续 2 次无法为大纲声称的伏笔 ${missingForeshadowIds.join(', ')} 生成结构化兑现证据，已自动将其顺延。`,
-        source: 'outline_compliance',
-      })
+      if (missingDeadlineIds.length > 0) {
+        pendingIssues.push({
+          id: `plan-foreshadow-auto-deferred-${chapterIndex}`,
+          type: 'outline_foreshadow',
+          severity: 'warning',
+          description: `章节规划连续 2 次无法为大纲声称的伏笔 ${missingDeadlineIds.join(', ')} 生成结构化兑现证据，已自动将其顺延。`,
+          source: 'outline_compliance',
+        })
+      }
     }
   }
 
