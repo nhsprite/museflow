@@ -221,7 +221,7 @@ describe('applyEvents', () => {
 describe('createEmptyStoryMemory', () => {
   it('returns a valid empty StoryMemory', () => {
     const memory = createEmptyStoryMemory()
-    expect(memory.version).toBe('1')
+    expect(memory.version).toBe('2')
     expect(memory.events).toHaveLength(0)
     expect(Object.keys(memory.entities.characters)).toHaveLength(0)
   })
@@ -422,6 +422,55 @@ describe('projectMemory foreshadows', () => {
     expect(next.foreshadows['f-1']?.fulfilledIn).toBeNull()
   })
 
+  it('projects policy promotion and demotion atomically', () => {
+    const introduced = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e-policy-introduce',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-policy',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+    const promoted = applyEvents(introduced, [
+      {
+        id: 'e-policy-promote',
+        type: 'foreshadow-policy-set',
+        foreshadowId: 'f-policy',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 20,
+        chapterIndex: 5,
+        source: 'outline',
+      },
+    ] as never)
+
+    expect(promoted.foreshadows['f-policy']).toMatchObject({
+      resolutionPolicy: 'must_resolve',
+      expectedFulfillChapter: 20,
+      required: true,
+    })
+
+    const demoted = applyEvents(promoted, [
+      {
+        id: 'e-policy-demote',
+        type: 'foreshadow-policy-set',
+        foreshadowId: 'f-policy',
+        resolutionPolicy: 'may_remain_open',
+        expectedFulfillChapter: null,
+        chapterIndex: 6,
+        source: 'outline',
+      },
+    ] as never)
+
+    expect(demoted.foreshadows['f-policy']).toMatchObject({
+      resolutionPolicy: 'may_remain_open',
+      expectedFulfillChapter: null,
+      required: false,
+    })
+  })
+
   it('ignores a waive event for an unknown foreshadow', () => {
     const next = applyEvents(createEmptyStoryMemory(), [
       {
@@ -457,7 +506,8 @@ describe('projectMemory foreshadows', () => {
       id: 'f-1',
       text: '门后的争执声暗示某个尚未公开的约定',
       kind: 'dialogue_hint',
-      required: false,
+      resolutionPolicy: 'must_resolve',
+      required: true,
       beatId: 'A1-M2',
       expectedFulfillChapter: 5,
       introducedIn: 1,

@@ -4,6 +4,12 @@ import type {
   StoryMemory,
 } from '../types/story-memory.js'
 
+export const FORESHADOW_RESOLUTION_POLICIES = [
+  'must_resolve',
+  'should_resolve',
+  'may_remain_open',
+] as const satisfies readonly ForeshadowResolutionPolicy[]
+
 export interface LegacyForeshadowMemoryV1 extends Omit<ForeshadowMemory, 'resolutionPolicy'> {
   resolutionPolicy?: ForeshadowResolutionPolicy
 }
@@ -19,6 +25,10 @@ export function policyFromLegacyFields(
 ): ForeshadowResolutionPolicy {
   if (Number.isInteger(expectedFulfillChapter)) return 'must_resolve'
   return required === false ? 'may_remain_open' : 'should_resolve'
+}
+
+export function isForeshadowResolutionPolicy(value: unknown): value is ForeshadowResolutionPolicy {
+  return FORESHADOW_RESOLUTION_POLICIES.some((policy) => policy === value)
 }
 
 export function deriveLegacyRequired(policy: ForeshadowResolutionPolicy): boolean {

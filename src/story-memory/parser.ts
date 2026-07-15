@@ -8,6 +8,7 @@ import type {
   StoryEvent,
   StoryEventEvidence,
 } from '../types/story-memory.js'
+import { isForeshadowResolutionPolicy } from './resolution-policy.js'
 
 /**
  * 占位示例 ID 防御：prompt 示例中使用 <前缀>-<数字> 形态的 ID（如 c-1、l-1、evt-1、fs-1），
@@ -43,6 +44,8 @@ function collectEventEntityIds(event: StoryEvent): string[] {
     case 'foreshadow-fulfill':
       return [event.foreshadowId]
     case 'foreshadow-deadline-extend':
+      return [event.foreshadowId]
+    case 'foreshadow-policy-set':
       return [event.foreshadowId]
     case 'foreshadow-waive':
       return [event.foreshadowId]
@@ -400,6 +403,7 @@ function parseForeshadowIntroduce(
 
   const fields = parseMachineFields(rest)
   const expected = parseOptionalNumber(fields.expected)
+  const resolutionPolicy = isForeshadowResolutionPolicy(fields.policy) ? fields.policy : undefined
   const kind = parseForeshadowKind(fields.kind)
   const required = parseOptionalBoolean(fields.required)
   const beatId = parseNullableId(fields.beat)
@@ -412,6 +416,7 @@ function parseForeshadowIntroduce(
     expectedFulfillChapter: expected,
     chapterIndex,
     source: 'chapter',
+    ...(resolutionPolicy ? { resolutionPolicy } : {}),
     ...(text ? { text } : {}),
     ...(kind ? { kind } : {}),
     ...(required !== undefined ? { required } : {}),

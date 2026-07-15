@@ -65,6 +65,7 @@ export type StoryEvent =
   | ForeshadowIntroduceEvent
   | ForeshadowFulfillEvent
   | ForeshadowDeadlineExtendEvent
+  | ForeshadowPolicySetEvent
   | ForeshadowWaiveEvent
   | TaskCreateEvent
   | TaskResolveEvent
@@ -123,6 +124,13 @@ export interface ForeshadowDeadlineExtendEvent extends BaseEvent {
   type: 'foreshadow-deadline-extend'
   foreshadowId: ForeshadowId
   newExpectedFulfillChapter: number
+}
+
+export interface ForeshadowPolicySetEvent extends BaseEvent {
+  type: 'foreshadow-policy-set'
+  foreshadowId: ForeshadowId
+  resolutionPolicy: ForeshadowResolutionPolicy
+  expectedFulfillChapter: number | null
 }
 
 /**

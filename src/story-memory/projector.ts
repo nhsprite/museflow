@@ -332,6 +332,15 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         expectedFulfillChapter: event.newExpectedFulfillChapter,
         deadlineExtensions: (existing.deadlineExtensions ?? 0) + 1,
       }
+    } else if (event.type === 'foreshadow-policy-set') {
+      const existing = foreshadows[event.foreshadowId]
+      if (!existing || existing.fulfilledIn !== null || existing.waivedIn !== undefined) continue
+      foreshadows[event.foreshadowId] = {
+        ...existing,
+        resolutionPolicy: event.resolutionPolicy,
+        expectedFulfillChapter: event.expectedFulfillChapter,
+        required: deriveLegacyRequired(event.resolutionPolicy),
+      }
     } else if (event.type === 'foreshadow-waive') {
       const existing = foreshadows[event.foreshadowId]
       if (!existing) continue

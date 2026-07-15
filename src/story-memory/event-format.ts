@@ -30,6 +30,9 @@ export function renderStoryEventLine(event: StoryEvent): string {
       fields.push(
         `expected=${event.expectedFulfillChapter === null ? 'none' : event.expectedFulfillChapter}`
       )
+      if (event.resolutionPolicy !== undefined) {
+        fields.push(`policy=${event.resolutionPolicy}`)
+      }
       if (event.kind !== undefined) fields.push(`kind=${event.kind}`)
       if (event.required !== undefined) fields.push(`required=${event.required}`)
       if (event.beatId !== undefined)
@@ -42,6 +45,8 @@ export function renderStoryEventLine(event: StoryEvent): string {
       return `foreshadow-fulfill: ${event.foreshadowId}`
     case 'foreshadow-deadline-extend':
       return `foreshadow-deadline-extend: ${event.foreshadowId} / newExpected=${event.newExpectedFulfillChapter}`
+    case 'foreshadow-policy-set':
+      return `foreshadow-policy-set: ${event.foreshadowId} / policy=${event.resolutionPolicy} / expected=${event.expectedFulfillChapter === null ? 'none' : event.expectedFulfillChapter}`
     case 'foreshadow-waive':
       return `foreshadow-waive: ${event.foreshadowId}${event.reason !== undefined ? ` / reason=${event.reason}` : ''}`
     case 'task-create':

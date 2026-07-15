@@ -62,6 +62,42 @@ describe('diffEvents', () => {
     expect(result.unexpected).toHaveLength(0)
   })
 
+  it('does not match foreshadow introductions with different policies', () => {
+    const base = {
+      id: 'e1',
+      type: 'foreshadow-introduce' as const,
+      foreshadowId: 'f-1',
+      expectedFulfillChapter: null,
+      required: true,
+      chapterIndex: 1,
+      source: 'outline' as const,
+    }
+
+    const result = diffEvents(
+      [{ ...base, resolutionPolicy: 'should_resolve' as const }],
+      [{ ...base, id: 'e2', resolutionPolicy: 'may_remain_open' as const, required: false }]
+    )
+
+    expect(result.matched).toHaveLength(0)
+    expect(result.missing).toHaveLength(1)
+    expect(result.unexpected).toHaveLength(1)
+  })
+
+  it('matches foreshadow-policy-set events by policy and deadline', () => {
+    const expected = {
+      id: 'e1',
+      type: 'foreshadow-policy-set' as const,
+      foreshadowId: 'f-1',
+      resolutionPolicy: 'must_resolve' as const,
+      expectedFulfillChapter: 12,
+      chapterIndex: 3,
+      source: 'outline' as const,
+    }
+    const actual = { ...expected, id: 'e2' }
+
+    expect(diffEvents([expected], [actual]).matched).toHaveLength(1)
+  })
+
   it('matches task-create events', () => {
     const expected = [
       {

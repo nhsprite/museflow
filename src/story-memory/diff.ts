@@ -63,7 +63,8 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
       return (
         b.type === 'foreshadow-introduce' &&
         a.foreshadowId === b.foreshadowId &&
-        a.expectedFulfillChapter === b.expectedFulfillChapter
+        a.expectedFulfillChapter === b.expectedFulfillChapter &&
+        a.resolutionPolicy === b.resolutionPolicy
       )
     case 'foreshadow-fulfill':
       return b.type === 'foreshadow-fulfill' && a.foreshadowId === b.foreshadowId
@@ -72,6 +73,13 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
         b.type === 'foreshadow-deadline-extend' &&
         a.foreshadowId === b.foreshadowId &&
         a.newExpectedFulfillChapter === b.newExpectedFulfillChapter
+      )
+    case 'foreshadow-policy-set':
+      return (
+        b.type === 'foreshadow-policy-set' &&
+        a.foreshadowId === b.foreshadowId &&
+        a.resolutionPolicy === b.resolutionPolicy &&
+        a.expectedFulfillChapter === b.expectedFulfillChapter
       )
     case 'foreshadow-waive':
       return b.type === 'foreshadow-waive' && a.foreshadowId === b.foreshadowId

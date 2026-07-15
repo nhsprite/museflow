@@ -1,10 +1,93 @@
 import { describe, expect, it } from 'vitest'
-import {
-  normalizeStoryEvent,
-  normalizeStoryEvents,
-} from '../../src/story-memory/event-contract.js'
+import { normalizeStoryEvent, normalizeStoryEvents } from '../../src/story-memory/event-contract.js'
 
 describe('normalizeStoryEvent', () => {
+  it('requires resolutionPolicy on strict foreshadow introductions', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-strict-foreshadow',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-1',
+        expectedFulfillChapter: 3,
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      { chapterIndex: 0, mode: 'strict' }
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'foreshadow-introduce.resolutionPolicy is required in strict mode',
+    })
+  })
+
+  it('normalizes a legacy null-deadline required clue to should_resolve', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-legacy-foreshadow',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-legacy',
+        expectedFulfillChapter: null,
+        required: true,
+        chapterIndex: 4,
+      },
+      { chapterIndex: 4, mode: 'legacy' }
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      normalized: true,
+      event: {
+        id: 'evt-legacy-foreshadow',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-legacy',
+        expectedFulfillChapter: null,
+        resolutionPolicy: 'should_resolve',
+        required: true,
+        chapterIndex: 4,
+        source: 'chapter',
+      },
+    })
+  })
+
+  it('rejects a deadline-free must_resolve introduction', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-invalid-mandatory',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-mandatory',
+        expectedFulfillChapter: null,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'chapter',
+      },
+      { chapterIndex: 0, mode: 'strict' }
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'foreshadow-introduce policy and deadline are inconsistent',
+    })
+  })
+
+  it('normalizes a valid foreshadow-policy-set event', () => {
+    const event = {
+      id: 'evt-policy-set',
+      type: 'foreshadow-policy-set',
+      foreshadowId: 'foreshadow-1',
+      resolutionPolicy: 'must_resolve',
+      expectedFulfillChapter: 12,
+      chapterIndex: 4,
+      source: 'outline',
+    }
+
+    expect(normalizeStoryEvent(event, { chapterIndex: 4, mode: 'strict' })).toEqual({
+      ok: true,
+      normalized: false,
+      event,
+    })
+  })
+
   it('rejects strict item-location events without an explicit holder field', () => {
     const result = normalizeStoryEvent(
       {
@@ -162,6 +245,7 @@ describe('normalizeStoryEvent', () => {
       type: 'foreshadow-introduce',
       foreshadowId: 'foreshadow-1',
       expectedFulfillChapter: 3,
+      resolutionPolicy: 'must_resolve',
       text: 'A visible clue',
       kind: 'object_foreshadow',
       required: true,

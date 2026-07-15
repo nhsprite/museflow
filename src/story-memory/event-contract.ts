@@ -1,8 +1,10 @@
-import type {
-  ForeshadowKind,
-  StoryEvent,
-  StoryEventEvidence,
-} from '../types/story-memory.js'
+import type { ForeshadowKind, StoryEvent, StoryEventEvidence } from '../types/story-memory.js'
+import {
+  deriveLegacyRequired,
+  isForeshadowResolutionPolicy,
+  policyFromLegacyFields,
+  validatePolicyDeadline,
+} from './resolution-policy.js'
 
 export interface StoryEventNormalizationOptions {
   chapterIndex: number
@@ -10,8 +12,7 @@ export interface StoryEventNormalizationOptions {
 }
 
 export type StoryEventNormalizationResult =
-  | { ok: true; event: StoryEvent; normalized: boolean }
-  | { ok: false; reason: string }
+  { ok: true; event: StoryEvent; normalized: boolean } | { ok: false; reason: string }
 
 export interface StoryEventListNormalizationResult {
   events: StoryEvent[]
@@ -257,6 +258,57 @@ export function normalizeStoryEvent(
         return invalid('foreshadow-introduce.beatId must be an identifier or null when present')
       }
 
+      if (options.mode === 'strict' && value.resolutionPolicy === undefined) {
+        return invalid('foreshadow-introduce.resolutionPolicy is required in strict mode')
+      }
+      if (
+        value.resolutionPolicy !== undefined &&
+        !isForeshadowResolutionPolicy(value.resolutionPolicy)
+      ) {
+        return invalid('foreshadow-introduce.resolutionPolicy is invalid')
+      }
+      const resolutionPolicy = isForeshadowResolutionPolicy(value.resolutionPolicy)
+        ? value.resolutionPolicy
+        : policyFromLegacyFields(
+            typeof value.required === 'boolean' ? value.required : undefined,
+            value.expectedFulfillChapter
+          )
+      if (!validatePolicyDeadline(resolutionPolicy, value.expectedFulfillChapter)) {
+        return invalid('foreshadow-introduce policy and deadline are inconsistent')
+      }
+      const required = deriveLegacyRequired(resolutionPolicy)
+
+      return {
+        ok: true,
+        normalized:
+          base.normalized || value.resolutionPolicy === undefined || value.required !== required,
+        event: {
+          ...eventBase(base),
+          type: value.type,
+          foreshadowId: value.foreshadowId,
+          expectedFulfillChapter: value.expectedFulfillChapter,
+          resolutionPolicy,
+          ...(value.text !== undefined ? { text: value.text } : {}),
+          ...(value.kind !== undefined ? { kind: value.kind as ForeshadowKind } : {}),
+          required,
+          ...(value.beatId !== undefined ? { beatId: value.beatId } : {}),
+        },
+      }
+    }
+    case 'foreshadow-policy-set': {
+      if (!isId(value.foreshadowId)) {
+        return invalid('foreshadow-policy-set.foreshadowId must be an identifier')
+      }
+      if (!isForeshadowResolutionPolicy(value.resolutionPolicy)) {
+        return invalid('foreshadow-policy-set.resolutionPolicy is invalid')
+      }
+      const deadline = value.expectedFulfillChapter
+      if (
+        (deadline !== null && (typeof deadline !== 'number' || !Number.isInteger(deadline))) ||
+        !validatePolicyDeadline(value.resolutionPolicy, deadline)
+      ) {
+        return invalid('foreshadow-policy-set policy and deadline are inconsistent')
+      }
       return {
         ok: true,
         normalized: base.normalized,
@@ -264,11 +316,8 @@ export function normalizeStoryEvent(
           ...eventBase(base),
           type: value.type,
           foreshadowId: value.foreshadowId,
-          expectedFulfillChapter: value.expectedFulfillChapter,
-          ...(value.text !== undefined ? { text: value.text } : {}),
-          ...(value.kind !== undefined ? { kind: value.kind as ForeshadowKind } : {}),
-          ...(value.required !== undefined ? { required: value.required } : {}),
-          ...(value.beatId !== undefined ? { beatId: value.beatId } : {}),
+          resolutionPolicy: value.resolutionPolicy,
+          expectedFulfillChapter: deadline,
         },
       }
     }

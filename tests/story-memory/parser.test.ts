@@ -146,6 +146,23 @@ describe('parseStoryEventsBlock', () => {
     })
   })
 
+  it('parses a foreshadow resolution policy machine field', () => {
+    const text = `=== STORY_EVENTS ===
+- foreshadow-introduce: fs-open / expected=none / policy=should_resolve / required=true
+=== CHAPTER_CONTENT ===
+正文`
+
+    const events = parseStoryEventsBlock(text, 2)
+
+    expect(events[0]).toMatchObject({
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-open',
+      expectedFulfillChapter: null,
+      resolutionPolicy: 'should_resolve',
+      required: true,
+    })
+  })
+
   it('parses task-create and task-resolve events', () => {
     const text = `=== STORY_EVENTS ===
 - task-create: t-errand / find the key

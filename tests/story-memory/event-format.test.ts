@@ -83,6 +83,7 @@ describe('event-format', () => {
         type: 'foreshadow-introduce',
         foreshadowId: 'fs-1',
         expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
         kind: 'plot',
         required: true,
         beatId: 'beat-1',
@@ -91,7 +92,7 @@ describe('event-format', () => {
         source: 'chapter',
       }
       expect(renderStoryEventLine(event)).toBe(
-        'foreshadow-introduce: fs-1 / expected=5 / kind=plot / required=true / beat=beat-1 / text=a hint'
+        'foreshadow-introduce: fs-1 / expected=5 / policy=must_resolve / kind=plot / required=true / beat=beat-1 / text=a hint'
       )
     })
 
@@ -101,12 +102,30 @@ describe('event-format', () => {
         type: 'foreshadow-introduce',
         foreshadowId: 'fs-1',
         expectedFulfillChapter: null,
+        resolutionPolicy: 'should_resolve',
+        required: true,
         beatId: null,
         chapterIndex: 0,
         source: 'chapter',
       }
       expect(renderStoryEventLine(event)).toBe(
-        'foreshadow-introduce: fs-1 / expected=none / beat=none'
+        'foreshadow-introduce: fs-1 / expected=none / policy=should_resolve / required=true / beat=none'
+      )
+    })
+
+    it('renders foreshadow-policy-set', () => {
+      const event: StoryEvent = {
+        id: 'evt-policy-set',
+        type: 'foreshadow-policy-set',
+        foreshadowId: 'fs-1',
+        resolutionPolicy: 'may_remain_open',
+        expectedFulfillChapter: null,
+        chapterIndex: 3,
+        source: 'outline',
+      }
+
+      expect(renderStoryEventLine(event)).toBe(
+        'foreshadow-policy-set: fs-1 / policy=may_remain_open / expected=none'
       )
     })
   })
