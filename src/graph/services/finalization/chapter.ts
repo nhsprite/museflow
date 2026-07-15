@@ -163,6 +163,8 @@ function filterStoryEventsForEvidence(events: StoryEvent[], chapterContent: stri
 const FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES: ReadonlySet<StoryEvent['type']> = new Set([
   // 禁止 SummaryAgent 从 prose 中脑补新伏笔；新伏笔必须由 writer 显式埋下。
   'foreshadow-introduce',
+  // 回收事件必须由 writer 声明并通过结构化语义门禁，SummaryAgent 不得旁路补提。
+  'foreshadow-fulfill',
   // 伏笔 deadline 延长是定稿调度决策，不应由 SummaryAgent 产生。
   'foreshadow-deadline-extend',
   // 放弃回收是作者决策（CLI），agent 无权产生。
@@ -172,7 +174,6 @@ const FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES: ReadonlySet<StoryEvent['type']> = 
 function filterSummaryFallbackEvents(
   events: StoryEvent[],
   chapterIndex: number,
-  plannedForeshadowIds: ReadonlySet<ForeshadowId>,
   existingEventIds: ReadonlySet<string>
 ): StoryEvent[] {
   const seenEventIds = new Set(existingEventIds)
@@ -182,9 +183,6 @@ function filterSummaryFallbackEvents(
     // SummaryAgent 作为事件补提 fallback，禁止脑补新伏笔或调度决策类事件；
     // plot-advance 已通过 filterStoryEventsForStoryArc 校验为已知 beat，允许补提。
     if (FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES.has(event.type)) return false
-    if (event.type === 'foreshadow-fulfill' && !plannedForeshadowIds.has(event.foreshadowId)) {
-      return false
-    }
     seenEventIds.add(event.id)
     return true
   })
@@ -392,9 +390,6 @@ export async function finalizeChapter(
             })
           : []
       const plannedFallbackForeshadows = plannedFallbackItems.map(({ id, text }) => ({ id, text }))
-      const plannedFallbackForeshadowIds = new Set(
-        plannedFallbackForeshadows.map((foreshadow) => foreshadow.id)
-      )
       const summaryState: SummaryAgentInput = {
         idea: state.idea,
         genre: state.genre,
@@ -453,7 +448,6 @@ export async function finalizeChapter(
               chapterContent
             ),
             chapterIndex,
-            plannedFallbackForeshadowIds,
             new Set(updatedStoryMemory.events.map((event) => event.id))
           )
           const { valid: actualEvents, invalid: invalidSummaryForeshadows } =

@@ -421,7 +421,7 @@ describe('finalizeChapter', () => {
     expect(run.mock.calls[0]?.[0].plannedForeshadowFulfillments).toEqual([])
   })
 
-  it('applies an evidence-backed planned foreshadow fulfillment from SummaryAgent', async () => {
+  it('rejects an evidence-backed planned foreshadow fulfillment from SummaryAgent', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue({
       run: vi.fn().mockResolvedValue({
         success: true,
@@ -466,8 +466,9 @@ describe('finalizeChapter', () => {
 
     const result = await finalizeChapter(state, createMockProvider())
 
-    expect(result.storyMemory?.foreshadows['fs-planned']?.fulfilledIn).toBe(0)
-    expect(result.foreshadowStack?.[0]?.fulfilledChapter).toBe(1)
+    expect(result.storyMemory?.foreshadows['fs-planned']?.fulfilledIn).toBeNull()
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-fulfill')).toBe(false)
+    expect(result.foreshadowStack?.[0]?.fulfilledChapter).toBeUndefined()
   })
 
   it('filters a planned foreshadow fulfillment with invalid paragraph evidence', async () => {

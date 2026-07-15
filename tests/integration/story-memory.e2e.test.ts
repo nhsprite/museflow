@@ -17,6 +17,17 @@ import type { StoryEvent } from '../../src/types/story-memory.js'
 const mockChat = vi.fn(async (_messages: Message[], _temperature?: number): Promise<string> => '')
 const mockChatStructured = vi.fn(
   async <T>(_messages: Message[], _schema: JsonSchema, _temperature?: number): Promise<T> => {
+    if (Object.hasOwn(_schema.properties, 'judgments')) {
+      return {
+        judgments: [
+          {
+            foreshadowId: 'fs-locket',
+            verdict: 'fulfilled',
+            reason: '测试正文明确完成了该结构化线索的回收。',
+          },
+        ],
+      } as T
+    }
     return {} as T
   }
 )
@@ -165,12 +176,10 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
   getSummaryAgent: () => ({
     run: vi.fn(async (state: { chapterIndex?: number }) => {
       const idx = state.chapterIndex ?? 0
-      // 新伏笔必须由 writer 显式埋下，SummaryAgent 只做低风险 fallback（如伏笔回收）。
-      const events = idx === 1 ? chapter2Events : []
       return {
         success: true,
         content: `第${idx + 1}章摘要`,
-        data: { chapterSummary: `第${idx + 1}章摘要`, storyEvents: events },
+        data: { chapterSummary: `第${idx + 1}章摘要`, storyEvents: [] },
       }
     }),
     processOutput: vi.fn((output: AgentOutput) => {
