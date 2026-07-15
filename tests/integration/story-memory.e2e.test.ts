@@ -42,24 +42,27 @@ function createMockProvider(): ModelProvider {
 
 function createEquivalenceProvider(): ModelProvider {
   return {
-    chat: vi.fn(),
-    chatStructured: vi.fn().mockResolvedValue({
-      groups: [
-        {
-          ids: ['fs-later', 'fs-earliest'],
-          reason: 'Both records represent one unresolved obligation.',
-        },
-      ],
-    }),
+    chat: vi.fn().mockRejectedValue(new Error('equivalence audit must use structured output')),
+    chatStructured: vi
+      .fn()
+      .mockResolvedValueOnce({
+        groups: [
+          {
+            ids: ['fs-a-later', 'fs-z-earliest'],
+            reason: 'Both records represent one unresolved obligation.',
+          },
+        ],
+      })
+      .mockResolvedValue({ groups: [] }),
   }
 }
 
-function stateWithTwoEquivalentActiveIds(): ReducedGraphState {
+function stateWithEquivalentAndIndependentActiveIds(): ReducedGraphState {
   const storyMemory = applyEvents(createEmptyStoryMemory(), [
     {
       id: 'introduce-earliest',
       type: 'foreshadow-introduce',
-      foreshadowId: 'fs-earliest',
+      foreshadowId: 'fs-z-earliest',
       text: 'An unresolved obligation is recorded.',
       kind: 'other',
       expectedFulfillChapter: 4,
@@ -71,13 +74,25 @@ function stateWithTwoEquivalentActiveIds(): ReducedGraphState {
     {
       id: 'introduce-later',
       type: 'foreshadow-introduce',
-      foreshadowId: 'fs-later',
+      foreshadowId: 'fs-a-later',
       text: 'The same unresolved obligation is recorded again.',
       kind: 'other',
       expectedFulfillChapter: 4,
       resolutionPolicy: 'must_resolve',
       required: true,
       chapterIndex: 1,
+      source: 'outline',
+    },
+    {
+      id: 'introduce-independent',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'fs-m-independent',
+      text: 'A separate open possibility is recorded.',
+      kind: 'other',
+      expectedFulfillChapter: null,
+      resolutionPolicy: 'may_remain_open',
+      required: false,
+      chapterIndex: 2,
       source: 'outline',
     },
   ])
@@ -290,7 +305,7 @@ describe('StoryMemory end-to-end', () => {
   })
 
   it('repairs equivalent active IDs once and exposes one canonical story-end obligation', async () => {
-    const state = stateWithTwoEquivalentActiveIds()
+    const state = stateWithEquivalentAndIndependentActiveIds()
     const inputSnapshot = structuredClone(state)
     const provider = createEquivalenceProvider()
 
@@ -301,34 +316,65 @@ describe('StoryMemory end-to-end', () => {
 
     expect(state).toEqual(inputSnapshot)
     expect(getCanonicalForeshadows(memory).map((foreshadow) => foreshadow.id)).toEqual([
-      'fs-earliest',
+      'fs-z-earliest',
+      'fs-m-independent',
     ])
-    expect(memory.foreshadows['fs-later']?.mergedInto).toBe('fs-earliest')
+    expect(memory.foreshadows['fs-a-later']?.mergedInto).toBe('fs-z-earliest')
+    expect(memory.foreshadows['fs-z-earliest']).toMatchObject({
+      text: 'An unresolved obligation is recorded.',
+      resolutionPolicy: 'must_resolve',
+      expectedFulfillChapter: 4,
+    })
     expect(getBoundaryBlockingForeshadows(memory, preparedState.totalChapters, true)).toEqual([
-      'fs-earliest',
+      'fs-z-earliest',
     ])
     expect(preparedState.foreshadowStack.map((foreshadow) => foreshadow.id)).toEqual([
-      'fs-earliest',
+      'fs-z-earliest',
+      'fs-m-independent',
     ])
     expect(
-      preparedState.verifiedConstraints.filter(
-        (constraint) =>
-          constraint.kind === 'generic' && constraint.id === 'memory:foreshadow:fs-earliest'
+      preparedState.verifiedConstraints
+        .filter(
+          (constraint) =>
+            constraint.kind === 'generic' && constraint.id?.startsWith('memory:foreshadow:')
+        )
+        .map((constraint) => constraint.id)
+    ).toEqual(['memory:foreshadow:fs-z-earliest', 'memory:foreshadow:fs-m-independent'])
+    expect(
+      preparedState.verifiedConstraints.some(
+        (constraint) => constraint.kind === 'generic' && constraint.id?.endsWith('fs-a-later')
       )
-    ).toHaveLength(1)
+    ).toBe(false)
+    expect(prepared.foreshadowEquivalenceAudit?.activeCanonicalIds).toEqual([
+      'fs-z-earliest',
+      'fs-m-independent',
+    ])
+    expect(prepared.session?.chapterIndex).toBe(state.currentChapterIndex)
     expect(memory.events.filter((event) => event.type === 'foreshadow-merge')).toHaveLength(1)
 
     const rerun = await prepareChapter(preparedState, provider)
     const rerunState = { ...preparedState, ...rerun }
 
     expect(preparedState).toEqual(preparedSnapshot)
+    expect(rerun.storyMemory).toBe(preparedState.storyMemory)
+    expect(rerun.session).toBeUndefined()
+    expect(rerunState.session).toBe(preparedState.session)
+    expect(rerun.foreshadowEquivalenceAudit?.activeCanonicalIds).toEqual([
+      'fs-z-earliest',
+      'fs-m-independent',
+    ])
+    expect(rerunState.foreshadowEquivalenceAudit?.activeCanonicalIds).toEqual([
+      'fs-z-earliest',
+      'fs-m-independent',
+    ])
     expect(provider.chatStructured).toHaveBeenCalledTimes(1)
+    expect(provider.chat).not.toHaveBeenCalled()
     expect(
       rerunState.storyMemory?.events.filter((event) => event.type === 'foreshadow-merge')
     ).toHaveLength(1)
     expect(
       getBoundaryBlockingForeshadows(rerunState.storyMemory!, rerunState.totalChapters, true)
-    ).toEqual(['fs-earliest'])
+    ).toEqual(['fs-z-earliest'])
   })
 
   it(
