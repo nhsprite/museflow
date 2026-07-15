@@ -437,6 +437,41 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(data.createdTaskIds).toEqual([])
   })
 
+  it('preserves validated raw event chapter indexes for graph-boundary conflict detection', async () => {
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-raw-chapter',
+            type: 'foreshadow-fulfill',
+            foreshadowId: 'fs-raw-chapter',
+            chapterIndex: 0,
+            source: 'chapter',
+          },
+        ],
+      })
+    )
+
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const output = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      outline: '第2章',
+      previousChapters: '',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    expect(output.success).toBe(true)
+    const data = output.data as ChapterPlan
+    expect(data.expectedEvents[0]?.chapterIndex).toBe(0)
+  })
+
   it('rejects expected events whose subtype fields are incomplete', async () => {
     mockChat.mockResolvedValueOnce(
       JSON.stringify({

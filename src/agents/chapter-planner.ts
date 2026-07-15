@@ -98,7 +98,12 @@ export class ChapterPlannerAgent extends BaseAgent<ChapterPlannerAgentInput> {
       sections: data.sections,
       timeline: data.timeline,
       outlineCheck: data.outlineCheck,
-      expectedEvents: normalizedEvents.events,
+      // Keep validated raw indexes until the graph boundary records any
+      // structural conflicts, then planning.ts applies the authoritative index.
+      expectedEvents: normalizedEvents.events.map((event, index) => ({
+        ...event,
+        chapterIndex: rawExpectedEvents[index]!.chapterIndex,
+      })),
       claimedMandatoryBeatIds: data.claimedMandatoryBeatIds ?? [],
       claimedBeatIds: data.claimedBeatIds ?? [],
       fulfilledForeshadowIds: data.fulfilledForeshadowIds ?? [],

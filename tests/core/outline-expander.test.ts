@@ -323,10 +323,7 @@ describe('expandOutlineForChapter', () => {
     const requestedPlan = createCompleteChapterPlan({
       chapterIndex: 0,
       fulfilledForeshadowIds: ['fs-due'],
-      expectedEvents: [
-        createForeshadowFulfillEvent('fs-due', 0),
-        createForeshadowFulfillEvent('fs-due', 1),
-      ],
+      expectedEvents: [createForeshadowFulfillEvent('fs-due', 1)],
     })
     planChapterWithOverrideMock.mockResolvedValueOnce({ chapterPlan: requestedPlan })
 
@@ -362,6 +359,32 @@ describe('expandOutlineForChapter', () => {
     ])
   })
 
+  it('removes an internal legacy conflict signal when compliance auto-defers the claim', async () => {
+    const outline = baseState.outline.map((item, index) =>
+      index === 1 ? { ...item, fulfilledForeshadowIds: ['legacy-foreshadow'] } : item
+    )
+    const conflictingPlan = createCompleteChapterPlan({
+      chapterIndex: 1,
+      fulfilledForeshadowIds: ['legacy-foreshadow'],
+      expectedEvents: [
+        { ...createForeshadowFulfillEvent('legacy-foreshadow', 1), source: 'outline' },
+        { ...createForeshadowFulfillEvent('legacy-foreshadow', 1), source: 'chapter' },
+      ],
+    })
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: conflictingPlan })
+
+    const result = await expandOutlineForChapter(
+      { ...baseState, outline, storyMemory: null, chapterPlan: conflictingPlan },
+      1,
+      createMockProvider()
+    )
+
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+    expect(result.chapterPlan.fulfilledForeshadowIds).toEqual([])
+    expect(result.chapterPlan.expectedEvents).toEqual([])
+    expect(result.chapterPlan).not.toHaveProperty('foreshadowFulfillmentConflictIds')
+  })
+
   it('canonicalizes outline and plan foreshadow claims without mutating their inputs', async () => {
     const canonical = createRequiredForeshadow('fs-early', 2)
     const alias = { ...createRequiredForeshadow('fs-late', 2, 1), mergedInto: 'fs-early' }
@@ -371,11 +394,27 @@ describe('expandOutlineForChapter', () => {
       fulfilledForeshadowIds: ['fs-late', 'fs-early', 'fs-late'],
       deferredForeshadowIds: ['fs-late', 'fs-early'],
     }
-    const aliasEvent = createForeshadowFulfillEvent('fs-late', 1)
-    const canonicalEvent = createForeshadowFulfillEvent('fs-early', 1)
+    const aliasEvent: StoryEvent = {
+      ...createForeshadowFulfillEvent('fs-late', 1),
+      id: 'event-first-alias',
+      evidence: { paragraphIndex: 3 },
+    }
+    const unrelatedEvent: StoryEvent = {
+      id: 'event-location',
+      type: 'character-location',
+      characterId: 'character-1',
+      locationId: 'location-1',
+      chapterIndex: 1,
+      source: 'outline',
+    }
+    const canonicalEvent: StoryEvent = {
+      ...createForeshadowFulfillEvent('fs-early', 1),
+      id: 'event-second-canonical',
+      evidence: { paragraphIndex: 3 },
+    }
     const chapterPlan = createCompleteChapterPlan({
       fulfilledForeshadowIds: ['fs-late', 'fs-early'],
-      expectedEvents: [aliasEvent, canonicalEvent],
+      expectedEvents: [aliasEvent, unrelatedEvent, canonicalEvent],
     })
     const state: ReducedGraphState = {
       ...scheduledState,
@@ -388,11 +427,153 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-early'])
     expect(result.outline?.[1]?.deferredForeshadowIds).toEqual(['fs-early'])
     expect(result.chapterPlan.fulfilledForeshadowIds).toEqual(['fs-early'])
-    expect(result.chapterPlan.expectedEvents).toEqual([{ ...aliasEvent, foreshadowId: 'fs-early' }])
+    expect(result.chapterPlan.expectedEvents).toEqual([
+      { ...aliasEvent, foreshadowId: 'fs-early' },
+      unrelatedEvent,
+    ])
     expect(state.outline[1]).toBe(outlineItem)
     expect(outlineItem.fulfilledForeshadowIds).toEqual(['fs-late', 'fs-early', 'fs-late'])
     expect(chapterPlan.fulfilledForeshadowIds).toEqual(['fs-late', 'fs-early'])
-    expect(chapterPlan.expectedEvents).toEqual([aliasEvent, canonicalEvent])
+    expect(chapterPlan.expectedEvents).toEqual([aliasEvent, unrelatedEvent, canonicalEvent])
+  })
+
+  it('routes structurally conflicting fulfillment events with the same raw id through compliance', async () => {
+    const scheduledState = stateWithScheduledForeshadows(2, '幕末既有大纲。', [
+      createRequiredForeshadow('fs-due', 3),
+    ])
+    const outlineItem = {
+      ...scheduledState.outline[2]!,
+      fulfilledForeshadowIds: ['fs-due'],
+    }
+    const conflictingPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      fulfilledForeshadowIds: ['fs-due'],
+      expectedEvents: [
+        { ...createForeshadowFulfillEvent('fs-due', 2), source: 'outline' },
+        { ...createForeshadowFulfillEvent('fs-due', 2), source: 'chapter' },
+      ],
+    })
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: conflictingPlan })
+
+    await expect(
+      expandOutlineForChapter(
+        {
+          ...scheduledState,
+          outline: scheduledState.outline.map((item, index) => (index === 2 ? outlineItem : item)),
+          chapterPlan: conflictingPlan,
+        },
+        2,
+        createMockProvider()
+      )
+    ).rejects.toThrow('无法为本章必须回收的伏笔生成结构化证据：fs-due')
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves a raw chapter-index conflict across reusable-plan normalization', async () => {
+    const canonical = createRequiredForeshadow('fs-early', 3)
+    const alias = { ...createRequiredForeshadow('fs-late', 3, 1), mergedInto: 'fs-early' }
+    const scheduledState = stateWithScheduledForeshadows(2, '幕末既有大纲。', [canonical, alias])
+    const outlineItem = {
+      ...scheduledState.outline[2]!,
+      fulfilledForeshadowIds: ['fs-late', 'fs-early'],
+    }
+    const conflictingPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      fulfilledForeshadowIds: ['fs-late', 'fs-early'],
+      expectedEvents: [
+        createForeshadowFulfillEvent('fs-late', 1),
+        createForeshadowFulfillEvent('fs-early', 2),
+      ],
+    })
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: conflictingPlan })
+
+    await expect(
+      expandOutlineForChapter(
+        {
+          ...scheduledState,
+          outline: scheduledState.outline.map((item, index) => (index === 2 ? outlineItem : item)),
+          chapterPlan: conflictingPlan,
+        },
+        2,
+        createMockProvider()
+      )
+    ).rejects.toThrow('无法为本章必须回收的伏笔生成结构化证据：fs-early')
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes conflicting source fields from different aliases through plan compliance', async () => {
+    const canonical = createRequiredForeshadow('fs-root', 3)
+    const firstAlias = { ...createRequiredForeshadow('fs-alias-a', 3, 1), mergedInto: 'fs-root' }
+    const secondAlias = { ...createRequiredForeshadow('fs-alias-b', 3, 1), mergedInto: 'fs-root' }
+    const scheduledState = stateWithScheduledForeshadows(2, '幕末既有大纲。', [
+      canonical,
+      firstAlias,
+      secondAlias,
+    ])
+    const outlineItem = {
+      ...scheduledState.outline[2]!,
+      fulfilledForeshadowIds: ['fs-alias-a', 'fs-alias-b'],
+    }
+    const conflictingPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      fulfilledForeshadowIds: ['fs-alias-a', 'fs-alias-b'],
+      expectedEvents: [
+        { ...createForeshadowFulfillEvent('fs-alias-a', 2), source: 'outline' },
+        { ...createForeshadowFulfillEvent('fs-alias-b', 2), source: 'chapter' },
+      ],
+    })
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: conflictingPlan })
+
+    await expect(
+      expandOutlineForChapter(
+        {
+          ...scheduledState,
+          outline: scheduledState.outline.map((item, index) => (index === 2 ? outlineItem : item)),
+          chapterPlan: conflictingPlan,
+        },
+        2,
+        createMockProvider()
+      )
+    ).rejects.toThrow('无法为本章必须回收的伏笔生成结构化证据：fs-root')
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the internal conflict signal after a compliant corrective replan', async () => {
+    const canonical = createRequiredForeshadow('fs-root', 3)
+    const alias = { ...createRequiredForeshadow('fs-alias', 3, 1), mergedInto: 'fs-root' }
+    const scheduledState = stateWithScheduledForeshadows(2, '幕末既有大纲。', [canonical, alias])
+    const outlineItem = {
+      ...scheduledState.outline[2]!,
+      fulfilledForeshadowIds: ['fs-alias'],
+    }
+    const conflictingPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      fulfilledForeshadowIds: ['fs-alias'],
+      expectedEvents: [
+        { ...createForeshadowFulfillEvent('fs-alias', 2), source: 'outline' },
+        { ...createForeshadowFulfillEvent('fs-root', 2), source: 'chapter' },
+      ],
+    })
+    const correctedPlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      fulfilledForeshadowIds: ['fs-root'],
+      expectedEvents: [createForeshadowFulfillEvent('fs-root', 2)],
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({ chapterPlan: correctedPlan })
+
+    const result = await expandOutlineForChapter(
+      {
+        ...scheduledState,
+        outline: scheduledState.outline.map((item, index) => (index === 2 ? outlineItem : item)),
+        chapterPlan: conflictingPlan,
+      },
+      2,
+      createMockProvider()
+    )
+
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+    expect(result.chapterPlan.expectedEvents).toEqual([createForeshadowFulfillEvent('fs-root', 2)])
+    expect(result.chapterPlan).not.toHaveProperty('foreshadowFulfillmentConflictIds')
   })
 
   it('routes structurally conflicting alias fulfillment events through plan compliance', async () => {

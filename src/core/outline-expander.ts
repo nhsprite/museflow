@@ -59,7 +59,11 @@ import {
 } from '../story-memory/foreshadow-policy.js'
 import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 import { verifyForeshadowPlan } from '../graph/services/foreshadow-fulfillment/planning-verifier.js'
-import { resolveCanonicalForeshadowId } from '../story-memory/foreshadow-alias.js'
+import {
+  areForeshadowFulfillmentEventsStructurallyCompatible,
+  findForeshadowFulfillmentConflictIds,
+  resolveCanonicalForeshadowId,
+} from '../story-memory/foreshadow-alias.js'
 import type {
   ForeshadowFulfillEvent,
   ForeshadowId,
@@ -96,14 +100,23 @@ function getProvider(source: ChapterContextSource): ModelProvider {
   return isRuntimeContext(source) ? source.provider : source
 }
 
-function normalizeReusableChapterPlan(plan: ChapterPlan, chapterIndex: number): ChapterPlan | null {
-  const result = normalizeStoryEvents(
-    Array.isArray(plan.expectedEvents) ? plan.expectedEvents : [],
-    {
-      chapterIndex,
-      mode: 'legacy',
-    }
-  )
+function normalizeReusableChapterPlan(
+  plan: ChapterPlan,
+  chapterIndex: number,
+  memory: StoryMemory | null | undefined
+): ChapterPlan | null {
+  const expectedEvents = Array.isArray(plan.expectedEvents) ? plan.expectedEvents : []
+  const existingConflictIds = Array.isArray(plan.foreshadowFulfillmentConflictIds)
+    ? plan.foreshadowFulfillmentConflictIds
+    : []
+  const detectedConflictIds = findForeshadowFulfillmentConflictIds(memory, expectedEvents)
+  const conflictIds = memory
+    ? canonicalizeForeshadowClaimIds(memory, [...existingConflictIds, ...detectedConflictIds])
+    : Array.from(new Set([...existingConflictIds, ...detectedConflictIds]))
+  const result = normalizeStoryEvents(expectedEvents, {
+    chapterIndex,
+    mode: 'legacy',
+  })
   if (result.invalid.length > 0) {
     const first = result.invalid[0]!
     logger.warn(
@@ -111,10 +124,12 @@ function normalizeReusableChapterPlan(plan: ChapterPlan, chapterIndex: number): 
     )
     return null
   }
+  const { foreshadowFulfillmentConflictIds: _existingConflictIds, ...normalizedPlan } = plan
   return {
-    ...plan,
+    ...normalizedPlan,
     chapterIndex,
     expectedEvents: result.events,
+    ...(conflictIds.length > 0 ? { foreshadowFulfillmentConflictIds: conflictIds } : {}),
   }
 }
 
@@ -334,27 +349,15 @@ function canonicalizeForeshadowClaimIds(
   return canonicalIds
 }
 
-function areFulfillmentEventsStructurallyCompatible(
-  left: ForeshadowFulfillEvent,
-  right: ForeshadowFulfillEvent
-): boolean {
-  return (
-    left.chapterIndex === right.chapterIndex &&
-    left.source === right.source &&
-    left.evidence?.paragraphIndex === right.evidence?.paragraphIndex
-  )
-}
-
 function canonicalizePlanForeshadowClaims(
   memory: StoryMemory,
   plan: ChapterPlan
 ): CanonicalizedForeshadowPlan {
   const expectedEvents: StoryEvent[] = []
-  const firstEventByCanonicalId = new Map<
-    ForeshadowId,
-    { event: ForeshadowFulfillEvent; originalId: ForeshadowId }
-  >()
-  const conflictingEventIds = new Set<ForeshadowId>()
+  const firstEventByCanonicalId = new Map<ForeshadowId, ForeshadowFulfillEvent>()
+  const conflictingEventIds = new Set<ForeshadowId>(
+    canonicalizeForeshadowClaimIds(memory, plan.foreshadowFulfillmentConflictIds ?? [])
+  )
 
   for (const event of plan.expectedEvents ?? []) {
     if (event.type !== 'foreshadow-fulfill') {
@@ -371,19 +374,11 @@ function canonicalizePlanForeshadowClaims(
     const canonicalEvent = { ...event, foreshadowId: canonicalId }
     const firstEvent = firstEventByCanonicalId.get(canonicalId)
     if (!firstEvent) {
-      firstEventByCanonicalId.set(canonicalId, {
-        event: canonicalEvent,
-        originalId: event.foreshadowId,
-      })
+      firstEventByCanonicalId.set(canonicalId, canonicalEvent)
       expectedEvents.push(canonicalEvent)
       continue
     }
-    if (firstEvent.originalId === event.foreshadowId) {
-      if (areFulfillmentEventsStructurallyCompatible(firstEvent.event, canonicalEvent)) continue
-      expectedEvents.push(canonicalEvent)
-      continue
-    }
-    if (areFulfillmentEventsStructurallyCompatible(firstEvent.event, canonicalEvent)) continue
+    if (areForeshadowFulfillmentEventsStructurallyCompatible(firstEvent, canonicalEvent)) continue
 
     conflictingEventIds.add(canonicalId)
     expectedEvents.push(canonicalEvent)
@@ -470,10 +465,18 @@ function deferForeshadowClaims(
     ),
   }
 
+  const { foreshadowFulfillmentConflictIds: _conflictIds, ...deferredPlan } = plan
+  const remainingConflictIds = (plan.foreshadowFulfillmentConflictIds ?? []).filter(
+    (id) => !deferredIds.has(id)
+  )
+
   return {
     state: { ...state, outline },
     plan: {
-      ...plan,
+      ...deferredPlan,
+      ...(remainingConflictIds.length > 0
+        ? { foreshadowFulfillmentConflictIds: remainingConflictIds }
+        : {}),
       fulfilledForeshadowIds: plan.fulfilledForeshadowIds.filter((id) => !deferredIds.has(id)),
       expectedEvents: plan.expectedEvents.filter(
         (event) => event.type !== 'foreshadow-fulfill' || !deferredIds.has(event.foreshadowId)
@@ -502,7 +505,12 @@ function evaluateScheduledForeshadowPlanEvidence(
     : {
         outline: { fulfilledForeshadowIds: outlineFulfilledForeshadowIds },
         plan: chapterPlan,
-        conflictingEventIds: [],
+        conflictingEventIds: Array.from(
+          new Set([
+            ...(chapterPlan.foreshadowFulfillmentConflictIds ?? []),
+            ...findForeshadowFulfillmentConflictIds(undefined, chapterPlan.expectedEvents ?? []),
+          ])
+        ),
       }
   const canonicalPlan = canonicalized.plan ?? chapterPlan
   const canonicalOutlineFulfilledIds = canonicalized.outline.fulfilledForeshadowIds ?? []
@@ -1615,7 +1623,7 @@ async function expandOutlineForChapterInternal(
 
   let chapterPlan: ChapterPlan | null =
     state.chapterPlan?.chapterIndex === chapterIndex
-      ? normalizeReusableChapterPlan(state.chapterPlan, chapterIndex)
+      ? normalizeReusableChapterPlan(state.chapterPlan, chapterIndex, state.storyMemory)
       : null
   let currentConstraints = filterVerifiedConstraintsForChapter(
     state.verifiedConstraints,

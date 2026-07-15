@@ -12,6 +12,7 @@ import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-cont
 import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 import type { ModelProvider } from '../../model/provider.js'
 import { renderVerifiedConstraints } from '../../utils/verified-constraints.js'
+import { findForeshadowFulfillmentConflictIds } from '../../story-memory/foreshadow-alias.js'
 
 async function runPlanChapter(
   provider: ModelProvider,
@@ -85,8 +86,14 @@ async function runPlanChapter(
     ...output.data,
     chapterIndex: chapterIndex,
   }
+  const conflictIds = findForeshadowFulfillmentConflictIds(
+    state.storyMemory,
+    parsedPlan.expectedEvents
+  )
+  const { foreshadowFulfillmentConflictIds: _modelSuppliedConflictIds, ...plan } = parsedPlan
   const chapterPlan: ChapterPlan = {
-    ...parsedPlan,
+    ...plan,
+    ...(conflictIds.length > 0 ? { foreshadowFulfillmentConflictIds: conflictIds } : {}),
     expectedEvents: parsedPlan.expectedEvents.map((event) => ({
       ...event,
       chapterIndex,

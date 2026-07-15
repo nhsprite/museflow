@@ -1,4 +1,10 @@
-import type { ForeshadowId, ForeshadowMemory, StoryMemory } from '../types/story-memory.js'
+import type {
+  ForeshadowFulfillEvent,
+  ForeshadowId,
+  ForeshadowMemory,
+  StoryEvent,
+  StoryMemory,
+} from '../types/story-memory.js'
 import { isProjectableForeshadowIntroduction } from './foreshadow-introduction.js'
 
 interface ForeshadowIntroductionOrder {
@@ -59,6 +65,47 @@ export function canonicalizeForeshadowIds(
   }
 
   return canonicalIds
+}
+
+export function areForeshadowFulfillmentEventsStructurallyCompatible(
+  left: ForeshadowFulfillEvent,
+  right: ForeshadowFulfillEvent
+): boolean {
+  return (
+    left.chapterIndex === right.chapterIndex &&
+    left.source === right.source &&
+    left.evidence?.paragraphIndex === right.evidence?.paragraphIndex
+  )
+}
+
+/**
+ * Detects incompatible machine-readable fulfillment claims before any event
+ * normalization can replace their raw chapter indexes.
+ */
+export function findForeshadowFulfillmentConflictIds(
+  memory: StoryMemory | null | undefined,
+  events: readonly StoryEvent[]
+): ForeshadowId[] {
+  const firstEventByCanonicalId = new Map<ForeshadowId, ForeshadowFulfillEvent>()
+  const conflictingIds = new Set<ForeshadowId>()
+
+  for (const event of events) {
+    if (event.type !== 'foreshadow-fulfill') continue
+
+    const canonicalId = memory
+      ? (resolveCanonicalForeshadowId(memory, event.foreshadowId) ?? event.foreshadowId)
+      : event.foreshadowId
+    const firstEvent = firstEventByCanonicalId.get(canonicalId)
+    if (!firstEvent) {
+      firstEventByCanonicalId.set(canonicalId, event)
+      continue
+    }
+    if (!areForeshadowFulfillmentEventsStructurallyCompatible(firstEvent, event)) {
+      conflictingIds.add(canonicalId)
+    }
+  }
+
+  return Array.from(conflictingIds)
 }
 
 export function compareCanonicalOrder(

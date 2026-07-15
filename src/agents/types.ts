@@ -86,6 +86,8 @@ export interface ChapterPlan {
 
   // 新增结构化声明
   expectedEvents: StoryEvent[]
+  /** Derived internal signal; never accepted as a planner/model declaration. */
+  foreshadowFulfillmentConflictIds?: ForeshadowId[]
   claimedMandatoryBeatIds?: BeatId[]
   claimedBeatIds: BeatId[]
   fulfilledForeshadowIds: ForeshadowId[]
