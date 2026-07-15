@@ -267,6 +267,78 @@ describe('runner revalidation', () => {
     ])
   })
 
+  it('removes transient foreshadow equivalence failures at a new run boundary', async () => {
+    const { normalizePendingIssuesForChapter } = await import('../../src/core/runner.js')
+    const equivalenceFailure = {
+      id: 'foreshadow-equivalence-failed',
+      type: 'foreshadow_equivalence_failed' as const,
+      severity: 'error' as const,
+      description: 'detector unavailable during the previous run',
+      source: 'foreshadowing' as const,
+      retryStrategy: 'manual' as const,
+    }
+    const unrelatedManualIssue = {
+      id: 'manual-outline-issue',
+      type: 'outline_coverage' as const,
+      severity: 'error' as const,
+      description: 'still requires author action',
+      source: 'outline_compliance' as const,
+      retryStrategy: 'manual' as const,
+    }
+
+    expect(
+      normalizePendingIssuesForChapter([equivalenceFailure, unrelatedManualIssue], true)
+    ).toEqual([unrelatedManualIssue])
+  })
+
+  it('removes a persisted equivalence failure before reinvoking the graph for existing content', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    const pendingIssues = [
+      {
+        id: 'foreshadow-equivalence-failed',
+        type: 'foreshadow_equivalence_failed' as const,
+        severity: 'error' as const,
+        description: 'detector unavailable during the previous run',
+        source: 'foreshadowing' as const,
+        retryStrategy: 'manual' as const,
+      },
+      {
+        id: 'manual-outline-issue',
+        type: 'outline_coverage' as const,
+        severity: 'error' as const,
+        description: 'still requires author action',
+        source: 'outline_compliance' as const,
+        retryStrategy: 'manual' as const,
+      },
+      {
+        id: 'word-count-existing-content',
+        type: 'word_count' as const,
+        severity: 'error' as const,
+        description: 'existing content is too long',
+        source: 'word_count' as const,
+        retryStrategy: 'draft' as const,
+      },
+    ]
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({ pendingIssues }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter('story-1', { mode: 'rewrite', targetChapterIndex: 0 }, createMockContext())
+
+    expect(readChapterContent).toHaveBeenCalledWith(join(testOutputsDir, 'test-story-story-1'), 1)
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    expect(invokedState.pendingIssues).toEqual([
+      pendingIssues[1],
+      expect.objectContaining({
+        id: 'word-count-existing-content',
+        retryStrategy: 'fix',
+      }),
+    ])
+  })
+
   it('normalizes an out-of-range must-resolve deadline to the current story boundary', async () => {
     const events: StoryEvent[] = [
       {

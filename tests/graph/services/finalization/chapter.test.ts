@@ -1836,6 +1836,48 @@ describe('finalizeChapter', () => {
     expect(state.storyMemory?.tasks['atomic-task']).toBeUndefined()
   })
 
+  it('rethrows non-equivalence programming errors from introduction reconciliation', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const invalidMemory = {
+      ...createEmptyStoryMemory(),
+      events: undefined as unknown as StoryEvent[],
+    }
+    const state = buildState(tmpDir, {
+      storyMemory: invalidMemory,
+      draftChapterEvents: [introduceForeshadow('fs-new', 0, 'new obligation')],
+    })
+
+    await expect(finalizeChapter(state, createMockProvider())).rejects.toBeInstanceOf(TypeError)
+  })
+
+  it('does not call the equivalence provider when the draft introduces no foreshadows', async () => {
+    const base = buildState(tmpDir)
+    const provider: ModelProvider = {
+      chat: vi.fn().mockRejectedValue(new Error('provider must not be called')),
+      chatStructured: vi.fn().mockRejectedValue(new Error('provider must not be called')),
+    }
+    const task: StoryEvent = {
+      id: 'evt-introduction-free-task',
+      type: 'task-create',
+      taskId: 'introduction-free-task',
+      description: 'ordinary draft event',
+      chapterIndex: 0,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const state = buildState(tmpDir, {
+      chapters: [{ ...base.chapters[0]!, summary: 'existing summary' }],
+      storyMemory: createEmptyStoryMemory(),
+      draftChapterEvents: [task],
+    })
+
+    const result = await finalizeChapter(state, provider)
+
+    expect(result.storyMemory?.tasks[task.taskId]).toBeDefined()
+    expect(provider.chat).not.toHaveBeenCalled()
+    expect(provider.chatStructured).not.toHaveBeenCalled()
+  })
+
   it('rejects operational foreshadow merges proposed by SummaryAgent', async () => {
     const historicalMemory = applyEvents(createEmptyStoryMemory(), [
       introduceForeshadow('fs-root', 0),

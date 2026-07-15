@@ -277,7 +277,9 @@ export function normalizePendingIssuesForChapter(
   targetChapterFileExists: boolean
 ): Issue[] {
   return issues
-    .filter((issue) => issue.type !== 'draft_failure')
+    .filter(
+      (issue) => issue.type !== 'draft_failure' && issue.type !== 'foreshadow_equivalence_failed'
+    )
     .map((issue) => {
       if (issue.type === 'word_count' && targetChapterFileExists) {
         return { ...issue, retryStrategy: 'fix' as const }
