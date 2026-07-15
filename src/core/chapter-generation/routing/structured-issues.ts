@@ -53,10 +53,15 @@ export function buildStructuredIssues(
     )
   }
   for (const foreshadowId of result.falseFulfillments) {
+    const semanticRejection = result.foreshadowFulfillmentRejections?.find(
+      (rejection) => rejection.foreshadowId === foreshadowId
+    )
     issues.push(
       structuredError(chapterIndex, {
         type: 'foreshadow_false_fulfillment',
-        description: `声称兑现的伏笔 ${foreshadowId} 未在正文中发生`,
+        description: semanticRejection
+          ? `声称兑现的伏笔 ${foreshadowId} 未通过语义验证（${semanticRejection.verdict}）：${semanticRejection.reason}`
+          : `声称兑现的伏笔 ${foreshadowId} 未在正文中发生`,
         source: 'foreshadowing',
       })
     )

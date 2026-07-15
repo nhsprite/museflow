@@ -19,6 +19,7 @@ function makeResult(
     unfulfilledRequiredForeshadows: [],
     overdueForeshadows: [],
     falseFulfillments: [],
+    foreshadowFulfillmentRejections: [],
     unclaimedMandatoryBeats: [],
     claimedButUnprovenBeats: [],
     stateConflicts: [],
@@ -73,5 +74,34 @@ describe('buildStructuredIssues final-state mismatches', () => {
   it('produces no issues when there are no mismatches', () => {
     expect(buildStructuredIssues(makeResult(), 0)).toEqual([])
     expect(buildStructuredIssues(undefined, 0)).toEqual([])
+  })
+})
+
+describe('buildStructuredIssues foreshadow semantic rejections', () => {
+  it('keeps the existing blocking issue code and includes the typed rejection reason', () => {
+    const issues = buildStructuredIssues(
+      makeResult({
+        falseFulfillments: ['fs-a'],
+        foreshadowFulfillmentRejections: [
+          {
+            foreshadowId: 'fs-a',
+            evidenceParagraphIndex: 2,
+            verdict: 'uncertain',
+            reason: '证据不足以确定是否完成回收。',
+          },
+        ],
+      }),
+      4
+    )
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      type: 'foreshadow_false_fulfillment',
+      severity: 'error',
+      source: 'foreshadowing',
+    })
+    expect(issues[0]?.description).toContain('fs-a')
+    expect(issues[0]?.description).toContain('uncertain')
+    expect(issues[0]?.description).toContain('证据不足以确定是否完成回收。')
   })
 })

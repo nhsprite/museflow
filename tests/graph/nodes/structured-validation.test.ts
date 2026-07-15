@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('../../../src/storage/filesystem/writer.js', () => ({
+  readChapterContentForRun: vi.fn(),
+}))
+
 import { validateChapterStructured } from '../../../src/graph/nodes/structured-validation.js'
 import { createEmptyStoryMemory } from '../../../src/story-memory/projector.js'
+import { readChapterContentForRun } from '../../../src/storage/filesystem/writer.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { ChapterPlan } from '../../../src/agents/types.js'
 import type { StoryMemory, StoryEvent } from '../../../src/types/story-memory.js'
@@ -221,5 +227,149 @@ describe('validateChapterStructured', () => {
         actualValue: 'loc-drawer-deep',
       },
     ])
+  })
+
+  it('merges semantic fulfillment rejections into the blocking false-fulfillment list', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce(
+      '第一段给出伏笔的明确因果解释。\n\n第二段只再次提到原有细节。'
+    )
+    const firstEvent: StoryEvent = {
+      id: 'fulfill-a',
+      type: 'foreshadow-fulfill',
+      foreshadowId: 'fs-a',
+      chapterIndex: 4,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const secondEvent: StoryEvent = {
+      id: 'fulfill-b',
+      type: 'foreshadow-fulfill',
+      foreshadowId: 'fs-b',
+      chapterIndex: 4,
+      source: 'chapter',
+      evidence: { paragraphIndex: 2 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 4,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [firstEvent, secondEvent],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: ['fs-a', 'fs-b'],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'fs-a': {
+          id: 'fs-a',
+          text: '一个需要因果解释的细节',
+          kind: 'plot',
+          introducedIn: 1,
+          expectedFulfillChapter: 5,
+          fulfilledIn: null,
+          resolutionPolicy: 'must_resolve',
+          required: true,
+          beatId: null,
+        },
+        'fs-b': {
+          id: 'fs-b',
+          text: '另一个需要解释的细节',
+          kind: 'plot',
+          introducedIn: 2,
+          expectedFulfillChapter: 5,
+          fulfilledIn: null,
+          resolutionPolicy: 'must_resolve',
+          required: true,
+          beatId: null,
+        },
+      },
+    }
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValueOnce({
+      judgments: [
+        { foreshadowId: 'fs-a', verdict: 'fulfilled', reason: '证据完成了解释。' },
+        {
+          foreshadowId: 'fs-b',
+          verdict: 'not_fulfilled',
+          reason: '证据只有重复提及。',
+        },
+      ],
+    })
+    const state = {
+      currentChapterIndex: 4,
+      story: { outputDir: '/tmp/semantic-fulfillment-test' },
+      storyMemory: memory,
+      chapterPlan: plan,
+      draftChapterEvents: [firstEvent, secondEvent],
+    } as ReducedGraphState
+
+    const result = await validateChapterStructured(context, state)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    expect(result.structuredValidationResult?.falseFulfillments).toEqual(['fs-b'])
+    expect(result.structuredValidationResult?.foreshadowFulfillmentRejections).toEqual([
+      {
+        foreshadowId: 'fs-b',
+        evidenceParagraphIndex: 2,
+        verdict: 'not_fulfilled',
+        reason: '证据只有重复提及。',
+      },
+    ])
+  })
+
+  it('does not semantically verify unexpected fulfillment events', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('正文。')
+    const event: StoryEvent = {
+      id: 'unexpected-fulfill',
+      type: 'foreshadow-fulfill',
+      foreshadowId: 'fs-a',
+      chapterIndex: 4,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 4,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const context = createMockContext()
+    const state = {
+      currentChapterIndex: 4,
+      story: { outputDir: '/tmp/semantic-fulfillment-test' },
+      storyMemory: {
+        ...createEmptyStoryMemory(),
+        foreshadows: {
+          'fs-a': {
+            id: 'fs-a',
+            text: '一个需要解释的细节',
+            kind: 'plot',
+            introducedIn: 1,
+            expectedFulfillChapter: 5,
+            fulfilledIn: null,
+            resolutionPolicy: 'must_resolve',
+            required: true,
+            beatId: null,
+          },
+        },
+      },
+      chapterPlan: plan,
+      draftChapterEvents: [event],
+    } as ReducedGraphState
+
+    const result = await validateChapterStructured(context, state)
+
+    expect(context.provider.chatStructured).not.toHaveBeenCalled()
+    expect(result.structuredValidationResult?.unexpectedEvents).toEqual([event])
   })
 })
