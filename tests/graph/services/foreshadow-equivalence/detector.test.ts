@@ -86,6 +86,24 @@ describe('detectForeshadowEquivalence', () => {
     await expect(detectForeshadowEquivalence({ provider, candidates })).resolves.toEqual([])
   })
 
+  it('skips the provider when there are no candidates', async () => {
+    const provider = providerWithStructuredResponse({ groups: [] })
+
+    await expect(detectForeshadowEquivalence({ provider, candidates: [] })).resolves.toEqual([])
+    expect(provider.chatStructured).not.toHaveBeenCalled()
+    expect(provider.chat).not.toHaveBeenCalled()
+  })
+
+  it('skips the provider when there is only one candidate', async () => {
+    const provider = providerWithStructuredResponse({ groups: [] })
+
+    await expect(
+      detectForeshadowEquivalence({ provider, candidates: [candidates[0]!] })
+    ).resolves.toEqual([])
+    expect(provider.chatStructured).not.toHaveBeenCalled()
+    expect(provider.chat).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['missing output root', undefined],
     ['null output root', null],
@@ -223,11 +241,32 @@ describe('detectForeshadowEquivalence', () => {
       },
     })
     expect(contract.toLowerCase()).not.toContain('confidence')
+    expect(contract).not.toContain('uniqueItems')
     expect(prompt.toLowerCase()).not.toContain('confidence')
     expect(prompt).toContain('解决任一条记录都会解决同一个尚未解决的叙事问题或义务')
     expect(prompt).toContain('共享实体、意象、场景、原因、因果关系或主题本身并不足以判为重复')
     expect(prompt).toContain('相关但可以独立解决的线索必须保持分离')
     expect(prompt).toContain('返回所有判定为等价的重复组')
+  })
+
+  it('sends only the declared candidate fields to the model', async () => {
+    const provider = providerWithStructuredResponse({ groups: [] })
+    const candidateWithCallerMetadata = {
+      ...candidates[0]!,
+      callerOnlyMetadata: 'must not reach the model',
+    }
+
+    await detectForeshadowEquivalence({
+      provider,
+      candidates: [candidateWithCallerMetadata, candidates[1]!],
+    })
+
+    const chatStructured = vi.mocked(provider.chatStructured!)
+    const messages = chatStructured.mock.calls[0]?.[0] ?? []
+    const userPrompt = messages.find((message) => message.role === 'user')?.content ?? ''
+    expect(userPrompt).toContain('"id": "fs-a"')
+    expect(userPrompt).not.toContain('callerOnlyMetadata')
+    expect(userPrompt).not.toContain('must not reach the model')
   })
 
   it('rejects confidence fields instead of interpreting them', async () => {

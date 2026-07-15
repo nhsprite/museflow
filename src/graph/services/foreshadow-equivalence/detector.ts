@@ -37,7 +37,6 @@ const EQUIVALENCE_SCHEMA: JsonSchema & { additionalProperties: false } = {
             type: 'array',
             items: { type: 'string', minLength: 1 },
             minItems: 2,
-            uniqueItems: true,
           },
           reason: { type: 'string', minLength: 1, pattern: '\\S' },
         },
@@ -65,12 +64,18 @@ export async function detectForeshadowEquivalence(input: {
   const candidateIds = collectUniqueCandidateIds(input.candidates)
   if (candidateIds.size < 2) return []
 
+  const candidates = input.candidates.map((candidate) => ({
+    id: candidate.id,
+    text: candidate.text,
+    kind: candidate.kind,
+    introducedChapter: candidate.introducedChapter,
+  }))
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
     {
       role: 'user',
       content: `请审校以下结构化伏笔候选，并仅返回重复组及其审计理由：\n${JSON.stringify(
-        input.candidates,
+        candidates,
         null,
         2
       )}`,
