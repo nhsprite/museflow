@@ -4,7 +4,24 @@ import { describe, expect, it } from 'vitest'
 
 const repoRoot = process.cwd()
 
+const forbiddenForeshadowProseDecisionSnippets = [
+  '.text.includes(',
+  '.text.startsWith(',
+  '.text.endsWith(',
+  '.text.match(',
+  '.text.replace(',
+  '.text.split(',
+  'normalizeTextForMatch',
+  'extractSemanticKeywords',
+]
+
 const forbiddenRuntimeSnippets: Record<string, string[]> = {
+  'src/graph/services/foreshadow-equivalence/detector.ts': forbiddenForeshadowProseDecisionSnippets,
+  'src/graph/services/foreshadow-equivalence/reconcile.ts':
+    forbiddenForeshadowProseDecisionSnippets,
+  'src/story-memory/foreshadow-alias.ts': forbiddenForeshadowProseDecisionSnippets,
+  'src/story-memory/foreshadow-introduction.ts': forbiddenForeshadowProseDecisionSnippets,
+  'src/utils/story-memory-constraints.ts': forbiddenForeshadowProseDecisionSnippets,
   'src/utils/agent-output.ts': [
     'isSelfWithdrawnIssue',
     'filterIssuesAgainstCanonicalFacts',
