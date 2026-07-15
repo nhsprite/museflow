@@ -49,6 +49,10 @@ import {
   formatActBoundaryAdjustmentCommand,
 } from '../../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
+import {
+  clampForeshadowDeadlineToBoundary,
+  resolveStoryBoundaryChapter,
+} from '../../../story-memory/foreshadow-deadline-boundary.js'
 import { loadConfig } from '../../../config/store.js'
 import {
   createGenericVerifiedConstraint,
@@ -525,6 +529,11 @@ export async function finalizeChapter(
   }
 
   const planningConfig = getChapterPlanningConfig(state.genre)
+  const storyBoundaryChapter = resolveStoryBoundaryChapter({
+    runtimeTotalChapters: state.totalChapters,
+    storyTotalChapters: state.story.totalChapters,
+    storyArc: state.storyArc,
+  })
 
   // Negotiated foreshadow scheduling: when the chapter outline deferred a
   // severely overdue required foreshadow, extend its deadline through the
@@ -563,8 +572,10 @@ export async function finalizeChapter(
         foreshadowId,
         chapterIndex,
         source: 'outline',
-        newExpectedFulfillChapter:
+        newExpectedFulfillChapter: clampForeshadowDeadlineToBoundary(
           currentChapterNumber + planningConfig.foreshadowMaxFulfillDistance,
+          storyBoundaryChapter
+        ),
       })
     }
     if (extendEvents.length > 0) {

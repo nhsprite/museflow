@@ -1766,7 +1766,7 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
 
     tmpDir = path.join(process.cwd(), 'tests', 'tmp', `finalize-defer-${Date.now()}`)
     await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
-    for (const chapterNumber of [DEFAULT_CHAPTER_INDEX + 1, 20, 62]) {
+    for (const chapterNumber of [DEFAULT_CHAPTER_INDEX + 1, 20, 58, 62]) {
       await fs.writeFile(
         path.join(tmpDir, 'chapters', `chapter_${chapterNumber}.md`),
         `# 第${chapterNumber}章\n\n主角继续前行，路途漫长。`,
@@ -1903,6 +1903,24 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
     )
     expect(result.storyMemory?.foreshadows['fs-1']?.deadlineExtensions).toBe(1)
     expect(result.rewriteRequested).toBeFalsy()
+  })
+
+  it('caps an extended deadline at the current story boundary', async () => {
+    const storyMemory = buildMemoryWithForeshadows([introduceEvent('fs-1', 4)])
+    const state = buildLateChapterState(storyMemory, ['fs-1'], 57, 61)
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const extendEvents = (result.storyMemory?.events ?? []).filter(
+      (event) => event.type === 'foreshadow-deadline-extend'
+    )
+    expect(extendEvents).toHaveLength(1)
+    expect(extendEvents[0]).toMatchObject({
+      foreshadowId: 'fs-1',
+      chapterIndex: 57,
+      newExpectedFulfillChapter: 61,
+    })
+    expect(result.storyMemory?.foreshadows['fs-1']?.expectedFulfillChapter).toBe(61)
   })
 
   it('syncs the extended deadline and extension count to the meta foreshadow stack', async () => {

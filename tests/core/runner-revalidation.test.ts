@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createMockContext } from '../utils/mock-context.ts'
+import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import type { StoryEvent } from '../../src/types/story-memory.js'
 
 const testTempDir = join(tmpdir(), `museflow-runner-revalidation-${randomUUID().slice(0, 8)}`)
 const testOutputsDir = join(
@@ -263,6 +265,81 @@ describe('runner revalidation', () => {
         retryStrategy: 'fix',
       }),
     ])
+  })
+
+  it('normalizes an out-of-range must-resolve deadline to the current story boundary', async () => {
+    const events: StoryEvent[] = [
+      {
+        id: 'evt-introduce-fs-1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-1',
+        text: '伏笔一',
+        kind: 'other',
+        resolutionPolicy: 'must_resolve',
+        required: true,
+        beatId: null,
+        expectedFulfillChapter: 4,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'evt-extend-fs-1',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'fs-1',
+        newExpectedFulfillChapter: 66,
+        chapterIndex: 57,
+        source: 'outline',
+      },
+    ]
+    const storyMemory = applyEvents(createEmptyStoryMemory(), events)
+    const { normalizeRuntimeStoryMemory } = await import('../../src/core/runner.js')
+
+    const normalized = normalizeRuntimeStoryMemory(
+      createBaseGraphState({
+        totalChapters: 61,
+        currentChapterIndex: 59,
+        story: {
+          id: 'story-1',
+          title: 'Test',
+          outputDir: testTempDir,
+          totalChapters: 61,
+        },
+        storyArc: {
+          totalChapters: 61,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 61,
+              title: '终幕',
+              theme: '收束',
+              function: '完成故事',
+              mandatoryBeats: [],
+            },
+          ],
+          keyBeats: [],
+        },
+        storyMemory,
+      }) as Parameters<typeof normalizeRuntimeStoryMemory>[0]
+    )
+
+    expect(normalized.storyMemory?.foreshadows['fs-1']?.expectedFulfillChapter).toBe(61)
+    expect(normalized.storyMemory?.events.at(-1)).toMatchObject({
+      type: 'foreshadow-policy-set',
+      foreshadowId: 'fs-1',
+      resolutionPolicy: 'must_resolve',
+      expectedFulfillChapter: 61,
+      chapterIndex: 58,
+    })
+    expect(normalized.foreshadowStack.find((item) => item.id === 'fs-1')).toMatchObject({
+      expectedFulfillChapter: 61,
+      deadlineExtensions: 1,
+    })
+
+    const normalizedAgain = normalizeRuntimeStoryMemory(normalized)
+    expect(normalizedAgain.storyMemory?.events).toHaveLength(
+      normalized.storyMemory?.events.length ?? 0
+    )
   })
 
   it('propagates rewriteRequested when the graph returns broken state', async () => {

@@ -35,11 +35,42 @@ import {
   type LegacyStoryMemoryV1,
 } from '../story-memory/resolution-policy.js'
 import type { StoryMemory } from '../types/story-memory.js'
+import { applyEvents } from '../story-memory/projector.js'
+import { projectForeshadowStack } from '../story-memory/foreshadow-policy.js'
+import {
+  buildForeshadowDeadlineBoundaryCorrectionEvents,
+  resolveStoryBoundaryChapter,
+} from '../story-memory/foreshadow-deadline-boundary.js'
 
 export function normalizeRuntimeStoryMemory(state: ReducedGraphState): ReducedGraphState {
   if (!state.storyMemory) return state
   const storyMemory = migrateStoryMemoryToV2(state.storyMemory as StoryMemory | LegacyStoryMemoryV1)
-  return storyMemory === state.storyMemory ? state : { ...state, storyMemory }
+  const boundaryChapter = resolveStoryBoundaryChapter({
+    runtimeTotalChapters: state.totalChapters,
+    storyTotalChapters: state.story.totalChapters,
+    storyArc: state.storyArc,
+  })
+  const correctionChapterIndex = Math.max(0, state.currentChapterIndex - 1)
+  const correctionEvents = buildForeshadowDeadlineBoundaryCorrectionEvents(
+    storyMemory,
+    boundaryChapter,
+    correctionChapterIndex
+  )
+  if (correctionEvents.length === 0) {
+    return storyMemory === state.storyMemory ? state : { ...state, storyMemory }
+  }
+
+  const normalizedMemory = applyEvents(storyMemory, correctionEvents)
+  for (const event of correctionEvents) {
+    logger.info(
+      `[MuseFlow] 伏笔 ${event.foreshadowId} 的 deadline 超出全书边界，已归一至第 ${boundaryChapter} 章`
+    )
+  }
+  return {
+    ...state,
+    storyMemory: normalizedMemory,
+    foreshadowStack: projectForeshadowStack(normalizedMemory),
+  }
 }
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
