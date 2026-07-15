@@ -844,10 +844,25 @@ describe('projectMemory foreshadows', () => {
   })
 
   it.each([
-    ['unknown canonical', 'fs-missing', 'fs-late'],
-    ['unknown duplicate', 'fs-early', 'fs-missing'],
-    ['reversed introduction order', 'fs-late', 'fs-early'],
-  ])('rejects an invalid merge with %s', (_name, canonicalId, duplicateId) => {
+    [
+      'unknown canonical',
+      'fs-missing',
+      'fs-late',
+      'Cannot merge unintroduced foreshadow ids: fs-missing, fs-late',
+    ],
+    [
+      'unknown duplicate',
+      'fs-early',
+      'fs-missing',
+      'Cannot merge unintroduced foreshadow ids: fs-early, fs-missing',
+    ],
+    [
+      'reversed introduction order',
+      'fs-late',
+      'fs-early',
+      'Canonical foreshadow must precede duplicate: fs-late, fs-early',
+    ],
+  ])('rejects an invalid merge with %s', (_name, canonicalId, duplicateId, expectedMessage) => {
     const introduced = applyEvents(createEmptyStoryMemory(), [
       {
         id: 'introduce-early',
@@ -869,7 +884,7 @@ describe('projectMemory foreshadows', () => {
       },
     ])
 
-    expect(() =>
+    const applyInvalidMerge = (): StoryMemory =>
       applyEvents(introduced, [
         {
           id: 'invalid-merge',
@@ -881,7 +896,9 @@ describe('projectMemory foreshadows', () => {
           source: 'outline',
         },
       ])
-    ).toThrow(ForeshadowMergeValidationError)
+
+    expect(applyInvalidMerge).toThrow(ForeshadowMergeValidationError)
+    expect(applyInvalidMerge).toThrow(expectedMessage)
   })
 
   it('rejects reversed order when an earlier raw canonical introduction was invalid', () => {
@@ -1038,7 +1055,7 @@ describe('projectMemory foreshadows', () => {
       },
     ])
 
-    expect(() =>
+    const applySameRootMerge = (): StoryMemory =>
       applyEvents(introduced, [
         {
           id: 'merge-forward',
@@ -1059,7 +1076,66 @@ describe('projectMemory foreshadows', () => {
           source: 'outline',
         },
       ])
+
+    expect(applySameRootMerge).toThrow(ForeshadowMergeValidationError)
+    expect(applySameRootMerge).toThrow('Foreshadow ids already share canonical root: fs-early')
+  })
+
+  it('does not mutate input memory when merge replay fails after a valid edge', () => {
+    const introduced = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-middle',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-middle',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 3,
+        source: 'outline',
+      },
+    ])
+    const before = structuredClone(introduced)
+
+    expect(() =>
+      applyEvents(introduced, [
+        {
+          id: 'merge-valid',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: 'fs-early',
+          duplicateForeshadowId: 'fs-middle',
+          reason: 'The records describe one obligation',
+          chapterIndex: 4,
+          source: 'outline',
+        },
+        {
+          id: 'merge-invalid',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: 'fs-late',
+          duplicateForeshadowId: 'fs-early',
+          reason: 'The records describe one obligation',
+          chapterIndex: 5,
+          source: 'outline',
+        },
+      ])
     ).toThrow(ForeshadowMergeValidationError)
+    expect(introduced).toEqual(before)
   })
 })
 

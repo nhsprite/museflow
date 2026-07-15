@@ -13,7 +13,7 @@ import type {
 import type { StoryArc } from '../types/outline.js'
 import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
-import { isProjectableForeshadowIntroduction } from './foreshadow-policy.js'
+import { isProjectableForeshadowIntroduction } from './foreshadow-introduction.js'
 import {
   compareCanonicalOrder,
   ForeshadowMergeValidationError,

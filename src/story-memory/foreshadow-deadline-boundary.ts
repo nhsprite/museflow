@@ -1,6 +1,6 @@
 import type { StoryArc } from '../types/outline.js'
 import type { ForeshadowPolicySetEvent, StoryMemory } from '../types/story-memory.js'
-import { isValidForeshadowDeadline } from './foreshadow-policy.js'
+import { isValidForeshadowDeadline } from './foreshadow-introduction.js'
 
 export interface StoryBoundarySources {
   runtimeTotalChapters: number

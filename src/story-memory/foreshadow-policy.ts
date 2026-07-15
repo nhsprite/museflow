@@ -5,7 +5,16 @@ import type {
   StoryEvent,
   StoryMemory,
 } from '../types/story-memory.js'
+import {
+  isProjectableForeshadowIntroduction,
+  isValidForeshadowDeadline,
+} from './foreshadow-introduction.js'
 import { policyFromLegacyStackFields } from './resolution-policy.js'
+
+export {
+  isProjectableForeshadowIntroduction,
+  isValidForeshadowDeadline,
+} from './foreshadow-introduction.js'
 
 type ForeshadowIntroduceEvent = Extract<StoryEvent, { type: 'foreshadow-introduce' }>
 
@@ -72,21 +81,6 @@ export function projectForeshadowStack(memory: StoryMemory): ForeshadowItem[] {
   return Object.values(memory.foreshadows)
     .filter((foreshadow) => foreshadow.waivedIn === undefined)
     .map(foreshadowMemoryToItem)
-}
-
-export function isValidForeshadowDeadline(
-  introducedChapterIndex: number,
-  expectedFulfillChapter: number | null
-): boolean {
-  return (
-    expectedFulfillChapter === null ||
-    (Number.isInteger(expectedFulfillChapter) &&
-      expectedFulfillChapter > introducedChapterIndex + 1)
-  )
-}
-
-export function isProjectableForeshadowIntroduction(event: ForeshadowIntroduceEvent): boolean {
-  return isValidForeshadowDeadline(event.chapterIndex, event.expectedFulfillChapter)
 }
 
 export function classifyForeshadows(

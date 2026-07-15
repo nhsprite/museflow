@@ -1,5 +1,5 @@
 import type { ForeshadowId, ForeshadowMemory, StoryMemory } from '../types/story-memory.js'
-import { isProjectableForeshadowIntroduction } from './foreshadow-policy.js'
+import { isProjectableForeshadowIntroduction } from './foreshadow-introduction.js'
 
 interface ForeshadowIntroductionOrder {
   chapterIndex: number
