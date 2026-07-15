@@ -91,6 +91,7 @@ describe('detectForeshadowEquivalence', () => {
     ['null output root', null],
     ['array output root', []],
     ['missing groups', {}],
+    ['extra root property', { groups: [], extra: true }],
     ['non-array groups', { groups: {} }],
     ['non-object group', { groups: [null] }],
     ['non-array ids', { groups: [{ ids: 'fs-a', reason: 'An audit reason.' }] }],
@@ -210,6 +211,13 @@ describe('detectForeshadowEquivalence', () => {
             type: 'object',
             required: ['ids', 'reason'],
             additionalProperties: false,
+            properties: {
+              reason: {
+                type: 'string',
+                minLength: 1,
+                pattern: '\\S',
+              },
+            },
           },
         },
       },

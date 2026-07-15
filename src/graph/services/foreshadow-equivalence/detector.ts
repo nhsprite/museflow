@@ -39,7 +39,7 @@ const EQUIVALENCE_SCHEMA: JsonSchema & { additionalProperties: false } = {
             minItems: 2,
             uniqueItems: true,
           },
-          reason: { type: 'string', minLength: 1 },
+          reason: { type: 'string', minLength: 1, pattern: '\\S' },
         },
         required: ['ids', 'reason'],
         additionalProperties: false,
