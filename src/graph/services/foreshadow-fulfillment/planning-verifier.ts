@@ -9,10 +9,7 @@ import type { ChapterOutline } from '../../../types/outline.js'
 import type { StoryMemory } from '../../../types/story-memory.js'
 
 export type ForeshadowPlanningVerdict =
-  | 'fulfilled'
-  | 'not_fulfilled'
-  | 'uncertain'
-  | 'verification_failed'
+  'fulfilled' | 'not_fulfilled' | 'uncertain' | 'verification_failed'
 
 export interface ForeshadowPlanningJudgment {
   foreshadowId: string

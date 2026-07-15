@@ -319,9 +319,7 @@ function deferForeshadowClaims(
     state: { ...state, outline },
     plan: {
       ...plan,
-      fulfilledForeshadowIds: plan.fulfilledForeshadowIds.filter(
-        (id) => !deferredIds.has(id)
-      ),
+      fulfilledForeshadowIds: plan.fulfilledForeshadowIds.filter((id) => !deferredIds.has(id)),
       expectedEvents: plan.expectedEvents.filter(
         (event) => event.type !== 'foreshadow-fulfill' || !deferredIds.has(event.foreshadowId)
       ),
@@ -1776,8 +1774,7 @@ async function expandOutlineForChapterInternal(
     }
 
     const semanticRejections = semanticJudgments.filter(
-      (judgment) =>
-        judgment.verdict === 'not_fulfilled' || judgment.verdict === 'uncertain'
+      (judgment) => judgment.verdict === 'not_fulfilled' || judgment.verdict === 'uncertain'
     )
     const mandatoryRejections = semanticRejections.filter((judgment) => judgment.mandatory)
 
@@ -1799,8 +1796,7 @@ async function expandOutlineForChapterInternal(
         },
         semanticRejections: mandatoryRejections.map((judgment) => ({
           foreshadowId: judgment.foreshadowId,
-          verdict:
-            judgment.verdict === 'not_fulfilled' ? 'not_fulfilled' : ('uncertain' as const),
+          verdict: judgment.verdict === 'not_fulfilled' ? 'not_fulfilled' : ('uncertain' as const),
           reason: judgment.reason,
         })),
       }

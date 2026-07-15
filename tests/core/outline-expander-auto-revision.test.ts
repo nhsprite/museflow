@@ -166,10 +166,12 @@ describe('expandOutlineForChapter auto-revision', () => {
         itemLocationConflicts: [],
       })
 
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toMatchObject({
-      conflicts: [conflict],
-      proposal,
-    })
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toMatchObject(
+      {
+        conflicts: [conflict],
+        proposal,
+      }
+    )
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
     expect(prepareStoryStateForChapterMock.mock.calls[1]?.[3]).toEqual({
       proposalMode: 'omit',
@@ -188,10 +190,12 @@ describe('expandOutlineForChapter auto-revision', () => {
       .mockRejectedValueOnce(new BlockingConflictError([conflict], 1, proposal))
       .mockRejectedValueOnce(new BlockingConflictError([conflict], 1))
 
-    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toMatchObject({
-      conflicts: [conflict],
-      proposal: undefined,
-    })
+    await expect(expandOutlineForChapter(baseState, 1, createMockProvider())).rejects.toMatchObject(
+      {
+        conflicts: [conflict],
+        proposal: undefined,
+      }
+    )
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
   })
 
@@ -243,9 +247,7 @@ describe('expandOutlineForChapter auto-revision', () => {
 
   it('escalates when every independent JIT candidate has the same structured conflict', async () => {
     const conflict = createConflict()
-    prepareStoryStateForChapterMock.mockRejectedValue(
-      new BlockingConflictError([conflict], 1)
-    )
+    prepareStoryStateForChapterMock.mockRejectedValue(new BlockingConflictError([conflict], 1))
 
     await expect(
       expandOutlineForChapter(createJitState(), 1, createMockProvider())

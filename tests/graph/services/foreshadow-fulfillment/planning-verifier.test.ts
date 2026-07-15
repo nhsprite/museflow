@@ -155,9 +155,7 @@ describe('verifyForeshadowPlan', () => {
 
   it('returns an uncertain semantic judgment without upgrading it', async () => {
     const provider = providerWithStructuredResponse({
-      judgments: [
-        { foreshadowId: 'fs-a', verdict: 'uncertain', reason: '规划细节不足。' },
-      ],
+      judgments: [{ foreshadowId: 'fs-a', verdict: 'uncertain', reason: '规划细节不足。' }],
     })
 
     const judgments = await verifyForeshadowPlan({
@@ -195,9 +193,7 @@ describe('verifyForeshadowPlan', () => {
     [
       'unknown id',
       {
-        judgments: [
-          { foreshadowId: 'fs-other', verdict: 'fulfilled', reason: '未知 ID。' },
-        ],
+        judgments: [{ foreshadowId: 'fs-other', verdict: 'fulfilled', reason: '未知 ID。' }],
       },
     ],
     [
