@@ -8,12 +8,16 @@ import type {
   StoryEvent,
   BeatId,
   ForeshadowId,
+  ForeshadowKind,
   ForeshadowResolutionPolicy,
   TaskId,
 } from '../types/story-memory.js'
 
 export interface ForeshadowPlanningObligation {
   id: ForeshadowId
+  text: string
+  kind: ForeshadowKind | null
+  introducedChapter: number
   resolutionPolicy: ForeshadowResolutionPolicy
   deadlineChapter: number | null
   schedulingMode: 'mandatory' | 'opportunity' | 'ambient'

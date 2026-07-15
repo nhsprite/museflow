@@ -197,6 +197,9 @@ function buildForeshadowPlanningObligations(
     return [
       {
         id: foreshadow.id,
+        text: foreshadow.text,
+        kind: foreshadow.kind,
+        introducedChapter: foreshadow.introducedIn,
         resolutionPolicy: foreshadow.resolutionPolicy,
         deadlineChapter: foreshadow.expectedFulfillChapter,
         schedulingMode: 'mandatory' as const,
@@ -206,6 +209,9 @@ function buildForeshadowPlanningObligations(
   })
   const opportunities = schedule.opportunityCandidates.map(({ foreshadow, schedulingMode }) => ({
     id: foreshadow.id,
+    text: foreshadow.text,
+    kind: foreshadow.kind,
+    introducedChapter: foreshadow.introducedIn,
     resolutionPolicy: foreshadow.resolutionPolicy,
     deadlineChapter: foreshadow.expectedFulfillChapter,
     schedulingMode,

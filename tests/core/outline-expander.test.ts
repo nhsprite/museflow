@@ -478,10 +478,38 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-due'])
     expect(result.outline?.[1]?.deferredForeshadowIds).toEqual([])
     const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
-      foreshadowObligations?: Array<{ id: string; schedulingMode: string }>
+      foreshadowObligations?: Array<{
+        id: string
+        text: string
+        kind: string | null
+        introducedChapter: number
+        schedulingMode: string
+      }>
     }
     expect(jitInput.foreshadowObligations).toEqual([
-      expect.objectContaining({ id: 'fs-due', schedulingMode: 'mandatory' }),
+      expect.objectContaining({
+        id: 'fs-due',
+        text: 'structured clue fs-due',
+        kind: 'plot',
+        introducedChapter: 0,
+        schedulingMode: 'mandatory',
+      }),
+    ])
+    const plannerInput = planChapterWithOverrideMock.mock.calls[0]![3] as {
+      foreshadowObligations?: Array<{
+        id: string
+        text: string
+        kind: string | null
+        introducedChapter: number
+      }>
+    }
+    expect(plannerInput.foreshadowObligations).toEqual([
+      expect.objectContaining({
+        id: 'fs-due',
+        text: 'structured clue fs-due',
+        kind: 'plot',
+        introducedChapter: 0,
+      }),
     ])
   })
 

@@ -68,6 +68,9 @@ describe('ChapterPlannerAgent issues integration', () => {
       foreshadowObligations: [
         {
           id: 'fs-hard',
+          text: '角色闭眼后灯仍持续亮着',
+          kind: 'plot',
+          introducedChapter: 3,
           resolutionPolicy: 'must_resolve',
           deadlineChapter: 3,
           schedulingMode: 'mandatory',
@@ -84,6 +87,9 @@ describe('ChapterPlannerAgent issues integration', () => {
     const userMessage = messages[1]?.content ?? ''
     expect(userMessage).toContain('<foreshadow_obligations>')
     expect(userMessage).toContain('fs-hard')
+    expect(userMessage).toContain('text=角色闭眼后灯仍持续亮着')
+    expect(userMessage).toContain('kind=plot')
+    expect(userMessage).toContain('introducedChapter=3')
     expect(userMessage).toContain('mustFulfillThisChapter=true')
     expect(userMessage).toContain('<foreshadow_planning_rejection>')
     expect(userMessage).toContain('missingDeclarationIds: fs-hard')

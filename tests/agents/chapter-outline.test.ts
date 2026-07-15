@@ -213,6 +213,9 @@ describe('ChapterOutlineAgent', () => {
       foreshadowObligations: [
         {
           id: 'fs-hard',
+          text: '角色闭眼后灯仍持续亮着',
+          kind: 'plot',
+          introducedChapter: 3,
           resolutionPolicy: 'must_resolve',
           deadlineChapter: 6,
           schedulingMode: 'mandatory',
@@ -231,6 +234,9 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).toContain('<foreshadow_obligations>')
     expect(prompt).toContain('fs-hard')
     expect(prompt).toContain('must_resolve')
+    expect(prompt).toContain('text=角色闭眼后灯仍持续亮着')
+    expect(prompt).toContain('kind=plot')
+    expect(prompt).toContain('introducedChapter=3')
     expect(prompt).toContain('mustFulfillThisChapter=true')
     expect(prompt).toContain('<foreshadow_planning_rejection>')
     expect(prompt).toContain('incorrectlyDeferredIds: fs-hard')
