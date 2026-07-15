@@ -12,6 +12,7 @@ import { exportStory } from './commands/export.js'
 import { list } from './commands/list.js'
 import { del } from './commands/delete.js'
 import { adjustAct } from './commands/adjust-act.js'
+import { waiveForeshadow } from './commands/waive-foreshadow.js'
 import { registerMigrateMemoryCommand } from './commands/migrate-memory.js'
 import { setDebugEnabled } from '../utils/logger.js'
 
@@ -76,6 +77,14 @@ program
   .requiredOption('--act <number>', '要调整的幕序号')
   .requiredOption('--end-chapter <number>', '新的结束章节')
   .action(adjustAct)
+
+program
+  .command('waive-foreshadow')
+  .description('放弃回收某个伏笔（作者决策：该线索保持悬置，不再阻断幕/全书边界）')
+  .argument('<story-id>', '故事ID')
+  .requiredOption('--foreshadow <id>', '要放弃的伏笔ID')
+  .option('--reason <text>', '放弃原因（可选）')
+  .action(waiveForeshadow)
 
 program
   .command('info')

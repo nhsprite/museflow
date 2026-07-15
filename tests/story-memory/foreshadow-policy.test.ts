@@ -256,6 +256,25 @@ describe('foreshadow deadline policy', () => {
   it('defaults per-chapter foreshadow scheduling capacity to three', () => {
     expect(DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowMaxFulfillmentsPerChapter).toBe(3)
   })
+
+  it('excludes waived foreshadows from scheduling and boundary blocking', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        active: memoryForeshadow('active', null, true, 2),
+        waived: { ...memoryForeshadow('waived', null, true, 2), waivedIn: 5 },
+      },
+    }
+
+    expect(getRequiredForeshadowsForScheduling(memory, 10, true).map((f) => f.id)).toEqual([
+      'active',
+    ])
+    expect(selectForeshadowsForChapter(memory, 10, 3, true)).toEqual(['active'])
+    expect(getBoundaryBlockingForeshadows(memory, 10, true)).toEqual(['active'])
+    expect(getBoundaryBlockingForeshadowDetails(memory, 10, true).map((f) => f.id)).toEqual([
+      'active',
+    ])
+  })
 })
 
 function memoryForeshadow(

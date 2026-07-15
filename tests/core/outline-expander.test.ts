@@ -515,6 +515,77 @@ describe('expandOutlineForChapter', () => {
     expect(formattedOutline).toContain('【本章顺延伏笔】fs-b')
   })
 
+  it('enters tight mode before the last chapter when remaining capacity cannot hold pending foreshadows', async () => {
+    // 第 2 章（幕结束于第 3 章，剩余 2 章），4 个待回收伏笔 > 后续 1 章 × 3 容量 → tight
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c', 'fs-d']
+    const state = stateWithScheduledForeshadows(
+      1,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 2))
+    )
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '强制回收',
+        description: '本章在核心事件中回收调度到的线索。',
+        fulfilledForeshadowIds: ['fs-a', 'fs-b', 'fs-c'],
+        deferredForeshadowIds: [],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-a', 'fs-b', 'fs-c'],
+        expectedEvents: ['fs-a', 'fs-b', 'fs-c'].map((id) => createForeshadowFulfillEvent(id, 1)),
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 1, createMockProvider())
+
+    expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-a', 'fs-b', 'fs-c'])
+    const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      verifiedConstraints?: string[]
+    }
+    const constraints = jitInput.verifiedConstraints?.join('\n') ?? ''
+    expect(constraints).toContain('【强制回收】')
+    expect(constraints).toContain('tight 模式')
+    expect(constraints).not.toContain('【伏笔调度候选】以下伏笔已进入预期回收窗口')
+  })
+
+  it('stays in advisory mode when remaining capacity can hold pending foreshadows', async () => {
+    // 第 2 章（剩余 2 章），2 个待回收伏笔 ≤ 后续 1 章 × 3 容量 → 非 tight
+    const state = stateWithScheduledForeshadows(1, '', [
+      createRequiredForeshadow('fs-a', 2),
+      createRequiredForeshadow('fs-b', 2),
+    ])
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '部分回收',
+        description: '本章自然回收其中一条线索。',
+        fulfilledForeshadowIds: ['fs-a'],
+        deferredForeshadowIds: ['fs-b'],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-a'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-a', 1)],
+      }),
+    })
+
+    await expandOutlineForChapter(state, 1, createMockProvider())
+
+    const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      verifiedConstraints?: string[]
+    }
+    const constraints = jitInput.verifiedConstraints?.join('\n') ?? ''
+    expect(constraints).toContain('【伏笔调度候选】')
+    expect(constraints).not.toContain('【强制回收】')
+    expect(constraints).not.toContain('tight 模式')
+  })
+
   it('extends the act when mandatory foreshadows are deferred in the last chapter', async () => {
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
     const state = stateWithScheduledForeshadows(
@@ -1001,7 +1072,7 @@ describe('expandOutlineForChapter', () => {
     })
 
     await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
-      '请先运行：museflow adjust-act story-1 --act 1 --end-chapter 7'
+      '第 3 章即时大纲无法在幕末前回收必须回收的伏笔：fs-01, fs-02, fs-03'
     )
 
     expect(planChapterWithOverrideMock).not.toHaveBeenCalled()

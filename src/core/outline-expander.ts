@@ -167,12 +167,15 @@ function computeForeshadowConstraintContext(
     act.index === finalActIndex
   )
   const pendingBlockingCount = blockingForeshadows.length
-  if (remainingChapters !== 1 || pendingBlockingCount === 0) {
+  if (pendingBlockingCount === 0) {
     return { ...empty, remainingChapters, pendingBlockingCount }
   }
 
   const planningConfig = getChapterPlanningConfig(state.genre)
-  if (pendingBlockingCount > planningConfig.foreshadowMaxFulfillmentsPerChapter) {
+  const capacity = normalizeForeshadowCapacity(planningConfig.foreshadowMaxFulfillmentsPerChapter)
+  // Tight 模式：本章之后的剩余章节装不下全部待回收伏笔（每章容量上限），
+  // 本章必须回收调度到的份额，不能再顺延。
+  if (pendingBlockingCount <= (remainingChapters - 1) * capacity) {
     return { ...empty, remainingChapters, pendingBlockingCount }
   }
 
@@ -185,18 +188,17 @@ function buildScheduledForeshadowConstraint(
   state: ReducedGraphState,
   context: ForeshadowConstraintContext
 ): string {
-  const { scheduledIds, mustFulfillIds, remainingChapters, pendingBlockingCount, strictMode } =
-    context
+  const { scheduledIds, mustFulfillIds, remainingChapters, pendingBlockingCount } = context
   const mustFulfillSet = new Set(mustFulfillIds)
 
   const lines = scheduledIds.map((id) => {
     const foreshadow = state.storyMemory?.foreshadows[id]
     const deadline = foreshadow?.expectedFulfillChapter ?? '全书结尾'
-    const label = strictMode && mustFulfillSet.has(id) ? '【强制回收】' : '【候选回收】'
+    const label = mustFulfillSet.has(id) ? '【强制回收】' : '【候选回收】'
     return `- ${label} ${id}（预期回收章节：${deadline}）：${foreshadow?.text ?? id}`
   })
 
-  if (strictMode && mustFulfillIds.length > 0) {
+  if (mustFulfillIds.length > 0) {
     return `【伏笔调度约束】当前幕仅剩 ${remainingChapters} 章，仍有 ${pendingBlockingCount} 个 required 伏笔必须在幕末前回收，处于 tight 模式。\n强制回收项必须放入 fulfilledForeshadowIds，并在 description 中安排正文可验证的真实剧情事件，绝对禁止放入 deferredForeshadowIds 顺延。候选回收项若与本章核心事件不相容可放入 deferredForeshadowIds。每个 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一。\n候选列表：\n${lines.join('\n')}`
   }
 
@@ -870,9 +872,9 @@ async function generateChapterOutlineIfNeeded(
       [...(candidate.fulfilledForeshadowIds ?? []), ...(candidate.deferredForeshadowIds ?? [])],
       scheduledForeshadowIds
     )
-    const deferredMustFulfillIds = strictForeshadowMode
-      ? mustFulfillForeshadowIds.filter((id) => candidate.deferredForeshadowIds?.includes(id))
-      : []
+    const deferredMustFulfillIds = mustFulfillForeshadowIds.filter((id) =>
+      candidate.deferredForeshadowIds?.includes(id)
+    )
     if (missingScheduledForeshadowIds.length > 0 || deferredMustFulfillIds.length > 0) {
       const correctionIds = [...missingScheduledForeshadowIds, ...deferredMustFulfillIds]
       lastMissingScheduledForeshadowIds = correctionIds
@@ -880,7 +882,7 @@ async function generateChapterOutlineIfNeeded(
         `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决或错误顺延伏笔候选：${correctionIds.join(', ')}`
       )
       const mustFulfillHint =
-        strictForeshadowMode && mustFulfillForeshadowIds.length > 0
+        mustFulfillForeshadowIds.length > 0
           ? `当前幕仅剩 ${foreshadowConstraintContext.remainingChapters} 章，仍有 ${foreshadowConstraintContext.pendingBlockingCount} 个 required 伏笔待回收，处于 tight 模式。强制回收项 ${mustFulfillForeshadowIds.join('、')} 必须放入 fulfilledForeshadowIds，绝对禁止放入 deferredForeshadowIds；`
           : ''
       correctionConstraints = [
@@ -900,13 +902,18 @@ async function generateChapterOutlineIfNeeded(
         : []
       if (nonDeferrableIds.length > 0) {
         throw new Error(
-          `第 ${chapterIndex + 1} 章即时大纲无法在幕末前回收必须回收的伏笔：${nonDeferrableIds.join(', ')}。当前幕仅剩 ${foreshadowConstraintContext.remainingChapters} 章，仍有 ${foreshadowConstraintContext.pendingBlockingCount} 个 required 伏笔待回收。请调整幕边界或重写 earlier 章节以回收该伏笔。`
+          `第 ${chapterIndex + 1} 章即时大纲无法在幕末前回收必须回收的伏笔：${nonDeferrableIds.join(', ')}。当前幕仅剩 ${foreshadowConstraintContext.remainingChapters} 章，仍有 ${foreshadowConstraintContext.pendingBlockingCount} 个 required 伏笔待回收。请调整幕边界，或重写前面的章节以回收这些伏笔。`
         )
       }
       logger.warn(
         `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决伏笔候选，已自动顺延：${lastMissingScheduledForeshadowIds.join(', ')}`
       )
-      autoDeferredForeshadowIds = lastMissingScheduledForeshadowIds
+      // 候选大纲可能已自行将部分 id 放入 deferredForeshadowIds（tight 模式下强制回收项
+      // 被错误顺延也会触发重试），自动顺延时跳过这些 id，避免重复。
+      const alreadyDeferred = new Set(lastCandidate.deferredForeshadowIds ?? [])
+      autoDeferredForeshadowIds = lastMissingScheduledForeshadowIds.filter(
+        (id) => !alreadyDeferred.has(id)
+      )
       const candidateWithDeferred = {
         ...lastCandidate,
         deferredForeshadowIds: [

@@ -44,6 +44,8 @@ function collectEventEntityIds(event: StoryEvent): string[] {
       return [event.foreshadowId]
     case 'foreshadow-deadline-extend':
       return [event.foreshadowId]
+    case 'foreshadow-waive':
+      return [event.foreshadowId]
     case 'task-create':
       return [event.taskId]
     case 'task-resolve':

@@ -73,6 +73,8 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
         a.foreshadowId === b.foreshadowId &&
         a.newExpectedFulfillChapter === b.newExpectedFulfillChapter
       )
+    case 'foreshadow-waive':
+      return b.type === 'foreshadow-waive' && a.foreshadowId === b.foreshadowId
     case 'task-create':
       return b.type === 'task-create' && a.taskId === b.taskId && a.description === b.description
     case 'task-resolve':

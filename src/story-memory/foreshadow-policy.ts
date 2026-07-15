@@ -104,6 +104,7 @@ export function getRequiredForeshadowsForScheduling(
       if (
         !foreshadow.required ||
         foreshadow.fulfilledIn !== null ||
+        foreshadow.waivedIn !== undefined ||
         !isValidForeshadowDeadline(foreshadow.introducedIn, foreshadow.expectedFulfillChapter)
       ) {
         return false

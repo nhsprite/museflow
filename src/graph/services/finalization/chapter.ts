@@ -160,6 +160,8 @@ const FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES: ReadonlySet<StoryEvent['type']> = 
   'foreshadow-introduce',
   // 伏笔 deadline 延长是定稿调度决策，不应由 SummaryAgent 产生。
   'foreshadow-deadline-extend',
+  // 放弃回收是作者决策（CLI），agent 无权产生。
+  'foreshadow-waive',
 ])
 
 function filterSummaryFallbackEvents(
@@ -606,7 +608,9 @@ export async function finalizeChapter(
     const memoryForeshadows = Object.values(updatedStoryMemory.foreshadows)
     updatedForeshadowStack =
       hasInputStoryMemory || memoryForeshadows.length > 0
-        ? memoryForeshadows.map(foreshadowMemoryToItem)
+        ? memoryForeshadows
+            .filter((foreshadow) => foreshadow.waivedIn === undefined)
+            .map(foreshadowMemoryToItem)
         : state.foreshadowStack
     const activeForeshadows = getActiveForeshadows(updatedStoryMemory)
     const openTasks = getOpenTasks(updatedStoryMemory)

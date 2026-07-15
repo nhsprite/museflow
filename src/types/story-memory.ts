@@ -63,6 +63,7 @@ export type StoryEvent =
   | ForeshadowIntroduceEvent
   | ForeshadowFulfillEvent
   | ForeshadowDeadlineExtendEvent
+  | ForeshadowWaiveEvent
   | TaskCreateEvent
   | TaskResolveEvent
 
@@ -118,6 +119,17 @@ export interface ForeshadowDeadlineExtendEvent extends BaseEvent {
   type: 'foreshadow-deadline-extend'
   foreshadowId: ForeshadowId
   newExpectedFulfillChapter: number
+}
+
+/**
+ * Author decision (CLI) to leave a foreshadow intentionally unresolved, e.g. a
+ * thread meant to stay "永远无法送达". Waived foreshadows stop blocking act/story
+ * boundaries and leave the scheduling pool; they are never produced by agents.
+ */
+export interface ForeshadowWaiveEvent extends BaseEvent {
+  type: 'foreshadow-waive'
+  foreshadowId: ForeshadowId
+  reason?: string
 }
 
 export interface TaskCreateEvent extends BaseEvent {
@@ -176,6 +188,8 @@ export interface ForeshadowMemory {
   required: boolean
   beatId: BeatId | null
   deadlineExtensions?: number
+  /** 作者决定不再回收（foreshadow-waive 事件）的章节索引；存在时退出调度与边界阻断。 */
+  waivedIn?: number
 }
 
 export interface BeatMemory {

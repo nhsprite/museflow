@@ -1313,6 +1313,32 @@ describe('finalizeChapter', () => {
     )
   })
 
+  it('does not block a waived required foreshadow at story end and drops it from the stack projection', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '全书结尾正文。')
+    const base = boundaryState(tmpDir, {
+      foreshadows: {
+        'fs-waived': { ...testMemoryForeshadow('fs-waived', null, true, null), waivedIn: 1 },
+      },
+      beats: {},
+    })
+    const state = buildState(tmpDir, {
+      ...base,
+      totalChapters: 3,
+      story: { ...base.story, totalChapters: 3 },
+      storyArc: base.storyArc ? { ...base.storyArc, totalChapters: 3 } : null,
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const boundaryIssues = (result.pendingIssues ?? []).filter(
+      (issue) => issue.type === 'foreshadow_boundary_unresolved'
+    )
+    expect(boundaryIssues).toHaveLength(0)
+    expect(result.rewriteRequested).toBeFalsy()
+    expect(result.foreshadowStack?.some((item) => item.id === 'fs-waived')).toBe(false)
+  })
+
   it('rejects an invalid foreshadow deadline in draft chapter events', async () => {
     // SummaryAgent 不再被允许补提 foreshadow-introduce，因此将无效 deadline 事件放到
     // draftChapterEvents 中，验证 finalize 仍能通过结构化校验拒绝它。

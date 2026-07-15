@@ -42,6 +42,8 @@ export function renderStoryEventLine(event: StoryEvent): string {
       return `foreshadow-fulfill: ${event.foreshadowId}`
     case 'foreshadow-deadline-extend':
       return `foreshadow-deadline-extend: ${event.foreshadowId} / newExpected=${event.newExpectedFulfillChapter}`
+    case 'foreshadow-waive':
+      return `foreshadow-waive: ${event.foreshadowId}${event.reason !== undefined ? ` / reason=${event.reason}` : ''}`
     case 'task-create':
       return `task-create: ${event.taskId} / ${event.description}`
     case 'task-resolve':

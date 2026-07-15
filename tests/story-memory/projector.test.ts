@@ -398,6 +398,44 @@ describe('projectMemory foreshadows', () => {
     expect(next.foreshadows['f-1']?.fulfilledIn).toBe(4)
   })
 
+  it('marks a foreshadow as waived by a foreshadow-waive event', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-1',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'e2',
+        type: 'foreshadow-waive',
+        foreshadowId: 'f-1',
+        reason: '主题需要保持悬置',
+        chapterIndex: 6,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['f-1']?.waivedIn).toBe(6)
+    expect(next.foreshadows['f-1']?.fulfilledIn).toBeNull()
+  })
+
+  it('ignores a waive event for an unknown foreshadow', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'foreshadow-waive',
+        foreshadowId: 'f-missing',
+        chapterIndex: 6,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['f-missing']).toBeUndefined()
+  })
+
   it('preserves foreshadow introduction metadata from structured events', () => {
     const memory = createEmptyStoryMemory()
     const next = applyEvents(memory, [
