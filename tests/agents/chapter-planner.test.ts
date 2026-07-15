@@ -528,6 +528,9 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(prompt).toContain('"attribute": "attribute"')
     expect(prompt).toContain('"value": "value"')
     expect(prompt).toContain('"chapterIndex": 25')
+    expect(prompt).toContain('"resolutionPolicy": "should_resolve"')
+    expect(prompt).toContain('must_resolve 必须提供有限的 expectedFulfillChapter')
+    expect(prompt).toContain('没有可辩护截止章节时默认使用 should_resolve')
   })
 })
 

@@ -270,7 +270,7 @@ function buildVerifiedConstraints(
   return constraints
 }
 
-function foreshadowMemoryToItem(
+export function foreshadowMemoryToItem(
   memory: import('../../../types/story-memory.js').ForeshadowMemory
 ): ForeshadowItem {
   const item: ForeshadowItem = {
@@ -281,6 +281,7 @@ function foreshadowMemoryToItem(
     createdAtChapter: memory.introducedIn + 1,
     status: memory.fulfilledIn !== null ? 'recalled' : 'planted',
     isExplicit: true,
+    resolutionPolicy: memory.resolutionPolicy,
     required: memory.required,
   }
   if (memory.kind) {
@@ -566,7 +567,9 @@ export async function finalizeChapter(
     const extendEvents: Array<Extract<StoryEvent, { type: 'foreshadow-deadline-extend' }>> = []
     for (const foreshadowId of deferredForeshadowIds) {
       const memory = updatedStoryMemory.foreshadows[foreshadowId]
-      if (!memory || !memory.required || memory.fulfilledIn !== null) continue
+      if (!memory || memory.resolutionPolicy !== 'must_resolve' || memory.fulfilledIn !== null) {
+        continue
+      }
       if (memory.expectedFulfillChapter === null) continue
       if (
         currentChapterNumber <=

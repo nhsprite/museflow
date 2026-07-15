@@ -60,7 +60,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
    - createdTaskIds: 本章开启的 TaskId 列表
 12. 若存在 <foreshadow_obligations>：每个 schedulingMode=mandatory 的候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一；mustFulfillThisChapter=true 的 ID 只能兑现，不能顺延。
 13. schedulingMode=opportunity 或 ambient 的候选，只有本章核心事件本身能够自然承载真实、可验证的回收时，才放入 fulfilledForeshadowIds；不得为自然回收机会改变本章核心事件。当前章不适合时放入 deferredForeshadowIds，不需要额外制造剧情。
-14. 输出 JSON 格式：
+14. 若本章确需引入新伏笔：没有明确且可辩护的有限截止章节时，后续规划应将其声明为 should_resolve；不得把普通伏笔升级成必须在边界前清空的硬义务。
+15. 输出 JSON 格式：
    {
      "title": "章节标题",
      "description": "本章具体执行描述",

@@ -120,14 +120,25 @@ function makeForeshadowMemory(
   id: string,
   overrides: Partial<ForeshadowMemory> = {}
 ): ForeshadowMemory {
+  const expectedFulfillChapter =
+    overrides.expectedFulfillChapter !== undefined ? overrides.expectedFulfillChapter : 2
+  const required = overrides.required ?? true
+  const resolutionPolicy =
+    overrides.resolutionPolicy ??
+    (expectedFulfillChapter !== null
+      ? 'must_resolve'
+      : required
+        ? 'should_resolve'
+        : 'may_remain_open')
   return {
     id,
     text: `${id} text`,
     kind: null,
     introducedIn: 0,
-    expectedFulfillChapter: 2,
+    expectedFulfillChapter,
     fulfilledIn: null,
-    required: true,
+    resolutionPolicy,
+    required,
     beatId: null,
     ...overrides,
   }
@@ -138,7 +149,7 @@ function makeStoryMemory(
   events: StoryEvent[] = []
 ): StoryMemory {
   return {
-    version: '1',
+    version: '2',
     lastChapterIndex: 0,
     entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
     events,
@@ -1271,7 +1282,7 @@ describe('finalizeChapter', () => {
       foreshadows: {
         'fs-future': testMemoryForeshadow('fs-future', 'beat-1', true, 5),
         'fs-unscheduled': testMemoryForeshadow('fs-unscheduled', 'beat-1', true, null),
-        'fs-optional': testMemoryForeshadow('fs-optional', 'beat-1', false, 3),
+        'fs-optional': testMemoryForeshadow('fs-optional', 'beat-1', false, null),
       },
       beats: {
         'beat-1': testMemoryBeat('beat-1', 1),
@@ -1284,12 +1295,14 @@ describe('finalizeChapter', () => {
     expect(result.currentChapterIndex).toBe(3)
   })
 
-  it('blocks every unresolved required foreshadow at story end', async () => {
+  it('blocks only must_resolve foreshadows at story end', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
     await writeChapter(tmpDir, 3, '全书结尾正文。')
     const base = boundaryState(tmpDir, {
       foreshadows: {
-        'fs-unbound': testMemoryForeshadow('fs-unbound', null, true, null),
+        'fs-hard': testMemoryForeshadow('fs-hard', null, true, 5),
+        'fs-soft': testMemoryForeshadow('fs-soft', null, true, null),
+        'fs-open': testMemoryForeshadow('fs-open', null, false, null),
       },
       beats: {},
     })
@@ -1302,15 +1315,11 @@ describe('finalizeChapter', () => {
 
     const result = await finalizeChapter(state, createMockProvider())
 
-    expect(result.rewriteRequested).toBe(true)
-    expect(result.pendingIssues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'foreshadow_boundary_unresolved',
-          subject: 'fs-unbound',
-        }),
-      ])
+    const boundaryIssues = (result.pendingIssues ?? []).filter(
+      (issue) => issue.type === 'foreshadow_boundary_unresolved'
     )
+    expect(result.rewriteRequested).toBe(true)
+    expect(boundaryIssues.map((issue) => issue.subject)).toEqual(['fs-hard'])
   })
 
   it('does not block a waived required foreshadow at story end and drops it from the stack projection', async () => {
@@ -1318,7 +1327,7 @@ describe('finalizeChapter', () => {
     await writeChapter(tmpDir, 3, '全书结尾正文。')
     const base = boundaryState(tmpDir, {
       foreshadows: {
-        'fs-waived': { ...testMemoryForeshadow('fs-waived', null, true, null), waivedIn: 1 },
+        'fs-waived': { ...testMemoryForeshadow('fs-waived', null, true, 3), waivedIn: 1 },
       },
       beats: {},
     })
@@ -1348,6 +1357,11 @@ describe('finalizeChapter', () => {
           id: 'evt-invalid-deadline',
           type: 'foreshadow-introduce',
           foreshadowId: 'fs-invalid',
+          text: 'invalid',
+          kind: 'other',
+          resolutionPolicy: 'must_resolve',
+          required: true,
+          beatId: null,
           expectedFulfillChapter: 0,
           chapterIndex: 0,
           source: 'chapter',
@@ -1434,6 +1448,10 @@ describe('finalizeChapter', () => {
           type: 'foreshadow-introduce',
           foreshadowId: 'fs-final-act',
           text: '终幕新埋的线索',
+          kind: 'other',
+          resolutionPolicy: 'must_resolve',
+          required: true,
+          beatId: null,
           expectedFulfillChapter: 4,
           chapterIndex: 2,
           source: 'chapter',
@@ -1502,6 +1520,10 @@ describe('finalizeChapter', () => {
           type: 'foreshadow-introduce',
           foreshadowId: 'fs-early',
           text: '第一幕埋下的线索',
+          kind: 'other',
+          resolutionPolicy: 'must_resolve',
+          required: true,
+          beatId: null,
           expectedFulfillChapter: 3,
           chapterIndex: 0,
           source: 'chapter',
@@ -1529,6 +1551,10 @@ describe('finalizeChapter', () => {
           type: 'foreshadow-introduce',
           foreshadowId: 'fs-single-act',
           text: '单幕故事埋下的线索',
+          kind: 'other',
+          resolutionPolicy: 'must_resolve',
+          required: true,
+          beatId: null,
           expectedFulfillChapter: 2,
           chapterIndex: 0,
           source: 'chapter',
@@ -1687,6 +1713,12 @@ function testMemoryForeshadow(
   required = true,
   expectedFulfillChapter: number | null = 2
 ) {
+  const resolutionPolicy =
+    expectedFulfillChapter !== null
+      ? ('must_resolve' as const)
+      : required
+        ? ('should_resolve' as const)
+        : ('may_remain_open' as const)
   return {
     id,
     text: id,
@@ -1694,6 +1726,7 @@ function testMemoryForeshadow(
     introducedIn: 0,
     expectedFulfillChapter,
     fulfilledIn: null,
+    resolutionPolicy,
     required,
     beatId,
   }
@@ -1752,10 +1785,17 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
   }
 
   function introduceEvent(id: string, expectedFulfillChapter: number | null): StoryEvent {
+    const resolutionPolicy =
+      expectedFulfillChapter === null ? ('should_resolve' as const) : ('must_resolve' as const)
     return {
       id: `evt-introduce-${id}`,
       type: 'foreshadow-introduce',
       foreshadowId: id,
+      text: id,
+      kind: 'other',
+      resolutionPolicy,
+      required: true,
+      beatId: null,
       expectedFulfillChapter,
       chapterIndex: 0,
       source: 'outline',
@@ -1920,7 +1960,19 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
     expect(state.storyMemory?.foreshadows['fs-natural']?.expectedFulfillChapter).toBeNull()
     expect(result.storyMemory?.foreshadows['fs-natural']?.deadlineExtensions).toBeUndefined()
     expect(result.chapterReport?.foreshadowsNeedingAttention).toBeUndefined()
-    expect(result.rewriteRequested).toBe(true)
+    expect(result.rewriteRequested).toBeFalsy()
+  })
+
+  it('projects resolutionPolicy into the meta foreshadow stack', async () => {
+    const storyMemory = buildMemoryWithForeshadows([introduceEvent('fs-natural', null)])
+    const state = buildLateChapterState(storyMemory, [], 11, 20)
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.foreshadowStack?.find((item) => item.id === 'fs-natural')).toMatchObject({
+      resolutionPolicy: 'should_resolve',
+      required: true,
+    })
   })
 
   it('does not extend a deferred foreshadow that is already fulfilled', async () => {
