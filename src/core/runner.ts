@@ -159,6 +159,7 @@ export async function runStory(
     },
     authorDecisions: {},
     storyMemory: null,
+    foreshadowEquivalenceAudit: undefined,
     draftChapterEvents: undefined,
     chapterFinalStateDeclarations: undefined,
     canonicalFactsDelta: undefined,

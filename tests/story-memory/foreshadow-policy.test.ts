@@ -6,12 +6,13 @@ import {
   getBoundaryBlockingForeshadows,
   getRequiredForeshadowsForScheduling,
   isValidForeshadowDeadline,
+  projectForeshadowStack,
   selectForeshadowsForChapter,
   selectOpportunisticForeshadowsForChapter,
 } from '../../src/story-memory/foreshadow-policy.js'
 import type { ForeshadowItem } from '../../src/types/foreshadow.js'
-import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
-import type { StoryMemory } from '../../src/types/story-memory.js'
+import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import type { StoryEvent, StoryMemory } from '../../src/types/story-memory.js'
 import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../src/utils/chapter-planning.js'
 
 function item(overrides: Partial<ForeshadowItem> = {}): ForeshadowItem {
@@ -29,6 +30,60 @@ function item(overrides: Partial<ForeshadowItem> = {}): ForeshadowItem {
 }
 
 describe('foreshadow deadline policy', () => {
+  it('projects only canonical non-waived foreshadows into the legacy stack', () => {
+    const events: StoryEvent[] = [
+      {
+        id: 'introduce-root',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-root',
+        text: 'canonical obligation',
+        expectedFulfillChapter: 6,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-alias',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-alias',
+        text: 'duplicate obligation',
+        expectedFulfillChapter: 6,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-waived',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-waived',
+        text: 'waived obligation',
+        expectedFulfillChapter: null,
+        resolutionPolicy: 'may_remain_open',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'merge-alias',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-root',
+        duplicateForeshadowId: 'fs-alias',
+        reason: 'same obligation',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'waive-record',
+        type: 'foreshadow-waive',
+        foreshadowId: 'fs-waived',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ]
+    const memory = applyEvents(createEmptyStoryMemory(), events)
+
+    expect(projectForeshadowStack(memory).map((entry) => entry.id)).toEqual(['fs-root'])
+  })
+
   it('groups only active, non-waived foreshadows by resolution policy', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),

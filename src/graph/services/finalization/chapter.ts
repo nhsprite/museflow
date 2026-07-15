@@ -8,18 +8,7 @@ import {
   ensureBeatsHaveActIndex,
   projectStoryStateFromMemory,
 } from '../../../story-memory/projector.js'
-import {
-  getActiveForeshadows,
-  getOpenTasks,
-  getUnprovenMandatoryBeats,
-} from '../../../story-memory/queries.js'
-import type {
-  StoryEvent,
-  StoryMemory,
-  ForeshadowId,
-  TaskId,
-  BeatId,
-} from '../../../types/story-memory.js'
+import type { StoryEvent } from '../../../types/story-memory.js'
 import type { ChapterHandoff } from '../../../types/story-state.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import {
@@ -32,7 +21,6 @@ import {
 import { generateId } from '../../../utils/id.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
 import { buildEffectiveCharactersList } from '../../utils/characters.js'
-import { generateForeshadowConstraints } from '../../../utils/foreshadow-constraints.js'
 import {
   createEmptyChapterReport,
   summarizeIssues,
@@ -56,11 +44,9 @@ import {
 import { loadConfig } from '../../../config/store.js'
 import {
   createGenericVerifiedConstraint,
-  dedupeVerifiedConstraints,
   filterVerifiedConstraintsForChapter,
-  isRegenerableConstraintId,
-  normalizeVerifiedConstraints,
 } from '../../../utils/verified-constraints.js'
+import { rebuildStoryMemoryVerifiedConstraints } from '../../../utils/story-memory-constraints.js'
 import { mergeStoryState } from '../../utils/reconciler/state-merge.js'
 import { createEmptyStoryState } from '../../../storage/meta/stores/story-state.js'
 import {
@@ -246,31 +232,6 @@ function isSummaryData(data: unknown): data is {
   return (
     typeof data === 'object' && data !== null && ('storyEvents' in data || 'chapterSummary' in data)
   )
-}
-
-function buildVerifiedConstraints(
-  memory: StoryMemory,
-  activeForeshadows: ForeshadowId[],
-  openTasks: TaskId[],
-  unprovenBeats: BeatId[]
-): Array<{ id: string; text: string }> {
-  const constraints: Array<{ id: string; text: string }> = []
-  for (const id of activeForeshadows) {
-    const fs = memory.foreshadows[id]
-    if (fs)
-      constraints.push({ id: `memory:foreshadow:${id}`, text: `未回收伏笔 [${id}]: ${fs.text}` })
-  }
-  for (const id of openTasks) {
-    const task = memory.tasks[id]
-    if (task)
-      constraints.push({ id: `memory:task:${id}`, text: `未完成任务 [${id}]: ${task.description}` })
-  }
-  for (const id of unprovenBeats) {
-    const beat = memory.beats[id]
-    if (beat)
-      constraints.push({ id: `memory:beat:${id}`, text: `未推进节拍 [${id}]: ${beat.description}` })
-  }
-  return constraints
 }
 
 export async function finalizeChapter(
@@ -583,27 +544,12 @@ export async function finalizeChapter(
   }
 
   let updatedForeshadowStack = state.foreshadowStack
-  let memoryConstraintRecords: Array<{ id: string; text: string }> = []
   if (updatedStoryMemory) {
     const memoryForeshadows = Object.values(updatedStoryMemory.foreshadows)
     updatedForeshadowStack =
       hasInputStoryMemory || memoryForeshadows.length > 0
         ? projectForeshadowStack(updatedStoryMemory)
         : state.foreshadowStack
-    const activeForeshadows = getActiveForeshadows(updatedStoryMemory)
-    const openTasks = getOpenTasks(updatedStoryMemory)
-    const unprovenBeats = getUnprovenMandatoryBeats(updatedStoryMemory)
-    memoryConstraintRecords = buildVerifiedConstraints(
-      updatedStoryMemory,
-      activeForeshadows,
-      openTasks,
-      unprovenBeats
-    )
-    if (memoryConstraintRecords.length > 0) {
-      logger.info(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章生成 ${memoryConstraintRecords.length} 条 StoryMemory 约束`
-      )
-    }
     updatedStoryState = projectStoryStateFromMemory(updatedStoryMemory, updatedStoryState)
   }
 
@@ -636,32 +582,12 @@ export async function finalizeChapter(
   }
   const updatedTimeline = [...(state.timeline ?? []), snapshot]
 
-  const newForeshadowConstraints = generateForeshadowConstraints(
-    updatedForeshadowStack,
-    chapterIndex + 1
-  )
-  // Rebuild regenerable constraints (StoryMemory-derived + foreshadow boundary)
-  // from scratch each chapter, while carrying over constraints from other
-  // sources (routing, outline-expander, manual). Previously the whole list was
-  // replaced whenever memory constraints existed, so boundary constraints only
-  // survived one chapter.
-  const carriedConstraints = normalizeVerifiedConstraints(state.verifiedConstraints).filter(
-    (constraint) =>
-      !(
-        constraint.kind === 'generic' &&
-        constraint.id !== undefined &&
-        isRegenerableConstraintId(constraint.id)
-      )
-  )
-  let updatedVerifiedConstraints = dedupeVerifiedConstraints([
-    ...carriedConstraints,
-    ...memoryConstraintRecords.map((record) =>
-      createGenericVerifiedConstraint(record.text, record.id)
-    ),
-    ...newForeshadowConstraints.map((record) =>
-      createGenericVerifiedConstraint(record.text, record.id)
-    ),
-  ])
+  let updatedVerifiedConstraints = rebuildStoryMemoryVerifiedConstraints({
+    existingConstraints: state.verifiedConstraints,
+    memory: updatedStoryMemory,
+    foreshadowStack: updatedForeshadowStack,
+    currentChapter: currentDisplayChapter,
+  })
 
   const stateForActProgress: ReducedGraphState = {
     ...state,

@@ -10,6 +10,7 @@ import {
   isValidForeshadowDeadline,
 } from './foreshadow-introduction.js'
 import { policyFromLegacyStackFields } from './resolution-policy.js'
+import { getCanonicalForeshadows } from './foreshadow-alias.js'
 
 export {
   isProjectableForeshadowIntroduction,
@@ -78,7 +79,7 @@ export function foreshadowMemoryToItem(memory: ForeshadowMemory): ForeshadowItem
 }
 
 export function projectForeshadowStack(memory: StoryMemory): ForeshadowItem[] {
-  return Object.values(memory.foreshadows)
+  return getCanonicalForeshadows(memory)
     .filter((foreshadow) => foreshadow.waivedIn === undefined)
     .map(foreshadowMemoryToItem)
 }

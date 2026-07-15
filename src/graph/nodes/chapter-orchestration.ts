@@ -11,10 +11,10 @@ import {
 } from '../services/chapter-orchestration/index.js'
 
 export async function prepare_chapter(
-  _context: RuntimeContext,
+  context: RuntimeContext,
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
-  return prepareChapter(state)
+  return prepareChapter(state, context.provider)
 }
 
 export async function converge_and_decide(

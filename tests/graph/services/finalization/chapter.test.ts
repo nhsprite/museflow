@@ -2224,4 +2224,64 @@ describe('finalizeChapter — canonical facts delta & regenerable constraints', 
     expect(boundary).toHaveLength(1)
     expect(boundary[0]?.text).toContain('第1章埋下')
   })
+
+  it('rebuilds finalization constraints from canonical foreshadow roots only', async () => {
+    const events: StoryEvent[] = [
+      {
+        id: 'evt-fs-root',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-root',
+        text: 'canonical obligation',
+        expectedFulfillChapter: 3,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'evt-fs-alias',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-alias',
+        text: 'duplicate obligation',
+        expectedFulfillChapter: 3,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'evt-merge',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-root',
+        duplicateForeshadowId: 'fs-alias',
+        reason: 'same obligation',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+    ]
+    const state = buildState(tmpDir, {
+      storyMemory: applyEvents(createEmptyStoryMemory(), events),
+      verifiedConstraints: [
+        { kind: 'generic', id: 'memory:foreshadow:fs-alias', text: 'stale duplicate' },
+        { kind: 'generic', id: 'foreshadow-boundary:fs-alias', text: 'stale duplicate boundary' },
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.foreshadowStack?.map((entry) => entry.id)).toEqual(['fs-root'])
+    expect(
+      result.verifiedConstraints?.filter(
+        (entry) => entry.kind === 'generic' && entry.id === 'memory:foreshadow:fs-root'
+      )
+    ).toHaveLength(1)
+    expect(
+      result.verifiedConstraints?.some(
+        (entry) => entry.kind === 'generic' && entry.id === 'memory:foreshadow:fs-alias'
+      )
+    ).toBe(false)
+    expect(
+      result.verifiedConstraints?.some(
+        (entry) => entry.kind === 'generic' && entry.id === 'foreshadow-boundary:fs-alias'
+      )
+    ).toBe(false)
+  })
 })

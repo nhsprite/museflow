@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
+  prepare_chapter,
   converge_and_decide,
   route_by_decision,
   route_after_validation,
@@ -16,6 +17,8 @@ import type { ModelProvider } from '../../../src/model/provider.js'
 import type { RuntimeContext } from '../../../src/core/context.js'
 import { JsonCheckpointer } from '../../../src/graph/checkpointer.js'
 import { generateIssueFingerprint } from '../../../src/utils/context-judge.js'
+import { applyEvents, createEmptyStoryMemory } from '../../../src/story-memory/projector.js'
+import type { StoryEvent } from '../../../src/types/story-memory.js'
 
 const testTempDir = join(tmpdir(), `museflow-chapter-orchestration-${randomUUID().slice(0, 8)}`)
 
@@ -132,6 +135,44 @@ function buildBaseState(
     ...rest,
   }
 }
+
+describe('prepare_chapter', () => {
+  it('passes the runtime provider into historical foreshadow reconciliation', async () => {
+    const events: StoryEvent[] = [
+      {
+        id: 'introduce-a',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-a',
+        text: 'first record',
+        expectedFulfillChapter: null,
+        resolutionPolicy: 'should_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-b',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-b',
+        text: 'second record',
+        expectedFulfillChapter: null,
+        resolutionPolicy: 'should_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+    ]
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValue({ groups: [] })
+    const state = buildBaseState({
+      storyMemory: applyEvents(createEmptyStoryMemory(), events),
+      session: { chapterIndex: 0 },
+    })
+
+    const result = await prepare_chapter(context, state)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    expect(result.foreshadowEquivalenceAudit?.activeCanonicalIds).toEqual(['fs-a', 'fs-b'])
+  })
+})
 
 describe('converge_and_decide', () => {
   beforeEach(async () => {

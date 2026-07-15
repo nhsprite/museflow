@@ -14,11 +14,19 @@ import type { StateSnapshot } from '../types/timeline.js'
 import type { ChapterSession } from '../core/chapter-generation/routing/types.js'
 import type { VerifiedConstraint } from '../types/verified-constraint.js'
 import type {
+  ForeshadowId,
   StoryMemory,
   StoryEvent,
   ChapterFinalStateDeclaration,
 } from '../types/story-memory.js'
 import type { StructuredValidationResult } from '../story-memory/validator.js'
+
+export const FORESHADOW_EQUIVALENCE_AUDIT_PROTOCOL_VERSION = 1 as const
+
+export interface ForeshadowEquivalenceAudit {
+  protocolVersion: typeof FORESHADOW_EQUIVALENCE_AUDIT_PROTOCOL_VERSION
+  activeCanonicalIds: ForeshadowId[]
+}
 
 export const GraphState = Annotation.Root({
   story: Annotation<Story>,
@@ -63,6 +71,9 @@ export const GraphState = Annotation.Root({
 
   // structured story memory for the refactor (source of truth for entities, events, beats, tasks, foreshadows)
   storyMemory: Annotation<StoryMemory | null>,
+
+  // checkpoint-only cache for successful semantic equivalence audits
+  foreshadowEquivalenceAudit: Annotation<ForeshadowEquivalenceAudit | undefined>,
 
   // events extracted from the current draft chapter before validation
   draftChapterEvents: Annotation<StoryEvent[] | undefined>,
