@@ -13,6 +13,12 @@ export interface EventCompletionResult {
   completedCount: number
 }
 
+type ChapterEmittableStoryEvent = Exclude<StoryEvent, { type: 'foreshadow-merge' }>
+
+function isChapterEmittableStoryEvent(event: StoryEvent): event is ChapterEmittableStoryEvent {
+  return event.type !== 'foreshadow-merge'
+}
+
 function injectEventsIntoStoryEventsBlock(content: string, events: StoryEvent[]): string {
   if (events.length === 0) return content
 
@@ -55,13 +61,14 @@ export function completeMissingExpectedEvents(
   chapterIndex: number
 ): EventCompletionResult {
   const { missing } = diffEvents(expectedEvents, actualEvents)
-  if (missing.length === 0) {
+  const completableMissing = missing.filter(isChapterEmittableStoryEvent)
+  if (completableMissing.length === 0) {
     return { content, events: actualEvents, completedCount: 0 }
   }
 
   const paragraphCount = Math.max(countEvidenceParagraphs(content), 1)
 
-  const completedEvents: StoryEvent[] = missing.map((event, index) => ({
+  const completedEvents: StoryEvent[] = completableMissing.map((event, index) => ({
     ...event,
     chapterIndex,
     source: 'chapter',

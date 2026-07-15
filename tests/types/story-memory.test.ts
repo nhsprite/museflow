@@ -15,7 +15,7 @@ import type {
 describe('StoryMemory types', () => {
   it('can construct a minimal StoryMemory', () => {
     const memory: StoryMemory = {
-      version: '2',
+      version: '3',
       lastChapterIndex: 0,
       entities: {
         characters: {},
@@ -29,7 +29,7 @@ describe('StoryMemory types', () => {
       beats: {},
       tasks: {},
     }
-    expect(memory.version).toBe('2')
+    expect(memory.version).toBe('3')
   })
 
   it('event type discriminates correctly', () => {
@@ -104,8 +104,10 @@ describe('StoryMemory types', () => {
       resolutionPolicy: 'must_resolve',
       required: true,
       beatId: 'b-1',
+      mergedInto: 'fs-canonical',
     }
     expect(foreshadow.required).toBe(true)
+    expect(foreshadow.mergedInto).toBe('fs-canonical')
   })
 
   it('can construct a BeatMemory', () => {
@@ -215,6 +217,21 @@ describe('StoryMemory types', () => {
       source: 'chapter',
     }
     expect(event.foreshadowId).toBe('fs-1')
+  })
+
+  it('can construct an outline-only foreshadow-merge event', () => {
+    const event: StoryEvent = {
+      id: 'evt-foreshadow-merge',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'Both records establish the same unresolved question.',
+      chapterIndex: 4,
+      source: 'outline',
+    }
+
+    expect(event.canonicalForeshadowId).toBe('fs-early')
+    expect(event.duplicateForeshadowId).toBe('fs-late')
   })
 
   it('can construct a task-create event', () => {

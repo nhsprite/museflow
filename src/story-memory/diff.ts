@@ -81,6 +81,12 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
         a.resolutionPolicy === b.resolutionPolicy &&
         a.expectedFulfillChapter === b.expectedFulfillChapter
       )
+    case 'foreshadow-merge':
+      return (
+        b.type === 'foreshadow-merge' &&
+        a.canonicalForeshadowId === b.canonicalForeshadowId &&
+        a.duplicateForeshadowId === b.duplicateForeshadowId
+      )
     case 'foreshadow-waive':
       return b.type === 'foreshadow-waive' && a.foreshadowId === b.foreshadowId
     case 'task-create':

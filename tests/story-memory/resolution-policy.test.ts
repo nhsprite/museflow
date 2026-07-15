@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import {
+  migrateStoryMemoryToV3,
+  type LegacyStoryMemoryV1,
+  type LegacyStoryMemoryV2,
+} from '../../src/story-memory/resolution-policy.js'
 import * as resolutionPolicy from '../../src/story-memory/resolution-policy.js'
 import type { ForeshadowResolutionPolicy, StoryMemory } from '../../src/types/story-memory.js'
 
-describe('foreshadow resolution policy v2', () => {
-  it('creates StoryMemory v2', () => {
-    expect(createEmptyStoryMemory().version).toBe('2')
+describe('foreshadow resolution policy v3', () => {
+  it('creates StoryMemory v3', () => {
+    expect(createEmptyStoryMemory().version).toBe('3')
   })
 
   it('replays a legacy required null-deadline clue as should_resolve', () => {
@@ -74,13 +79,8 @@ describe('foreshadow resolution policy v2', () => {
     expect(validate?.('should_resolve', 12)).toBe(false)
   })
 
-  it('migrates v1 once and preserves an explicit policy', () => {
-    const migrate = (
-      resolutionPolicy as unknown as {
-        migrateStoryMemoryToV2?: (memory: unknown) => StoryMemory
-      }
-    ).migrateStoryMemoryToV2
-    const v1 = {
+  it('migrates v1 through the existing field normalization without inventing aliases', () => {
+    const v1: LegacyStoryMemoryV1 = {
       ...createEmptyStoryMemory(),
       version: '1',
       foreshadows: {
@@ -118,16 +118,43 @@ describe('foreshadow resolution policy v2', () => {
       },
     }
 
-    expect(migrate).toBeTypeOf('function')
-    const migrated = migrate?.(v1)
-    expect(migrated?.version).toBe('2')
-    expect(migrated?.foreshadows.deadline).toMatchObject({
+    const migrated = migrateStoryMemoryToV3(v1)
+    expect(migrated.version).toBe('3')
+    expect(migrated.foreshadows.deadline).toMatchObject({
       resolutionPolicy: 'may_remain_open',
       expectedFulfillChapter: null,
       required: false,
     })
-    expect(migrated?.foreshadows.open?.resolutionPolicy).toBe('should_resolve')
-    expect(migrated?.foreshadows.explicit?.resolutionPolicy).toBe('may_remain_open')
-    expect(migrate?.(migrated)).toBe(migrated)
+    expect(migrated.foreshadows.open?.resolutionPolicy).toBe('should_resolve')
+    expect(migrated.foreshadows.explicit?.resolutionPolicy).toBe('may_remain_open')
+    expect(migrated.foreshadows.deadline).not.toHaveProperty('mergedInto')
+    expect(migrated.foreshadows.open).not.toHaveProperty('mergedInto')
+    expect(migrated.foreshadows.explicit).not.toHaveProperty('mergedInto')
+  })
+
+  it('migrates v2 by changing only the version and preserves v3 by reference', () => {
+    const v2: LegacyStoryMemoryV2 = {
+      ...createEmptyStoryMemory(),
+      version: '2',
+      foreshadows: {
+        existing: {
+          id: 'existing',
+          text: 'An existing unresolved clue.',
+          kind: null,
+          introducedIn: 1,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          resolutionPolicy: 'should_resolve',
+          required: true,
+          beatId: null,
+        },
+      },
+    }
+
+    const migrated = migrateStoryMemoryToV3(v2)
+
+    expect(migrated).toEqual({ ...v2, version: '3' })
+    expect(migrated.foreshadows.existing).not.toHaveProperty('mergedInto')
+    expect(migrateStoryMemoryToV3(migrated)).toBe(migrated)
   })
 })

@@ -190,7 +190,7 @@ describe('exportMetaFromCheckpoint', () => {
     const storyMemoryPath = join(tmpDir, 'story-memory.json')
     expect(existsSync(storyMemoryPath)).toBe(true)
     const storyMemory = JSON.parse(readFileSync(storyMemoryPath, 'utf-8'))
-    expect(storyMemory.version).toBe('2')
+    expect(storyMemory.version).toBe('3')
     expect(storyMemory.foreshadows.legacy.resolutionPolicy).toBe('should_resolve')
     expect(storyMemory.events).toHaveLength(1)
   })

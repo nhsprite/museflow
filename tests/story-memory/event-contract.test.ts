@@ -137,6 +137,61 @@ describe('normalizeStoryEvent', () => {
     })
   })
 
+  it('normalizes a valid outline foreshadow-merge event', () => {
+    const event = {
+      id: 'evt-merge-1',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'Both records establish the same unresolved question.',
+      chapterIndex: 4,
+      source: 'outline',
+    }
+
+    expect(normalizeStoryEvent(event, { chapterIndex: 4, mode: 'strict' })).toEqual({
+      ok: true,
+      normalized: false,
+      event,
+    })
+  })
+
+  it.each([
+    [
+      'canonical ID',
+      { canonicalForeshadowId: '非法伏笔' },
+      'foreshadow-merge.canonicalForeshadowId must be an identifier',
+    ],
+    [
+      'duplicate ID',
+      { duplicateForeshadowId: '非法伏笔' },
+      'foreshadow-merge.duplicateForeshadowId must be an identifier',
+    ],
+    [
+      'identical IDs',
+      { duplicateForeshadowId: 'fs-early' },
+      'foreshadow-merge ids must be different',
+    ],
+    ['empty reason', { reason: '' }, 'foreshadow-merge.reason must be a non-empty string'],
+    ['blank reason', { reason: '   ' }, 'foreshadow-merge.reason must be a non-empty string'],
+    ['chapter source', { source: 'chapter' }, 'foreshadow-merge.source must be outline'],
+  ])('rejects a foreshadow-merge event with invalid %s', (_name, override, reason) => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-merge-1',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'Same unresolved obligation.',
+        chapterIndex: 4,
+        source: 'outline',
+        ...override,
+      },
+      { chapterIndex: 4, mode: 'strict' }
+    )
+
+    expect(result).toEqual({ ok: false, reason })
+  })
+
   it('rejects strict item-location events without an explicit holder field', () => {
     const result = normalizeStoryEvent(
       {

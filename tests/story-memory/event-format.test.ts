@@ -128,5 +128,21 @@ describe('event-format', () => {
         'foreshadow-policy-set: fs-1 / policy=may_remain_open / expected=none'
       )
     })
+
+    it('renders foreshadow-merge with explicit audit fields and a quoted reason', () => {
+      const event: StoryEvent = {
+        id: 'evt-merge-1',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-early',
+        duplicateForeshadowId: 'fs-late',
+        reason: 'Same clue / same obligation',
+        chapterIndex: 4,
+        source: 'outline',
+      }
+
+      expect(renderStoryEventLine(event)).toBe(
+        'foreshadow-merge: canonical=fs-early / duplicate=fs-late / reason="Same clue / same obligation"'
+      )
+    })
   })
 })

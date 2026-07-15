@@ -8,9 +8,10 @@ import {
 } from '../../story-memory/foreshadow-policy.js'
 import {
   isForeshadowResolutionPolicy,
-  migrateStoryMemoryToV2,
+  migrateStoryMemoryToV3,
   validatePolicyDeadline,
   type LegacyStoryMemoryV1,
+  type LegacyStoryMemoryV2,
 } from '../../story-memory/resolution-policy.js'
 import { generateId } from '../../utils/id.js'
 import type { ReducedGraphState } from '../../graph/state.js'
@@ -91,7 +92,9 @@ export async function setForeshadowPolicy(
     fail('当前故事未初始化 StoryMemory，无法调整伏笔策略')
     return
   }
-  const memory = migrateStoryMemoryToV2(state.storyMemory as StoryMemory | LegacyStoryMemoryV1)
+  const memory = migrateStoryMemoryToV3(
+    state.storyMemory as StoryMemory | LegacyStoryMemoryV2 | LegacyStoryMemoryV1
+  )
   const foreshadow = memory.foreshadows[foreshadowId]
   if (!foreshadow) {
     fail(`伏笔 ${foreshadowId} 不存在`)

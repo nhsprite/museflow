@@ -221,7 +221,7 @@ describe('applyEvents', () => {
 describe('createEmptyStoryMemory', () => {
   it('returns a valid empty StoryMemory', () => {
     const memory = createEmptyStoryMemory()
-    expect(memory.version).toBe('2')
+    expect(memory.version).toBe('3')
     expect(memory.events).toHaveLength(0)
     expect(Object.keys(memory.entities.characters)).toHaveLength(0)
   })

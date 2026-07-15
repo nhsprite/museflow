@@ -12,8 +12,9 @@ import type { StateSnapshot } from '../../types/timeline.js'
 import type { StoryMemory } from '../../types/story-memory.js'
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import {
-  migrateStoryMemoryToV2,
+  migrateStoryMemoryToV3,
   type LegacyStoryMemoryV1,
+  type LegacyStoryMemoryV2,
 } from '../../story-memory/resolution-policy.js'
 import { getCheckpointer } from '../../graph/checkpointer.js'
 import { logger } from '../../utils/logger.js'
@@ -108,8 +109,8 @@ export async function exportMetaFromCheckpoint(
   const state = loadedState.storyMemory
     ? {
         ...loadedState,
-        storyMemory: migrateStoryMemoryToV2(
-          loadedState.storyMemory as StoryMemory | LegacyStoryMemoryV1
+        storyMemory: migrateStoryMemoryToV3(
+          loadedState.storyMemory as StoryMemory | LegacyStoryMemoryV2 | LegacyStoryMemoryV1
         ),
       }
     : loadedState

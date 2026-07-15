@@ -180,6 +180,24 @@ check
     const paragraphIndices = result.events.map((e) => e.evidence?.paragraphIndex)
     expect(paragraphIndices).toEqual([1, 2, 2])
   })
+
+  it('does not synthesize outline-only foreshadow-merge events into chapter text', () => {
+    const merge: StoryEvent = {
+      id: 'evt-merge-1',
+      type: 'foreshadow-merge',
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'Same unresolved obligation.',
+      chapterIndex: 0,
+      source: 'outline',
+    }
+
+    const result = completeMissingExpectedEvents(content, [merge], [], 0)
+
+    expect(result.completedCount).toBe(0)
+    expect(result.events).toEqual([])
+    expect(result.content).toBe(content)
+  })
 })
 
 describe('augmentExpectedEventsWithMandatoryBeats', () => {

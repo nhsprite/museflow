@@ -47,6 +47,8 @@ export function renderStoryEventLine(event: StoryEvent): string {
       return `foreshadow-deadline-extend: ${event.foreshadowId} / newExpected=${event.newExpectedFulfillChapter}`
     case 'foreshadow-policy-set':
       return `foreshadow-policy-set: ${event.foreshadowId} / policy=${event.resolutionPolicy} / expected=${event.expectedFulfillChapter === null ? 'none' : event.expectedFulfillChapter}`
+    case 'foreshadow-merge':
+      return `foreshadow-merge: canonical=${event.canonicalForeshadowId} / duplicate=${event.duplicateForeshadowId} / reason=${JSON.stringify(event.reason)}`
     case 'foreshadow-waive':
       return `foreshadow-waive: ${event.foreshadowId}${event.reason !== undefined ? ` / reason=${event.reason}` : ''}`
     case 'task-create':

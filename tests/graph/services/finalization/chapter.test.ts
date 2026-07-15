@@ -149,7 +149,7 @@ function makeStoryMemory(
   events: StoryEvent[] = []
 ): StoryMemory {
   return {
-    version: '2',
+    version: '3',
     lastChapterIndex: 0,
     entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
     events,

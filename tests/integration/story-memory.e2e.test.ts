@@ -262,7 +262,7 @@ describe('StoryMemory end-to-end', () => {
       )
 
       expect(startResult.storyMemory).not.toBeNull()
-      expect(startResult.storyMemory?.version).toBe('2')
+      expect(startResult.storyMemory?.version).toBe('3')
       expect(startResult.storyMemory?.events).toHaveLength(0)
 
       const chapter1Result = await runOneChapter(

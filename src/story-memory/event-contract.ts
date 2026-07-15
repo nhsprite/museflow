@@ -328,6 +328,35 @@ export function normalizeStoryEvent(
         },
       }
     }
+    case 'foreshadow-merge': {
+      if (base.source !== 'outline') {
+        return invalid('foreshadow-merge.source must be outline')
+      }
+      if (!isId(value.canonicalForeshadowId)) {
+        return invalid('foreshadow-merge.canonicalForeshadowId must be an identifier')
+      }
+      if (!isId(value.duplicateForeshadowId)) {
+        return invalid('foreshadow-merge.duplicateForeshadowId must be an identifier')
+      }
+      if (value.canonicalForeshadowId === value.duplicateForeshadowId) {
+        return invalid('foreshadow-merge ids must be different')
+      }
+      if (!isNonEmptyString(value.reason)) {
+        return invalid('foreshadow-merge.reason must be a non-empty string')
+      }
+      return {
+        ok: true,
+        normalized: base.normalized,
+        event: {
+          ...eventBase(base),
+          type: value.type,
+          source: base.source,
+          canonicalForeshadowId: value.canonicalForeshadowId,
+          duplicateForeshadowId: value.duplicateForeshadowId,
+          reason: value.reason,
+        },
+      }
+    }
     case 'foreshadow-fulfill': {
       if (!isId(value.foreshadowId)) {
         return invalid('foreshadow-fulfill.foreshadowId must be an identifier')

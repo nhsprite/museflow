@@ -47,6 +47,8 @@ function collectEventEntityIds(event: StoryEvent): string[] {
       return [event.foreshadowId]
     case 'foreshadow-policy-set':
       return [event.foreshadowId]
+    case 'foreshadow-merge':
+      return [event.canonicalForeshadowId, event.duplicateForeshadowId]
     case 'foreshadow-waive':
       return [event.foreshadowId]
     case 'task-create':

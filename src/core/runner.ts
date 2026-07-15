@@ -31,8 +31,9 @@ import { formatActBoundaryAdjustmentCommand } from '../utils/story-arc.js'
 import { createChapterSession } from './chapter-generation/routing/session.js'
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import {
-  migrateStoryMemoryToV2,
+  migrateStoryMemoryToV3,
   type LegacyStoryMemoryV1,
+  type LegacyStoryMemoryV2,
 } from '../story-memory/resolution-policy.js'
 import type { StoryMemory } from '../types/story-memory.js'
 import { applyEvents } from '../story-memory/projector.js'
@@ -44,7 +45,9 @@ import {
 
 export function normalizeRuntimeStoryMemory(state: ReducedGraphState): ReducedGraphState {
   if (!state.storyMemory) return state
-  const storyMemory = migrateStoryMemoryToV2(state.storyMemory as StoryMemory | LegacyStoryMemoryV1)
+  const storyMemory = migrateStoryMemoryToV3(
+    state.storyMemory as StoryMemory | LegacyStoryMemoryV2 | LegacyStoryMemoryV1
+  )
   const boundaryChapter = resolveStoryBoundaryChapter({
     runtimeTotalChapters: state.totalChapters,
     storyTotalChapters: state.story.totalChapters,

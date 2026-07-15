@@ -968,7 +968,7 @@ describe('runner revalidation', () => {
     await runOneChapter('story-1', { mode: 'draft' }, createMockContext())
 
     const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, any>
-    expect(invokedState.storyMemory.version).toBe('2')
+    expect(invokedState.storyMemory.version).toBe('3')
     expect(
       Object.values(invokedState.storyMemory.foreshadows).map(
         (entry: any) => entry.resolutionPolicy

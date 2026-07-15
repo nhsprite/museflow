@@ -269,6 +269,19 @@ describe('parseStoryEventsBlock', () => {
     expect(events[0]).toMatchObject({ type: 'foreshadow-fulfill', foreshadowId: 'fs-oath' })
   })
 
+  it('does not allow chapter STORY_EVENTS text to emit foreshadow-merge', () => {
+    const text = `=== STORY_EVENTS ===
+- foreshadow-merge: canonical=fs-early / duplicate=fs-late / reason="same obligation"
+- foreshadow-fulfill: fs-early
+=== CHAPTER_CONTENT ===
+正文`
+
+    const events = parseStoryEventsBlock(text, 4)
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'foreshadow-fulfill', foreshadowId: 'fs-early' })
+  })
+
   it('drops plot-advance events with non-machine plotId or beatId', () => {
     const text = `=== STORY_EVENTS ===
 - plot-advance: 第一章 / A1-M1

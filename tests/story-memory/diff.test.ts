@@ -98,6 +98,26 @@ describe('diffEvents', () => {
     expect(diffEvents([expected], [actual]).matched).toHaveLength(1)
   })
 
+  it('matches foreshadow-merge events by both canonical and duplicate IDs', () => {
+    const expected = {
+      id: 'e1',
+      type: 'foreshadow-merge' as const,
+      canonicalForeshadowId: 'fs-early',
+      duplicateForeshadowId: 'fs-late',
+      reason: 'Same unresolved obligation.',
+      chapterIndex: 3,
+      source: 'outline' as const,
+    }
+
+    expect(diffEvents([expected], [{ ...expected, id: 'e2' }]).matched).toHaveLength(1)
+    expect(
+      diffEvents([expected], [{ ...expected, id: 'e2', canonicalForeshadowId: 'fs-other' }]).matched
+    ).toHaveLength(0)
+    expect(
+      diffEvents([expected], [{ ...expected, id: 'e2', duplicateForeshadowId: 'fs-other' }]).matched
+    ).toHaveLength(0)
+  })
+
   it('matches task-create events', () => {
     const expected = [
       {

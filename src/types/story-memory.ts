@@ -34,7 +34,7 @@ export interface ChapterFinalStateDeclaration {
 }
 
 export interface StoryMemory {
-  version: '2'
+  version: '3'
   lastChapterIndex: number
   entities: {
     characters: Record<EntityId, CharacterMemory>
@@ -66,6 +66,7 @@ export type StoryEvent =
   | ForeshadowFulfillEvent
   | ForeshadowDeadlineExtendEvent
   | ForeshadowPolicySetEvent
+  | ForeshadowMergeEvent
   | ForeshadowWaiveEvent
   | TaskCreateEvent
   | TaskResolveEvent
@@ -131,6 +132,14 @@ export interface ForeshadowPolicySetEvent extends BaseEvent {
   foreshadowId: ForeshadowId
   resolutionPolicy: ForeshadowResolutionPolicy
   expectedFulfillChapter: number | null
+}
+
+export interface ForeshadowMergeEvent extends Omit<BaseEvent, 'source'> {
+  type: 'foreshadow-merge'
+  source: 'outline'
+  canonicalForeshadowId: ForeshadowId
+  duplicateForeshadowId: ForeshadowId
+  reason: string
 }
 
 /**
@@ -204,6 +213,7 @@ export interface ForeshadowMemory {
   deadlineExtensions?: number
   /** 作者决定不再回收（foreshadow-waive 事件）的章节索引；存在时退出调度与边界阻断。 */
   waivedIn?: number
+  mergedInto?: ForeshadowId
 }
 
 export interface BeatMemory {

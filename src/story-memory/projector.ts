@@ -17,7 +17,7 @@ import { deriveLegacyRequired, normalizeLegacyForeshadowFields } from './resolut
 
 export function createEmptyStoryMemory(): StoryMemory {
   return {
-    version: '2',
+    version: '3',
     lastChapterIndex: 0,
     entities: {
       characters: {},

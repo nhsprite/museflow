@@ -19,6 +19,10 @@ export interface LegacyStoryMemoryV1 extends Omit<StoryMemory, 'version' | 'fore
   foreshadows: Record<string, LegacyForeshadowMemoryV1>
 }
 
+export interface LegacyStoryMemoryV2 extends Omit<StoryMemory, 'version'> {
+  version: '2'
+}
+
 export interface NormalizedLegacyForeshadowFields {
   resolutionPolicy: ForeshadowResolutionPolicy
   expectedFulfillChapter: number | null
@@ -79,9 +83,7 @@ export function validatePolicyDeadline(
   return deadline === null
 }
 
-export function migrateStoryMemoryToV2(memory: StoryMemory | LegacyStoryMemoryV1): StoryMemory {
-  if (memory.version === '2') return memory
-
+function migrateStoryMemoryV1ToV2(memory: LegacyStoryMemoryV1): LegacyStoryMemoryV2 {
   const foreshadows = Object.fromEntries(
     Object.entries(memory.foreshadows).map(([id, item]) => {
       const normalized = item.resolutionPolicy
@@ -106,4 +108,12 @@ export function migrateStoryMemoryToV2(memory: StoryMemory | LegacyStoryMemoryV1
     version: '2',
     foreshadows,
   }
+}
+
+export function migrateStoryMemoryToV3(
+  memory: StoryMemory | LegacyStoryMemoryV2 | LegacyStoryMemoryV1
+): StoryMemory {
+  if (memory.version === '3') return memory
+  const v2 = memory.version === '1' ? migrateStoryMemoryV1ToV2(memory) : memory
+  return { ...v2, version: '3' }
 }
