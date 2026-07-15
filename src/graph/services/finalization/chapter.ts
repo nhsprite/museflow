@@ -345,6 +345,8 @@ export async function finalizeChapter(
   const invalidForeshadowDeadlineEvents: Array<
     Extract<StoryEvent, { type: 'foreshadow-introduce' }>
   > = []
+  const newForeshadowIntroduceEvents: Array<Extract<StoryEvent, { type: 'foreshadow-introduce' }>> =
+    []
 
   // Authoritative source of events: the writer already emitted them in the
   // STORY_EVENTS block. Apply them before asking SummaryAgent to avoid losing
@@ -362,6 +364,12 @@ export async function finalizeChapter(
       .map((e) => e.beatId)
   )
   if (draftEvents.length > 0) {
+    newForeshadowIntroduceEvents.push(
+      ...draftEvents.filter(
+        (e): e is Extract<StoryEvent, { type: 'foreshadow-introduce' }> =>
+          e.type === 'foreshadow-introduce'
+      )
+    )
     updatedStoryMemory = applyEvents(updatedStoryMemory ?? createEmptyStoryMemory(), draftEvents)
     const draftVerifiedBeats = deriveVerifiedBeatsFromPlotAdvanceEvents(draftEvents, state.storyArc)
     const draftVerifiedMandatoryBeatIds = deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents(
@@ -479,6 +487,12 @@ export async function finalizeChapter(
             return true
           })
           if (newEvents.length > 0) {
+            newForeshadowIntroduceEvents.push(
+              ...newEvents.filter(
+                (e): e is Extract<StoryEvent, { type: 'foreshadow-introduce' }> =>
+                  e.type === 'foreshadow-introduce'
+              )
+            )
             updatedStoryMemory = applyEvents(
               updatedStoryMemory ?? createEmptyStoryMemory(),
               newEvents
@@ -721,6 +735,33 @@ export async function finalizeChapter(
         source: 'foreshadowing' as const,
         retryStrategy: 'draft' as const,
       })),
+    ]
+  }
+  const acts = state.storyArc?.acts ?? []
+  const finalActIndex = acts.at(-1)?.index
+  const currentAct = getActForChapter(state.storyArc, chapterIndex)
+  // Only meaningful with multiple acts: in a degenerate single-act story every
+  // chapter is "the final act", which would ban all foreshadow introductions.
+  if (
+    acts.length > 1 &&
+    currentAct &&
+    finalActIndex !== undefined &&
+    currentAct.index === finalActIndex &&
+    newForeshadowIntroduceEvents.length > 0
+  ) {
+    const ids = newForeshadowIntroduceEvents.map((event) => event.foreshadowId)
+    updatedPendingIssues = [
+      ...updatedPendingIssues,
+      {
+        id: `final-act-new-foreshadow-${chapterIndex}-${generateId()}`,
+        type: 'foreshadow_final_act_introduce' as const,
+        severity: 'error' as const,
+        description: `最终幕不得引入新伏笔：${ids.join('、')}。请修改本章正文或大纲，将相关内容改为既有线索的回收、场景氛围描写或人物心理刻画。`,
+        subject: ids.join('、'),
+        location: `第 ${chapterIndex + 1} 章`,
+        source: 'foreshadowing' as const,
+        retryStrategy: 'draft' as const,
+      },
     ]
   }
   updatedPendingIssues = pruneResolvedOutlineCoverageIssues(

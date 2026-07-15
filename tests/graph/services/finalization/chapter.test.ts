@@ -1344,6 +1344,182 @@ describe('finalizeChapter', () => {
     )
   })
 
+  it('blocks a new foreshadow introduced in the final act', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '终幕正文第一段。\n\n终幕正文第二段。')
+    const base = buildState(tmpDir)
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 2,
+      totalChapters: 4,
+      story: { ...base.story, totalChapters: 4 },
+      chapters: [
+        null,
+        null,
+        {
+          id: 'ch-3',
+          storyId: 'test-story',
+          number: 3,
+          title: '终幕',
+          outline: '终幕正文。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      outline: [
+        { number: 1, title: '一', description: '' },
+        { number: 2, title: '二', description: '' },
+        { number: 3, title: '终幕', description: '终幕正文。' },
+        { number: 4, title: '尾声', description: '' },
+      ],
+      storyArc: {
+        totalChapters: 4,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 2,
+            title: '第一幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 3,
+            endChapter: 4,
+            title: '终幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [],
+      },
+      actProgress: {
+        1: { consumed: [], pending: [] },
+        2: { consumed: [], pending: [] },
+      },
+      draftChapterEvents: [
+        {
+          id: 'evt-final-act-introduce',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-final-act',
+          text: '终幕新埋的线索',
+          expectedFulfillChapter: 4,
+          chapterIndex: 2,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        } as StoryEvent,
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'foreshadow_final_act_introduce',
+          severity: 'error',
+          subject: 'fs-final-act',
+        }),
+      ])
+    )
+  })
+
+  it('allows a new foreshadow introduced before the final act', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const base = buildState(tmpDir)
+    const state = buildState(tmpDir, {
+      totalChapters: 4,
+      story: { ...base.story, totalChapters: 4 },
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+        { number: 4, title: '尾声', description: '尾声。' },
+      ],
+      storyArc: {
+        totalChapters: 4,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 2,
+            title: '第一幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 3,
+            endChapter: 4,
+            title: '终幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [],
+      },
+      actProgress: {
+        1: { consumed: [], pending: [] },
+        2: { consumed: [], pending: [] },
+      },
+      draftChapterEvents: [
+        {
+          id: 'evt-early-introduce',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-early',
+          text: '第一幕埋下的线索',
+          expectedFulfillChapter: 3,
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        } as StoryEvent,
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const finalActIssues = (result.pendingIssues ?? []).filter(
+      (issue) => issue.type === 'foreshadow_final_act_introduce'
+    )
+    expect(finalActIssues).toHaveLength(0)
+    expect(result.rewriteRequested).toBeFalsy()
+    expect(result.storyMemory?.foreshadows['fs-early']).toBeDefined()
+  })
+
+  it('allows a new foreshadow in a single-act story (no earlier act exists)', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const state = buildState(tmpDir, {
+      draftChapterEvents: [
+        {
+          id: 'evt-single-act-introduce',
+          type: 'foreshadow-introduce',
+          foreshadowId: 'fs-single-act',
+          text: '单幕故事埋下的线索',
+          expectedFulfillChapter: 2,
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        } as StoryEvent,
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    const finalActIssues = (result.pendingIssues ?? []).filter(
+      (issue) => issue.type === 'foreshadow_final_act_introduce'
+    )
+    expect(finalActIssues).toHaveLength(0)
+    expect(result.storyMemory?.foreshadows['fs-single-act']).toBeDefined()
+  })
+
   it('does not advance chapter index and requests rewrite when act boundary adjustment requires manual resolution', async () => {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     vi.mocked(proposeActBoundaryAdjustments).mockReturnValueOnce([
