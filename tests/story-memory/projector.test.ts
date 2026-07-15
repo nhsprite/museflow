@@ -10,6 +10,7 @@ import {
   computeLastChapterIndex,
   ensureBeatsHaveActIndex,
 } from '../../src/story-memory/projector.js'
+import { ForeshadowMergeValidationError } from '../../src/story-memory/foreshadow-alias.js'
 
 describe('computeLastChapterIndex', () => {
   it('returns fallback when no events', () => {
@@ -609,6 +610,370 @@ describe('projectMemory foreshadows', () => {
 
     expect(next.foreshadows['f-1']?.fulfilledIn).toBe(6)
     expect(next.foreshadows['f-1']?.deadlineExtensions).toBe(1)
+  })
+
+  it('transfers the earliest duplicate fulfillment without strengthening canonical state', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-canonical',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-canonical',
+        text: 'A sealed record has an unexplained mark',
+        kind: 'environmental_detail',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 8,
+        beatId: 'A1-M1',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'extend-canonical',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'fs-canonical',
+        newExpectedFulfillChapter: 10,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'demote-canonical',
+        type: 'foreshadow-policy-set',
+        foreshadowId: 'fs-canonical',
+        resolutionPolicy: 'may_remain_open',
+        expectedFulfillChapter: null,
+        chapterIndex: 3,
+        source: 'outline',
+      },
+      {
+        id: 'waive-canonical',
+        type: 'foreshadow-waive',
+        foreshadowId: 'fs-canonical',
+        chapterIndex: 4,
+        source: 'outline',
+      },
+      {
+        id: 'fulfill-canonical',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-canonical',
+        chapterIndex: 6,
+        source: 'chapter',
+      },
+      {
+        id: 'introduce-duplicate',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-duplicate',
+        text: 'The same unexplained mark remains on the sealed record',
+        kind: 'object_foreshadow',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 20,
+        beatId: 'A2-M1',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'extend-duplicate-one',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'fs-duplicate',
+        newExpectedFulfillChapter: 22,
+        chapterIndex: 3,
+        source: 'outline',
+      },
+      {
+        id: 'extend-duplicate-two',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'fs-duplicate',
+        newExpectedFulfillChapter: 24,
+        chapterIndex: 4,
+        source: 'outline',
+      },
+      {
+        id: 'fulfill-duplicate',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-duplicate',
+        chapterIndex: 5,
+        source: 'chapter',
+      },
+      {
+        id: 'waive-duplicate',
+        type: 'foreshadow-waive',
+        foreshadowId: 'fs-duplicate',
+        chapterIndex: 7,
+        source: 'outline',
+      },
+      {
+        id: 'merge-duplicate',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-canonical',
+        duplicateForeshadowId: 'fs-duplicate',
+        reason: 'The records describe one obligation',
+        chapterIndex: 8,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['fs-canonical']).toEqual({
+      id: 'fs-canonical',
+      text: 'A sealed record has an unexplained mark',
+      kind: 'environmental_detail',
+      introducedIn: 1,
+      expectedFulfillChapter: null,
+      fulfilledIn: 5,
+      resolutionPolicy: 'may_remain_open',
+      required: false,
+      beatId: 'A1-M1',
+      deadlineExtensions: 1,
+      waivedIn: 4,
+    })
+    expect(next.foreshadows['fs-duplicate']).toMatchObject({
+      text: 'The same unexplained mark remains on the sealed record',
+      kind: 'object_foreshadow',
+      expectedFulfillChapter: 24,
+      fulfilledIn: 5,
+      resolutionPolicy: 'must_resolve',
+      required: true,
+      beatId: 'A2-M1',
+      deadlineExtensions: 2,
+      waivedIn: 7,
+      mergedInto: 'fs-canonical',
+    })
+  })
+
+  it('routes a later alias-addressed fulfillment to the root canonical record', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-root',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-root',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-alias',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-alias',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'merge-alias',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-root',
+        duplicateForeshadowId: 'fs-alias',
+        reason: 'The records describe one obligation',
+        chapterIndex: 3,
+        source: 'outline',
+      },
+      {
+        id: 'fulfill-alias',
+        type: 'foreshadow-fulfill',
+        foreshadowId: 'fs-alias',
+        chapterIndex: 7,
+        source: 'chapter',
+      },
+    ])
+
+    expect(next.foreshadows['fs-root']?.fulfilledIn).toBe(7)
+    expect(next.foreshadows['fs-alias']?.fulfilledIn).toBeNull()
+  })
+
+  it('leaves the canonical contract unchanged for later alias mutations', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-root',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-root',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-alias',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-alias',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 12,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'merge-alias',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-root',
+        duplicateForeshadowId: 'fs-alias',
+        reason: 'The records describe one obligation',
+        chapterIndex: 3,
+        source: 'outline',
+      },
+      {
+        id: 'extend-alias',
+        type: 'foreshadow-deadline-extend',
+        foreshadowId: 'fs-alias',
+        newExpectedFulfillChapter: 16,
+        chapterIndex: 4,
+        source: 'outline',
+      },
+      {
+        id: 'promote-alias',
+        type: 'foreshadow-policy-set',
+        foreshadowId: 'fs-alias',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 20,
+        chapterIndex: 5,
+        source: 'outline',
+      },
+      {
+        id: 'waive-alias',
+        type: 'foreshadow-waive',
+        foreshadowId: 'fs-alias',
+        chapterIndex: 6,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['fs-root']).toMatchObject({
+      resolutionPolicy: 'should_resolve',
+      expectedFulfillChapter: null,
+      fulfilledIn: null,
+    })
+    expect(next.foreshadows['fs-root']).not.toHaveProperty('deadlineExtensions')
+    expect(next.foreshadows['fs-root']).not.toHaveProperty('waivedIn')
+  })
+
+  it.each([
+    ['unknown canonical', 'fs-missing', 'fs-late'],
+    ['unknown duplicate', 'fs-early', 'fs-missing'],
+    ['reversed introduction order', 'fs-late', 'fs-early'],
+  ])('rejects an invalid merge with %s', (_name, canonicalId, duplicateId) => {
+    const introduced = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    expect(() =>
+      applyEvents(introduced, [
+        {
+          id: 'invalid-merge',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: canonicalId,
+          duplicateForeshadowId: duplicateId,
+          reason: 'The records describe one obligation',
+          chapterIndex: 3,
+          source: 'outline',
+        },
+      ])
+    ).toThrow(ForeshadowMergeValidationError)
+  })
+
+  it('rejects a duplicate that was already merged', () => {
+    const introduced = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    expect(() =>
+      applyEvents(introduced, [
+        {
+          id: 'merge-once',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: 'fs-early',
+          duplicateForeshadowId: 'fs-late',
+          reason: 'The records describe one obligation',
+          chapterIndex: 3,
+          source: 'outline',
+        },
+        {
+          id: 'merge-twice',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: 'fs-early',
+          duplicateForeshadowId: 'fs-late',
+          reason: 'The records describe one obligation',
+          chapterIndex: 4,
+          source: 'outline',
+        },
+      ])
+    ).toThrow(ForeshadowMergeValidationError)
+  })
+
+  it('rejects a merge between ids that already share one root', () => {
+    const introduced = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'introduce-early',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-early',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'introduce-late',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-late',
+        resolutionPolicy: 'should_resolve',
+        expectedFulfillChapter: null,
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    expect(() =>
+      applyEvents(introduced, [
+        {
+          id: 'merge-forward',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: 'fs-early',
+          duplicateForeshadowId: 'fs-late',
+          reason: 'The records describe one obligation',
+          chapterIndex: 3,
+          source: 'outline',
+        },
+        {
+          id: 'merge-back',
+          type: 'foreshadow-merge',
+          canonicalForeshadowId: 'fs-late',
+          duplicateForeshadowId: 'fs-early',
+          reason: 'The records describe one obligation',
+          chapterIndex: 4,
+          source: 'outline',
+        },
+      ])
+    ).toThrow(ForeshadowMergeValidationError)
   })
 })
 

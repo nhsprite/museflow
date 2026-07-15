@@ -1,6 +1,7 @@
 import type {
   StoryMemory,
   StoryEvent,
+  ForeshadowId,
   CharacterMemory,
   ItemMemory,
   LocationMemory,
@@ -13,6 +14,11 @@ import type { StoryArc } from '../types/outline.js'
 import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import { isValidForeshadowDeadline } from './foreshadow-policy.js'
+import {
+  compareCanonicalOrder,
+  ForeshadowMergeValidationError,
+  resolveCanonicalForeshadowId,
+} from './foreshadow-alias.js'
 import { deriveLegacyRequired, normalizeLegacyForeshadowFields } from './resolution-policy.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
@@ -286,12 +292,14 @@ export function projectStoryStateFromMemory(
 
 function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemory> {
   const foreshadows: Record<string, ForeshadowMemory> = {}
+  const introducedIds = new Set<ForeshadowId>()
 
   for (const event of events) {
     if (event.type === 'foreshadow-introduce') {
       if (!isValidForeshadowDeadline(event.chapterIndex, event.expectedFulfillChapter)) {
         continue
       }
+      introducedIds.add(event.foreshadowId)
       const existing = foreshadows[event.foreshadowId]
       const normalized = event.resolutionPolicy
         ? {
@@ -312,20 +320,31 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         beatId: event.beatId ?? existing?.beatId ?? null,
       }
     } else if (event.type === 'foreshadow-fulfill') {
-      const existing = foreshadows[event.foreshadowId]
-      foreshadows[event.foreshadowId] = {
-        id: event.foreshadowId,
-        text: existing?.text ?? event.foreshadowId,
-        kind: existing?.kind ?? null,
-        introducedIn: existing?.introducedIn ?? event.chapterIndex,
-        expectedFulfillChapter: existing?.expectedFulfillChapter ?? null,
-        fulfilledIn: event.chapterIndex,
-        resolutionPolicy: existing?.resolutionPolicy ?? 'should_resolve',
-        required: deriveLegacyRequired(existing?.resolutionPolicy ?? 'should_resolve'),
-        beatId: existing?.beatId ?? null,
-        ...(existing?.deadlineExtensions !== undefined
-          ? { deadlineExtensions: existing.deadlineExtensions }
-          : {}),
+      const addressed = foreshadows[event.foreshadowId]
+      const targetId = addressed
+        ? resolveProjectedForeshadowId(events, foreshadows, event.foreshadowId)
+        : event.foreshadowId
+      const existing = foreshadows[targetId]
+      if (existing) {
+        foreshadows[targetId] = {
+          ...existing,
+          fulfilledIn:
+            existing.fulfilledIn === null
+              ? event.chapterIndex
+              : Math.min(existing.fulfilledIn, event.chapterIndex),
+        }
+      } else {
+        foreshadows[targetId] = {
+          id: targetId,
+          text: targetId,
+          kind: null,
+          introducedIn: event.chapterIndex,
+          expectedFulfillChapter: null,
+          fulfilledIn: event.chapterIndex,
+          resolutionPolicy: 'should_resolve',
+          required: deriveLegacyRequired('should_resolve'),
+          beatId: null,
+        }
       }
     } else if (event.type === 'foreshadow-deadline-extend') {
       const existing = foreshadows[event.foreshadowId]
@@ -351,10 +370,123 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         ...existing,
         waivedIn: event.chapterIndex,
       }
+    } else if (event.type === 'foreshadow-merge') {
+      projectForeshadowMerge(events, foreshadows, introducedIds, event)
     }
   }
 
   return foreshadows
+}
+
+function projectForeshadowMerge(
+  events: StoryEvent[],
+  foreshadows: Record<ForeshadowId, ForeshadowMemory>,
+  introducedIds: ReadonlySet<ForeshadowId>,
+  event: Extract<StoryEvent, { type: 'foreshadow-merge' }>
+): void {
+  const canonical = foreshadows[event.canonicalForeshadowId]
+  const duplicate = foreshadows[event.duplicateForeshadowId]
+  if (
+    !canonical ||
+    !duplicate ||
+    !introducedIds.has(event.canonicalForeshadowId) ||
+    !introducedIds.has(event.duplicateForeshadowId)
+  ) {
+    throw new ForeshadowMergeValidationError(
+      `Cannot merge unintroduced foreshadow ids: ${event.canonicalForeshadowId}, ${event.duplicateForeshadowId}`
+    )
+  }
+  if (duplicate.mergedInto !== undefined) {
+    throw new ForeshadowMergeValidationError(
+      `Duplicate foreshadow id is already merged: ${event.duplicateForeshadowId}`
+    )
+  }
+
+  const memory = createForeshadowProjectionMemory(events, foreshadows)
+  const canonicalRootId = resolveCanonicalForeshadowId(memory, event.canonicalForeshadowId)
+  const duplicateRootId = resolveCanonicalForeshadowId(memory, event.duplicateForeshadowId)
+  if (canonicalRootId === null || duplicateRootId === null) {
+    throw new ForeshadowMergeValidationError(
+      `Cannot resolve foreshadow merge ids: ${event.canonicalForeshadowId}, ${event.duplicateForeshadowId}`
+    )
+  }
+  if (canonicalRootId === duplicateRootId) {
+    throw new ForeshadowMergeValidationError(
+      `Foreshadow ids already share canonical root: ${canonicalRootId}`
+    )
+  }
+  if (compareCanonicalOrder(memory, canonicalRootId, duplicateRootId) >= 0) {
+    throw new ForeshadowMergeValidationError(
+      `Canonical foreshadow must precede duplicate: ${canonicalRootId}, ${duplicateRootId}`
+    )
+  }
+
+  const root = foreshadows[canonicalRootId]
+  if (!root) {
+    throw new ForeshadowMergeValidationError(
+      `Canonical foreshadow root is unknown: ${canonicalRootId}`
+    )
+  }
+
+  duplicate.mergedInto = canonicalRootId
+  if (duplicate.fulfilledIn !== null) {
+    root.fulfilledIn =
+      root.fulfilledIn === null
+        ? duplicate.fulfilledIn
+        : Math.min(root.fulfilledIn, duplicate.fulfilledIn)
+  }
+  flattenProjectedAliases(events, foreshadows)
+}
+
+function resolveProjectedForeshadowId(
+  events: StoryEvent[],
+  foreshadows: Record<ForeshadowId, ForeshadowMemory>,
+  id: ForeshadowId
+): ForeshadowId {
+  const resolved = resolveCanonicalForeshadowId(
+    createForeshadowProjectionMemory(events, foreshadows),
+    id
+  )
+  if (resolved === null) {
+    throw new ForeshadowMergeValidationError(`Invalid foreshadow alias chain: ${id}`)
+  }
+  return resolved
+}
+
+function flattenProjectedAliases(
+  events: StoryEvent[],
+  foreshadows: Record<ForeshadowId, ForeshadowMemory>
+): void {
+  const memory = createForeshadowProjectionMemory(events, foreshadows)
+  for (const foreshadow of Object.values(foreshadows)) {
+    if (foreshadow.mergedInto === undefined) continue
+    const rootId = resolveCanonicalForeshadowId(memory, foreshadow.id)
+    if (rootId === null) {
+      throw new ForeshadowMergeValidationError(`Invalid foreshadow alias chain: ${foreshadow.id}`)
+    }
+    foreshadow.mergedInto = rootId
+  }
+}
+
+function createForeshadowProjectionMemory(
+  events: StoryEvent[],
+  foreshadows: Record<ForeshadowId, ForeshadowMemory>
+): StoryMemory {
+  return {
+    version: '3',
+    lastChapterIndex: 0,
+    entities: {
+      characters: {},
+      items: {},
+      locations: {},
+      factions: {},
+      plots: {},
+    },
+    events,
+    foreshadows,
+    beats: {},
+    tasks: {},
+  }
 }
 
 function projectBeats(events: StoryEvent[]): Record<string, BeatMemory> {
