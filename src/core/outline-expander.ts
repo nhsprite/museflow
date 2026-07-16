@@ -1208,6 +1208,13 @@ async function generateChapterOutlineIfNeeded(
   let lastCandidate: ChapterOutlineResult | null = null
   let lastMissingScheduledForeshadowIds: string[] = []
   let lastConflictingDecisionIds: string[] = []
+  const requiredFulfillmentIds = [...mustFulfillForeshadowIds]
+  let preservedFulfillmentIds = new Set(
+    foreshadowPlanningRejection?.preservedFulfillmentIds ?? []
+  )
+  const regressedFulfillmentIds = new Set(
+    foreshadowPlanningRejection?.regressedFulfillmentIds ?? []
+  )
   let autoDeferredForeshadowIds: string[] = []
 
   for (let attempt = 0; attempt < MAX_JIT_OUTLINE_ATTEMPTS; attempt++) {
@@ -1304,6 +1311,13 @@ async function generateChapterOutlineIfNeeded(
       )
       lastMissingScheduledForeshadowIds = correctionIds
       lastConflictingDecisionIds = conflictingDecisionIds
+      const fulfilledIds = new Set(normalizedCandidate.fulfilledForeshadowIds ?? [])
+      for (const id of preservedFulfillmentIds) {
+        if (!fulfilledIds.has(id)) regressedFulfillmentIds.add(id)
+      }
+      const nextPreservedFulfillmentIds = requiredFulfillmentIds.filter((id) =>
+        fulfilledIds.has(id)
+      )
       logger.warn(
         `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次存在未裁决或错误顺延伏笔候选：${correctionIds.join(', ')}`
       )
@@ -1312,8 +1326,16 @@ async function generateChapterOutlineIfNeeded(
         missingDeclarationIds: missingScheduledForeshadowIds,
         missingEventIds: [],
         incorrectlyDeferredIds: deferredMustFulfillIds,
-        ...(conflictingDecisionIds.length > 0 ? { conflictingDecisionIds } : {}),
+        requiredFulfillmentIds,
+        preservedFulfillmentIds: nextPreservedFulfillmentIds,
+        regressedFulfillmentIds: [...regressedFulfillmentIds],
+        conflictingDecisionIds,
+        currentOutline: {
+          title: normalizedCandidate.title,
+          description: normalizedCandidate.description,
+        },
       }
+      preservedFulfillmentIds = new Set(nextPreservedFulfillmentIds)
       continue
     }
 
@@ -1333,7 +1355,7 @@ async function generateChapterOutlineIfNeeded(
       )
       if (nonDeferrableIds.length > 0) {
         throw new Error(
-          `第 ${chapterIndex + 1} 章即时大纲无法在幕末前回收必须回收的伏笔：${nonDeferrableIds.join(', ')}。当前幕仅剩 ${foreshadowConstraintContext.remainingChapters} 章，仍有 ${foreshadowConstraintContext.pendingBlockingCount} 个 required 伏笔待回收。请调整幕边界，或重写前面的章节以回收这些伏笔。`
+          `第 ${chapterIndex + 1} 章伏笔大纲修订未收敛：必须回收 ${requiredFulfillmentIds.join(', ')}；最终未裁决或错误顺延 ${nonDeferrableIds.join(', ')}；修订中回退 ${regressedFulfillmentIds.size > 0 ? [...regressedFulfillmentIds].join(', ') : '无'}。`
         )
       }
       logger.warn(

@@ -39,12 +39,16 @@ function renderRejection(rejection: ForeshadowPlanningRejection): string {
 - missingDeclarationIds: ${formatIds(rejection.missingDeclarationIds)}
 - missingEventIds: ${formatIds(rejection.missingEventIds)}
 - incorrectlyDeferredIds: ${formatIds(rejection.incorrectlyDeferredIds)}
+- requiredFulfillmentIds: ${formatIds(rejection.requiredFulfillmentIds ?? [])}
+- preservedFulfillmentIds: ${formatIds(rejection.preservedFulfillmentIds ?? [])}
+- regressedFulfillmentIds: ${formatIds(rejection.regressedFulfillmentIds ?? [])}
 - conflictingDecisionIds: ${formatIds(rejection.conflictingDecisionIds ?? [])}
 - forbiddenFulfillmentIds: ${formatIds(rejection.forbiddenFulfillmentIds ?? [])}
 ${currentOutline}
 ${semanticRejections}
 conflictingDecisionIds 中每个 ID 必须根据本章核心事件与结构化义务只保留兑现或顺延其中一种裁决，不得同时出现在两侧。
 forbiddenFulfillmentIds 已由大纲明确顺延，必须从 fulfilledForeshadowIds 和 foreshadow-fulfill expectedEvents 中移除。
+requiredFulfillmentIds 中每个 ID 都必须保留在 fulfilledForeshadowIds；以 currentOutline 为修订基线，保留 preservedFulfillmentIds 已有的具体回收事件，并补齐其余缺口。regressedFulfillmentIds 表示先前修订已覆盖但后来丢失的 ID，必须恢复。不得用修复一个遗漏来交换另一个遗漏。
 必须修复列出的结构化缺口；不得通过改变策略或虚假声明回收来规避。
 </foreshadow_planning_rejection>`
 }

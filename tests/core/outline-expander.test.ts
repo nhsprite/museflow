@@ -1270,7 +1270,7 @@ describe('expandOutlineForChapter', () => {
     })
 
     await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
-      '第 3 章即时大纲无法在幕末前回收必须回收的伏笔：fs-a, fs-b, fs-c'
+      '第 3 章伏笔大纲修订未收敛：必须回收 fs-a, fs-b, fs-c；最终未裁决或错误顺延 fs-a, fs-b, fs-c；修订中回退 无'
     )
 
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
@@ -1281,6 +1281,54 @@ describe('expandOutlineForChapter', () => {
     }
     expect(correction.foreshadowPlanningRejection?.incorrectlyDeferredIds).toEqual(foreshadowIds)
     expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+  })
+
+  it('reports non-regressing mandatory revision when retries trade one omission for another', async () => {
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
+    const state = stateWithScheduledForeshadows(
+      2,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '第一版修订',
+          description: '第一版保留后两条回收事件，但遗漏第一条。',
+          fulfilledForeshadowIds: ['fs-b', 'fs-c'],
+          deferredForeshadowIds: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '第二版修订',
+          description: '第二版补上第一条，却丢失后两条。',
+          fulfilledForeshadowIds: ['fs-a'],
+          deferredForeshadowIds: [],
+        },
+      })
+
+    await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
+      /第 3 章伏笔大纲修订未收敛：必须回收 fs-a, fs-b, fs-c；最终未裁决或错误顺延 fs-b, fs-c；修订中回退 fs-b, fs-c/
+    )
+
+    const secondInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      foreshadowPlanningRejection?: {
+        requiredFulfillmentIds?: string[]
+        preservedFulfillmentIds?: string[]
+        currentOutline?: { title: string; description: string }
+      }
+    }
+    expect(secondInput.foreshadowPlanningRejection).toMatchObject({
+      requiredFulfillmentIds: foreshadowIds,
+      preservedFulfillmentIds: ['fs-b', 'fs-c'],
+      currentOutline: {
+        title: '第一版修订',
+        description: '第一版保留后两条回收事件，但遗漏第一条。',
+      },
+    })
   })
 
   it('fulfills a tight mandatory batch on the single correction attempt', async () => {
@@ -1469,10 +1517,16 @@ describe('expandOutlineForChapter', () => {
         incorrectlyDeferredIds: string[]
       }
     }
-    expect(retryInput.foreshadowPlanningRejection).toEqual({
+    expect(retryInput.foreshadowPlanningRejection).toMatchObject({
       missingDeclarationIds: ['fs-due'],
       missingEventIds: [],
       incorrectlyDeferredIds: [],
+      requiredFulfillmentIds: ['fs-due'],
+      preservedFulfillmentIds: [],
+      currentOutline: {
+        title: '遗漏版本',
+        description: '没有安排伏笔回收。',
+      },
     })
   })
 
@@ -1983,7 +2037,7 @@ describe('expandOutlineForChapter', () => {
     })
 
     await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
-      '第 3 章即时大纲无法在幕末前回收必须回收的伏笔：fs-01, fs-02, fs-03'
+      '第 3 章伏笔大纲修订未收敛：必须回收 fs-01, fs-02, fs-03；最终未裁决或错误顺延 fs-01, fs-02, fs-03；修订中回退 无'
     )
 
     expect(planChapterWithOverrideMock).not.toHaveBeenCalled()

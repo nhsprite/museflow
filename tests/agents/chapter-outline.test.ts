@@ -226,6 +226,9 @@ describe('ChapterOutlineAgent', () => {
         missingDeclarationIds: [],
         missingEventIds: [],
         incorrectlyDeferredIds: ['fs-hard'],
+        requiredFulfillmentIds: ['fs-hard', 'fs-kept'],
+        preservedFulfillmentIds: ['fs-kept'],
+        regressedFulfillmentIds: ['fs-regressed'],
         conflictingDecisionIds: ['fs-conflict'],
         forbiddenFulfillmentIds: ['fs-deferred'],
         currentOutline: {
@@ -253,11 +256,15 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).toContain('mustFulfillThisChapter=true')
     expect(prompt).toContain('<foreshadow_planning_rejection>')
     expect(prompt).toContain('incorrectlyDeferredIds: fs-hard')
+    expect(prompt).toContain('requiredFulfillmentIds: fs-hard, fs-kept')
+    expect(prompt).toContain('preservedFulfillmentIds: fs-kept')
+    expect(prompt).toContain('regressedFulfillmentIds: fs-regressed')
     expect(prompt).toContain('conflictingDecisionIds: fs-conflict')
     expect(prompt).toContain('forbiddenFulfillmentIds: fs-deferred')
     expect(prompt).toContain('错误版本')
     expect(prompt).toContain('当前大纲与伏笔含义矛盾。')
     expect(prompt).toContain('规划否定了原伏笔建立的事实。')
+    expect(prompt).toContain('不得用修复一个遗漏来交换另一个遗漏')
   })
 
   it('fills empty structured declaration arrays when LLM omits them', async () => {
