@@ -97,7 +97,7 @@ ${STATE_AUTHORITY_RULES}
   - item-location: 物品的位置或持有者发生变化。
   - item-state: 物品的状态、属性发生变化。
   - plot-advance: 本章推进了某个关键情节节拍；必须引用 outline 中该节拍的精确 beatId。
-  - foreshadow-introduce: 本章新埋下一个伏笔；必须引用 outline 中该伏笔的精确 foreshadowId，并标注 text、kind、required、beatId、expectedFulfillChapter。
+  - foreshadow-introduce: 本章新埋下一个伏笔；必须引用 outline 中该伏笔的精确 foreshadowId，并标注 text、kind、resolutionPolicy、required、beatId、expectedFulfillChapter；新建 must_resolve 还必须标注 resolutionQuestion 与 fulfillmentCriteria。
   - foreshadow-fulfill: 本章回收了某个伏笔；必须引用 outline 中该伏笔的精确 foreshadowId。
   - task-resolve: 本章完成了某个任务；必须引用 outline 中该任务的精确 taskId。
   - task-create: 本章创建了某个新任务；必须引用 outline 中该任务的精确 taskId。
@@ -112,6 +112,7 @@ ${STATE_AUTHORITY_RULES}
   <requirement>foreshadow-introduce 的 text 必须是本章正文中实际出现的暗示描述，不得写未来揭示或后续剧情。</requirement>
   <requirement>foreshadow-introduce 的 kind 必须是以下枚举值之一：character_arc、environmental_detail、dialogue_hint、object_foreshadow、inner_conflict、plot、other。</requirement>
   <requirement>foreshadow-introduce 的 expectedFulfillChapter 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 null。</requirement>
+  <requirement>新建 must_resolve 伏笔必须同时提供非空 resolutionQuestion 与 fulfillmentCriteria，分别描述待解问题和可观察的完成判据；新建 should_resolve 伏笔应尽量提供。兼容已有事件时允许缺失，不得臆造。</requirement>
   <requirement>只输出本章新发生或状态发生变化的事件；未变化的状态不要重复输出。</requirement>
 </event_rules>
 
@@ -137,7 +138,7 @@ ${STATE_AUTHORITY_RULES}
   <story_events>
   [
     { "id": "evt-1", "type": "character-location", "characterId": "c-1", "locationId": "l-1", "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 1 } },
-    { "id": "evt-2", "type": "foreshadow-introduce", "foreshadowId": "fs-1", "text": "本章正文中出现的具体暗示", "kind": "dialogue_hint", "required": true, "beatId": "A1-M2", "expectedFulfillChapter": 5, "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 2 } }
+    { "id": "evt-2", "type": "foreshadow-introduce", "foreshadowId": "fs-1", "text": "本章正文中出现的具体暗示", "resolutionQuestion": "该暗示留下的待解问题", "fulfillmentCriteria": "可观察的叙事完成判据", "kind": "dialogue_hint", "resolutionPolicy": "must_resolve", "required": true, "beatId": "A1-M2", "expectedFulfillChapter": 5, "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 2 } }
   ]
   </story_events>
 </output_format>

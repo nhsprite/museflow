@@ -361,6 +361,37 @@ describe('applyEvents immutability', () => {
 })
 
 describe('projectMemory foreshadows', () => {
+  it('projects optional resolution intent and keeps legacy introductions compatible', () => {
+    const next = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e-resolution-intent',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-resolution-intent',
+        resolutionPolicy: 'must_resolve',
+        expectedFulfillChapter: 5,
+        resolutionQuestion: '哪个既有事实仍未得到解释？',
+        fulfillmentCriteria: '通过可验证事件揭示该事实的原因或责任主体。',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+      {
+        id: 'e-legacy-intent',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'f-legacy-intent',
+        expectedFulfillChapter: 5,
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+
+    expect(next.foreshadows['f-resolution-intent']).toMatchObject({
+      resolutionQuestion: '哪个既有事实仍未得到解释？',
+      fulfillmentCriteria: '通过可验证事件揭示该事实的原因或责任主体。',
+    })
+    expect(next.foreshadows['f-legacy-intent']).not.toHaveProperty('resolutionQuestion')
+    expect(next.foreshadows['f-legacy-intent']).not.toHaveProperty('fulfillmentCriteria')
+  })
+
   it('does not materialize a foreshadow whose deadline is not after its introduction chapter', () => {
     const next = applyEvents(createEmptyStoryMemory(), [
       {

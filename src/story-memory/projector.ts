@@ -316,6 +316,12 @@ function projectForeshadows(events: StoryEvent[]): Record<string, ForeshadowMemo
         expectedFulfillChapter: normalized.expectedFulfillChapter,
         fulfilledIn: existing?.fulfilledIn ?? null,
         resolutionPolicy: normalized.resolutionPolicy,
+        ...(event.resolutionQuestion !== undefined
+          ? { resolutionQuestion: event.resolutionQuestion }
+          : {}),
+        ...(event.fulfillmentCriteria !== undefined
+          ? { fulfillmentCriteria: event.fulfillmentCriteria }
+          : {}),
         required: deriveLegacyRequired(normalized.resolutionPolicy),
         beatId: event.beatId ?? existing?.beatId ?? null,
       }

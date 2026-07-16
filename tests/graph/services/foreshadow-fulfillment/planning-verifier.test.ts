@@ -126,7 +126,11 @@ describe('verifyForeshadowPlan', () => {
     const judgments = await verifyForeshadowPlan({
       provider,
       memory: memoryWithForeshadows(
-        foreshadow('fs-a', '门锁会在无人触碰时打开'),
+        {
+          ...foreshadow('fs-a', '门锁会在无人触碰时打开'),
+          resolutionQuestion: '门锁为何会自行打开？',
+          fulfillmentCriteria: '通过可验证事件揭示触发门锁的具体机制。',
+        },
         foreshadow('fs-b', '角色闭眼后灯仍持续亮着')
       ),
       outline: outline(['fs-a', 'fs-b']),
@@ -154,6 +158,10 @@ describe('verifyForeshadowPlan', () => {
     const messages = chatStructured.mock.calls[0]?.[0]
     const prompt = messages?.map((message) => message.content).join('\n') ?? ''
     expect(prompt).toContain('门锁会在无人触碰时打开')
+    expect(prompt).toContain('门锁为何会自行打开？')
+    expect(prompt).toContain('通过可验证事件揭示触发门锁的具体机制。')
+    expect(prompt).not.toContain('"resolutionQuestion": null')
+    expect(prompt).not.toContain('"fulfillmentCriteria": null')
     expect(prompt).toContain('角色闭眼后灯仍持续亮着')
     expect(prompt).toContain('本章通过核心事件解释既有线索。')
     expect(prompt).toContain('拆开门锁，确认内部的定时结构。')

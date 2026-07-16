@@ -30,6 +30,8 @@ export interface VerifyForeshadowPlanInput {
 interface VerificationCandidate {
   foreshadowId: string
   plantedText: string
+  resolutionQuestion?: string
+  fulfillmentCriteria?: string
   outline: {
     title: string
     description: string
@@ -101,6 +103,12 @@ export async function verifyForeshadowPlan(
     prepared.push({
       foreshadowId,
       plantedText: planted.text,
+      ...(planted.resolutionQuestion !== undefined
+        ? { resolutionQuestion: planted.resolutionQuestion }
+        : {}),
+      ...(planted.fulfillmentCriteria !== undefined
+        ? { fulfillmentCriteria: planted.fulfillmentCriteria }
+        : {}),
       outline: {
         title: input.outline.title,
         description: input.outline.description,

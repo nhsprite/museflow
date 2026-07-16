@@ -245,6 +245,16 @@ export function normalizeStoryEvent(
       if (value.text !== undefined && !isNonEmptyString(value.text)) {
         return invalid('foreshadow-introduce.text must be a non-empty string when present')
       }
+      if (hasOwn(value, 'resolutionQuestion') && !isNonEmptyString(value.resolutionQuestion)) {
+        return invalid(
+          'foreshadow-introduce.resolutionQuestion must be a non-empty string when present'
+        )
+      }
+      if (hasOwn(value, 'fulfillmentCriteria') && !isNonEmptyString(value.fulfillmentCriteria)) {
+        return invalid(
+          'foreshadow-introduce.fulfillmentCriteria must be a non-empty string when present'
+        )
+      }
       if (
         value.kind !== undefined &&
         (typeof value.kind !== 'string' || !FORESHADOW_KINDS.has(value.kind as ForeshadowKind))
@@ -296,6 +306,12 @@ export function normalizeStoryEvent(
           expectedFulfillChapter,
           resolutionPolicy,
           ...(value.text !== undefined ? { text: value.text } : {}),
+          ...(typeof value.resolutionQuestion === 'string'
+            ? { resolutionQuestion: value.resolutionQuestion }
+            : {}),
+          ...(typeof value.fulfillmentCriteria === 'string'
+            ? { fulfillmentCriteria: value.fulfillmentCriteria }
+            : {}),
           ...(value.kind !== undefined ? { kind: value.kind as ForeshadowKind } : {}),
           required,
           ...(value.beatId !== undefined ? { beatId: value.beatId } : {}),

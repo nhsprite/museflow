@@ -234,6 +234,12 @@ function buildForeshadowPlanningObligations(
       {
         id: foreshadow.id,
         text: foreshadow.text,
+        ...(foreshadow.resolutionQuestion !== undefined
+          ? { resolutionQuestion: foreshadow.resolutionQuestion }
+          : {}),
+        ...(foreshadow.fulfillmentCriteria !== undefined
+          ? { fulfillmentCriteria: foreshadow.fulfillmentCriteria }
+          : {}),
         kind: foreshadow.kind,
         introducedChapter: foreshadow.introducedIn,
         resolutionPolicy: foreshadow.resolutionPolicy,
@@ -246,6 +252,12 @@ function buildForeshadowPlanningObligations(
   const opportunities = schedule.opportunityCandidates.map(({ foreshadow, schedulingMode }) => ({
     id: foreshadow.id,
     text: foreshadow.text,
+    ...(foreshadow.resolutionQuestion !== undefined
+      ? { resolutionQuestion: foreshadow.resolutionQuestion }
+      : {}),
+    ...(foreshadow.fulfillmentCriteria !== undefined
+      ? { fulfillmentCriteria: foreshadow.fulfillmentCriteria }
+      : {}),
     kind: foreshadow.kind,
     introducedChapter: foreshadow.introducedIn,
     resolutionPolicy: foreshadow.resolutionPolicy,
@@ -1209,9 +1221,7 @@ async function generateChapterOutlineIfNeeded(
   let lastMissingScheduledForeshadowIds: string[] = []
   let lastConflictingDecisionIds: string[] = []
   const requiredFulfillmentIds = [...mustFulfillForeshadowIds]
-  let preservedFulfillmentIds = new Set(
-    foreshadowPlanningRejection?.preservedFulfillmentIds ?? []
-  )
+  let preservedFulfillmentIds = new Set(foreshadowPlanningRejection?.preservedFulfillmentIds ?? [])
   const regressedFulfillmentIds = new Set(
     foreshadowPlanningRejection?.regressedFulfillmentIds ?? []
   )

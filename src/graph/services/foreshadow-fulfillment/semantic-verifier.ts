@@ -19,6 +19,8 @@ export interface VerifyForeshadowFulfillmentsInput {
 interface VerificationCandidate {
   foreshadowId: string
   plantedText: string
+  resolutionQuestion?: string
+  fulfillmentCriteria?: string
   evidenceParagraphIndex: number
   evidenceParagraph: string
 }
@@ -120,6 +122,12 @@ export async function verifyForeshadowFulfillments(
       prepared: {
         foreshadowId: canonicalId,
         plantedText: planted.text,
+        ...(planted.resolutionQuestion !== undefined
+          ? { resolutionQuestion: planted.resolutionQuestion }
+          : {}),
+        ...(planted.fulfillmentCriteria !== undefined
+          ? { fulfillmentCriteria: planted.fulfillmentCriteria }
+          : {}),
         evidenceParagraphIndex: paragraphIndex,
         evidenceParagraph,
       },

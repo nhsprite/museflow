@@ -2,6 +2,48 @@ import { describe, expect, it } from 'vitest'
 import { normalizeStoryEvent, normalizeStoryEvents } from '../../src/story-memory/event-contract.js'
 
 describe('normalizeStoryEvent', () => {
+  it('accepts optional structured resolution intent on strict foreshadow introductions', () => {
+    const event = {
+      id: 'evt-resolution-intent',
+      type: 'foreshadow-introduce',
+      foreshadowId: 'foreshadow-resolution-intent',
+      expectedFulfillChapter: 5,
+      resolutionPolicy: 'must_resolve',
+      required: true,
+      resolutionQuestion: '哪个既有事实仍未得到解释？',
+      fulfillmentCriteria: '通过可验证事件揭示该事实的原因或责任主体。',
+      chapterIndex: 1,
+      source: 'chapter',
+    }
+
+    expect(normalizeStoryEvent(event, { chapterIndex: 1, mode: 'strict' })).toEqual({
+      ok: true,
+      normalized: false,
+      event,
+    })
+  })
+
+  it('rejects blank structured resolution intent when present', () => {
+    const result = normalizeStoryEvent(
+      {
+        id: 'evt-blank-resolution-intent',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'foreshadow-blank-resolution-intent',
+        expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
+        resolutionQuestion: '   ',
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+      { chapterIndex: 1, mode: 'strict' }
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'foreshadow-introduce.resolutionQuestion must be a non-empty string when present',
+    })
+  })
+
   it('requires resolutionPolicy on strict foreshadow introductions', () => {
     const result = normalizeStoryEvent(
       {

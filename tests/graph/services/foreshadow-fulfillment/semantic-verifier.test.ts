@@ -90,7 +90,11 @@ describe('verifyForeshadowFulfillments', () => {
     const rejections = await verifyForeshadowFulfillments({
       provider,
       memory: memoryWithForeshadows(
-        foreshadow('fs-a', '门锁会在无人触碰时打开'),
+        {
+          ...foreshadow('fs-a', '门锁会在无人触碰时打开'),
+          resolutionQuestion: '门锁为何会自行打开？',
+          fulfillmentCriteria: '通过可验证事件揭示触发门锁的具体机制。',
+        },
         foreshadow('fs-b', '窗边持续出现相同光斑')
       ),
       chapterContent: '# 第五章\n\n第一段揭示门锁内部装有定时弹簧。\n\n第二段再次写到窗边的光斑。',
@@ -111,6 +115,10 @@ describe('verifyForeshadowFulfillments', () => {
     const prompt = messages?.map((message) => message.content).join('\n') ?? ''
     expect(prompt).toContain('fs-a')
     expect(prompt).toContain('门锁会在无人触碰时打开')
+    expect(prompt).toContain('门锁为何会自行打开？')
+    expect(prompt).toContain('通过可验证事件揭示触发门锁的具体机制。')
+    expect(prompt).not.toContain('"resolutionQuestion": null')
+    expect(prompt).not.toContain('"fulfillmentCriteria": null')
     expect(prompt).toContain('第一段揭示门锁内部装有定时弹簧。')
     expect(prompt).toContain('fs-b')
     expect(prompt).toContain('窗边持续出现相同光斑')

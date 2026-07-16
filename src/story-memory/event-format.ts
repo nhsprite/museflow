@@ -38,6 +38,10 @@ export function renderStoryEventLine(event: StoryEvent): string {
       if (event.beatId !== undefined)
         fields.push(`beat=${event.beatId === null ? 'none' : event.beatId}`)
       if (event.text !== undefined) fields.push(`text=${event.text}`)
+      if (event.resolutionQuestion !== undefined)
+        fields.push(`question=${event.resolutionQuestion}`)
+      if (event.fulfillmentCriteria !== undefined)
+        fields.push(`criteria=${event.fulfillmentCriteria}`)
       if (fields.length > 0) parts.push(` / ${fields.join(' / ')}`)
       return parts.join('')
     }

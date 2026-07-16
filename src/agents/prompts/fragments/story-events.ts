@@ -9,7 +9,7 @@ expectedEvents 中每个对象必须严格匹配下列一种完整 JSON 结构�
 - {"id": "evt-id", "type": "item-location", "itemId": "item-id", "holderId": null, "locationId": "location-id", ${base}}
 - {"id": "evt-id", "type": "item-state", "itemId": "item-id", "attribute": "attribute", "value": "value", ${base}}
 - {"id": "evt-id", "type": "plot-advance", "plotId": "plot-id", "beatId": "beat-id", ${base}}
-- {"id": "evt-id", "type": "foreshadow-introduce", "foreshadowId": "foreshadow-id", "expectedFulfillChapter": null, "text": "description", "kind": "other", "resolutionPolicy": "should_resolve", "required": true, "beatId": null, ${base}}
+- {"id": "evt-id", "type": "foreshadow-introduce", "foreshadowId": "foreshadow-id", "expectedFulfillChapter": null, "text": "description", "resolutionQuestion": "unresolved question", "fulfillmentCriteria": "observable resolution criteria", "kind": "other", "resolutionPolicy": "should_resolve", "required": true, "beatId": null, ${base}}
 - {"id": "evt-id", "type": "foreshadow-fulfill", "foreshadowId": "foreshadow-id", ${base}}
 - {"id": "evt-id", "type": "task-resolve", "taskId": "task-id", ${base}}
 - {"id": "evt-id", "type": "task-create", "taskId": "task-id", "description": "description", ${base}}
@@ -24,6 +24,7 @@ expectedEvents 中每个对象必须严格匹配下列一种完整 JSON 结构�
   - 如果 expectedEvents 已提供 item-location，正文必须逐字段复用该事件；禁止把 location 变化改写成 item-state。
 - foreshadow-introduce 的 kind 必须是以下枚举值之一：character_arc、environmental_detail、dialogue_hint、object_foreshadow、inner_conflict、plot、other。禁止使用任何其他值。
 - foreshadow-introduce 的 resolutionPolicy 必须是 must_resolve、should_resolve、may_remain_open 之一；must_resolve 必须提供有限的 expectedFulfillChapter，should_resolve 与 may_remain_open 的 expectedFulfillChapter 必须为 null。
+- 新建 must_resolve 伏笔必须提供非空 resolutionQuestion 与 fulfillmentCriteria，分别描述待消解的问题和可观察的叙事完成判据；新建 should_resolve 伏笔应尽量提供。兼容已有事件时允许两字段缺失，不得为 legacy 记录臆造内容。
 - 没有可辩护截止章节时默认使用 should_resolve；只有允许永久保持开放的氛围性或解释性线索才使用 may_remain_open。required 是兼容字段：must_resolve 与 should_resolve 为 true，may_remain_open 为 false。
 - item-location 的 holderId 和 locationId 两个字段都必须出现；每个字段的值只能是权威 ID 字符串或 null，禁止省略，禁止写自然语言位置。
 - item-state 必须同时包含 attribute 和 value，禁止改写为 state 等其他字段。

@@ -214,6 +214,8 @@ describe('ChapterOutlineAgent', () => {
         {
           id: 'fs-hard',
           text: '角色闭眼后灯仍持续亮着',
+          resolutionQuestion: '灯为何在角色闭眼后继续发亮？',
+          fulfillmentCriteria: '通过可验证事件揭示持续发亮的原因。',
           kind: 'plot',
           introducedChapter: 3,
           resolutionPolicy: 'must_resolve',
@@ -251,6 +253,8 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).toContain('fs-hard')
     expect(prompt).toContain('must_resolve')
     expect(prompt).toContain('text=角色闭眼后灯仍持续亮着')
+    expect(prompt).toContain('resolutionQuestion=灯为何在角色闭眼后继续发亮？')
+    expect(prompt).toContain('fulfillmentCriteria=通过可验证事件揭示持续发亮的原因。')
     expect(prompt).toContain('kind=plot')
     expect(prompt).toContain('introducedChapter=3')
     expect(prompt).toContain('mustFulfillThisChapter=true')

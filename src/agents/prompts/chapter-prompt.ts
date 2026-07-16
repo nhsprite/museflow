@@ -148,7 +148,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 - item-location: <itemId> / holder=<holderId|none> / location=<locationId|none> @pN
 - item-state: <itemId> / <attribute> -> <value> @pN
 - plot-advance: <plotId> / <beatId> @pN
-- foreshadow-introduce: <foreshadowId> / expected=<expectedFulfillChapter|none> / kind=<character_arc|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict|plot|other> / required=<true|false> / beat=<beatId|none> / text=<伏笔可读描述> @pN
+- foreshadow-introduce: <foreshadowId> / expected=<expectedFulfillChapter|none> / policy=<must_resolve|should_resolve|may_remain_open> / kind=<character_arc|environmental_detail|dialogue_hint|object_foreshadow|inner_conflict|plot|other> / required=<true|false> / beat=<beatId|none> / text=<伏笔可读描述> / question=<resolutionQuestion> / criteria=<fulfillmentCriteria> @pN
 - foreshadow-fulfill: <foreshadowId> @pN
 - task-resolve: <taskId> @pN
 - task-create: <taskId> / <description> @pN
@@ -160,7 +160,8 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
   - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。"锁回木箱""放入抽屉""贴身携带"等动作都属于位置变化，必须使用 item-location，并将木箱/抽屉/角色等对应 ID 填入 locationId 或 holderId。
   - 【关键区分】locationId 是物品的"主位置"（ canonical location ）。物品最终停留在某个固定地点/容器时，locationId 必须是该地点/容器 ID，holderId 必须为 none；物品最终被角色随身携带且其位置就是该角色时，locationId 应填写该角色 ID（与 holderId 一致），而不是某个地点 ID。禁止出现 "locationId=地点ID 但 holderId=角色ID" 这种两者语义矛盾的写法——那会让系统无法判断物品究竟在哪里。
   - item-state：仅用于物品自身属性变化，如破损、开封、浸湿、折叠、密封状态变化、燃烧等，不用于位置变化。
-  - 没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。</important>
+  - 没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。
+  - 新建 must_resolve 伏笔必须提供非空 question 与 criteria，分别描述待解问题和可观察的完成判据；新建 should_resolve 伏笔应尽量提供。复用 legacy 事件时允许省略，禁止臆造。</important>
 
 <important>【expectedEvents 强制复用 - 最高优先级】
   - 如果【本章必须输出的结构化事件】已提供 expectedEvents，STORY_EVENTS 必须包含其中的每一条事件，且类型、ID、所有字段值必须与 expectedEvents 中的 JSON 完全一致。

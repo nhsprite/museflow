@@ -874,7 +874,13 @@ describe('expandOutlineForChapter', () => {
   })
 
   it('schedules a due foreshadow on an ordinary non-boundary chapter', async () => {
-    const state = stateWithScheduledForeshadows(1, '', [createRequiredForeshadow('fs-due', 2)])
+    const state = stateWithScheduledForeshadows(1, '', [
+      {
+        ...createRequiredForeshadow('fs-due', 2),
+        resolutionQuestion: 'what remains unexplained?',
+        fulfillmentCriteria: 'reveal the cause through an observable event',
+      },
+    ])
     chapterOutlineRunMock.mockResolvedValueOnce({
       success: true,
       data: {
@@ -899,6 +905,8 @@ describe('expandOutlineForChapter', () => {
       foreshadowObligations?: Array<{
         id: string
         text: string
+        resolutionQuestion?: string
+        fulfillmentCriteria?: string
         kind: string | null
         introducedChapter: number
         schedulingMode: string
@@ -908,6 +916,8 @@ describe('expandOutlineForChapter', () => {
       expect.objectContaining({
         id: 'fs-due',
         text: 'structured clue fs-due',
+        resolutionQuestion: 'what remains unexplained?',
+        fulfillmentCriteria: 'reveal the cause through an observable event',
         kind: 'plot',
         introducedChapter: 0,
         schedulingMode: 'mandatory',
@@ -917,6 +927,8 @@ describe('expandOutlineForChapter', () => {
       foreshadowObligations?: Array<{
         id: string
         text: string
+        resolutionQuestion?: string
+        fulfillmentCriteria?: string
         kind: string | null
         introducedChapter: number
       }>
@@ -925,6 +937,8 @@ describe('expandOutlineForChapter', () => {
       expect.objectContaining({
         id: 'fs-due',
         text: 'structured clue fs-due',
+        resolutionQuestion: 'what remains unexplained?',
+        fulfillmentCriteria: 'reveal the cause through an observable event',
         kind: 'plot',
         introducedChapter: 0,
       }),

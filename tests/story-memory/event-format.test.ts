@@ -88,11 +88,13 @@ describe('event-format', () => {
         required: true,
         beatId: 'beat-1',
         text: 'a hint',
+        resolutionQuestion: 'what remains unexplained?',
+        fulfillmentCriteria: 'reveal the cause through an observable event',
         chapterIndex: 0,
         source: 'chapter',
       }
       expect(renderStoryEventLine(event)).toBe(
-        'foreshadow-introduce: fs-1 / expected=5 / policy=must_resolve / kind=plot / required=true / beat=beat-1 / text=a hint'
+        'foreshadow-introduce: fs-1 / expected=5 / policy=must_resolve / kind=plot / required=true / beat=beat-1 / text=a hint / question=what remains unexplained? / criteria=reveal the cause through an observable event'
       )
     })
 

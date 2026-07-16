@@ -104,6 +104,9 @@ describe('SummaryAgent prompt', () => {
     })
     const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
     expect(userMessage).toContain('expectedFulfillChapter 必须是严格晚于本章的 1-based 整数章节号')
+    expect(userMessage).toContain('resolutionQuestion')
+    expect(userMessage).toContain('fulfillmentCriteria')
+    expect(userMessage).toContain('新建 must_resolve 伏笔必须同时提供')
     expect(userMessage).toContain('<chapter_summary>')
     expect(userMessage).toContain('<chapter_handoff>')
     expect(userMessage).toContain('<story_events>')

@@ -83,6 +83,30 @@ describe('diffEvents', () => {
     expect(result.unexpected).toHaveLength(1)
   })
 
+  it('does not match foreshadow introductions with different resolution intent', () => {
+    const base = {
+      id: 'e1',
+      type: 'foreshadow-introduce' as const,
+      foreshadowId: 'f-1',
+      expectedFulfillChapter: 5,
+      resolutionPolicy: 'must_resolve' as const,
+      required: true,
+      resolutionQuestion: 'what remains unexplained?',
+      fulfillmentCriteria: 'reveal the cause through an observable event',
+      chapterIndex: 1,
+      source: 'outline' as const,
+    }
+
+    const result = diffEvents(
+      [base],
+      [{ ...base, id: 'e2', fulfillmentCriteria: 'reveal only the outcome' }]
+    )
+
+    expect(result.matched).toHaveLength(0)
+    expect(result.missing).toHaveLength(1)
+    expect(result.unexpected).toHaveLength(1)
+  })
+
   it('matches foreshadow-policy-set events by policy and deadline', () => {
     const expected = {
       id: 'e1',

@@ -69,6 +69,8 @@ describe('ChapterPlannerAgent issues integration', () => {
         {
           id: 'fs-hard',
           text: '角色闭眼后灯仍持续亮着',
+          resolutionQuestion: '灯为何在角色闭眼后继续发亮？',
+          fulfillmentCriteria: '通过可验证事件揭示持续发亮的原因。',
           kind: 'plot',
           introducedChapter: 3,
           resolutionPolicy: 'must_resolve',
@@ -99,6 +101,8 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(userMessage).toContain('<foreshadow_obligations>')
     expect(userMessage).toContain('fs-hard')
     expect(userMessage).toContain('text=角色闭眼后灯仍持续亮着')
+    expect(userMessage).toContain('resolutionQuestion=灯为何在角色闭眼后继续发亮？')
+    expect(userMessage).toContain('fulfillmentCriteria=通过可验证事件揭示持续发亮的原因。')
     expect(userMessage).toContain('kind=plot')
     expect(userMessage).toContain('introducedChapter=3')
     expect(userMessage).toContain('mustFulfillThisChapter=true')
@@ -584,7 +588,10 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(prompt).toContain('"value": "value"')
     expect(prompt).toContain('"chapterIndex": 25')
     expect(prompt).toContain('"resolutionPolicy": "should_resolve"')
+    expect(prompt).toContain('"resolutionQuestion": "unresolved question"')
+    expect(prompt).toContain('"fulfillmentCriteria": "observable resolution criteria"')
     expect(prompt).toContain('must_resolve 必须提供有限的 expectedFulfillChapter')
+    expect(prompt).toContain('新建 must_resolve 伏笔必须提供非空 resolutionQuestion')
     expect(prompt).toContain('没有可辩护截止章节时默认使用 should_resolve')
   })
 })

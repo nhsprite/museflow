@@ -111,6 +111,8 @@ export interface ForeshadowIntroduceEvent extends BaseEvent {
   /** Required for newly generated events; omitted only by legacy persisted events. */
   resolutionPolicy?: ForeshadowResolutionPolicy
   text?: string
+  resolutionQuestion?: string
+  fulfillmentCriteria?: string
   kind?: ForeshadowKind
   required?: boolean
   beatId?: BeatId | null
@@ -207,6 +209,8 @@ export interface ForeshadowMemory {
   expectedFulfillChapter: number | null
   fulfilledIn: number | null
   resolutionPolicy: ForeshadowResolutionPolicy
+  resolutionQuestion?: string
+  fulfillmentCriteria?: string
   /** Compatibility projection only. Runtime decisions use resolutionPolicy. */
   required: boolean
   beatId: BeatId | null

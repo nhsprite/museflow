@@ -129,7 +129,7 @@ describe('parseStoryEventsBlock', () => {
 
   it('parses rich foreshadow-introduce metadata', () => {
     const text = `=== STORY_EVENTS ===
-- foreshadow-introduce: fs-oath / expected=5 / kind=character_arc / required=false / beat=A1-M2 / text=角色A在场景A中的迟疑暗示后续选择 @p1
+- foreshadow-introduce: fs-oath / expected=5 / kind=character_arc / required=false / beat=A1-M2 / text=角色A在场景A中的迟疑暗示后续选择 / question=角色A为何迟疑？ / criteria=通过后续行动揭示迟疑的原因。 @p1
 === CHAPTER_CONTENT ===
 角色A在场景A中短暂停顿。`
     const events = parseStoryEventsBlock(text, 1)
@@ -142,6 +142,8 @@ describe('parseStoryEventsBlock', () => {
       required: false,
       beatId: 'A1-M2',
       text: '角色A在场景A中的迟疑暗示后续选择',
+      resolutionQuestion: '角色A为何迟疑？',
+      fulfillmentCriteria: '通过后续行动揭示迟疑的原因。',
       evidence: { paragraphIndex: 1 },
     })
   })

@@ -410,6 +410,8 @@ function parseForeshadowIntroduce(
   const required = parseOptionalBoolean(fields.required)
   const beatId = parseNullableId(fields.beat)
   const text = fields.text?.trim()
+  const resolutionQuestion = fields.question?.trim()
+  const fulfillmentCriteria = fields.criteria?.trim()
 
   return {
     id: generateId('evt'),
@@ -420,6 +422,8 @@ function parseForeshadowIntroduce(
     source: 'chapter',
     ...(resolutionPolicy ? { resolutionPolicy } : {}),
     ...(text ? { text } : {}),
+    ...(resolutionQuestion ? { resolutionQuestion } : {}),
+    ...(fulfillmentCriteria ? { fulfillmentCriteria } : {}),
     ...(kind ? { kind } : {}),
     ...(required !== undefined ? { required } : {}),
     ...(beatId !== undefined ? { beatId } : {}),

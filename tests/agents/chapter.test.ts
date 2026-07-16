@@ -228,6 +228,9 @@ describe('ChapterAgent chapter numbering', () => {
     )
     expect(userMessage).toContain('【expectedEvents 强制复用 - 最高优先级】')
     expect(userMessage).toContain('禁止把 location 事件改写成 state 事件')
+    expect(userMessage).toContain('question=<resolutionQuestion>')
+    expect(userMessage).toContain('criteria=<fulfillmentCriteria>')
+    expect(userMessage).toContain('新建 must_resolve 伏笔必须提供非空 question 与 criteria')
   })
 
   it('renders a dedicated expectedEvents section and requires exact reuse', () => {

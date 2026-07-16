@@ -16,6 +16,8 @@ import type {
 export interface ForeshadowPlanningObligation {
   id: ForeshadowId
   text: string
+  resolutionQuestion?: string
+  fulfillmentCriteria?: string
   kind: ForeshadowKind | null
   introducedChapter: number
   resolutionPolicy: ForeshadowResolutionPolicy

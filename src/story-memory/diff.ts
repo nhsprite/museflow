@@ -65,7 +65,9 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
         b.type === 'foreshadow-introduce' &&
         a.foreshadowId === b.foreshadowId &&
         a.expectedFulfillChapter === b.expectedFulfillChapter &&
-        a.resolutionPolicy === b.resolutionPolicy
+        a.resolutionPolicy === b.resolutionPolicy &&
+        a.resolutionQuestion === b.resolutionQuestion &&
+        a.fulfillmentCriteria === b.fulfillmentCriteria
       )
     case 'foreshadow-fulfill':
       return b.type === 'foreshadow-fulfill' && a.foreshadowId === b.foreshadowId
