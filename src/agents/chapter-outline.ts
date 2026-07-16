@@ -13,10 +13,7 @@ import {
 } from './prompts/chapter-outline-prompt.js'
 import { getMandatoryBeatIdByText } from '../utils/mandatory-beat-ids.js'
 
-export interface ChapterOutlineResult extends ChapterOutline {
-  conflict?: boolean
-  conflictReason?: string
-}
+export type ChapterOutlineResult = ChapterOutline
 
 export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
   constructor(provider: ModelProvider) {
@@ -143,8 +140,6 @@ ${formatMandatoryBeatList(consumedBeats)}
         introducedCharacters: normalizeStringArray(data.introducedCharacters),
         claimedBeats: normalizeStringArray(data.claimedBeats),
         claimedMandatoryBeatIds: normalizeStringArray(data.claimedMandatoryBeatIds),
-        conflict: data.conflict === true,
-        conflictReason: data.conflictReason ?? '',
         touchedCharacterIds: normalizeStringArray(data.touchedCharacterIds),
         touchedItemIds: normalizeStringArray(data.touchedItemIds),
         touchedLocationIds: normalizeStringArray(data.touchedLocationIds),

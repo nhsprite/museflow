@@ -42,7 +42,8 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     printActProgress(previewState, targetIndex)
     const outlineItem = previewState.outline[targetIndex]
     printChapterOutline(outlineItem, targetIndex)
-    await handleRewrite(storyId, true, targetIndex)
+    const retryIssues = targetIndex === state.currentChapterIndex ? state.pendingIssues : []
+    await handleRewrite(storyId, true, targetIndex, retryIssues)
     return
   }
 

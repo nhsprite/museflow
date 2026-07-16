@@ -1929,6 +1929,257 @@ describe('expandOutlineForChapter', () => {
     expect(result.chapterPlan.sections[0]?.title).toBe('真实揭示')
   })
 
+  it('preserves mandatory semantic successes while revising the remaining failures', async () => {
+    const foreshadowIds = ['fs-preserved', 'fs-rejected-a', 'fs-rejected-b']
+    const scheduledState = stateWithScheduledForeshadows(
+      2,
+      '第一版大纲同时安排三条伏笔回收。',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 2 ? { ...item, fulfilledForeshadowIds: foreshadowIds } : item
+      ),
+    }
+    const completePlan = createCompleteChapterPlan({
+      chapterIndex: 2,
+      fulfilledForeshadowIds: foreshadowIds,
+      expectedEvents: foreshadowIds.map((id) => createForeshadowFulfillEvent(id, 2)),
+    })
+    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: completePlan })
+
+    verifyForeshadowPlanMock
+      .mockResolvedValueOnce([
+        {
+          foreshadowId: 'fs-preserved',
+          verdict: 'fulfilled',
+          reason: '第一条已经形成可验证回收。',
+          mandatory: true,
+        },
+        {
+          foreshadowId: 'fs-rejected-a',
+          verdict: 'not_fulfilled',
+          reason: '第二条尚未消解不确定性。',
+          mandatory: true,
+        },
+        {
+          foreshadowId: 'fs-rejected-b',
+          verdict: 'uncertain',
+          reason: '第三条缺少可执行证据。',
+          mandatory: true,
+        },
+      ])
+      .mockResolvedValueOnce(
+        foreshadowIds.map((foreshadowId) => ({
+          foreshadowId,
+          verdict: 'fulfilled' as const,
+          reason: '修订后形成可验证回收。',
+          mandatory: true,
+        }))
+      )
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '单调修订',
+        description: '保留第一条回收事件，并补齐另外两条。',
+        fulfilledForeshadowIds: foreshadowIds,
+        deferredForeshadowIds: [],
+      },
+    })
+
+    await expandOutlineForChapter(state, 2, createMockProvider())
+
+    const revisionInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      foreshadowPlanningRejection?: {
+        requiredFulfillmentIds?: string[]
+        preservedFulfillmentIds?: string[]
+        regressedFulfillmentIds?: string[]
+      }
+    }
+    expect(revisionInput.foreshadowPlanningRejection).toMatchObject({
+      requiredFulfillmentIds: foreshadowIds,
+      preservedFulfillmentIds: ['fs-preserved'],
+      regressedFulfillmentIds: [],
+    })
+  })
+
+  it('continues semantic revision while the mandatory rejection set strictly shrinks', async () => {
+    const foreshadowIds = ['fs-progress-a', 'fs-progress-b', 'fs-progress-c']
+    const scheduledState = stateWithScheduledForeshadows(
+      2,
+      '第一版大纲声明三条伏笔回收。',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 3))
+    )
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 2 ? { ...item, fulfilledForeshadowIds: foreshadowIds } : item
+      ),
+    }
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: foreshadowIds,
+        expectedEvents: foreshadowIds.map((id) => createForeshadowFulfillEvent(id, 2)),
+      }),
+    })
+
+    verifyForeshadowPlanMock
+      .mockResolvedValueOnce(
+        foreshadowIds.map((foreshadowId) => ({
+          foreshadowId,
+          verdict: 'not_fulfilled' as const,
+          reason: '第一版尚未形成真实回收。',
+          mandatory: true,
+        }))
+      )
+      .mockResolvedValueOnce([
+        {
+          foreshadowId: 'fs-progress-a',
+          verdict: 'fulfilled',
+          reason: '第一条已经形成真实回收。',
+          mandatory: true,
+        },
+        {
+          foreshadowId: 'fs-progress-b',
+          verdict: 'fulfilled',
+          reason: '第二条已经形成真实回收。',
+          mandatory: true,
+        },
+        {
+          foreshadowId: 'fs-progress-c',
+          verdict: 'not_fulfilled',
+          reason: '第三条仍缺少决定性揭示。',
+          mandatory: true,
+        },
+      ])
+      .mockResolvedValueOnce(
+        foreshadowIds.map((foreshadowId) => ({
+          foreshadowId,
+          verdict: 'fulfilled' as const,
+          reason: '最终修订形成真实回收。',
+          mandatory: true,
+        }))
+      )
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '部分收敛',
+          description: '第二版解决前两条，但第三条仍需补强。',
+          fulfilledForeshadowIds: foreshadowIds,
+          deferredForeshadowIds: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '全部收敛',
+          description: '第三版保留前两条回收，并补齐最后一条。',
+          fulfilledForeshadowIds: foreshadowIds,
+          deferredForeshadowIds: [],
+        },
+      })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    const finalRevisionInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      foreshadowPlanningRejection?: {
+        requiredFulfillmentIds?: string[]
+        preservedFulfillmentIds?: string[]
+        semanticRejections?: Array<{ foreshadowId: string }>
+      }
+    }
+    expect(finalRevisionInput.foreshadowPlanningRejection).toMatchObject({
+      requiredFulfillmentIds: foreshadowIds,
+      preservedFulfillmentIds: ['fs-progress-a', 'fs-progress-b'],
+      semanticRejections: [{ foreshadowId: 'fs-progress-c' }],
+    })
+    expect(result.outline?.[2]?.title).toBe('全部收敛')
+  })
+
+  it('feeds an updated semantic rejection back when the unresolved ID is unchanged', async () => {
+    const scheduledState = stateWithScheduledForeshadows(2, '第一版大纲错误兑现既有线索。', [
+      createRequiredForeshadow('fs-feedback', 3),
+    ])
+    const state: ReducedGraphState = {
+      ...scheduledState,
+      outline: scheduledState.outline.map((item, index) =>
+        index === 2 ? { ...item, fulfilledForeshadowIds: ['fs-feedback'] } : item
+      ),
+    }
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: ['fs-feedback'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-feedback', 2)],
+      }),
+    })
+    verifyForeshadowPlanMock
+      .mockResolvedValueOnce([
+        {
+          foreshadowId: 'fs-feedback',
+          verdict: 'not_fulfilled',
+          reason: '第一版只重复了原始现象。',
+          mandatory: true,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          foreshadowId: 'fs-feedback',
+          verdict: 'not_fulfilled',
+          reason: '第二版新增了动作，但仍未回答原有因果疑问。',
+          mandatory: true,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          foreshadowId: 'fs-feedback',
+          verdict: 'fulfilled',
+          reason: '第三版通过可验证事件消解了原有疑问。',
+          mandatory: true,
+        },
+      ])
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '仍未兑现',
+          description: '第二版增加相关动作，但尚未完成因果闭环。',
+          fulfilledForeshadowIds: ['fs-feedback'],
+          deferredForeshadowIds: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '完成兑现',
+          description: '第三版根据最新审校意见补齐可验证的因果闭环。',
+          fulfilledForeshadowIds: ['fs-feedback'],
+          deferredForeshadowIds: [],
+        },
+      })
+
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    const finalRevisionInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      foreshadowPlanningRejection?: {
+        semanticRejections?: Array<{ foreshadowId: string; reason: string }>
+      }
+    }
+    expect(finalRevisionInput.foreshadowPlanningRejection?.semanticRejections).toEqual([
+      {
+        foreshadowId: 'fs-feedback',
+        verdict: 'not_fulfilled',
+        reason: '第二版新增了动作，但仍未回答原有因果疑问。',
+      },
+    ])
+    expect(result.outline?.[2]?.title).toBe('完成兑现')
+  })
+
   it('stops before drafting when a mandatory semantic rejection persists after revision', async () => {
     const scheduledState = stateWithScheduledForeshadows(2, '既有但错误的大纲。', [
       createRequiredForeshadow('fs-hard', 3),
@@ -1964,10 +2215,10 @@ describe('expandOutlineForChapter', () => {
     })
 
     await expect(expandOutlineForChapter(state, 2, createMockProvider())).rejects.toThrow(
-      '第 3 章伏笔语义规划连续 2 次未通过：fs-hard'
+      '第 3 章伏笔语义规划连续 3 次未通过：fs-hard'
     )
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
-    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(2)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(3)
   })
 
   it('extends a boundary by three chapters for eleven due IDs and schedules only the first three', async () => {
@@ -2547,65 +2798,53 @@ describe('expandOutlineForChapter', () => {
     expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
   })
 
-  it('throws JIT outline conflicts without parsing conflictReason text for retries', async () => {
-    const jitState: ReducedGraphState = {
-      ...baseState,
-      totalChapters: 4,
-      story: { ...baseState.story, totalChapters: 4 },
-      currentChapterIndex: 1,
-      storyArc: {
-        totalChapters: 4,
-        acts: [
-          {
-            index: 1,
-            startChapter: 1,
-            endChapter: 1,
-            title: '上一幕',
-            theme: '收束',
-            function: '处理上一幕尾声',
-            mandatoryBeats: [],
-          },
-          {
-            index: 2,
-            startChapter: 2,
-            endChapter: 4,
-            title: '新幕',
-            theme: '转折',
-            function: '外部压力打破既定安排',
-            mandatoryBeats: ['外部压力打破既定安排'],
-          },
-        ],
-        keyBeats: [],
-      },
-      outline: [
-        { number: 1, title: '旧幕收束', description: '旧幕收束。' },
-        { number: 2, title: '', description: '' },
-        { number: 3, title: '', description: '' },
-        { number: 4, title: '', description: '' },
-      ],
-      actProgress: {
-        2: { consumed: [], pending: ['外部压力打破既定安排'] },
-      },
-      chapters: [null, null, null, null],
-    }
-
-    chapterOutlineRunMock.mockResolvedValueOnce({
-      success: true,
-      data: {
-        title: '冲突',
-        description: '主角继续原有安排。',
-        introducedCharacters: [],
-        claimedBeats: ['外部压力打破既定安排'],
-        conflict: true,
-        conflictReason:
-          "本描述将 '外部压力打破既定安排' 列为 claimedBeat，但 description 未承载对应事件，属于强行贴标签。",
-      },
+  it('routes a self-reported conflict through structured foreshadow correction', async () => {
+    const state = stateWithScheduledForeshadows(2, '', [
+      createRequiredForeshadow('fs-self-reported-conflict', 3),
+    ])
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 2,
+        fulfilledForeshadowIds: ['fs-self-reported-conflict'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-self-reported-conflict', 2)],
+      }),
     })
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '自报冲突',
+          description: '第一版错误地顺延了本章必须兑现的伏笔。',
+          fulfilledForeshadowIds: [],
+          deferredForeshadowIds: ['fs-self-reported-conflict'],
+          conflict: true,
+          conflictReason: '模型认为当前候选无法满足伏笔规划要求。',
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '结构化纠正',
+          description: '第二版通过具体事件完成本章必须兑现的伏笔。',
+          fulfilledForeshadowIds: ['fs-self-reported-conflict'],
+          deferredForeshadowIds: [],
+        },
+      })
 
-    await expect(expandOutlineForChapter(jitState, 1, createMockProvider())).rejects.toThrow(
-      '即时大纲与权威事实冲突'
-    )
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    const result = await expandOutlineForChapter(state, 2, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    const correctionInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      foreshadowPlanningRejection?: {
+        incorrectlyDeferredIds?: string[]
+        requiredFulfillmentIds?: string[]
+      }
+    }
+    expect(correctionInput.foreshadowPlanningRejection).toMatchObject({
+      incorrectlyDeferredIds: ['fs-self-reported-conflict'],
+      requiredFulfillmentIds: ['fs-self-reported-conflict'],
+    })
+    expect(result.outline?.[2]?.title).toBe('结构化纠正')
   })
 
   it('extends an overloaded current act before generating a JIT outline', async () => {

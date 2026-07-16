@@ -44,10 +44,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 5. 不得提前执行下一幕的叙事功能，不得提前完成后续幕的 mandatory beats。
 6. 如果当前幕进度偏慢（剩余章节少、pending beats 多），请在本章安排推进至少一个 pending beat。
 7. 【节拍预算】本章 claimedBeats 数量不得超过 <current_act> 中“本章节拍预算”给出的上限。description 中若涉及多个节拍事件，请只选择本章真正核心推进的若干项纳入 claimedBeats，其余可作为铺垫、悬念或后续伏笔处理，避免把整幕节拍集中在本章一次性消费完。
-8. conflict: true 只能用于本章 description 与 <story_state> 或 <canonical_facts> 中已确立事实发生硬冲突的情况，并必须说明冲突的具体事实。
-9. 如果只是本章不适合推进某个 mandatory beat，不要返回 conflict: true；请返回 conflict: false，并从 claimedBeats 中移除该 beat，或改写 description 使其明确承载该 beat。
-10. claimedBeats 只能包含 description 已明确写出具体事件、冲突或状态变化的本幕 mandatory beats，不要强行贴标签。
-11. 除章节内容外，输出下列结构化声明字段（无相关项时为空数组）：
+8. claimedBeats 只能包含 description 已明确写出具体事件、冲突或状态变化的本幕 mandatory beats，不要强行贴标签。
+9. 除章节内容外，输出下列结构化声明字段（无相关项时为空数组）：
    - touchedCharacterIds: 本章出现的角色 EntityId 列表
    - touchedItemIds: 本章出现的物品 EntityId 列表
    - touchedLocationIds: 本章出现的地点 EntityId 列表
@@ -58,10 +56,10 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
    - introducedForeshadowIds: 本章埋下的 ForeshadowId 列表
    - resolvedTaskIds: 本章关闭的 TaskId 列表
    - createdTaskIds: 本章开启的 TaskId 列表
-12. 若存在 <foreshadow_obligations>：每个 schedulingMode=mandatory 的候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一；mustFulfillThisChapter=true 的 ID 只能兑现，不能顺延。
-13. schedulingMode=opportunity 或 ambient 的候选，只有本章核心事件本身能够自然承载真实、可验证的回收时，才放入 fulfilledForeshadowIds；不得为自然回收机会改变本章核心事件。当前章不适合时放入 deferredForeshadowIds，不需要额外制造剧情。
-14. 若本章确需引入新伏笔：没有明确且可辩护的有限截止章节时，后续规划应将其声明为 should_resolve；不得把普通伏笔升级成必须在边界前清空的硬义务。
-15. 输出 JSON 格式：
+10. 若存在 <foreshadow_obligations>：每个 schedulingMode=mandatory 的候选 ID 必须出现在且仅出现在 fulfilledForeshadowIds 与 deferredForeshadowIds 之一；mustFulfillThisChapter=true 的 ID 只能兑现，不能顺延。
+11. schedulingMode=opportunity 或 ambient 的候选，只有本章核心事件本身能够自然承载真实、可验证的回收时，才放入 fulfilledForeshadowIds；不得为自然回收机会改变本章核心事件。当前章不适合时放入 deferredForeshadowIds，不需要额外制造剧情。
+12. 若本章确需引入新伏笔：没有明确且可辩护的有限截止章节时，后续规划应将其声明为 should_resolve；不得把普通伏笔升级成必须在边界前清空的硬义务。
+13. 输出 JSON 格式：
    {
      "title": "章节标题",
      "description": "本章具体执行描述",
@@ -76,9 +74,7 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
      "deferredForeshadowIds": [],
      "introducedForeshadowIds": [],
      "resolvedTaskIds": [],
-     "createdTaskIds": [],
-     "conflict": false,
-     "conflictReason": ""
+     "createdTaskIds": []
    }
 </instruction>`
 

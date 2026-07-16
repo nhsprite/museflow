@@ -18,6 +18,10 @@ import {
 } from '../../../utils/context-judge.js'
 import { generateId } from '../../../utils/id.js'
 import { applyCanonicalFactsToState } from './state-merge.js'
+import {
+  getTransitionFallbackSeverity,
+  normalizeTransitionConflictSeverity,
+} from './conflict-policy.js'
 
 function generateConflictId(subject: string, attribute: FactAttribute, index: number): string {
   return `${subject}:${attribute}:${index}`
@@ -246,7 +250,8 @@ async function detectContradictions(
 
 export async function classifyConflicts(
   conflicts: Conflict[],
-  provider?: ModelProvider
+  provider?: ModelProvider,
+  canonicalFacts: readonly CanonicalFact[] = []
 ): Promise<Conflict[]> {
   let blockingFlags: boolean[] = []
   if (provider && conflicts.length > 0) {
@@ -255,26 +260,23 @@ export async function classifyConflicts(
 
   return conflicts.map((conflict, index) => {
     const isBlockingContradiction = blockingFlags[index] ?? false
-
-    if (isBlockingContradiction || conflict.type === 'contradiction') {
-      return {
-        ...conflict,
-        type: 'contradiction',
-        severity: 'blocking',
-      }
-    }
-
-    let severity: ConflictSeverity = conflict.severity
+    const requestedSeverity: ConflictSeverity =
+      isBlockingContradiction || conflict.type === 'contradiction' ? 'blocking' : conflict.severity
+    const severity = normalizeTransitionConflictSeverity(
+      { ...conflict, severity: requestedSeverity },
+      canonicalFacts,
+      getTransitionFallbackSeverity(conflict.attribute)
+    )
     let type: ConflictType = conflict.type
 
-    if (conflict.attribute === 'location') {
+    if (severity === 'blocking') {
+      type = 'contradiction'
+    } else if (conflict.attribute === 'location' || conflict.attribute === 'holder') {
       type = 'retcon'
-      severity = 'auto'
     } else if (conflict.attribute === 'status') {
       type = 'retcon'
-      severity = conflict.severity === 'blocking' ? 'blocking' : 'warning'
     } else if (conflict.type === 'time_jump') {
-      severity = 'auto'
+      type = 'time_jump'
     }
 
     return {
@@ -490,7 +492,11 @@ export async function reconcileStoryState(
     provider,
     filterSubjects
   )
-  const classified = await classifyConflicts(rawConflicts, provider)
+  const classified = await classifyConflicts(
+    rawConflicts,
+    provider,
+    storyState.canonicalFacts ?? []
+  )
   const {
     state: preReconciled,
     autoResolved,

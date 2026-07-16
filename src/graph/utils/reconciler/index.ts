@@ -15,6 +15,7 @@ export * from './state-merge.js'
 export * from './format.js'
 export * from './timeline.js'
 export * from './conflict.js'
+export * from './conflict-policy.js'
 export * from './outline-conflict.js'
 export * from './sanitize.js'
 
@@ -101,7 +102,11 @@ export async function prepareStoryStateForChapter(
               chapterIndex,
               undecidedBlockingConflicts,
               reconciledState,
-              provider
+              provider,
+              {
+                storyMemory: state.storyMemory,
+                chapterPlan: state.chapterPlan,
+              }
             )
       throw new BlockingConflictError(
         undecidedBlockingConflicts,

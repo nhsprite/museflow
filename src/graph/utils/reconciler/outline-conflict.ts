@@ -11,6 +11,11 @@ import type { ModelProvider, Message, JsonSchema } from '../../../model/provider
 import type { StoryMemory } from '../../../types/story-memory.js'
 import type { StoryArc } from '../../../types/outline.js'
 import { generateId } from '../../../utils/id.js'
+import {
+  getTransitionFallbackSeverity,
+  normalizeTransitionConflictSeverity,
+  selectActiveConstraintFacts,
+} from './conflict-policy.js'
 
 interface OutlineAuthorizedFact {
   subject: string
@@ -112,8 +117,8 @@ export async function authorizeOutlineFacts(
     return []
   }
 
-  const existingFacts = state.canonicalFacts ?? []
-  const factsText = formatCanonicalFacts(state)
+  const existingFacts = (state.canonicalFacts ?? []).filter((fact) => fact.retiredIn === undefined)
+  const factsText = formatCanonicalFacts(existingFacts)
   const knownEntityIds = collectKnownEntityIds(state.storyMemory)
 
   const messages: Message[] = [
@@ -277,11 +282,15 @@ function buildOutlineStateConflictId(subject: string, attribute: string, index: 
   return `outline-state:${subject}:${attribute}:${index}`
 }
 
-function formatCanonicalFacts(state: StoryState, filterSubjects?: Set<string>): string {
-  let facts = state.canonicalFacts ?? []
+function selectConstraintFacts(state: StoryState, filterSubjects?: Set<string>): CanonicalFact[] {
+  let facts = selectActiveConstraintFacts(state.canonicalFacts ?? [])
   if (filterSubjects) {
     facts = facts.filter((f) => filterSubjects.has(f.subject))
   }
+  return facts
+}
+
+function formatCanonicalFacts(facts: readonly CanonicalFact[]): string {
   if (facts.length === 0) return '（暂无权威事实）'
 
   return facts
@@ -341,7 +350,11 @@ async function detectCanonicalFactOutlineConflicts(
     return { conflicts: [], constraints: [] }
   }
 
-  const factsText = formatCanonicalFacts(state, filterSubjects)
+  const constraintFacts = selectConstraintFacts(state, filterSubjects)
+  if (constraintFacts.length === 0) {
+    return { conflicts: [], constraints: [] }
+  }
+  const factsText = formatCanonicalFacts(constraintFacts)
 
   const messages: Message[] = [
     {
@@ -395,7 +408,16 @@ async function detectCanonicalFactOutlineConflicts(
         logger.debug(`[MuseFlow] 大纲-状态冲突 attribute 无法识别，已跳过：${c.attribute}`)
         continue
       }
-      conflicts.push({
+      const matchingFact = constraintFacts.find(
+        (fact) => fact.subject === c.subject && fact.attribute === attribute
+      )
+      if (!matchingFact) {
+        logger.debug(
+          `[MuseFlow] 大纲-状态冲突未对应活跃权威事实，已跳过：${c.subject}/${attribute}`
+        )
+        continue
+      }
+      const conflict: Conflict = {
         id: buildOutlineStateConflictId(c.subject, attribute, idx),
         type: 'contradiction',
         subject: c.subject,
@@ -405,6 +427,14 @@ async function detectCanonicalFactOutlineConflicts(
         outlineReference: outline.slice(0, 200),
         severity: c.severity,
         description: c.description,
+      }
+      conflicts.push({
+        ...conflict,
+        severity: normalizeTransitionConflictSeverity(
+          conflict,
+          constraintFacts,
+          getTransitionFallbackSeverity(attribute)
+        ),
       })
     }
 

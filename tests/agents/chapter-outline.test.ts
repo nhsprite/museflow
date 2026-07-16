@@ -138,15 +138,13 @@ describe('ChapterOutlineAgent', () => {
     expect(output.success).toBe(true)
   })
 
-  it('instructs the model to reserve conflict for hard fact contradictions', async () => {
+  it('keeps hard fact conflict authority outside the model output contract', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(
       JSON.stringify({
         title: '过渡',
         description: '主角整理线索，暂不推进新的强制节拍。',
         claimedBeats: [],
-        conflict: false,
-        conflictReason: '',
       })
     )
 
@@ -162,8 +160,9 @@ describe('ChapterOutlineAgent', () => {
     expect(output.success).toBe(true)
     const messages = mockChat.mock.calls.at(-1)![0] as Array<{ role: string; content: string }>
     const prompt = messages.map((message) => message.content).join('\n')
-    expect(prompt).toContain('conflict: true 只能用于')
-    expect(prompt).toContain('不适合推进某个 mandatory beat')
+    expect(prompt).not.toContain('conflict: true')
+    expect(prompt).not.toContain('"conflict"')
+    expect(prompt).not.toContain('"conflictReason"')
   })
 
   it('instructs the model not to change the core event for a natural recovery opportunity', async () => {
@@ -368,7 +367,7 @@ describe('ChapterOutlineAgent', () => {
     expect(result.deferredForeshadowIds).toEqual(['fs-b'])
   })
 
-  it('propagates conflict flag and reason', async () => {
+  it('ignores self-reported conflict metadata from the model', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(
       JSON.stringify({
@@ -389,9 +388,9 @@ describe('ChapterOutlineAgent', () => {
     } as ChapterOutlineAgentInput)
 
     expect(output.success).toBe(true)
-    const result = output.data as { conflict: boolean; conflictReason: string }
-    expect(result.conflict).toBe(true)
-    expect(result.conflictReason).toContain('最终对决')
+    const result = output.data as Record<string, unknown>
+    expect(result).not.toHaveProperty('conflict')
+    expect(result).not.toHaveProperty('conflictReason')
   })
 
   it('includes current state snapshot when provided', async () => {

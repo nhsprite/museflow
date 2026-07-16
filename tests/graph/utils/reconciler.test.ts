@@ -470,6 +470,92 @@ describe('detectOutlineStateConflicts', () => {
     expect(provider.chat).not.toHaveBeenCalled()
   })
 
+  it('does not send retired canonical facts to the conflict model', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'retired-identity',
+          subject: 'c-protagonist',
+          attribute: 'identity',
+          value: 'former-role',
+          establishedIn: 2,
+          retiredIn: 4,
+          confidence: 'high',
+          source: 'chapter_text',
+        },
+      ],
+    }
+    const provider = { chat: vi.fn() } as unknown as ModelProvider
+
+    const result = await detectOutlineStateConflicts(state, 'new outline', 5, provider)
+
+    expect(result).toEqual({ conflicts: [], constraints: [] })
+    expect(provider.chat).not.toHaveBeenCalled()
+  })
+
+  it('leaves ordinary active status snapshots to the transition reconciler', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'status-snapshot',
+          subject: 'c-protagonist',
+          attribute: 'status',
+          value: 'waiting',
+          establishedIn: 2,
+          confidence: 'high',
+          source: 'reconciliation',
+        },
+      ],
+    }
+    const provider = { chat: vi.fn() } as unknown as ModelProvider
+
+    const result = await detectOutlineStateConflicts(state, 'new outline', 5, provider)
+
+    expect(result).toEqual({ conflicts: [], constraints: [] })
+    expect(provider.chat).not.toHaveBeenCalled()
+  })
+
+  it('keeps active author-overridden status facts eligible for blocking', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'author-status',
+          subject: 'c-protagonist',
+          attribute: 'status',
+          value: 'must-wait',
+          establishedIn: 2,
+          confidence: 'high',
+          source: 'author_override',
+        },
+      ],
+    }
+    const provider = {
+      chat: vi.fn(async (): Promise<string> =>
+        JSON.stringify({
+          conflicts: [
+            {
+              subject: 'c-protagonist',
+              attribute: 'status',
+              oldValue: 'must-wait',
+              newValue: 'leave',
+              severity: 'blocking',
+              description: 'author override conflict',
+            },
+          ],
+          constraints: [],
+        })
+      ),
+    } as unknown as ModelProvider
+
+    const result = await detectOutlineStateConflicts(state, 'new outline', 5, provider)
+
+    expect(result.conflicts).toHaveLength(1)
+    expect(result.conflicts[0]?.severity).toBe('blocking')
+  })
+
   it('parses model response into conflicts and constraints', async () => {
     const state: StoryState = {
       ...emptyState(),
@@ -477,7 +563,7 @@ describe('detectOutlineStateConflicts', () => {
         {
           id: 'cf1',
           subject: '秘密退路',
-          attribute: 'status',
+          attribute: 'plan',
           value: '不写在账册上、不托付任何人，仅主角自己知道',
           establishedIn: 11,
         },
@@ -490,7 +576,7 @@ describe('detectOutlineStateConflicts', () => {
           conflicts: [
             {
               subject: '秘密退路',
-              attribute: 'status',
+              attribute: 'plan',
               oldValue: '不托付任何人',
               newValue: '寄养于外姓友人',
               severity: 'warning',
@@ -528,17 +614,29 @@ describe('detectOutlineStateConflicts', () => {
   })
 
   it('falls back to chat when chatStructured cannot produce structured output', async () => {
+    const state: StoryState = {
+      ...emptyState(),
+      canonicalFacts: [
+        {
+          id: 'cf-identity-plan',
+          subject: '身份',
+          attribute: 'plan',
+          value: '等待听信',
+          establishedIn: 24,
+        },
+      ],
+    }
     const provider = {
       chatStructured: vi.fn(async () => {
         throw new Error('Anthropic API did not return structured output')
       }),
       chat: vi.fn(
         async (): Promise<string> =>
-          '```json\n{"conflicts":[{"subject":"身份","attribute":"status","oldValue":"等待听信","newValue":"已入府办差","severity":"warning","description":"大纲将听信结果提前，需要写作时交代时间衔接"}],"constraints":["必须交代听信结果为何已落定"]}\n```'
+          '```json\n{"conflicts":[{"subject":"身份","attribute":"plan","oldValue":"等待听信","newValue":"已入府办差","severity":"warning","description":"大纲将听信结果提前，需要写作时交代时间衔接"}],"constraints":["必须交代听信结果为何已落定"]}\n```'
       ),
     } as unknown as ModelProvider
 
-    const result = await detectOutlineStateConflicts(emptyState(), '主角已入府办差。', 25, provider)
+    const result = await detectOutlineStateConflicts(state, '主角已入府办差。', 25, provider)
 
     expect(result.conflicts).toHaveLength(1)
     expect(result.conflicts[0].description).toContain('时间衔接')
@@ -556,6 +654,7 @@ describe('detectOutlineStateConflicts', () => {
           attribute: 'location',
           value: '官府仓库',
           establishedIn: 5,
+          source: 'author_override',
         },
       ],
       storyMemory: {
@@ -620,15 +719,15 @@ describe('detectOutlineStateConflicts', () => {
         {
           id: 'cf1',
           subject: '密信',
-          attribute: 'location',
-          value: '官府仓库',
+          attribute: 'identity',
+          value: '官府密件',
           establishedIn: 5,
         },
         {
           id: 'cf2',
           subject: '匕首',
-          attribute: 'location',
-          value: '口袋',
+          attribute: 'identity',
+          value: '身份信物',
           establishedIn: 5,
         },
       ],
@@ -640,9 +739,9 @@ describe('detectOutlineStateConflicts', () => {
           conflicts: [
             {
               subject: '密信',
-              attribute: 'location',
-              oldValue: '官府仓库',
-              newValue: '王府',
+              attribute: 'identity',
+              oldValue: '官府密件',
+              newValue: '王府私信',
               severity: 'warning',
               description: '大纲将密信位置改为王府',
             },
@@ -771,12 +870,12 @@ describe('conflict detection & classification', () => {
     expect(results[1].severity).toBe('warning')
   })
 
-  it('elevates contradiction to blocking', async () => {
-    const conflict = makeConflict({ type: 'retcon', description: '已死角色再次出现' })
+  it('does not elevate an ordinary location transition to blocking', async () => {
+    const conflict = makeConflict({ type: 'retcon', description: 'location transition' })
     vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValueOnce([true])
     const result = await classifyConflicts([conflict], createMockProvider())
-    expect(result[0].type).toBe('contradiction')
-    expect(result[0].severity).toBe('blocking')
+    expect(result[0].type).toBe('retcon')
+    expect(result[0].severity).toBe('auto')
   })
 
   it('only checks item locations in filterSubjects when filter is provided', async () => {
@@ -1199,7 +1298,14 @@ describe('prepareStoryStateForChapter', () => {
         ...emptyState(),
         characterLocations: { 主角: '家中' },
         canonicalFacts: [
-          { id: 'f1', subject: '主角', attribute: 'location', value: '家中', establishedIn: 1 },
+          {
+            id: 'f1',
+            subject: '主角',
+            attribute: 'location',
+            value: '家中',
+            establishedIn: 1,
+            source: 'author_override',
+          },
         ],
       },
       chapterTimeAnchor: undefined,

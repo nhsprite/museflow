@@ -86,11 +86,12 @@ export interface ExpandedOutline {
 type ChapterContextSource = ModelProvider | RuntimeContext
 
 const MAX_JIT_OUTLINE_ATTEMPTS = 2
-const MAX_SEMANTIC_PLANNING_ATTEMPTS = 2
+const BASE_SEMANTIC_PLANNING_ATTEMPTS = 3
 
 interface SemanticPlanningRetryContext {
   attempt: number
   rejection?: ForeshadowPlanningRejection
+  outlineOrigin?: 'persisted' | 'jit-generated'
 }
 
 function isRuntimeContext(source: ChapterContextSource): source is RuntimeContext {
@@ -1267,7 +1268,14 @@ async function generateChapterOutlineIfNeeded(
       throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：${output.error || '未知错误'}`)
     }
 
-    const rawCandidate = output.data as ChapterOutlineResult
+    const {
+      conflict: _ignoredConflict,
+      conflictReason: _ignoredConflictReason,
+      ...rawCandidate
+    } = output.data as ChapterOutlineResult & {
+      conflict?: unknown
+      conflictReason?: unknown
+    }
     const canonicalCandidate = state.storyMemory
       ? canonicalizeChapterForeshadowClaims(state.storyMemory, rawCandidate, null)
       : {
@@ -1275,11 +1283,6 @@ async function generateChapterOutlineIfNeeded(
           conflictingDecisionIds: getConflictingForeshadowDecisionIds(rawCandidate),
         }
     const candidate = canonicalCandidate.outline
-    if (candidate.conflict) {
-      throw new Error(
-        `第 ${chapterIndex + 1} 章即时大纲与权威事实冲突：${candidate.conflictReason || '未说明原因'}`
-      )
-    }
 
     const adjudicatedForeshadowIds = new Set([
       ...(candidate.fulfilledForeshadowIds ?? []),
@@ -1486,19 +1489,33 @@ type OutlineCandidateResolution =
   | { status: 'accepted'; state: ReducedGraphState }
   | { status: 'conflict'; error: BlockingConflictError }
 
+type OutlineProposalPolicy = 'apply' | 'expose' | 'discard'
+
 async function reconcileOutlineCandidate(
   state: ReducedGraphState,
   chapterIndex: number,
   source: ChapterContextSource,
-  applyValidatedProposal: boolean
+  proposalPolicy: OutlineProposalPolicy
 ): Promise<OutlineCandidateResolution> {
   let blockingError: BlockingConflictError
   try {
-    await validateOutlineState(state, chapterIndex, source, 'generate')
+    await validateOutlineState(
+      state,
+      chapterIndex,
+      source,
+      proposalPolicy === 'discard' ? 'omit' : 'generate'
+    )
     return { status: 'accepted', state }
   } catch (err) {
     if (!isBlockingConflictError(err)) throw err
     blockingError = err
+  }
+
+  if (proposalPolicy === 'discard') {
+    return {
+      status: 'conflict',
+      error: new BlockingConflictError([...blockingError.conflicts], chapterIndex),
+    }
   }
 
   const proposal = blockingError.proposal
@@ -1520,7 +1537,7 @@ async function reconcileOutlineCandidate(
     }
   }
 
-  if (applyValidatedProposal) {
+  if (proposalPolicy === 'apply') {
     logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章临时大纲修订已通过权威事实校验`)
     return { status: 'accepted', state: proposedState }
   }
@@ -1550,10 +1567,12 @@ async function expandOutlineForChapterInternal(
   state = canonicalizeStateForeshadowClaims(state, chapterIndex)
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
   const jitBaseState = state
-  const persistedOutline = Boolean(state.outline[chapterIndex]?.description.trim())
+  const generatedSemanticRetry = semanticRetry.outlineOrigin === 'jit-generated'
+  const persistedOutline =
+    Boolean(state.outline[chapterIndex]?.description.trim()) && !generatedSemanticRetry
 
   if (persistedOutline) {
-    const resolution = await reconcileOutlineCandidate(state, chapterIndex, source, false)
+    const resolution = await reconcileOutlineCandidate(state, chapterIndex, source, 'expose')
     if (resolution.status === 'conflict') {
       throw resolution.error
     }
@@ -1571,13 +1590,19 @@ async function expandOutlineForChapterInternal(
       const outlineResult = await generateChapterOutlineIfNeeded(
         jitBaseState,
         chapterIndex,
-        provider
+        provider,
+        {
+          ...(generatedSemanticRetry ? { force: true } : {}),
+          ...(semanticRetry.rejection
+            ? { foreshadowPlanningRejection: semanticRetry.rejection }
+            : {}),
+        }
       )
       const resolution = await reconcileOutlineCandidate(
         outlineResult.state,
         chapterIndex,
         source,
-        true
+        generatedSemanticRetry ? 'discard' : 'apply'
       )
       if (resolution.status === 'accepted') {
         resolved = {
@@ -1645,7 +1670,7 @@ async function expandOutlineForChapterInternal(
       outlineResult.state,
       chapterIndex,
       source,
-      true
+      'apply'
     )
     if (resolution.status === 'conflict') {
       throw resolution.error
@@ -2151,9 +2176,40 @@ async function expandOutlineForChapterInternal(
 
     if (mandatoryRejections.length > 0) {
       const rejectionIds = mandatoryRejections.map((judgment) => judgment.foreshadowId)
-      if (semanticRetry.attempt + 1 >= MAX_SEMANTIC_PLANNING_ATTEMPTS) {
+      const requiredFulfillmentIds = Array.from(mustFulfillForeshadowIdSet)
+      const preservedFulfillmentIds = semanticJudgments
+        .filter(
+          (judgment) =>
+            judgment.mandatory &&
+            judgment.verdict === 'fulfilled' &&
+            mustFulfillForeshadowIdSet.has(judgment.foreshadowId)
+        )
+        .map((judgment) => judgment.foreshadowId)
+      const preservedFulfillmentIdSet = new Set(preservedFulfillmentIds)
+      const regressedFulfillmentIds = Array.from(
+        new Set([
+          ...(semanticRetry.rejection?.regressedFulfillmentIds ?? []),
+          ...(semanticRetry.rejection?.preservedFulfillmentIds ?? []).filter(
+            (id) => !preservedFulfillmentIdSet.has(id)
+          ),
+        ])
+      )
+      const previousRejectionIds =
+        semanticRetry.rejection?.semanticRejections?.map((item) => item.foreshadowId) ?? []
+      const previousRejectionIdSet = new Set(previousRejectionIds)
+      const madeStrictProgress =
+        previousRejectionIds.length > 0 &&
+        rejectionIds.length < previousRejectionIdSet.size &&
+        rejectionIds.every((id) => previousRejectionIdSet.has(id))
+      const semanticAttemptCount = semanticRetry.attempt + 1
+      const semanticAttemptLimit = Math.max(
+        BASE_SEMANTIC_PLANNING_ATTEMPTS,
+        requiredFulfillmentIds.length + 1
+      )
+      const exhaustedHardLimit = semanticAttemptCount >= semanticAttemptLimit
+      if (exhaustedHardLimit) {
         throw new Error(
-          `第 ${chapterIndex + 1} 章伏笔语义规划连续 ${MAX_SEMANTIC_PLANNING_ATTEMPTS} 次未通过：${rejectionIds.join(', ')}`
+          `第 ${chapterIndex + 1} 章伏笔语义规划连续 ${semanticAttemptCount} 次未通过：${rejectionIds.join(', ')}`
         )
       }
 
@@ -2161,6 +2217,9 @@ async function expandOutlineForChapterInternal(
         missingDeclarationIds: [],
         missingEventIds: [],
         incorrectlyDeferredIds: [],
+        requiredFulfillmentIds,
+        preservedFulfillmentIds,
+        regressedFulfillmentIds,
         currentOutline: {
           title: semanticOutline.title,
           description: semanticOutline.description,
@@ -2171,45 +2230,28 @@ async function expandOutlineForChapterInternal(
           reason: judgment.reason,
         })),
       }
-      logger.warn(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章伏笔语义规划第 ${semanticRetry.attempt + 1}/${MAX_SEMANTIC_PLANNING_ATTEMPTS} 次未通过，将定向修订大纲与计划：${rejectionIds.join(', ')}`
-      )
-
-      const outlineResult = await generateChapterOutlineIfNeeded(
-        { ...state, chapterPlan: null },
-        chapterIndex,
-        provider,
-        {
-          force: true,
-          foreshadowPlanningRejection: rejection,
-        }
-      )
-      const resolution = await reconcileOutlineCandidate(
-        outlineResult.state,
-        chapterIndex,
-        source,
-        true
-      )
-      if (resolution.status === 'conflict') {
-        throw resolution.error
+      if (madeStrictProgress) {
+        logger.info(
+          `[MuseFlow] 第 ${chapterIndex + 1} 章伏笔语义规划取得进展，剩余 ${rejectionIds.length} 个未通过项，将继续定向修订`
+        )
       }
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章伏笔语义规划第 ${semanticAttemptCount}/${semanticAttemptLimit} 次未通过，将定向修订大纲与计划：${rejectionIds.join(', ')}`
+      )
 
       const retried = await expandOutlineForChapterInternal(
-        { ...resolution.state, chapterPlan: null },
+        { ...state, chapterPlan: null },
         chapterIndex,
         source,
         {
           attempt: semanticRetry.attempt + 1,
           rejection,
+          outlineOrigin: 'jit-generated',
         }
       )
       return {
         ...retried,
-        pendingIssues: [
-          ...pendingIssues,
-          ...outlineResult.pendingIssues,
-          ...(retried.pendingIssues ?? []),
-        ],
+        pendingIssues: [...pendingIssues, ...(retried.pendingIssues ?? [])],
       }
     }
 

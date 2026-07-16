@@ -103,6 +103,36 @@ describe('rewrite command retry feedback', () => {
     expect(options?.mode).toBe('rewrite')
   })
 
+  it('preserves current pending issues when explicitly rewriting the current chapter', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+
+    await rewrite('story-1', { storyId: 'story-1', chapter: '6' })
+
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(runOneChapterMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        mode: 'rewrite',
+        targetChapterIndex: 5,
+        retryIssues: initialState.pendingIssues,
+      })
+    )
+  })
+
+  it('does not pass current-chapter feedback when explicitly rewriting a historical chapter', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+
+    await rewrite('story-1', { storyId: 'story-1', chapter: '3' })
+
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(runOneChapterMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        mode: 'rewrite',
+        targetChapterIndex: 2,
+        retryIssues: [],
+      })
+    )
+  })
+
   it('preserves adopted outline revision on the retry after blocking conflict resolution', async () => {
     const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
 

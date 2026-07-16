@@ -7,11 +7,14 @@ import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { ModelProvider } from '../../src/model/provider.js'
 import { BlockingConflictError } from '../../src/utils/errors.js'
 import type { Conflict } from '../../src/types/story-state.js'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import type { ForeshadowMemory } from '../../src/types/story-memory.js'
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-ar-${randomUUID().slice(0, 8)}`)
 
-const { planChapterWithOverrideMock } = vi.hoisted(() => ({
+const { planChapterWithOverrideMock, verifyForeshadowPlanMock } = vi.hoisted(() => ({
   planChapterWithOverrideMock: vi.fn(),
+  verifyForeshadowPlanMock: vi.fn(),
 }))
 
 const mockChat = vi.fn(async (): Promise<string> => '')
@@ -30,6 +33,10 @@ function createMockProvider(): ModelProvider {
 
 vi.mock('../../src/graph/nodes/planning.js', () => ({
   plan_chapter_with_override: planChapterWithOverrideMock,
+}))
+
+vi.mock('../../src/graph/services/foreshadow-fulfillment/planning-verifier.js', () => ({
+  verifyForeshadowPlan: verifyForeshadowPlanMock,
 }))
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
@@ -124,15 +131,63 @@ function createJitState(): ReducedGraphState {
   }
 }
 
+function createSemanticRetryState(): ReducedGraphState {
+  const foreshadow: ForeshadowMemory = {
+    id: 'fs-hard',
+    text: 'structured clue fs-hard',
+    kind: 'plot',
+    introducedIn: 0,
+    expectedFulfillChapter: 2,
+    fulfilledIn: null,
+    resolutionPolicy: 'must_resolve',
+    required: true,
+    beatId: null,
+  }
+  return {
+    ...baseState,
+    outline: baseState.outline.map((item, index) =>
+      index === 1 ? { ...item, fulfilledForeshadowIds: ['fs-hard'] } : { ...item }
+    ),
+    storyMemory: {
+      ...createEmptyStoryMemory(),
+      foreshadows: { 'fs-hard': foreshadow },
+    },
+  }
+}
+
 describe('expandOutlineForChapter auto-revision', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     planChapterWithOverrideMock.mockReset()
+    verifyForeshadowPlanMock.mockReset()
     chapterOutlineRunMock.mockReset()
     prepareStoryStateForChapterMock.mockReset()
     mockChat.mockReset()
     mockChatStructured.mockReset()
-    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: {
+        chapterIndex: 1,
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'event-fs-hard',
+            type: 'foreshadow-fulfill',
+            chapterIndex: 1,
+            source: 'outline',
+            foreshadowId: 'fs-hard',
+          },
+        ],
+        claimedMandatoryBeatIds: [],
+        claimedBeatIds: [],
+        fulfilledForeshadowIds: ['fs-hard'],
+        introducedForeshadowIds: [],
+        resolvedTaskIds: [],
+        createdTaskIds: [],
+      },
+    })
+    verifyForeshadowPlanMock.mockResolvedValue([])
     mockChatStructured.mockResolvedValue({ results: [true, true] })
     mockChat.mockResolvedValue(JSON.stringify({ results: [true, true] }))
     chapterOutlineRunMock.mockResolvedValue({
@@ -240,6 +295,79 @@ describe('expandOutlineForChapter auto-revision', () => {
 
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
     expect(result.outline?.[1]?.description).toBe('有效修订。')
+    expect(prepareStoryStateForChapterMock.mock.calls[1]?.[3]).toEqual({
+      proposalMode: 'omit',
+    })
+  })
+
+  it('regenerates a conflicting semantic-retry outline instead of applying a state-only proposal', async () => {
+    const proposal = {
+      revisedDescription: '只消除了状态冲突的局部修订。',
+      explanation: '局部状态解释',
+    }
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '冲突修订',
+          description: '语义修订引入了状态冲突。',
+          fulfilledForeshadowIds: ['fs-hard'],
+          deferredForeshadowIds: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '有效修订',
+          description: '第二个候选同时满足状态与伏笔契约。',
+          fulfilledForeshadowIds: ['fs-hard'],
+          deferredForeshadowIds: [],
+        },
+      })
+    prepareStoryStateForChapterMock
+      .mockResolvedValueOnce({
+        reconciledState: {},
+        stateConflicts: '',
+        itemLocationConflicts: [],
+      })
+      .mockRejectedValueOnce(new BlockingConflictError([createConflict()], 1, proposal))
+      .mockResolvedValueOnce({
+        reconciledState: {},
+        stateConflicts: '',
+        itemLocationConflicts: [],
+      })
+      .mockResolvedValue({
+        reconciledState: {},
+        stateConflicts: '',
+        itemLocationConflicts: [],
+      })
+    verifyForeshadowPlanMock
+      .mockResolvedValueOnce([
+        {
+          foreshadowId: 'fs-hard',
+          verdict: 'not_fulfilled',
+          reason: '第一版没有真实回收。',
+          mandatory: true,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          foreshadowId: 'fs-hard',
+          verdict: 'fulfilled',
+          reason: '第二版形成可验证回收。',
+          mandatory: true,
+        },
+      ])
+
+    const result = await expandOutlineForChapter(
+      createSemanticRetryState(),
+      1,
+      createMockProvider()
+    )
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(result.outline?.[1]?.description).toBe('第二个候选同时满足状态与伏笔契约。')
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(3)
     expect(prepareStoryStateForChapterMock.mock.calls[1]?.[3]).toEqual({
       proposalMode: 'omit',
     })
