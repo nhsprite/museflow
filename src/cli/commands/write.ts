@@ -13,12 +13,49 @@ import { requireStoryState } from '../utils/story-loader.js'
 import { guardStoryWritable } from '../utils/story-guard.js'
 import { runOneChapterWithConflictResolution } from '../utils/chapter-runner.js'
 import { handleCommandError } from '../utils/command-error.js'
+import {
+  writeBatchStopReasonLabel,
+  type WriteBatchStopReason,
+  type WriteIterationOutcome,
+} from '../utils/write-batch.js'
 
 interface WriteOptions {
   storyId: string
+  count?: number
 }
 
-export async function write(storyId: string, _options: WriteOptions): Promise<void> {
+export async function write(storyId: string, options: WriteOptions): Promise<void> {
+  const requestedCount = options.count ?? 1
+  const batchMode = requestedCount > 1
+  let completedCount = 0
+  let stopReason: WriteBatchStopReason = 'requested-count'
+
+  try {
+    for (let iteration = 0; iteration < requestedCount; iteration += 1) {
+      const outcome = await writeOne(storyId, batchMode)
+      if (outcome.completed) {
+        completedCount += 1
+      }
+      if (outcome.stopReason) {
+        stopReason = outcome.stopReason
+        break
+      }
+    }
+  } catch (err) {
+    if (batchMode) {
+      printWriteBatchSummary(requestedCount, completedCount, 'error')
+    }
+    await handleCommandError(storyId, err, {
+      retryCommand: `museflow rewrite ${storyId}`,
+    })
+  }
+
+  if (batchMode) {
+    printWriteBatchSummary(requestedCount, completedCount, stopReason)
+  }
+}
+
+async function writeOne(storyId: string, batchMode: boolean): Promise<WriteIterationOutcome> {
   const { story, state } = await requireStoryState(storyId)
 
   const hasChaptersOnDisk = checkExistingChapters(story.outputDir)
@@ -41,7 +78,10 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
   const isResume = state.currentChapterIndex > 0 || hasChaptersOnDisk
 
   if (await guardStoryWritable(storyId, story, state, startChapterIndex)) {
-    return
+    return {
+      completed: false,
+      stopReason: startChapterIndex >= state.totalChapters ? 'story-complete' : 'not-writable',
+    }
   }
 
   if (!isResume) {
@@ -58,15 +98,16 @@ export async function write(storyId: string, _options: WriteOptions): Promise<vo
     console.log('')
   }
 
-  await handleWrite(story, state, startChapterIndex)
+  return handleWrite(story, state, startChapterIndex, batchMode)
 }
 
 async function handleWrite(
   story: Story,
   state: Awaited<ReturnType<typeof getState>>,
-  startChapterIndex: number
-): Promise<void> {
-  if (!state) return
+  startChapterIndex: number,
+  batchMode: boolean
+): Promise<WriteIterationOutcome> {
+  if (!state) return { completed: false, stopReason: 'not-writable' }
 
   const unresolvedErrors = state.pendingIssues.filter((i) => i.severity === 'error')
   const nonDraftErrors = unresolvedErrors.filter((i) => i.type !== 'draft_failure')
@@ -78,6 +119,9 @@ async function handleWrite(
     printIssues(state.pendingIssues, { log: console.error })
     console.error(`\n当前章节存在严重问题，需要重写：`)
     console.error(`   museflow rewrite ${story.id}  # 彻底重写\n`)
+    if (batchMode) {
+      return { completed: false, stopReason: 'blocking-issues' }
+    }
     process.exit(1)
   }
 
@@ -90,18 +134,19 @@ async function handleWrite(
   const outlineItem = state.outline[chapterIndex]
 
   if (!printChapterOutline(outlineItem, chapterIndex)) {
-    return
+    return { completed: false, stopReason: 'no-progress' }
   }
 
-  await executeWrite(story.id, state, chapterIndex)
+  return executeWrite(story.id, state, chapterIndex, batchMode)
 }
 
 async function executeWrite(
   storyId: string,
   state: Awaited<ReturnType<typeof getState>>,
-  startChapterIndex: number
-): Promise<void> {
-  if (!state) return
+  startChapterIndex: number,
+  batchMode: boolean
+): Promise<WriteIterationOutcome> {
+  if (!state) return { completed: false, stopReason: 'not-writable' }
 
   const updateStatus = (status: StoryStatus) => {
     return updateStoryRuntimeStatus(storyId, status)
@@ -116,64 +161,82 @@ async function executeWrite(
     targetChapterIndex: chapterIndex,
   }
 
-  try {
-    const result = await runOneChapterWithConflictResolution(
-      storyId,
-      runOptions,
-      `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
-      `✅ 第 ${chapterNum} 章撰写完成`
-    )
+  const result = await runOneChapterWithConflictResolution(
+    storyId,
+    runOptions,
+    `正在撰写第 ${chapterNum}/${totalChapters} 章...`,
+    `✅ 第 ${chapterNum} 章撰写完成`
+  )
 
-    if (result.rewriteRequested) {
-      const errors = result.pendingIssues.filter((i) => i.severity === 'error')
-      console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，撰写已中断：`)
-      printIssues(errors)
-      console.log(`\n请运行以下命令重写本章：`)
-      console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
-      process.exit(1)
-    }
-
-    const writtenIndex = result.currentChapterIndex - 1
+  if (result.rewriteRequested) {
     const errors = result.pendingIssues.filter((i) => i.severity === 'error')
-
-    printChapterReport(result.chapterReport, result)
-
-    // Show file path
-    const chapterPath = getChapterFilePath(state.story.outputDir, writtenIndex + 1)
-    console.log(`\n📁 文件：${chapterPath}`)
-
-    if (result.currentChapterIndex >= result.totalChapters) {
-      await updateStatus('freeze')
-      if (errors.length === 0) {
-        console.log('✨ 质量检查通过，故事已完成并冻结\n')
-      }
-      return
+    console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，撰写已中断：`)
+    printIssues(errors)
+    console.log(`\n请运行以下命令重写本章：`)
+    console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+    if (batchMode) {
+      return { completed: false, stopReason: 'rewrite-requested' }
     }
+    process.exit(1)
+  }
 
-    await updateStatus('writing')
+  const madeProgress = result.currentChapterIndex > startChapterIndex
+  if (!madeProgress) {
+    return { completed: false, stopReason: 'no-progress' }
+  }
 
-    if (errors.length > 0) {
-      console.log(`\n请运行以下命令重写本章：`)
-      console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+  const writtenIndex = result.currentChapterIndex - 1
+  const errors = result.pendingIssues.filter((i) => i.severity === 'error')
 
+  printChapterReport(result.chapterReport, result)
+
+  // Show file path
+  const chapterPath = getChapterFilePath(state.story.outputDir, writtenIndex + 1)
+  console.log(`\n📁 文件：${chapterPath}`)
+
+  if (result.currentChapterIndex >= result.totalChapters) {
+    await updateStatus('freeze')
+    if (errors.length === 0) {
+      console.log('✨ 质量检查通过，故事已完成并冻结\n')
+    }
+    return { completed: true, stopReason: 'story-complete' }
+  }
+
+  await updateStatus('writing')
+
+  if (errors.length > 0) {
+    console.log(`\n请运行以下命令重写本章：`)
+    console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+
+    if (!batchMode) {
       console.log('下一步：')
       console.log(
         `   重写第 ${writtenIndex + 1} 章后，再运行 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`
       )
       console.log(`   或运行 "museflow info" 查看故事进度\n`)
-    } else {
-      console.log('✨ 质量检查通过\n')
-
-      console.log('下一步：')
-      console.log(`   输入 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
-      console.log(`   或运行 "museflow info" 查看故事进度\n`)
     }
-  } catch (err) {
-    await handleCommandError(storyId, err, {
-      retryCommand: `museflow rewrite ${storyId}`,
-      updateStatus,
-    })
+    return { completed: true, stopReason: 'blocking-issues' }
   }
+
+  console.log('✨ 质量检查通过\n')
+
+  if (!batchMode) {
+    console.log('下一步：')
+    console.log(`   输入 "museflow write" 继续撰写第 ${writtenIndex + 2} 章`)
+    console.log(`   或运行 "museflow info" 查看故事进度\n`)
+  }
+
+  return { completed: true }
+}
+
+function printWriteBatchSummary(
+  requestedCount: number,
+  completedCount: number,
+  stopReason: WriteBatchStopReason
+): void {
+  console.log(`[MuseFlow] 连续写作结束：计划 ${requestedCount} 章 / 完成 ${completedCount} 章`)
+  console.log(`  停止原因：${writeBatchStopReasonLabel(stopReason)}`)
+  console.log('')
 }
 
 function checkExistingChapters(outputDir: string): boolean {

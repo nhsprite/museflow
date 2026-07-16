@@ -94,8 +94,11 @@ This command will:
 # Write the current chapter (stops after one chapter)
 museflow write <story-id>
 
-# Run the same command again for the next chapter
-museflow write <story-id>
+# Write up to five chapters continuously; stops early on blockers or story completion
+museflow write <story-id> --count 5
+
+# Short form
+museflow write <story-id> -n 5
 
 # Resume an interrupted checkpoint or handle a pending rewrite decision
 museflow continue <story-id>
@@ -145,7 +148,7 @@ Global option: `museflow --debug <command>` writes LLM session debug information
 | Command                                                       | Description                                                                                              |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `start --idea <text> --chapters <n> [--genre <name>] [--yes]` | Create a new story plan: title/world direction, world, characters, story arc, and empty chapter scaffold |
-| `write <id>`                                                  | Write exactly one current chapter                                                                        |
+| `write <id> [-n, --count <n>]`                                | Write one chapter by default, or up to the requested count while each chapter succeeds                   |
 | `continue <id> [-y                                            | -n]`                                                                                                     | Resume from the latest checkpoint and optionally accept/refuse a pending rewrite request |
 | `rewrite <id> [--chapter <n>]`                                | Fully rewrite the current or specified chapter; downstream chapter files are truncated by code           |
 | `status <id>`                                                 | View progress, pending issues, worldbuilding status, and foreshadow status                               |

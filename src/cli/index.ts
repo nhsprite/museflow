@@ -16,6 +16,7 @@ import { waiveForeshadow } from './commands/waive-foreshadow.js'
 import { setForeshadowPolicy } from './commands/set-foreshadow-policy.js'
 import { registerMigrateMemoryCommand } from './commands/migrate-memory.js'
 import { setDebugEnabled } from '../utils/logger.js'
+import { parseWriteCount } from './utils/write-batch.js'
 
 const program = new Command()
 
@@ -45,8 +46,9 @@ program
 
 program
   .command('write')
-  .description('撰写故事正文（写完当前章后停止）')
+  .description('撰写故事正文（默认一章，可连续写多章）')
   .argument('<story-id>', '故事ID')
+  .option('-n, --count <number>', '顺利时连续撰写的最大章节数', parseWriteCount, 1)
   .action(write)
 
 program

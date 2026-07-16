@@ -86,6 +86,7 @@ vi.mock('../../src/cli/utils/chapter-display.js', () => ({
   printChapterOutline: vi.fn().mockReturnValue(true),
   printChapterReport: vi.fn(),
   printActProgress: vi.fn(),
+  printIssues: vi.fn(),
 }))
 
 vi.mock('../../src/utils/paths.js', () => ({
@@ -104,14 +105,14 @@ vi.mock('node:fs', () => ({
 describe('write command', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getStateMock.mockResolvedValue(createState())
-    getStoryMock.mockReturnValue({
+    getStateMock.mockReset().mockResolvedValue(createState())
+    getStoryMock.mockReset().mockReturnValue({
       id: 'story-1',
       title: 'Test Story',
       outputDir: testTempDir,
       status: 'writing',
     })
-    runOneChapterMock.mockResolvedValue({
+    runOneChapterMock.mockReset().mockResolvedValue({
       story: { id: 'story-1', outputDir: testTempDir },
       currentChapterIndex: 1,
       totalChapters: 3,
@@ -140,6 +141,139 @@ describe('write command', () => {
       expect.objectContaining({ currentChapterIndex: 0 }),
       0
     )
+  })
+
+  it('writes multiple chapters and reloads persisted state before each chapter', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+
+    getStateMock
+      .mockResolvedValueOnce(createState({ currentChapterIndex: 0, totalChapters: 4 }))
+      .mockResolvedValueOnce(createState({ currentChapterIndex: 1, totalChapters: 4 }))
+      .mockResolvedValueOnce(createState({ currentChapterIndex: 2, totalChapters: 4 }))
+    runOneChapterMock
+      .mockResolvedValueOnce({
+        ...createState({ currentChapterIndex: 1, totalChapters: 4 }),
+        rewriteRequested: false,
+      })
+      .mockResolvedValueOnce({
+        ...createState({ currentChapterIndex: 2, totalChapters: 4 }),
+        rewriteRequested: false,
+      })
+      .mockResolvedValueOnce({
+        ...createState({ currentChapterIndex: 3, totalChapters: 4 }),
+        rewriteRequested: false,
+      })
+
+    await write('story-1', { storyId: 'story-1', count: 3 })
+
+    expect(getStateMock).toHaveBeenCalledTimes(3)
+    expect(runOneChapterMock).toHaveBeenCalledTimes(3)
+    expect(runOneChapterMock.mock.calls.map((call) => call[1].targetChapterIndex)).toEqual([
+      0, 1, 2,
+    ])
+  })
+
+  it('stops a multi-chapter write when the current chapter requests a rewrite', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    runOneChapterMock.mockResolvedValue({
+      ...createState({ currentChapterIndex: 0 }),
+      rewriteRequested: true,
+      pendingIssues: [{ type: 'continuity', severity: 'error', description: 'blocked' }],
+    })
+
+    await write('story-1', { storyId: 'story-1', count: 3 })
+
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(logSpy).toHaveBeenCalledWith('[MuseFlow] 连续写作结束：计划 3 章 / 完成 0 章')
+    expect(logSpy).toHaveBeenCalledWith('  停止原因：当前章节需要重写')
+    logSpy.mockRestore()
+  })
+
+  it('stops a multi-chapter write when a successful run makes no chapter progress', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    runOneChapterMock.mockResolvedValue({
+      ...createState({ currentChapterIndex: 0 }),
+      rewriteRequested: false,
+    })
+
+    await write('story-1', { storyId: 'story-1', count: 3 })
+
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(logSpy).toHaveBeenCalledWith('  停止原因：章节未产生进度')
+    logSpy.mockRestore()
+  })
+
+  it('stops before drafting when persisted state has blocking issues', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue(
+      createState({
+        pendingIssues: [{ type: 'continuity', severity: 'error', description: 'blocked' }],
+      })
+    )
+
+    await write('story-1', { storyId: 'story-1', count: 3 })
+
+    expect(runOneChapterMock).not.toHaveBeenCalled()
+    expect(logSpy).toHaveBeenCalledWith('  停止原因：当前章节存在严重问题')
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('counts a committed chapter and then stops when validation leaves blocking issues', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    runOneChapterMock.mockResolvedValue({
+      ...createState({ currentChapterIndex: 1 }),
+      rewriteRequested: false,
+      pendingIssues: [{ type: 'continuity', severity: 'error', description: 'blocked' }],
+    })
+
+    await write('story-1', { storyId: 'story-1', count: 3 })
+
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(logSpy).toHaveBeenCalledWith('[MuseFlow] 连续写作结束：计划 3 章 / 完成 1 章')
+    expect(logSpy).toHaveBeenCalledWith('  停止原因：当前章节存在严重问题')
+    logSpy.mockRestore()
+  })
+
+  it('stops a multi-chapter write when the story is complete', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue(createState({ currentChapterIndex: 2 }))
+    runOneChapterMock.mockResolvedValue({
+      ...createState({ currentChapterIndex: 3 }),
+      rewriteRequested: false,
+    })
+
+    await write('story-1', { storyId: 'story-1', count: 5 })
+
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(logSpy).toHaveBeenCalledWith('[MuseFlow] 连续写作结束：计划 5 章 / 完成 1 章')
+    expect(logSpy).toHaveBeenCalledWith('  停止原因：故事已完成')
+    logSpy.mockRestore()
+  })
+
+  it('keeps single-chapter output free of a batch summary by default', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await write('story-1', { storyId: 'story-1' })
+
+    expect(
+      logSpy.mock.calls.some(([message]) =>
+        typeof message === 'string' ? message.includes('连续写作结束') : false
+      )
+    ).toBe(false)
+    logSpy.mockRestore()
   })
 
   it('sets story status to freeze after writing the final chapter', async () => {
