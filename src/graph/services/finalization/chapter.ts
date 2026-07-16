@@ -68,7 +68,7 @@ function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
   totalChapters: number
 ): ReducedGraphState['outline'] {
-  const next = [...outline]
+  const next = outline.slice(0, totalChapters)
   for (let i = next.length; i < totalChapters; i++) {
     next.push({ number: i + 1, title: '', description: '' })
   }
@@ -182,7 +182,7 @@ function ensureChaptersLength(
   chapters: ReducedGraphState['chapters'],
   totalChapters: number
 ): ReducedGraphState['chapters'] {
-  const next = [...chapters]
+  const next = chapters.slice(0, totalChapters)
   while (next.length < totalChapters) {
     next.push(null)
   }
@@ -801,6 +801,17 @@ export async function finalizeChapter(
     }
   }
 
+  if (updatedStoryArc && updatedStoryArc.totalChapters !== updatedTotalChapters) {
+    updatedTotalChapters = updatedStoryArc.totalChapters
+    updatedStory = {
+      ...updatedStory,
+      totalChapters: updatedTotalChapters,
+      updatedAt: Date.now(),
+    }
+    updatedOutline = ensureOutlineLength(updatedOutline, updatedTotalChapters)
+    updatedChapters = ensureChaptersLength(updatedChapters, updatedTotalChapters)
+  }
+
   const finalizedAct = getActForChapter(updatedStoryArc, chapterIndex)
   if (finalizedAct && chapterIndex + 1 >= finalizedAct.endChapter) {
     const finalizedProgress = updatedActProgress[finalizedAct.index] ?? {
@@ -870,17 +881,6 @@ export async function finalizeChapter(
       rewriteRequested: true,
       chapterReport: failureReport,
     }
-  }
-
-  if (updatedStoryArc && updatedStoryArc.totalChapters > updatedTotalChapters) {
-    updatedTotalChapters = updatedStoryArc.totalChapters
-    updatedStory = {
-      ...updatedStory,
-      totalChapters: updatedTotalChapters,
-      updatedAt: Date.now(),
-    }
-    updatedOutline = ensureOutlineLength(updatedOutline, updatedTotalChapters)
-    updatedChapters = ensureChaptersLength(updatedChapters, updatedTotalChapters)
   }
 
   updatedVerifiedConstraints = filterVerifiedConstraintsForChapter(

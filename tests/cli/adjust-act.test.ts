@@ -176,6 +176,38 @@ describe('adjust-act command', () => {
     logSpy.mockRestore()
   })
 
+  it('shrinks total chapters and trailing slots when the final act is shortened', async () => {
+    const state = makeState({
+      currentChapterIndex: 18,
+      outline: Array.from({ length: 20 }, (_, index) => ({
+        number: index + 1,
+        title: `Chapter ${index + 1}`,
+        description: '',
+      })),
+      chapters: Array.from({ length: 20 }, () => null),
+    })
+    getTupleMock.mockResolvedValue({ checkpoint: { channel_values: state } })
+    const { adjustAct } = await import('../../src/cli/commands/adjust-act.js')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await adjustAct('story-1', { act: '3', endChapter: '19' })
+
+    const updatedState = updateLatestStateMock.mock.calls[0]![0] as {
+      storyArc: { totalChapters: number; acts: Array<{ endChapter: number }> }
+      totalChapters: number
+      story: { totalChapters: number }
+      outline: unknown[]
+      chapters: unknown[]
+    }
+    expect(updatedState.storyArc.acts.at(-1)?.endChapter).toBe(19)
+    expect(updatedState.storyArc.totalChapters).toBe(19)
+    expect(updatedState.totalChapters).toBe(19)
+    expect(updatedState.story.totalChapters).toBe(19)
+    expect(updatedState.outline).toHaveLength(19)
+    expect(updatedState.chapters).toHaveLength(19)
+    logSpy.mockRestore()
+  })
+
   it('clears resolved outline coverage errors for the adjusted act only', async () => {
     const issues: Issue[] = [
       {

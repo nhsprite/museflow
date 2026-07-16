@@ -376,8 +376,9 @@ export function proposeActBoundaryAdjustments(
   } else if (nearBoundary && progress.pending.length === 0 && chaptersRemaining > 0) {
     const reduction = Math.min(chaptersRemaining, 2)
     const proposedEnd = currentAct.endChapter - reduction
+    const isFinalAct = currentAct.index === storyArc.acts.at(-1)?.index
     const blockingForeshadows = storyMemory
-      ? getBoundaryBlockingForeshadows(storyMemory, proposedEnd, false)
+      ? getBoundaryBlockingForeshadows(storyMemory, proposedEnd, isFinalAct)
       : []
     if (blockingForeshadows.length > 0) {
       logger.warn(
@@ -498,7 +499,12 @@ export function applyActBoundaryShift(
 
   return {
     ...storyArc,
-    totalChapters: delta > 0 ? storyArc.totalChapters + delta : storyArc.totalChapters,
+    totalChapters:
+      delta > 0
+        ? storyArc.totalChapters + delta
+        : delta < 0 && !nextAct
+          ? proposedEndChapter
+          : storyArc.totalChapters,
     acts: newActs,
   }
 }

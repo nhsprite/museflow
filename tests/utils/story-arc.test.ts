@@ -412,6 +412,27 @@ describe('story-arc utilities', () => {
     expect(proposals).toEqual([expect.objectContaining({ proposedEndChapter: 4 })])
   })
 
+  it('keeps the final act open so future must-resolve foreshadows remain schedulable', () => {
+    const proposals = proposeActBoundaryAdjustments(
+      makeStoryArc(),
+      { 4: { consumed: ['最终对决'], pending: [] } },
+      18,
+      memoryWithForeshadow({ expectedFulfillChapter: 20 })
+    )
+
+    expect(proposals).toEqual([])
+  })
+
+  it('allows shortening the final act when no must-resolve foreshadows remain', () => {
+    const proposals = proposeActBoundaryAdjustments(
+      makeStoryArc(),
+      { 4: { consumed: ['最终对决'], pending: [] } },
+      18
+    )
+
+    expect(proposals).toEqual([expect.objectContaining({ actIndex: 4, proposedEndChapter: 19 })])
+  })
+
   it('does not propose adjustment far from boundary', () => {
     const storyArc = makeStoryArc()
     const actProgress = {
@@ -538,6 +559,16 @@ describe('story-arc utilities', () => {
       expect(result.applied).toBe(true)
       expect(result.storyArc.acts[0]?.endChapter).toBe(4)
       expect(result.storyArc.acts[1]?.startChapter).toBe(5)
+    })
+
+    it('shrinks the story boundary when shortening the final act', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 4, proposedEndChapter: 19, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 18)
+
+      expect(result.applied).toBe(true)
+      expect(result.storyArc.acts.at(-1)?.endChapter).toBe(19)
+      expect(result.storyArc.totalChapters).toBe(19)
     })
 
     it('rejects an extension beyond the automatic limit without partially applying it', () => {

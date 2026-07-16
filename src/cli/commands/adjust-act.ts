@@ -38,7 +38,7 @@ function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
   totalChapters: number
 ): ReducedGraphState['outline'] {
-  const next = [...outline]
+  const next = outline.slice(0, totalChapters)
   for (let i = next.length; i < totalChapters; i++) {
     next.push({ number: i + 1, title: '', description: '' })
   }
@@ -49,7 +49,7 @@ function ensureChaptersLength(
   chapters: ReducedGraphState['chapters'],
   totalChapters: number
 ): ReducedGraphState['chapters'] {
-  const next = [...chapters]
+  const next = chapters.slice(0, totalChapters)
   while (next.length < totalChapters) {
     next.push(null)
   }

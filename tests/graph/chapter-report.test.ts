@@ -610,4 +610,95 @@ describe('chapter report generation', () => {
       [6, 8],
     ])
   })
+
+  it('syncs the story boundary and removes empty slots when the final act shortens', async () => {
+    loadConfigMock.mockReturnValue({
+      model: { provider: 'openai' as const, model: 'gpt-4o' },
+      autoAdjustActBoundaries: true,
+    })
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_2.md'),
+      '# 第二章 收束\n\n主角完成既定选择。',
+      'utf-8'
+    )
+    const state = buildState(tmpDir, {
+      story: {
+        id: 'test-story',
+        title: 'Test',
+        outputDir: tmpDir,
+        genre: 'default',
+        totalChapters: 3,
+      },
+      totalChapters: 3,
+      currentChapterIndex: 1,
+      chapters: [
+        {
+          id: 'ch-1',
+          storyId: 'test-story',
+          number: 1,
+          title: '启程',
+          outline: '主角离开家乡。',
+          summary: '主角离开家乡。',
+          foreshadows: null,
+          status: 'completed',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        {
+          id: 'ch-2',
+          storyId: 'test-story',
+          number: 2,
+          title: '收束',
+          outline: '主角完成既定选择。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        null,
+      ],
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '收束', description: '主角完成既定选择。' },
+        { number: 3, title: '余韵', description: '' },
+      ],
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 3,
+            title: '终幕',
+            theme: '收束',
+            function: '完成故事',
+            mandatoryBeats: ['主角完成既定选择'],
+          },
+        ],
+        keyBeats: [],
+      },
+      actProgress: {
+        1: { consumed: ['主角完成既定选择'], pending: [] },
+      },
+    })
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '主角完成既定选择。',
+          storyEvents: [],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const result = await finalize_chapter(createMockContext(), state)
+
+    expect(result.storyArc?.acts.at(-1)?.endChapter).toBe(2)
+    expect(result.storyArc?.totalChapters).toBe(2)
+    expect(result.totalChapters).toBe(2)
+    expect(result.story?.totalChapters).toBe(2)
+    expect(result.outline).toHaveLength(2)
+    expect(result.chapters).toHaveLength(2)
+  })
 })
