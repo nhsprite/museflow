@@ -66,8 +66,8 @@ describe('formatActForeshadowBoundaryPressure', () => {
     ).toEqual([
       '  伏笔边界压力: 2 个 must_resolve 硬义务待回收',
       '  必须回收伏笔:',
-      '    1. fs-earlier（引入第 1 章，预计第 2 章回收）',
-      '    2. fs-boundary（引入第 1 章，预计第 3 章回收）',
+      '    1. [fs-earlier] "fs-earlier"（引入第 1 章，预计第 2 章回收）',
+      '    2. [fs-boundary] "fs-boundary"（引入第 1 章，预计第 3 章回收）',
     ])
   })
 
@@ -109,8 +109,46 @@ describe('formatActForeshadowBoundaryPressure', () => {
     expect(formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct)).toEqual([
       '伏笔边界压力: 1 个 must_resolve 硬义务待回收',
       '必须回收伏笔:',
-      '  1. fs-future（引入第 1 章，预计第 30 章回收）',
+      '  1. [fs-future] "fs-future"（引入第 1 章，预计第 30 章回收）',
     ])
+  })
+
+  it('keeps boundary entries on one line and truncates text to 60 Unicode characters', () => {
+    const finalAct = act(2, 4, 6)
+    const arc = storyArc([act(1, 1, 3), finalAct])
+    const visiblePrefix = `${'线'.repeat(59)}🙂`
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'fs-long': {
+          ...foreshadow('fs-long', 6),
+          text: `${visiblePrefix}末尾`,
+        },
+      },
+    }
+
+    const output = formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct)
+
+    expect(output[2]).toBe(`  1. [fs-long] "${visiblePrefix}…"（引入第 1 章，预计第 6 章回收）`)
+    expect(output[2]).not.toContain('末尾')
+  })
+
+  it('collapses embedded whitespace in displayed foreshadow text', () => {
+    const finalAct = act(2, 4, 6)
+    const arc = storyArc([act(1, 1, 3), finalAct])
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'fs-whitespace': {
+          ...foreshadow('fs-whitespace', 6),
+          text: '  第一段\n\t第二段  ',
+        },
+      },
+    }
+
+    expect(formatActForeshadowBoundaryPressure(stateWithMemory(memory, arc), finalAct)[2]).toBe(
+      '  1. [fs-whitespace] "第一段 第二段"（引入第 1 章，预计第 6 章回收）'
+    )
   })
 
   it('never reports soft policies as final-act boundary pressure', () => {

@@ -226,7 +226,9 @@ describe('status command chapter display', () => {
 
     expect(logSpy).toHaveBeenCalledWith('伏笔边界压力: 1 个 must_resolve 硬义务待回收')
     expect(logSpy).toHaveBeenCalledWith('必须回收伏笔:')
-    expect(logSpy).toHaveBeenCalledWith('  1. fs-status（引入第 1 章，预计第 3 章回收）')
+    expect(logSpy).toHaveBeenCalledWith(
+      '  1. [fs-status] "status fixture"（引入第 1 章，预计第 3 章回收）'
+    )
   })
 
   it('shows soft policy counts without deadline alerts', async () => {

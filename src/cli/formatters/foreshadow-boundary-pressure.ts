@@ -2,6 +2,17 @@ import { getBoundaryBlockingForeshadowDetails } from '../../story-memory/foresha
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { ActArc } from '../../types/outline.js'
 
+const MAX_FORESHADOW_TEXT_LENGTH = 60
+
+function formatForeshadowText(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  const characters = Array.from(normalized)
+
+  if (characters.length <= MAX_FORESHADOW_TEXT_LENGTH) return normalized
+
+  return `${characters.slice(0, MAX_FORESHADOW_TEXT_LENGTH).join('')}…`
+}
+
 export function formatActForeshadowBoundaryPressure(
   state: ReducedGraphState,
   act: ActArc,
@@ -28,7 +39,7 @@ export function formatActForeshadowBoundaryPressure(
         entry.expectedFulfillChapter === null
           ? '未设预计章节'
           : `预计第 ${entry.expectedFulfillChapter} 章回收`
-      return `${indent}  ${index + 1}. ${entry.id}（引入第 ${introducedChapter} 章，${deadline}）`
+      return `${indent}  ${index + 1}. [${entry.id}] "${formatForeshadowText(entry.text)}"（引入第 ${introducedChapter} 章，${deadline}）`
     }),
   ]
 }
