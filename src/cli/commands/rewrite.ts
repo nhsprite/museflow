@@ -131,16 +131,19 @@ async function handleRewrite(
       return
     }
 
+    const errors = result.pendingIssues.filter((i) => i.severity === 'error')
+
+    printChapterReport(result.chapterReport, result)
+
     if (result.currentChapterIndex >= result.totalChapters) {
       await updateStatus('freeze')
+      if (errors.length === 0) {
+        console.log('\n✨ 质量检查通过，故事已完成并冻结\n')
+      }
       return
     }
 
     await updateStatus('writing')
-
-    const errors = result.pendingIssues.filter((i) => i.severity === 'error')
-
-    printChapterReport(result.chapterReport, result)
 
     if (errors.length > 0) {
       console.log(`\n状态: 仍有 ${errors.length} 个严重问题`)

@@ -133,13 +133,6 @@ async function executeWrite(
       process.exit(1)
     }
 
-    if (result.currentChapterIndex >= result.totalChapters) {
-      await updateStatus('freeze')
-      return
-    }
-
-    await updateStatus('writing')
-
     const writtenIndex = result.currentChapterIndex - 1
     const errors = result.pendingIssues.filter((i) => i.severity === 'error')
 
@@ -148,6 +141,16 @@ async function executeWrite(
     // Show file path
     const chapterPath = getChapterFilePath(state.story.outputDir, writtenIndex + 1)
     console.log(`\n📁 文件：${chapterPath}`)
+
+    if (result.currentChapterIndex >= result.totalChapters) {
+      await updateStatus('freeze')
+      if (errors.length === 0) {
+        console.log('✨ 质量检查通过，故事已完成并冻结\n')
+      }
+      return
+    }
+
+    await updateStatus('writing')
 
     if (errors.length > 0) {
       console.log(`\n请运行以下命令重写本章：`)

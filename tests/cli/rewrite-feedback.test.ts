@@ -45,6 +45,7 @@ const initialState = {
   storyState: null,
   autoFixAttempts: 0,
 }
+const getStateMock = vi.fn().mockResolvedValue(initialState)
 
 vi.mock('../../src/storage/meta/stores/story.js', () => ({
   getStory: vi.fn().mockReturnValue({
@@ -57,7 +58,7 @@ vi.mock('../../src/storage/meta/stores/story.js', () => ({
 }))
 
 vi.mock('../../src/core/runner.js', () => ({
-  getState: vi.fn().mockResolvedValue(initialState),
+  getState: getStateMock,
   runOneChapter: runOneChapterMock,
   updateStoryRuntimeStatus: updateStoryRuntimeStatusMock,
 }))
@@ -71,13 +72,17 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg, fn) => fn()),
 }))
 
-vi.mock('../../src/utils/chapter-display.js', () => ({
-  printChapterOutline: vi.fn(),
+vi.mock('../../src/cli/utils/chapter-display.js', () => ({
+  printActProgress: vi.fn(),
+  printChapterOutline: vi.fn().mockReturnValue(true),
+  printChapterReport: vi.fn(),
+  printIssues: vi.fn(),
 }))
 
 describe('rewrite command retry feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getStateMock.mockResolvedValue(initialState)
     isBlockingConflictErrorMock.mockImplementation((err: unknown) =>
       Boolean((err as { isBlockingConflict?: boolean }).isBlockingConflict)
     )
@@ -157,5 +162,23 @@ describe('rewrite command retry feedback', () => {
         preserveTargetOutline: true,
       })
     )
+  })
+
+  it('prints the full chapter report before freezing after a final-chapter rewrite', async () => {
+    const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
+    const { printChapterReport } = await import('../../src/cli/utils/chapter-display.js')
+    const finalState = {
+      ...initialState,
+      currentChapterIndex: 10,
+      pendingIssues: [],
+      rewriteRequested: false,
+      chapterReport: { chapterIndex: 9 },
+    }
+    runOneChapterMock.mockResolvedValueOnce(finalState)
+
+    await rewrite('story-1', { storyId: 'story-1', chapter: '6' })
+
+    expect(printChapterReport).toHaveBeenCalledWith(finalState.chapterReport, finalState)
+    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledWith('story-1', 'freeze')
   })
 })

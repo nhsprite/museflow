@@ -144,24 +144,28 @@ describe('write command', () => {
 
   it('sets story status to freeze after writing the final chapter', async () => {
     const { write } = await import('../../src/cli/commands/write.ts')
+    const { printChapterReport } = await import('../../src/cli/utils/chapter-display.js')
 
     getStateMock.mockResolvedValue(createState({ currentChapterIndex: 2 }))
-    runOneChapterMock.mockResolvedValue({
+    const finalState = {
       story: { id: 'story-1', outputDir: testTempDir },
       currentChapterIndex: 3,
       totalChapters: 3,
       pendingIssues: [],
       rewriteRequested: false,
+      chapterReport: { chapterIndex: 2 },
       outline: [
         { number: 1, title: 'Chapter 1', description: 'Desc 1' },
         { number: 2, title: 'Chapter 2', description: 'Desc 2' },
         { number: 3, title: 'Chapter 3', description: 'Desc 3' },
       ],
-    })
+    }
+    runOneChapterMock.mockResolvedValue(finalState)
 
     await write('story-1', { storyId: 'story-1' })
 
     expect(updateStoryRuntimeStatusMock).toHaveBeenCalledWith('story-1', 'freeze')
+    expect(printChapterReport).toHaveBeenCalledWith(finalState.chapterReport, finalState)
   })
 
   it('does not write when the story is frozen', async () => {
