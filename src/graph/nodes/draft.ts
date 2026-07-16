@@ -16,7 +16,7 @@ import type { RuntimeContext } from '../../core/context.js'
 import type { StoryEvent, ChapterFinalStateDeclaration } from '../../types/story-memory.js'
 import {
   completeMissingExpectedEvents,
-  augmentExpectedEventsWithMandatoryBeats,
+  augmentExpectedEventsWithClaimedBeats,
 } from '../../story-memory/event-completion.js'
 
 export async function draft_chapter(
@@ -38,10 +38,11 @@ export async function draft_chapter(
     chapters: updatedChapters,
   } = expanded
 
-  const augmentedExpectedEvents = augmentExpectedEventsWithMandatoryBeats(
+  const augmentedExpectedEvents = augmentExpectedEventsWithClaimedBeats(
     chapterPlan,
     updatedStoryArc ?? state.storyArc ?? undefined,
-    chapterIndex
+    chapterIndex,
+    state.storyMemory
   )
   if (chapterPlan && augmentedExpectedEvents.length > (chapterPlan.expectedEvents?.length ?? 0)) {
     chapterPlan = { ...chapterPlan, expectedEvents: augmentedExpectedEvents }

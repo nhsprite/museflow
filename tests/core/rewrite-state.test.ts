@@ -10,6 +10,7 @@ import {
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { StoryMemory } from '../../src/types/story-memory.js'
 import type { StoryState } from '../../src/types/story-state.js'
+import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 describe('recomputeActProgressForRewrite', () => {
   it('uses stable mandatory beat ids from story memory without relying on keyBeat text', () => {
@@ -372,6 +373,88 @@ describe('cleanStoryMemoryForRewrite', () => {
     expect(cleaned.beats['A1-B1']?.actIndex).toBe(1)
     expect(cleaned.beats['A1-B1']?.description).toBe('关键节点')
     expect(cleaned.beats['A1-B1']?.provenByEventIds).toEqual(['e0'])
+  })
+
+  it('preserves a later equivalence merge when both introductions survive the rewrite', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'intro-canonical',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-canonical',
+        text: 'canonical fixture',
+        expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'intro-duplicate',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-duplicate',
+        text: 'duplicate fixture',
+        expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'merge-after-boundary',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-canonical',
+        duplicateForeshadowId: 'fs-duplicate',
+        reason: 'same neutral fixture obligation',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    const cleaned = cleanStoryMemoryForRewrite(memory, 2)
+
+    expect(cleaned.events.map((event) => event.id)).toEqual([
+      'intro-canonical',
+      'intro-duplicate',
+      'merge-after-boundary',
+    ])
+    expect(cleaned.foreshadows['fs-duplicate']?.mergedInto).toBe('fs-canonical')
+  })
+
+  it('drops an equivalence merge when either introduction is rolled back', () => {
+    const memory = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'intro-canonical',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-canonical',
+        text: 'canonical fixture',
+        expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'intro-duplicate',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-duplicate',
+        text: 'duplicate fixture',
+        expectedFulfillChapter: 5,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+      {
+        id: 'merge-after-boundary',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-canonical',
+        duplicateForeshadowId: 'fs-duplicate',
+        reason: 'same neutral fixture obligation',
+        chapterIndex: 2,
+        source: 'outline',
+      },
+    ])
+
+    const cleaned = cleanStoryMemoryForRewrite(memory, 2)
+
+    expect(cleaned.events.map((event) => event.id)).toEqual(['intro-canonical'])
+    expect(cleaned.foreshadows['fs-duplicate']).toBeUndefined()
   })
 })
 

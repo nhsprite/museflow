@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   completeMissingExpectedEvents,
-  augmentExpectedEventsWithMandatoryBeats,
+  augmentExpectedEventsWithClaimedBeats,
 } from '../../src/story-memory/event-completion.js'
 import type { StoryEvent } from '../../src/types/story-memory.js'
 import type { ChapterPlan } from '../../src/agents/types.js'
 import type { StoryArc } from '../../src/types/outline.js'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 describe('completeMissingExpectedEvents', () => {
   const content = `=== PRE_WRITE_CHECK ===
@@ -245,7 +246,7 @@ check
   })
 })
 
-describe('augmentExpectedEventsWithMandatoryBeats', () => {
+describe('augmentExpectedEventsWithClaimedBeats', () => {
   const storyArc: StoryArc = {
     totalChapters: 10,
     acts: [
@@ -268,7 +269,14 @@ describe('augmentExpectedEventsWithMandatoryBeats', () => {
         mandatoryBeats: ['真相揭露', '反击开始'],
       },
     ],
-    keyBeats: [],
+    keyBeats: [
+      {
+        id: 'A2-B1',
+        beat: '关键镜像闭合',
+        deadlineAct: 2,
+        required: true,
+      },
+    ],
   }
 
   const basePlan: ChapterPlan = {
@@ -287,12 +295,12 @@ describe('augmentExpectedEventsWithMandatoryBeats', () => {
 
   it('returns existing expectedEvents when no mandatory beats are claimed', () => {
     const plan: ChapterPlan = { ...basePlan, claimedMandatoryBeatIds: [] }
-    const result = augmentExpectedEventsWithMandatoryBeats(plan, storyArc, 5)
+    const result = augmentExpectedEventsWithClaimedBeats(plan, storyArc, 5)
     expect(result).toEqual([])
   })
 
   it('adds a plot-advance event for each claimed mandatory beat', () => {
-    const result = augmentExpectedEventsWithMandatoryBeats(basePlan, storyArc, 5)
+    const result = augmentExpectedEventsWithClaimedBeats(basePlan, storyArc, 5)
     const plotAdvances = result.filter((e) => e.type === 'plot-advance')
     expect(plotAdvances).toHaveLength(1)
     expect(plotAdvances[0]).toMatchObject({
@@ -302,6 +310,46 @@ describe('augmentExpectedEventsWithMandatoryBeats', () => {
       plotId: 'act-2',
       beatId: 'A2-M1',
     })
+  })
+
+  it('adds a plot-advance event for each claimed global key beat', () => {
+    const plan: ChapterPlan = { ...basePlan, claimedBeatIds: ['A2-B1'] }
+
+    const result = augmentExpectedEventsWithClaimedBeats(plan, storyArc, 5)
+    const plotAdvances = result.filter((e) => e.type === 'plot-advance')
+
+    expect(plotAdvances).toHaveLength(2)
+    expect(plotAdvances).toContainEqual(
+      expect.objectContaining({
+        type: 'plot-advance',
+        chapterIndex: 5,
+        source: 'outline',
+        plotId: 'plot-main',
+        beatId: 'A2-B1',
+      })
+    )
+  })
+
+  it('does not add a plot-advance event for an already proven global key beat', () => {
+    const plan: ChapterPlan = {
+      ...basePlan,
+      claimedMandatoryBeatIds: [],
+      claimedBeatIds: ['A2-B1'],
+    }
+    const memory = createEmptyStoryMemory()
+    memory.beats['A2-B1'] = {
+      id: 'A2-B1',
+      description: '关键镜像闭合',
+      actIndex: 2,
+      deadlineAct: 2,
+      required: true,
+      claimedIn: 3,
+      provenByEventIds: ['evt-prior-proof'],
+    }
+
+    const result = augmentExpectedEventsWithClaimedBeats(plan, storyArc, 5, memory)
+
+    expect(result).toEqual([])
   })
 
   it('does not duplicate an existing plot-advance event for the same beat', () => {
@@ -318,20 +366,20 @@ describe('augmentExpectedEventsWithMandatoryBeats', () => {
         },
       ],
     }
-    const result = augmentExpectedEventsWithMandatoryBeats(plan, storyArc, 5)
+    const result = augmentExpectedEventsWithClaimedBeats(plan, storyArc, 5)
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({ beatId: 'A2-M1' })
   })
 
   it('skips beat ids that do not belong to the current act', () => {
     const plan: ChapterPlan = { ...basePlan, claimedMandatoryBeatIds: ['A1-M1'] }
-    const result = augmentExpectedEventsWithMandatoryBeats(plan, storyArc, 5)
+    const result = augmentExpectedEventsWithClaimedBeats(plan, storyArc, 5)
     expect(result).toHaveLength(0)
   })
 
   it('skips unknown or malformed beat ids', () => {
     const plan: ChapterPlan = { ...basePlan, claimedMandatoryBeatIds: ['unknown'] }
-    const result = augmentExpectedEventsWithMandatoryBeats(plan, storyArc, 5)
+    const result = augmentExpectedEventsWithClaimedBeats(plan, storyArc, 5)
     expect(result).toHaveLength(0)
   })
 })

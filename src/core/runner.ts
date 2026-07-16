@@ -354,9 +354,15 @@ export async function runOneChapter(
     }
   }
 
-  const snapshot = await graph.getState({
-    configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
+  const latestSnapshot = await graph.getState({
+    configurable: { thread_id: storyId, outputDir },
   })
+  const snapshot = checkpointId
+    ? await graph.getState({
+        configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
+      })
+    : latestSnapshot
+  const latestState = normalizeRuntimeStoryMemory(latestSnapshot.values as ReducedGraphState)
   const checkpointState = normalizeRuntimeStoryMemory(snapshot.values as ReducedGraphState)
 
   const targetIndex = options.targetChapterIndex ?? checkpointState.currentChapterIndex
@@ -407,7 +413,7 @@ export async function runOneChapter(
   }
 
   if (options.mode === 'rewrite') {
-    workingState = applyRewriteCleanup(workingState, targetIndex)
+    workingState = applyRewriteCleanup(workingState, targetIndex, latestState)
     if (options.targetChapterIndex !== undefined) {
       workingState.chapterPlan = null
     }

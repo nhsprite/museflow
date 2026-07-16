@@ -2,6 +2,7 @@ import type { ReducedGraphState } from '../graph/state.js'
 import type { StoryMemory } from '../types/story-memory.js'
 import type { StoryState } from '../types/story-state.js'
 import { applyEvents } from '../story-memory/projector.js'
+import { isProjectableForeshadowIntroduction } from '../story-memory/foreshadow-introduction.js'
 import { getVerifiedBeatsFromMemory } from '../utils/story-arc.js'
 import {
   findClaimedMandatoryBeatForId,
@@ -67,7 +68,22 @@ export function cleanStoryMemoryForRewrite(
   memory: StoryMemory,
   targetChapterIndex: number
 ): StoryMemory {
-  const filteredEvents = memory.events.filter((event) => event.chapterIndex < targetChapterIndex)
+  const retainedIntroductionIds = new Set(
+    memory.events.flatMap((event) =>
+      event.type === 'foreshadow-introduce' &&
+      event.chapterIndex < targetChapterIndex &&
+      isProjectableForeshadowIntroduction(event)
+        ? [event.foreshadowId]
+        : []
+    )
+  )
+  const filteredEvents = memory.events.filter(
+    (event) =>
+      event.chapterIndex < targetChapterIndex ||
+      (event.type === 'foreshadow-merge' &&
+        retainedIntroductionIds.has(event.canonicalForeshadowId) &&
+        retainedIntroductionIds.has(event.duplicateForeshadowId))
+  )
   if (filteredEvents.length === memory.events.length) {
     return memory
   }
@@ -80,6 +96,29 @@ export function cleanStoryMemoryForRewrite(
   // pre-populated beat metadata (actIndex/description) back in, so beats do not
   // fall back to actIndex 0 the way a bare projectMemory call would.
   return applyEvents(truncated, [])
+}
+
+function carryForwardForeshadowMerges(
+  memory: StoryMemory,
+  authorityMemory: StoryMemory
+): StoryMemory {
+  const existingEventIds = new Set(memory.events.map((event) => event.id))
+  const introducedIds = new Set(
+    memory.events.flatMap((event) =>
+      event.type === 'foreshadow-introduce' && isProjectableForeshadowIntroduction(event)
+        ? [event.foreshadowId]
+        : []
+    )
+  )
+  const mergeEvents = authorityMemory.events.filter(
+    (event) =>
+      event.type === 'foreshadow-merge' &&
+      !existingEventIds.has(event.id) &&
+      introducedIds.has(event.canonicalForeshadowId) &&
+      introducedIds.has(event.duplicateForeshadowId)
+  )
+
+  return mergeEvents.length > 0 ? applyEvents(memory, mergeEvents) : memory
 }
 
 export function cleanStoryStateForRewrite(
@@ -252,12 +291,17 @@ export function recomputeActProgressForRewrite(
  */
 export function applyRewriteCleanup(
   state: ReducedGraphState,
-  targetChapterIndex: number
+  targetChapterIndex: number,
+  authorityState: ReducedGraphState = state
 ): ReducedGraphState {
   const outline = cleanOutlineForRewrite(state.outline, targetChapterIndex, state.storyArc)
-  const storyMemory = state.storyMemory
+  const cleanedStoryMemory = state.storyMemory
     ? cleanStoryMemoryForRewrite(state.storyMemory, targetChapterIndex)
     : state.storyMemory
+  const storyMemory =
+    cleanedStoryMemory && authorityState.storyMemory
+      ? carryForwardForeshadowMerges(cleanedStoryMemory, authorityState.storyMemory)
+      : cleanedStoryMemory
   const storyState = state.storyState
     ? cleanStoryStateForRewrite(state.storyState, targetChapterIndex)
     : state.storyState
@@ -281,6 +325,8 @@ export function applyRewriteCleanup(
     ...state,
     outline,
     storyMemory,
+    foreshadowEquivalenceAudit:
+      authorityState.foreshadowEquivalenceAudit ?? state.foreshadowEquivalenceAudit,
     storyState,
     foreshadowStack,
     timeline,

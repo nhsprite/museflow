@@ -1,7 +1,7 @@
 import { diffEvents } from './diff.js'
 import { renderStoryEventLine } from './event-format.js'
 import { countEvidenceParagraphs } from './validator.js'
-import type { StoryEvent, PlotAdvanceEvent } from '../types/story-memory.js'
+import type { StoryEvent, PlotAdvanceEvent, StoryMemory } from '../types/story-memory.js'
 import type { StoryArc } from '../types/outline.js'
 import type { ChapterPlan } from '../agents/types.js'
 import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
@@ -89,21 +89,22 @@ export function completeMissingExpectedEvents(
 }
 
 /**
- * 把本章声称要推进的 mandatory beats 补成 plot-advance 结构化事件。
+ * 把本章声称要推进的 beats 补成 plot-advance 结构化事件。
  *
  * 章节规划（chapterPlan.expectedEvents）可能遗漏这些事件，导致 finalization 阶段报
- * beat_unproven。本函数根据 claimedMandatoryBeatIds 自动为当前幕的每个未覆盖 beat
- * 生成一条 `plot-advance: act-<n> / <beatId>` 的期望事件，供 prompt 展示和后续
- * 自动补全使用。
+ * beat_unproven。本函数根据 claimedMandatoryBeatIds 和 claimedBeatIds 自动为当前幕
+ * 的每个未覆盖 beat 生成一条 plot-advance 期望事件，供 prompt 展示和后续自动补全使用。
  */
-export function augmentExpectedEventsWithMandatoryBeats(
+export function augmentExpectedEventsWithClaimedBeats(
   chapterPlan: ChapterPlan | undefined,
   storyArc: StoryArc | undefined,
-  chapterIndex: number
+  chapterIndex: number,
+  memory?: StoryMemory | null
 ): StoryEvent[] {
   const expectedEvents = chapterPlan?.expectedEvents ?? []
-  const claimedBeatIds = chapterPlan?.claimedMandatoryBeatIds ?? []
-  if (claimedBeatIds.length === 0 || !storyArc) {
+  const claimedMandatoryBeatIds = chapterPlan?.claimedMandatoryBeatIds ?? []
+  const claimedKeyBeatIds = chapterPlan?.claimedBeatIds ?? []
+  if ((claimedMandatoryBeatIds.length === 0 && claimedKeyBeatIds.length === 0) || !storyArc) {
     return expectedEvents
   }
 
@@ -121,8 +122,9 @@ export function augmentExpectedEventsWithMandatoryBeats(
   )
 
   const additionalEvents: PlotAdvanceEvent[] = []
-  for (const beatId of claimedBeatIds) {
+  for (const beatId of claimedMandatoryBeatIds) {
     if (existingBeatIds.has(beatId)) continue
+    if ((memory?.beats[beatId]?.provenByEventIds.length ?? 0) > 0) continue
     const lookup = findMandatoryBeatById(storyArc, beatId)
     if (!lookup || lookup.act.index !== currentAct.index) continue
     additionalEvents.push({
@@ -133,6 +135,25 @@ export function augmentExpectedEventsWithMandatoryBeats(
       plotId: `act-${currentAct.index}`,
       beatId,
     })
+    existingBeatIds.add(beatId)
+  }
+
+  for (const beatId of claimedKeyBeatIds) {
+    if (existingBeatIds.has(beatId)) continue
+    if ((memory?.beats[beatId]?.provenByEventIds.length ?? 0) > 0) continue
+    const keyBeat = storyArc.keyBeats.find(
+      (candidate) => candidate.id === beatId && candidate.deadlineAct === currentAct.index
+    )
+    if (!keyBeat) continue
+    additionalEvents.push({
+      id: generateId('evt'),
+      type: 'plot-advance',
+      chapterIndex,
+      source: 'outline',
+      plotId: 'plot-main',
+      beatId,
+    })
+    existingBeatIds.add(beatId)
   }
 
   return additionalEvents.length > 0 ? [...expectedEvents, ...additionalEvents] : expectedEvents

@@ -19,7 +19,6 @@ import {
   type BeatMappingEntry,
 } from './prompts/chapter-prompt.js'
 import { parseStoryEventsBlock, parseStoryFinalStateBlock } from '../story-memory/parser.js'
-import { augmentExpectedEventsWithMandatoryBeats } from '../story-memory/event-completion.js'
 import {
   CHAPTER_HEADING_PATTERN,
   CHAPTER_TITLE_ONLY_PATTERN,
@@ -176,13 +175,7 @@ ${JSON.stringify(state.chapterPlan, null, 2)}
 </chapter_plan>`
       : ''
 
-    const expectedEventsSection = this.buildExpectedEventsSection(
-      augmentExpectedEventsWithMandatoryBeats(
-        state.chapterPlan,
-        state.storyArc,
-        state.chapterIndex ?? 0
-      )
-    )
+    const expectedEventsSection = this.buildExpectedEventsSection(state.chapterPlan?.expectedEvents)
 
     const taskResolutions = state.chapterPlan?.taskResolutions
     const taskResolutionSection =

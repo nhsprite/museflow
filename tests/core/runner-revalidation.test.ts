@@ -223,6 +223,7 @@ describe('runner revalidation', () => {
     vi.clearAllMocks()
     readChapterContent.mockResolvedValue('chapter content')
     hasStagedChapterContent.mockReturnValue(false)
+    getChapterMarker.mockResolvedValue(undefined)
     mockGraph.getState.mockResolvedValue({
       values: createBaseGraphState(),
       config: { configurable: { checkpoint_id: 'checkpoint-123' } },
@@ -701,6 +702,79 @@ describe('runner revalidation', () => {
     expect(memory.events.map((e: { id: string }) => e.id)).toEqual(['e0'])
     expect(memory.entities.characters['甲']?.locationId).toBe('北京')
     expect(memory.lastChapterIndex).toBe(0)
+  })
+
+  it('carries a valid equivalence merge from latest state into a rewrite marker baseline', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    const introductionEvents: StoryEvent[] = [
+      {
+        id: 'intro-canonical',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-canonical',
+        text: 'canonical fixture',
+        expectedFulfillChapter: 3,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+      {
+        id: 'intro-duplicate',
+        type: 'foreshadow-introduce',
+        foreshadowId: 'fs-duplicate',
+        text: 'duplicate fixture',
+        expectedFulfillChapter: 3,
+        resolutionPolicy: 'must_resolve',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+    ]
+    const markerMemory = applyEvents(createEmptyStoryMemory(), introductionEvents)
+    const latestMemory = applyEvents(markerMemory, [
+      {
+        id: 'merge-detected-during-rewrite',
+        type: 'foreshadow-merge',
+        canonicalForeshadowId: 'fs-canonical',
+        duplicateForeshadowId: 'fs-duplicate',
+        reason: 'same neutral fixture obligation',
+        chapterIndex: 1,
+        source: 'outline',
+      },
+    ])
+    const latestAudit = {
+      protocolVersion: 1 as const,
+      activeCanonicalIds: ['fs-canonical'],
+    }
+    const latestState = createBaseGraphState({
+      currentChapterIndex: 1,
+      storyMemory: latestMemory,
+      foreshadowEquivalenceAudit: latestAudit,
+    })
+    const markerState = createBaseGraphState({
+      currentChapterIndex: 1,
+      storyMemory: markerMemory,
+    })
+    getChapterMarker.mockResolvedValue('checkpoint-before-target')
+    mockGraph.getState.mockImplementation(async (config: Record<string, any>) => ({
+      values: config.configurable.checkpoint_id ? markerState : latestState,
+      config: {
+        configurable: {
+          checkpoint_id: config.configurable.checkpoint_id ?? 'checkpoint-latest',
+        },
+      },
+    }))
+
+    await runOneChapter(
+      'story-1',
+      { mode: 'rewrite', targetChapterIndex: 1, userResponse: true },
+      createMockContext()
+    )
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, any>
+    expect(invokedState.storyMemory.events.map((event: StoryEvent) => event.id)).toContain(
+      'merge-detected-during-rewrite'
+    )
+    expect(invokedState.storyMemory.foreshadows['fs-duplicate']?.mergedInto).toBe('fs-canonical')
+    expect(invokedState.foreshadowEquivalenceAudit).toEqual(latestAudit)
   })
 
   it('resets target and future mandatory beat progress during rewrite', async () => {
