@@ -51,6 +51,7 @@ import {
   renderVerifiedConstraints,
 } from '../utils/verified-constraints.js'
 import {
+  calculateMinimumForeshadowsToFulfillNow,
   getBoundaryBlockingForeshadowDetails,
   normalizeForeshadowCapacity,
   selectForeshadowsForChapter,
@@ -293,14 +294,20 @@ function computeForeshadowConstraintContext(
 
   const planningConfig = getChapterPlanningConfig(state.genre)
   const capacity = normalizeForeshadowCapacity(planningConfig.foreshadowMaxFulfillmentsPerChapter)
-  // Tight 模式：本章之后的剩余章节装不下全部待回收伏笔（每章容量上限），
-  // 本章必须回收调度到的份额，不能再顺延。
-  if (pendingBlockingCount <= (remainingChapters - 1) * capacity) {
+  const minimumRequiredNow = calculateMinimumForeshadowsToFulfillNow({
+    pendingBlockingCount,
+    remainingChapters,
+    hardCapacity: capacity,
+    headroomPerChapter: planningConfig.foreshadowFulfillmentHeadroomPerChapter,
+  })
+  if (minimumRequiredNow === 0) {
     return { ...empty, remainingChapters, pendingBlockingCount }
   }
 
   const blockingIds = new Set(blockingForeshadows.map((f) => f.id))
-  const mustFulfillIds = scheduledIds.filter((id) => blockingIds.has(id))
+  const mustFulfillIds = scheduledIds
+    .filter((id) => blockingIds.has(id))
+    .slice(0, minimumRequiredNow)
   return { scheduledIds, mustFulfillIds, remainingChapters, pendingBlockingCount }
 }
 

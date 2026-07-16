@@ -1133,8 +1133,8 @@ describe('expandOutlineForChapter', () => {
     expect(formattedOutline).not.toContain('【本章自然回收候选】fs-a')
   })
 
-  it('enters tight mode before the last chapter when remaining capacity cannot hold pending foreshadows', async () => {
-    // 第 2 章（幕结束于第 3 章，剩余 2 章），4 个待回收伏笔 > 后续 1 章 × 3 容量 → tight
+  it('requires the minimum share when pending foreshadows exceed future target capacity', async () => {
+    // 第 2 章（幕结束于第 3 章，剩余 2 章），4 个待回收伏笔 - 后续 1 章 × 2 目标容量 = 本章至少 2 个
     const foreshadowIds = ['fs-a', 'fs-b', 'fs-c', 'fs-d']
     const state = stateWithScheduledForeshadows(
       1,
@@ -1146,28 +1146,68 @@ describe('expandOutlineForChapter', () => {
       data: {
         title: '强制回收',
         description: '本章在核心事件中回收调度到的线索。',
-        fulfilledForeshadowIds: ['fs-a', 'fs-b', 'fs-c'],
-        deferredForeshadowIds: [],
+        fulfilledForeshadowIds: ['fs-a', 'fs-b'],
+        deferredForeshadowIds: ['fs-c'],
       },
     })
     planChapterWithOverrideMock.mockResolvedValueOnce({
       chapterPlan: createCompleteChapterPlan({
         chapterIndex: 1,
-        fulfilledForeshadowIds: ['fs-a', 'fs-b', 'fs-c'],
-        expectedEvents: ['fs-a', 'fs-b', 'fs-c'].map((id) => createForeshadowFulfillEvent(id, 1)),
+        fulfilledForeshadowIds: ['fs-a', 'fs-b'],
+        expectedEvents: ['fs-a', 'fs-b'].map((id) => createForeshadowFulfillEvent(id, 1)),
       }),
     })
 
     const result = await expandOutlineForChapter(state, 1, createMockProvider())
 
-    expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-a', 'fs-b', 'fs-c'])
+    expect(result.outline?.[1]?.fulfilledForeshadowIds).toEqual(['fs-a', 'fs-b'])
     const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
       foreshadowObligations?: Array<{ id: string; mustFulfillThisChapter: boolean }>
     }
     expect(jitInput.foreshadowObligations).toEqual([
       expect.objectContaining({ id: 'fs-a', mustFulfillThisChapter: true }),
       expect.objectContaining({ id: 'fs-b', mustFulfillThisChapter: true }),
-      expect.objectContaining({ id: 'fs-c', mustFulfillThisChapter: true }),
+      expect.objectContaining({ id: 'fs-c', mustFulfillThisChapter: false }),
+    ])
+  })
+
+  it('reserves final-chapter foreshadow headroom without extending the act', async () => {
+    const foreshadowIds = ['fs-a', 'fs-b', 'fs-c']
+    const state = stateWithScheduledForeshadows(
+      1,
+      '',
+      foreshadowIds.map((id) => createRequiredForeshadow(id, 2))
+    )
+    chapterOutlineRunMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        title: '提前分担',
+        description: '本章先回收一条线索，为幕末规划保留余量。',
+        fulfilledForeshadowIds: ['fs-a'],
+        deferredForeshadowIds: ['fs-b', 'fs-c'],
+      },
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({
+      chapterPlan: createCompleteChapterPlan({
+        chapterIndex: 1,
+        fulfilledForeshadowIds: ['fs-a'],
+        expectedEvents: [createForeshadowFulfillEvent('fs-a', 1)],
+      }),
+    })
+
+    const result = await expandOutlineForChapter(state, 1, createMockProvider())
+
+    const jitInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      foreshadowObligations?: Array<{ id: string; mustFulfillThisChapter: boolean }>
+    }
+    expect(jitInput.foreshadowObligations).toEqual([
+      expect.objectContaining({ id: 'fs-a', mustFulfillThisChapter: true }),
+      expect.objectContaining({ id: 'fs-b', mustFulfillThisChapter: false }),
+      expect.objectContaining({ id: 'fs-c', mustFulfillThisChapter: false }),
+    ])
+    expect(result.storyArc?.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
+      [1, 3],
+      [4, 4],
     ])
   })
 

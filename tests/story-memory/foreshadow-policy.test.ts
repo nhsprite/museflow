@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  calculateMinimumForeshadowsToFulfillNow,
   classifyForeshadows,
   groupActiveForeshadowsByPolicy,
   getBoundaryBlockingForeshadowDetails,
   getBoundaryBlockingForeshadows,
   getRequiredForeshadowsForScheduling,
   isValidForeshadowDeadline,
+  normalizeForeshadowHeadroom,
   projectForeshadowStack,
   selectForeshadowsForChapter,
   selectOpportunisticForeshadowsForChapter,
@@ -333,6 +335,33 @@ describe('foreshadow deadline policy', () => {
     }
   })
 
+  it('normalizes planning headroom below the hard per-chapter capacity', () => {
+    expect(normalizeForeshadowHeadroom(3, 1)).toBe(1)
+    expect(normalizeForeshadowHeadroom(3, 9)).toBe(2)
+    expect(normalizeForeshadowHeadroom(1, 1)).toBe(0)
+    expect(normalizeForeshadowHeadroom(3, -1)).toBe(0)
+    expect(normalizeForeshadowHeadroom(3, Number.NaN)).toBe(0)
+  })
+
+  it('requires only the minimum share needed to preserve future planning headroom', () => {
+    expect(
+      calculateMinimumForeshadowsToFulfillNow({
+        pendingBlockingCount: 3,
+        remainingChapters: 2,
+        hardCapacity: 3,
+        headroomPerChapter: 1,
+      })
+    ).toBe(1)
+    expect(
+      calculateMinimumForeshadowsToFulfillNow({
+        pendingBlockingCount: 3,
+        remainingChapters: 1,
+        hardCapacity: 3,
+        headroomPerChapter: 1,
+      })
+    ).toBe(3)
+  })
+
   it('includes every valid required unresolved foreshadow in final-act scheduling', () => {
     const memory: StoryMemory = {
       ...createEmptyStoryMemory(),
@@ -393,6 +422,10 @@ describe('foreshadow deadline policy', () => {
 
   it('defaults per-chapter foreshadow scheduling capacity to three', () => {
     expect(DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowMaxFulfillmentsPerChapter).toBe(3)
+  })
+
+  it('reserves one foreshadow slot of planning headroom by default', () => {
+    expect(DEFAULT_CHAPTER_PLANNING_CONFIG.foreshadowFulfillmentHeadroomPerChapter).toBe(1)
   })
 
   it('defaults per-chapter opportunistic foreshadow capacity to one', () => {

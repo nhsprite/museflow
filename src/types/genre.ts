@@ -47,6 +47,8 @@ export interface ChapterPlanningConfig {
   foreshadowMaxStackSize: number
   /** 单章最多主动回收的 required 伏笔数量 */
   foreshadowMaxFulfillmentsPerChapter: number
+  /** 每个未来章节为伏笔规划保留的容量余量 */
+  foreshadowFulfillmentHeadroomPerChapter: number
   /** 单章最多提供的无期限伏笔自然回收候选数量；0 表示关闭 */
   foreshadowMaxOpportunisticCandidatesPerChapter: number
   /** 进入收尾阶段前剩余章节比例 */

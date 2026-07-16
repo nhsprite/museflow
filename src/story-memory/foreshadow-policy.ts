@@ -194,6 +194,28 @@ export function normalizeForeshadowCapacity(capacity: number): number {
   return Number.isFinite(capacity) ? Math.max(1, Math.floor(capacity)) : 1
 }
 
+export function normalizeForeshadowHeadroom(hardCapacity: number, value: number): number {
+  const capacity = normalizeForeshadowCapacity(hardCapacity)
+  if (capacity <= 1 || !Number.isFinite(value)) return 0
+  return Math.min(capacity - 1, Math.max(0, Math.floor(value)))
+}
+
+export function calculateMinimumForeshadowsToFulfillNow(input: {
+  pendingBlockingCount: number
+  remainingChapters: number
+  hardCapacity: number
+  headroomPerChapter: number
+}): number {
+  const hardCapacity = normalizeForeshadowCapacity(input.hardCapacity)
+  const headroom = normalizeForeshadowHeadroom(hardCapacity, input.headroomPerChapter)
+  const targetCapacity = Math.max(1, hardCapacity - headroom)
+  const futureChapters = Math.max(0, Math.floor(input.remainingChapters) - 1)
+  return Math.min(
+    hardCapacity,
+    Math.max(0, Math.floor(input.pendingBlockingCount) - futureChapters * targetCapacity)
+  )
+}
+
 export function selectForeshadowsForChapter(
   memory: StoryMemory,
   chapterNumber: number,
