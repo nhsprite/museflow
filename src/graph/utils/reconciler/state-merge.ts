@@ -1,6 +1,6 @@
 import type { StoryState, PendingTask, CanonicalFact } from '../../../types/story-state.js'
 import { createEmptyStoryState } from '../../../storage/meta/stores/story-state.js'
-import { mergeCanonicalRecords, canonicalizeItemName } from '../../../utils/items.js'
+import { mergeItemRecordsExact } from '../../../utils/items.js'
 import { generateId } from '../../../utils/id.js'
 import { findMatchingKey, findMatchingKeys } from './format.js'
 import { isCharacterSubject } from './timeline.js'
@@ -104,8 +104,8 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     }
   }
 
-  const mergedItems = mergeCanonicalRecords(base.keyItemsLocation, safeDelta.keyItemsLocation)
-  const mergedItemStates = mergeCanonicalRecords(base.keyItemsState, safeDelta.keyItemsState)
+  const mergedItems = mergeItemRecordsExact(base.keyItemsLocation, safeDelta.keyItemsLocation)
+  const mergedItemStates = mergeItemRecordsExact(base.keyItemsState, safeDelta.keyItemsState)
 
   const mergedPlots = [...base.activePlots]
   for (const plot of safeDelta.activePlots) {
@@ -253,18 +253,6 @@ export function applyCanonicalFactsToState(
       } else {
         result.keyItemsLocation[fact.subject] = fact.value
       }
-
-      const canonical = canonicalizeItemName(fact.subject)
-      for (const key of Object.keys(result.keyItemsLocation)) {
-        if (canonicalizeItemName(key) === canonical) {
-          result.keyItemsLocation[key] = fact.value
-        }
-      }
-      for (const key of Object.keys(result.characterLocations)) {
-        if (canonicalizeItemName(key) === canonical) {
-          result.characterLocations[key] = fact.value
-        }
-      }
     }
 
     if (fact.attribute === 'status') {
@@ -272,18 +260,6 @@ export function applyCanonicalFactsToState(
         result.characterStatus[fact.subject] = fact.value
       } else {
         result.keyItemsState[fact.subject] = fact.value
-      }
-
-      const canonical = canonicalizeItemName(fact.subject)
-      for (const key of Object.keys(result.keyItemsState)) {
-        if (canonicalizeItemName(key) === canonical) {
-          result.keyItemsState[key] = fact.value
-        }
-      }
-      for (const key of Object.keys(result.characterStatus)) {
-        if (canonicalizeItemName(key) === canonical) {
-          result.characterStatus[key] = fact.value
-        }
       }
     }
   }

@@ -69,13 +69,15 @@ function makeProposal(overrides: Partial<StateRepairProposal> = {}): StateRepair
   }
 }
 
-function makeIssue(): Issue {
+function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
     id: 'issue-1',
+    ruleId: 'test.state-corruption',
     type: 'consistency',
     severity: 'error',
     dimension: 'structured_state',
     description: '旧盒位置记录与第 25 章正文矛盾',
+    ...overrides,
   }
 }
 
@@ -201,6 +203,67 @@ describe('validateStateRepairProposal', () => {
 })
 
 describe('repairCorruptedState', () => {
+  it('filters relevant facts only by verified issue subjects', async () => {
+    const provider: ModelProvider = {
+      chat: vi.fn(),
+      chatStructured: vi.fn().mockResolvedValue({ proposals: [] }),
+    }
+    const storyState = buildState({
+      canonicalFacts: [
+        {
+          id: 'fact-subject',
+          subject: 'c-1',
+          attribute: 'status',
+          value: 'SUBJECT_FACT_MARKER',
+          establishedIn: 1,
+        },
+        {
+          id: 'fact-actual-value',
+          subject: 'item-1',
+          attribute: 'status',
+          value: 'ACTUAL_VALUE_FACT_MARKER',
+          establishedIn: 1,
+        },
+        {
+          id: 'fact-expected-value',
+          subject: 'loc-b',
+          attribute: 'status',
+          value: 'EXPECTED_VALUE_FACT_MARKER',
+          establishedIn: 1,
+        },
+      ],
+    })
+
+    await repairCorruptedState(
+      {
+        issues: [
+          makeIssue({
+            subject: 'c-1',
+            actualValue: 'item-1',
+            expectedValue: 'loc-b',
+          }),
+        ],
+        storyState,
+        storyMemory: buildMemory(),
+        chapterSummaries: [],
+        currentChapterIndex: 24,
+      },
+      provider
+    )
+
+    const messages = vi.mocked(provider.chatStructured!).mock.calls[0]?.[0] as Array<{
+      role: string
+      content: string
+    }>
+    const userMessage = messages.find((message) => message.role === 'user')?.content ?? ''
+    const relatedFactsSection =
+      userMessage.match(/【相关权威事实（按问题涉及的实体筛选）】([\s\S]*?)【已知实体 id】/)?.[1] ??
+      ''
+    expect(relatedFactsSection).toContain('SUBJECT_FACT_MARKER')
+    expect(relatedFactsSection).not.toContain('ACTUAL_VALUE_FACT_MARKER')
+    expect(relatedFactsSection).not.toContain('EXPECTED_VALUE_FACT_MARKER')
+  })
+
   it('writes accepted proposals as state_repair canonical facts and merges them into storyState', async () => {
     const provider: ModelProvider = {
       chat: vi.fn(),

@@ -1,6 +1,5 @@
 import type { StoryState, PendingTask, CanonicalFact } from '../../../types/story-state.js'
 import type { StoryMemory } from '../../../types/story-memory.js'
-import { canonicalizeItemName } from '../../../utils/items.js'
 import { findActiveCanonicalFact } from '../../../utils/canonical-facts.js'
 
 /** formatStoryState 渲染上限：避免长篇后期 prompt 无界膨胀。数组均按时间升序追加，保留最新若干条。 */
@@ -66,29 +65,11 @@ export function findMatchingKey(
   record: Record<string, string>,
   subject: string
 ): string | undefined {
-  if (record[subject] !== undefined) return subject
-  const canonicalSubject = canonicalizeItemName(subject)
-  if (canonicalSubject.length === 0) return undefined
-  for (const key of Object.keys(record)) {
-    if (canonicalizeItemName(key) === canonicalSubject) return key
-  }
-  return undefined
+  return record[subject] !== undefined ? subject : undefined
 }
 
 export function findMatchingKeys(record: Record<string, string>, subject: string): string[] {
-  const keys: string[] = []
-  const canonicalSubject = canonicalizeItemName(subject)
-  const hasCanonical = canonicalSubject.length > 0
-  for (const key of Object.keys(record)) {
-    if (key === subject) {
-      keys.push(key)
-      continue
-    }
-    if (hasCanonical && canonicalizeItemName(key) === canonicalSubject) {
-      keys.push(key)
-    }
-  }
-  return keys
+  return record[subject] !== undefined ? [subject] : []
 }
 
 /**
@@ -125,29 +106,9 @@ export function formatCanonicalItemEntries(
   const items = Object.entries(entries)
   if (items.length === 0) return []
 
-  const groups = new Map<string, { representative: string; aliases: string[]; value: string }>()
-
-  for (const [item, value] of items) {
-    const canonical = canonicalizeItemName(item)
-    const existing = groups.get(canonical)
-    if (!existing) {
-      groups.set(canonical, { representative: item, aliases: [], value })
-      continue
-    }
-
-    if (item.length < existing.representative.length) {
-      existing.aliases.push(existing.representative)
-      existing.representative = item
-    } else if (item !== existing.representative) {
-      existing.aliases.push(item)
-    }
-    existing.value = value
-  }
-
   const lines = [sectionTitle]
-  for (const { representative, aliases, value } of groups.values()) {
-    const aliasNote = aliases.length > 0 ? `（亦称：${aliases.join('、')}）` : ''
-    lines.push(`  ${representative}${aliasNote}：${value}`)
+  for (const [entityId, value] of items) {
+    lines.push(`  ${entityId}：${value}`)
   }
   return lines
 }
@@ -157,9 +118,8 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
 
   // 位置投影与权威事实的优先级：某实体存在 active 的 canonicalFact（attribute=location）时，
   // 其位置以【权威事实】段为准，投影条目跳过，避免同一实体两个矛盾位置同时渲染。
-  // key 对齐保留 canonicalizeItemName 兼容（历史数据存在带装饰括号的中文名 key）。
   const hasCanonicalLocation = (key: string): boolean =>
-    findActiveCanonicalFact(storyState, key, 'location', { alignItemNames: true }) !== undefined
+    findActiveCanonicalFact(storyState, key, 'location') !== undefined
 
   const locations = Object.entries(storyState.characterLocations).filter(
     ([char]) => !hasCanonicalLocation(char)

@@ -1,35 +1,12 @@
-import { logger } from '../../../utils/logger.js'
-import type {
-  StoryState,
-  SupersededFact,
-  CanonicalFact,
-  SanitizationReport,
-} from '../../../types/story-state.js'
+import type { StoryState, SanitizationReport } from '../../../types/story-state.js'
 import type { Character } from '../../../types/character.js'
-import { canonicalizeItemName, resolveCanonicalItemGroup } from '../../../utils/items.js'
+import { mergeItemRecordsExact } from '../../../utils/items.js'
 import { buildCharacterWhitelist } from '../../../utils/character-whitelist.js'
 
 export function detectAmbiguousItemNames(
-  state: StoryState
+  _state: StoryState
 ): Array<{ location: string; items: string[] }> {
-  const byLocation = new Map<string, string[]>()
-  for (const [item, location] of Object.entries(state.keyItemsLocation)) {
-    const list = byLocation.get(location) ?? []
-    if (!list.includes(item)) {
-      list.push(item)
-    }
-    byLocation.set(location, list)
-  }
-
-  const ambiguous: Array<{ location: string; items: string[] }> = []
-  for (const [location, items] of byLocation) {
-    if (items.length <= 1) continue
-    const canonicalSet = new Set(items.map((item) => canonicalizeItemName(item)))
-    if (canonicalSet.size < items.length) {
-      ambiguous.push({ location, items })
-    }
-  }
-  return ambiguous
+  return []
 }
 
 export function sanitizeStoryState(
@@ -42,7 +19,6 @@ export function sanitizeStoryState(
   }
 ): SanitizationReport {
   const whitelist = buildCharacterWhitelist(characters)
-  const chapterIndex = options?.chapterIndex ?? -1
 
   const establishedNames =
     options?.preserveExisting && options?.existingStoryState
@@ -80,85 +56,14 @@ export function sanitizeStoryState(
 
   const removedCharacters = Array.from(removedCharactersSet)
 
-  const itemGroups = new Map<string, Array<{ item: string; location: string }>>()
-  for (const [item, location] of Object.entries(state.keyItemsLocation)) {
-    const canonical = canonicalizeItemName(item)
-    if (canonical.length === 0) continue
-    const group = itemGroups.get(canonical) ?? []
-    group.push({ item, location })
-    itemGroups.set(canonical, group)
-  }
-
-  const keyItemsLocation: Record<string, string> = {}
+  const keyItemsLocation = mergeItemRecordsExact({}, state.keyItemsLocation)
   const itemLocationConflicts: Array<{ item: string; locations: string[] }> = []
-  const newSupersededFacts: SupersededFact[] = []
-  const newCanonicalFacts: CanonicalFact[] = []
   // Note: plot/secret filtering is intentionally not implemented here because
   // activePlots and revealedSecrets are free-text arrays without structured
   // character associations. Filtering them by substring would violate the
   // "no natural-language string matching for semantics" rule.
 
-  for (const group of itemGroups.values()) {
-    const distinctLocations = Array.from(new Set(group.map((g) => g.location)))
-    const hasConflict = distinctLocations.length > 1
-    if (hasConflict) {
-      const representative = group.reduce(
-        (a, b) => (a.item.length >= b.item.length ? a : b),
-        group[0]!
-      )
-      itemLocationConflicts.push({
-        item: representative.item,
-        locations: distinctLocations,
-      })
-    }
-
-    if (hasConflict) {
-      const { winner, superseded } = resolveCanonicalItemGroup(
-        group.map((g) => ({ item: g.item, value: g.location }))
-      )
-      const canonicalSubject = canonicalizeItemName(winner.item)
-      const now = Date.now()
-
-      const supersededFacts: SupersededFact[] = superseded.map((s) => ({
-        subject: canonicalSubject,
-        oldFact: s.value,
-        reason: `与同一规范名 "${canonicalSubject}" 的权威位置 "${winner.value}" 冲突，已自动归档`,
-        chapterIndex,
-      }))
-
-      const canonical: CanonicalFact = {
-        id: `cf_${chapterIndex}_${canonicalSubject}_${now}`,
-        subject: canonicalSubject,
-        attribute: 'location',
-        value: winner.value,
-        establishedIn: chapterIndex,
-        confidence: 'medium',
-        source: 'reconciliation',
-        supersedes: supersededFacts.map((f) => ({
-          chapter: chapterIndex,
-          oldValue: f.oldFact,
-        })),
-      }
-
-      keyItemsLocation[winner.item] = winner.value
-      newSupersededFacts.push(...supersededFacts)
-      newCanonicalFacts.push(canonical)
-    } else {
-      const best = group[group.length - 1] ?? group[0]!
-      keyItemsLocation[best.item] = best.location
-    }
-  }
-
   const ambiguousItems = detectAmbiguousItemNames(state)
-  if (ambiguousItems.length > 0) {
-    logger.warn('[MuseFlow] 检测到同一位置下多个歧义物品名：')
-    for (const { location, items } of ambiguousItems) {
-      logger.warn(`  位置 "${location}" 对应物品：${items.join(' / ')}`)
-    }
-  }
-
-  const mergedSupersededFacts = [...(state.supersededFacts ?? []), ...newSupersededFacts]
-  const mergedCanonicalFacts = [...(state.canonicalFacts ?? []), ...newCanonicalFacts]
 
   return {
     state: {
@@ -168,8 +73,8 @@ export function sanitizeStoryState(
       keyItemsLocation,
       activePlots: [...state.activePlots],
       revealedSecrets: [...state.revealedSecrets],
-      supersededFacts: mergedSupersededFacts,
-      canonicalFacts: mergedCanonicalFacts,
+      supersededFacts: [...(state.supersededFacts ?? [])],
+      canonicalFacts: [...(state.canonicalFacts ?? [])],
     },
     removedCharacters,
     itemLocationConflicts,

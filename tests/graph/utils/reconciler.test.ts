@@ -28,6 +28,7 @@ import type { Character } from '../../../src/types/character.js'
 import type { ModelProvider } from '../../../src/model/provider.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { ChapterSession } from '../../../src/core/chapter-generation/routing/types.js'
+import { mergeItemRecordsExact } from '../../../src/utils/items.js'
 
 const testTempDir = join(tmpdir(), `museflow-reconciler-${randomUUID().slice(0, 8)}`)
 
@@ -109,6 +110,13 @@ const characters: Character[] = [
 ]
 
 describe('mergeStoryState', () => {
+  it('keeps decorated and undecorated item subjects distinct', () => {
+    expect(mergeItemRecordsExact({ item_plain: 'loc-a' }, { '《item_plain》': 'loc-b' })).toEqual({
+      item_plain: 'loc-a',
+      '《item_plain》': 'loc-b',
+    })
+  })
+
   it('keeps parenthetical qualified base items when delta does not mention them', () => {
     const existing: StoryState = {
       ...emptyState(),
@@ -230,6 +238,22 @@ describe('mergeStoryState', () => {
 })
 
 describe('sanitizeStoryState', () => {
+  it('does not infer ambiguity or merge identity from item wrappers', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      keyItemsLocation: {
+        item_plain: 'loc-a',
+        '《item_plain》': 'loc-b',
+      },
+    }
+
+    const report = sanitizeStoryState(state, characters)
+
+    expect(report.state.keyItemsLocation).toEqual(state.keyItemsLocation)
+    expect(report.itemLocationConflicts).toEqual([])
+    expect(report.ambiguousItems).toEqual([])
+  })
+
   it('writes exact character names and aliases as EntityId keys', () => {
     const state: StoryState = {
       ...emptyState(),
@@ -304,7 +328,7 @@ describe('sanitizeStoryState', () => {
     expect(report.removedCharacters).toContain('配角甲')
   })
 
-  it('detects conflicting item locations', () => {
+  it('keeps wrapper-distinct item locations without inferring a conflict', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -313,7 +337,8 @@ describe('sanitizeStoryState', () => {
       },
     }
     const report = sanitizeStoryState(state, characters)
-    expect(report.itemLocationConflicts.length).toBeGreaterThan(0)
+    expect(report.state.keyItemsLocation).toEqual(state.keyItemsLocation)
+    expect(report.itemLocationConflicts).toEqual([])
   })
 
   it('keeps parenthetical qualified item locations without generating alias conflicts', () => {
@@ -355,7 +380,7 @@ describe('sanitizeStoryState', () => {
     expect(report.state.revealedSecrets).toEqual(['主角发现密信被转移出王府'])
   })
 
-  it('detects ambiguous item names at same location', () => {
+  it('does not infer ambiguous item names from display wrappers', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -364,8 +389,7 @@ describe('sanitizeStoryState', () => {
       },
     }
     const report = sanitizeStoryState(state, characters)
-    expect(report.ambiguousItems.length).toBeGreaterThan(0)
-    expect(report.ambiguousItems[0].items).toContain('手记')
+    expect(report.ambiguousItems).toEqual([])
   })
 
   it('formatStateConflicts includes removed characters and facts', () => {
@@ -378,7 +402,7 @@ describe('sanitizeStoryState', () => {
     expect(text).toContain('无名路人甲')
   })
 
-  it('formats state conflicts into instructions', () => {
+  it('does not format inferred item conflicts', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -388,9 +412,7 @@ describe('sanitizeStoryState', () => {
     }
     const report = sanitizeStoryState(state, characters)
     const formatted = formatStateConflicts(report)
-    expect(formatted).toContain('物品位置冲突')
-    expect(formatted).toContain('书桌抽屉')
-    expect(formatted).toContain('木箱暗格')
+    expect(formatted).toBe('')
   })
 })
 
@@ -1108,7 +1130,7 @@ describe('applyAuthorOverrides', () => {
 })
 
 describe('formatStoryState', () => {
-  it('deduplicates item aliases by canonical name', () => {
+  it('renders exact item identities without grouping aliases', () => {
     const state: StoryState = {
       ...emptyState(),
       keyItemsLocation: {
@@ -1123,11 +1145,12 @@ describe('formatStoryState', () => {
       },
     }
     const text = formatStoryState(state)
-    expect(text).toContain('长剑')
-    expect(text).toContain('亦称')
+    expect(text).toContain('长剑：墙上')
+    expect(text).toContain('《长剑》：墙上')
+    expect(text).toContain('长剑（祖传）：墙上')
+    expect(text).not.toContain('亦称')
     expect(text).toContain('血书：怀中')
     expect(text).toContain('锋利')
-    expect(text).not.toMatch(/^\s*《长剑》/m)
   })
 
   function buildEntities(): StoryMemory['entities'] {

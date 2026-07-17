@@ -198,18 +198,11 @@ function buildRepairMessages(input: StateRepairInput, memory: StoryMemory): Mess
   const recentSummaries = input.chapterSummaries.slice(-5)
 
   // 提取问题中涉及的实体，把相关权威事实/被覆盖事实展示给模型，帮助定位历史污染
-  const involvedSubjects = new Set<string>()
-  for (const issue of input.issues) {
-    if (issue.subject) {
-      involvedSubjects.add(issue.subject.split('/')[0]!.trim())
-    }
-    if (issue.actualValue && !issue.actualValue.includes(' ')) {
-      involvedSubjects.add(issue.actualValue)
-    }
-    if (issue.expectedValue && !issue.expectedValue.includes(' ')) {
-      involvedSubjects.add(issue.expectedValue)
-    }
-  }
+  const involvedSubjects = new Set(
+    input.issues
+      .map((issue) => issue.subject)
+      .filter((subject): subject is string => subject !== undefined && knownEntityIds.has(subject))
+  )
   const relevantFacts = (input.storyState.canonicalFacts ?? []).filter((f) =>
     involvedSubjects.has(f.subject)
   )

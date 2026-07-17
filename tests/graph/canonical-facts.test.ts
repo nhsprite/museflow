@@ -129,7 +129,9 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺（柏字残画）', '血封信笺'])
+    expect(Object.keys(merged.keyItemsLocation).sort()).toEqual(
+      ['血封信笺（柏字残画）', '血封信笺'].sort()
+    )
     expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('妆台抽屉')
     expect(merged.keyItemsLocation['血封信笺']).toBe('妆台抽屉')
   })
@@ -160,7 +162,9 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsState)).toEqual(['血封信笺（柏字残画）', '血封信笺'])
+    expect(Object.keys(merged.keyItemsState).sort()).toEqual(
+      ['血封信笺（柏字残画）', '血封信笺'].sort()
+    )
     expect(merged.keyItemsState['血封信笺（柏字残画）']).toBe('焚毁')
     expect(merged.keyItemsState['血封信笺']).toBe('完整')
   })
@@ -179,7 +183,9 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺', '血封信笺（柏字残画）'])
+    expect(Object.keys(merged.keyItemsLocation).sort()).toEqual(
+      ['血封信笺', '血封信笺（柏字残画）'].sort()
+    )
     expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
     expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('苏半城妆台抽屉附近')
   })
@@ -198,7 +204,9 @@ describe('mergeStoryState', () => {
     }
 
     const merged = mergeStoryState(existing, delta)
-    expect(Object.keys(merged.keyItemsLocation)).toEqual(['血封信笺', '血封信笺（柏字残画）'])
+    expect(Object.keys(merged.keyItemsLocation).sort()).toEqual(
+      ['血封信笺', '血封信笺（柏字残画）'].sort()
+    )
     expect(merged.keyItemsLocation['血封信笺']).toBe('藏经阁夹壁中')
     expect(merged.keyItemsLocation['血封信笺（柏字残画）']).toBe('苏半城妆台抽屉附近')
   })
