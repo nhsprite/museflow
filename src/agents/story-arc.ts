@@ -4,6 +4,7 @@ import type { StoryArcAgentInput } from './types.js'
 import type { StoryArc } from '../types/outline.js'
 import { parseJsonFromLLM } from '../utils/json.js'
 import { buildStoryArcSystemPrompt, buildStoryArcUserPrompt } from './prompts/story-arc-prompt.js'
+import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
 
 export class StoryArcAgent extends BaseAgent<StoryArcAgentInput> {
   constructor(provider: ModelProvider) {
@@ -11,9 +12,10 @@ export class StoryArcAgent extends BaseAgent<StoryArcAgentInput> {
   }
 
   protected buildPrompt(state: StoryArcAgentInput): import('../model/provider.js').Message[] {
+    const planningConfig = getChapterPlanningConfig(state.genre)
     return [
       this.systemMessage(buildStoryArcSystemPrompt()),
-      this.userMessage(buildStoryArcUserPrompt(state)),
+      this.userMessage(buildStoryArcUserPrompt(state, planningConfig)),
     ]
   }
 

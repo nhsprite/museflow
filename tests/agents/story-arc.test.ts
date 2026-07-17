@@ -3,6 +3,21 @@ import { StoryArcAgent } from '../../src/agents/story-arc.js'
 import type { StoryArcAgentInput } from '../../src/agents/types.ts'
 import type { ModelProvider } from '../../src/model/provider.ts'
 
+vi.mock('../../src/utils/chapter-planning.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/chapter-planning.js')>()
+  return {
+    ...actual,
+    getChapterPlanningConfig: (genreName: string) =>
+      genreName === 'configurable-test'
+        ? {
+            ...actual.DEFAULT_CHAPTER_PLANNING_CONFIG,
+            storyActCountMin: 2,
+            storyActCountMax: 7,
+          }
+        : actual.getChapterPlanningConfig(genreName),
+  }
+})
+
 const mockChat = vi.fn(async (): Promise<string> => '')
 
 function createMockProvider(): ModelProvider {
@@ -13,6 +28,30 @@ function createMockProvider(): ModelProvider {
 }
 
 describe('StoryArcAgent', () => {
+  it('renders configurable act limits without fixed numeric examples', async () => {
+    const agent = new StoryArcAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        totalChapters: 20,
+        acts: [{ index: 1, startChapter: 1, endChapter: 20 }],
+        keyBeats: [],
+      })
+    )
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'configurable-test',
+      totalChapters: 20,
+    } as StoryArcAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('划分为 2-7 幕')
+    expect(prompt).not.toContain('3-5 幕')
+    expect(prompt).not.toContain('"endChapter": 10')
+    expect(prompt).not.toContain('"deadlineAct": 2')
+  })
+
   it('parses story arc with acts and key beats', async () => {
     const agent = new StoryArcAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(

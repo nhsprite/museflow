@@ -3,6 +3,23 @@ import { ChapterOutlineAgent } from '../../src/agents/chapter-outline.js'
 import type { ChapterOutlineAgentInput } from '../../src/agents/types.ts'
 import type { ModelProvider } from '../../src/model/provider.ts'
 
+vi.mock('../../src/utils/chapter-planning.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/chapter-planning.js')>()
+  return {
+    ...actual,
+    getChapterPlanningConfig: (genreName: string) =>
+      genreName === 'configurable-test'
+        ? {
+            ...actual.DEFAULT_CHAPTER_PLANNING_CONFIG,
+            outlineDescriptionLengthMin: 80,
+            outlineDescriptionLengthMax: 120,
+            outlineDescriptionSentenceCountMin: 2,
+            outlineDescriptionSentenceCountMax: 4,
+          }
+        : actual.getChapterPlanningConfig(genreName),
+  }
+})
+
 const mockChat = vi.fn(async (): Promise<string> => '')
 
 function createMockProvider(): ModelProvider {
@@ -37,6 +54,30 @@ describe('ChapterOutlineAgent', () => {
     ],
     keyBeats: [{ id: 'A1-B1', beat: '核心秘密被主角获悉', deadlineAct: 1, required: true }],
   }
+
+  it('renders configurable outline description shape', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(
+      JSON.stringify({
+        title: '风雨欲来',
+        description: '本章继续推进当前幕的核心冲突。',
+      })
+    )
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'configurable-test',
+      totalChapters: 6,
+      chapterIndex: 0,
+      storyArc,
+      actProgress: { 1: { consumed: [], pending: ['主角失去庇护'] } },
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('2–4 句描述（80–120 字）')
+    expect(prompt).not.toContain('1–2 句描述（30–60 字）')
+  })
 
   it('parses chapter outline with claimed beats', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())

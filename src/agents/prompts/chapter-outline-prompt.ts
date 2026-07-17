@@ -1,5 +1,6 @@
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { renderTemplate } from '../../utils/template.js'
+import type { ChapterPlanningConfig } from '../../types/genre.js'
 import { buildForeshadowPlanningSection } from './fragments/index.js'
 
 const CHAPTER_OUTLINE_SYSTEM_PROMPT =
@@ -37,7 +38,7 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 </context>
 
 <instruction>
-1. 生成本章标题和 1–2 句描述（30–60 字）。
+1. 生成本章标题和 {OUTLINE_DESCRIPTION_SENTENCE_COUNT_MIN}–{OUTLINE_DESCRIPTION_SENTENCE_COUNT_MAX} 句描述（{OUTLINE_DESCRIPTION_LENGTH_MIN}–{OUTLINE_DESCRIPTION_LENGTH_MAX} 字）。
 2. 标题和描述必须与当前幕的叙事功能和主题一致。
 3. 必须尊重 <story_state>、<canonical_facts> 和 <current_state_snapshot> 中的权威事实，不得与之矛盾。本章 description 中的角色位置、物品位置和时间起点必须与 <current_state_snapshot> 保持一致；如需改变这些状态，必须通过清晰的角色动作完成转移，不得让角色或物品瞬间跳转。
 4. 优先推进当前幕尚未消费的 mandatory beats；如果本章不适合推进任何 beat，请说明原因。
@@ -90,13 +91,24 @@ export interface ChapterOutlinePromptSections {
 
 export function buildChapterOutlineUserPrompt(
   state: import('../types.js').ChapterOutlineAgentInput,
-  sections: ChapterOutlinePromptSections
+  sections: ChapterOutlinePromptSections,
+  planningConfig: Pick<
+    ChapterPlanningConfig,
+    | 'outlineDescriptionLengthMin'
+    | 'outlineDescriptionLengthMax'
+    | 'outlineDescriptionSentenceCountMin'
+    | 'outlineDescriptionSentenceCountMax'
+  >
 ): string {
   const storyArc = state.storyArc
   const displayChapterNumber = toDisplayChapterNumber(state.chapterIndex ?? 0)
 
   return renderTemplate(CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE, {
     DISPLAY_CHAPTER_NUMBER: displayChapterNumber,
+    OUTLINE_DESCRIPTION_LENGTH_MIN: planningConfig.outlineDescriptionLengthMin,
+    OUTLINE_DESCRIPTION_LENGTH_MAX: planningConfig.outlineDescriptionLengthMax,
+    OUTLINE_DESCRIPTION_SENTENCE_COUNT_MIN: planningConfig.outlineDescriptionSentenceCountMin,
+    OUTLINE_DESCRIPTION_SENTENCE_COUNT_MAX: planningConfig.outlineDescriptionSentenceCountMax,
     ACT_SECTION: sections.actSection,
     NEXT_ACT_SECTION: sections.nextActSection,
     CLOSING_PHASE_SECTION: sections.closingPhaseSection,

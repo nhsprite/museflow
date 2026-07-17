@@ -91,7 +91,7 @@ ${formatMandatoryBeatList(consumedBeats)}
 
     return [
       this.systemMessage(buildChapterOutlineSystemPrompt()),
-      this.userMessage(buildChapterOutlineUserPrompt(state, sections)),
+      this.userMessage(buildChapterOutlineUserPrompt(state, sections, planningConfig)),
     ]
   }
 
