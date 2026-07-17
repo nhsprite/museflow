@@ -366,6 +366,7 @@ describe('ConsistencyAgent outline detail tolerance', () => {
     expect(issues).toHaveLength(1)
     expect(issues[0].severity).toBe('warning')
     expect(issues[0].dimension).toBe('quality')
+    expect(issues[0].ruleId).toBe('consistency.outline_deviation.outline.consistency')
   })
 
   it('keeps outline core deviation as error when source_reference is provided', async () => {
@@ -394,5 +395,6 @@ describe('ConsistencyAgent outline detail tolerance', () => {
     expect(issues).toHaveLength(1)
     expect(issues[0].severity).toBe('error')
     expect(issues[0].dimension).not.toBe('quality')
+    expect(issues[0].ruleId).toBe('consistency.outline_deviation.outline.consistency')
   })
 })

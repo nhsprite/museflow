@@ -18,10 +18,14 @@ describe('normalizeIssues', () => {
         },
       ],
       'consistency',
-      undefined
+      undefined,
+      {
+        ruleId: (raw, mappedType) => `${mappedType}.${raw.aspect ?? 'general'}`,
+      }
     )
 
     expect(issues).toHaveLength(1)
+    expect(issues[0]?.ruleId).toBe('consistency.general')
   })
 
   it('drops withdrawn issues only through structured model judgment', async () => {
@@ -42,7 +46,10 @@ describe('normalizeIssues', () => {
         },
       ],
       'consistency',
-      provider
+      provider,
+      {
+        ruleId: (raw, mappedType) => `${mappedType}.${raw.aspect ?? 'general'}`,
+      }
     )
 
     expect(issues).toHaveLength(0)

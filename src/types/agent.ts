@@ -46,6 +46,8 @@ export interface IssueLocationRef {
 
 export interface Issue {
   id: string
+  /** 稳定的机器规则标识；跨重试轮次不得由自然语言描述派生 */
+  ruleId: string
   type: IssueType
   severity: IssueSeverity
   description: string

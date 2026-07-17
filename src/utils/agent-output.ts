@@ -30,6 +30,7 @@ export interface RawIssue {
 }
 
 export interface NormalizeIssuesOptions {
+  ruleId: (issue: RawIssue, mappedType: IssueType) => string
   filter?: (issue: RawIssue) => boolean
   mapType?: (issue: RawIssue) => IssueType
   defaultSeverity?: IssueSeverity
@@ -39,7 +40,7 @@ export async function normalizeIssues(
   rawIssues: RawIssue[] | undefined,
   type: IssueType,
   provider: ModelProvider | undefined,
-  options: NormalizeIssuesOptions = {}
+  options: NormalizeIssuesOptions
 ): Promise<Issue[]> {
   if (!rawIssues) return []
 
@@ -65,6 +66,7 @@ export async function normalizeIssues(
       const severity = (issue.severity as IssueSeverity) || options.defaultSeverity || 'warning'
       const result: Issue = {
         id: generateId(),
+        ruleId: options.ruleId(issue, mappedType),
         type: mappedType,
         severity,
         description: issue.description || '',

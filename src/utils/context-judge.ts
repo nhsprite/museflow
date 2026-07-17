@@ -246,34 +246,19 @@ export async function batchJudgePositiveFeedback(
   )
 }
 
-/**
- * 对 issue 元数据（description）做确定性哈希，用于生成跨轮稳定的指纹。
- * 这是机器可读元数据的哈希，不是对 prose 的语义匹配。
- */
-function hashIssueDescription(description: string): string {
-  let hash = 5381
-  for (let i = 0; i < description.length; i++) {
-    hash = ((hash << 5) + hash + description.charCodeAt(i)) >>> 0
-  }
-  return hash.toString(16)
-}
-
 export function generateIssueFingerprint(issue: Issue): string {
-  const dimension = issue.dimension ?? 'unknown'
-  const source = issue.source ?? 'unknown'
-  const location = issue.locationRef
-    ? `p${issue.locationRef.paragraphIndex ?? -1}s${issue.locationRef.sentenceIndex ?? -1}`
-    : ''
-
-  // 优先使用结构化字段生成指纹，减少对 description 自然语言文本的依赖。
-  if (issue.subject) {
-    return `${issue.type}:${dimension}:${source}:${issue.subject}${location ? ':' + location : ''}`
-  }
-  if (location) {
-    return `${issue.type}:${dimension}:${source}:${location}:${hashIssueDescription(issue.description)}`
-  }
-  // 无结构化字段时以 description 哈希兜底，保证跨轮指纹稳定。
-  return `${issue.type}:${dimension}:${source}:__generic__:${hashIssueDescription(issue.description)}`
+  const paragraphIndex = issue.locationRef?.paragraphIndex ?? -1
+  const sentenceIndex = issue.locationRef?.sentenceIndex ?? -1
+  return [
+    issue.ruleId,
+    issue.type,
+    issue.dimension ?? 'none',
+    issue.source ?? 'none',
+    issue.subject ?? 'none',
+    issue.conflictAttribute ?? 'none',
+    `p${paragraphIndex}`,
+    `s${sentenceIndex}`,
+  ].join(':')
 }
 
 export async function batchJudgeTaskRelevance(

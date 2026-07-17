@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ModelProvider } from '../../src/model/provider.ts'
+import type { Issue } from '../../src/types/agent.ts'
 import {
   batchJudgeTaskRelevance,
   generateIssueFingerprint,
@@ -116,85 +117,53 @@ describe('context-judge robustness', () => {
     expect(provider.chat).toHaveBeenCalledTimes(1)
   })
 
-  it('generateIssueFingerprint uses structured fields and ignores description', () => {
-    const a = {
-      id: '1',
-      type: 'consistency' as const,
-      severity: 'error' as const,
-      description: '角色甲不应该出现在这里',
-      dimension: 'character',
-      subject: '角色甲',
-      locationRef: { paragraphIndex: 2, sentenceIndex: 3 },
+  it('ignores all prose fields when generating a fingerprint', () => {
+    const base: Issue = {
+      id: 'round-1',
+      ruleId: 'consistency.character-location',
+      type: 'consistency',
+      severity: 'error',
+      description: 'first wording',
+      suggestion: 'first suggestion',
+      location: 'first display location',
+      dimension: 'space',
+      source: 'consistency',
+      subject: 'char-1',
+      conflictAttribute: 'location',
+      locationRef: { paragraphIndex: 2, sentenceIndex: 1 },
     }
-    const b = {
-      id: '2',
-      type: 'consistency' as const,
-      severity: 'error' as const,
-      description: '角色甲出现在了错误的位置',
-      dimension: 'character',
-      subject: '角色甲',
-      locationRef: { paragraphIndex: 2, sentenceIndex: 3 },
+    const rewritten: Issue = {
+      ...base,
+      id: 'round-2',
+      description: 'completely different wording',
+      suggestion: 'different suggestion',
+      location: 'different display location',
     }
-    expect(generateIssueFingerprint(a)).toBe(generateIssueFingerprint(b))
-    expect(generateIssueFingerprint(a)).not.toContain('角色甲不应该出现在这里')
+
+    expect(generateIssueFingerprint(base)).toBe(generateIssueFingerprint(rewritten))
   })
 
-  it('generateIssueFingerprint falls back to locationRef when subject is missing', () => {
-    const issue = {
-      id: 'issue-7',
-      type: 'consistency' as const,
-      severity: 'error' as const,
-      description: 'description text',
-      locationRef: { paragraphIndex: 1, sentenceIndex: 2 },
-    }
-    const fp = generateIssueFingerprint(issue)
-    expect(fp).toContain('consistency')
-    expect(fp).toContain('p1s2')
-    expect(fp).not.toContain('description text')
-  })
-
-  it('generateIssueFingerprint marks fingerprint generic when no subject or location', () => {
-    const issue = {
-      id: 'issue-8',
-      type: 'hallucination' as const,
-      severity: 'error' as const,
-      description: 'any text',
-    }
-    const fp = generateIssueFingerprint(issue)
-    expect(fp).toContain('hallucination:unknown:unknown:__generic__:')
-    expect(fp).not.toContain('issue-8')
-  })
-
-  it('generateIssueFingerprint generic branch stays stable across rounds when id changes', () => {
-    const a = {
-      id: 'round-1-id',
-      type: 'consistency' as const,
-      severity: 'error' as const,
-      description: '同一问题描述',
-    }
-    const b = {
-      id: 'round-2-id',
-      type: 'consistency' as const,
-      severity: 'error' as const,
-      description: '同一问题描述',
-    }
-    expect(generateIssueFingerprint(a)).toBe(generateIssueFingerprint(b))
-  })
-
-  it('generateIssueFingerprint generic branch distinguishes different descriptions', () => {
-    const a = {
+  it('distinguishes structured rule identity and evidence', () => {
+    const base: Issue = {
       id: 'issue-1',
-      type: 'consistency' as const,
-      severity: 'error' as const,
-      description: '问题甲',
+      ruleId: 'consistency.character-location',
+      type: 'consistency',
+      severity: 'error',
+      description: 'display text',
+      source: 'consistency',
+      subject: 'char-1',
+      locationRef: { paragraphIndex: 2 },
     }
-    const b = {
-      id: 'issue-2',
-      type: 'consistency' as const,
-      severity: 'error' as const,
-      description: '问题乙',
-    }
-    expect(generateIssueFingerprint(a)).not.toBe(generateIssueFingerprint(b))
+
+    expect(generateIssueFingerprint({ ...base, ruleId: 'consistency.character-status' })).not.toBe(
+      generateIssueFingerprint(base)
+    )
+    expect(generateIssueFingerprint({ ...base, subject: 'char-2' })).not.toBe(
+      generateIssueFingerprint(base)
+    )
+    expect(generateIssueFingerprint({ ...base, locationRef: { paragraphIndex: 3 } })).not.toBe(
+      generateIssueFingerprint(base)
+    )
   })
 })
 
