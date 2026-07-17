@@ -1,8 +1,28 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const repoRoot = process.cwd()
+
+function listTypeScriptFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) return listTypeScriptFiles(path)
+    return entry.isFile() && entry.name.endsWith('.ts') ? [path] : []
+  })
+}
+
+const runtimeSourceFiles = listTypeScriptFiles(join(repoRoot, 'src'))
+
+const forbiddenRuntimeIdentifiers = [
+  'hashIssueDescription',
+  'deriveAliases',
+  'canonicalizeItemName',
+  'resolveCanonicalItemGroup',
+  "actualValue.includes(' ')",
+  "expectedValue.includes(' ')",
+  'charactersList?.[0]?.name',
+]
 
 const forbiddenForeshadowProseDecisionSnippets = [
   '.text.includes(',
@@ -129,6 +149,17 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
 }
 
 describe('runtime semantic decisions avoid prose string matching', () => {
+  it('keeps retired prose-based identity and fingerprint helpers out of all runtime source', () => {
+    const matches = runtimeSourceFiles.flatMap((path) => {
+      const source = readFileSync(path, 'utf-8')
+      return forbiddenRuntimeIdentifiers
+        .filter((identifier) => source.includes(identifier))
+        .map((identifier) => `${relative(repoRoot, path)}: ${identifier}`)
+    })
+
+    expect(matches, `retired runtime constructs found:\n${matches.join('\n')}`).toEqual([])
+  })
+
   for (const [relativePath, snippets] of Object.entries(forbiddenRuntimeSnippets)) {
     it(`${relativePath} does not contain known prose-matching decision helpers`, () => {
       const source = readFileSync(join(repoRoot, relativePath), 'utf-8')
