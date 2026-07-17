@@ -60,6 +60,28 @@ function buildState(): ReducedGraphState {
           required: true,
           beatId: null,
         },
+        'fs-c': {
+          id: 'fs-c',
+          text: '伏笔 C',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          resolutionPolicy: 'should_resolve',
+          required: true,
+          beatId: null,
+        },
+        'fs-d': {
+          id: 'fs-d',
+          text: '伏笔 D',
+          kind: null,
+          introducedIn: 0,
+          expectedFulfillChapter: null,
+          fulfilledIn: null,
+          resolutionPolicy: 'may_remain_open',
+          required: false,
+          beatId: null,
+        },
       },
     },
   } as ReducedGraphState
@@ -77,6 +99,10 @@ describe('CLI chapter display', () => {
   })
 
   it('prints current act and beat progress for the target chapter', () => {
+    const foreshadowStatusLine =
+      '  伏笔状态: 4 个未结（必须回收 2 / 建议自然回收 1 / 可保持开放 1）'
+    const boundaryPressureLine = '  伏笔边界压力: 2 个 must_resolve 硬义务待回收'
+
     printActProgress(buildState(), 5)
 
     expect(logSpy).toHaveBeenCalledWith('  当前幕: 第 2/2 幕「第二幕」（第 4-8 章）')
@@ -85,10 +111,18 @@ describe('CLI chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('  待消费:')
     expect(logSpy).toHaveBeenCalledWith('    1. 节拍三')
     expect(logSpy).toHaveBeenCalledWith('    2. 节拍四')
-    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 2 个 must_resolve 硬义务待回收')
+    expect(logSpy).toHaveBeenCalledWith(foreshadowStatusLine)
+    expect(logSpy).toHaveBeenCalledWith(boundaryPressureLine)
     expect(logSpy).toHaveBeenCalledWith('  必须回收伏笔:')
     expect(logSpy).toHaveBeenCalledWith('    1. [fs-a] "伏笔 A"（引入第 1 章，预计第 6 章回收）')
     expect(logSpy).toHaveBeenCalledWith('    2. [fs-b] "伏笔 B"（引入第 1 章，预计第 8 章回收）')
+
+    const outputLines = logSpy.mock.calls.map(([line]) => line)
+    const foreshadowStatusIndex = outputLines.indexOf(foreshadowStatusLine)
+    expect(outputLines.slice(foreshadowStatusIndex, foreshadowStatusIndex + 2)).toEqual([
+      foreshadowStatusLine,
+      boundaryPressureLine,
+    ])
   })
 
   it('prints unavailable foreshadow boundary pressure for legacy state without story memory', () => {
@@ -97,7 +131,18 @@ describe('CLI chapter display', () => {
 
     printActProgress(state, 5)
 
+    expect(logSpy).toHaveBeenCalledWith('  伏笔状态: 未知（StoryMemory 不可用）')
     expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 未知（StoryMemory 不可用）')
+  })
+
+  it('prints zero active foreshadows while retaining zero boundary pressure', () => {
+    const state = buildState()
+    state.storyMemory = createEmptyStoryMemory()
+
+    printActProgress(state, 5)
+
+    expect(logSpy).toHaveBeenCalledWith('  伏笔状态: 0 个未结')
+    expect(logSpy).toHaveBeenCalledWith('  伏笔边界压力: 0')
   })
 
   it('prints updated act progress in the chapter completion report', () => {
