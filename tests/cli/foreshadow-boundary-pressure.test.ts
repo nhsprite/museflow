@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { formatActForeshadowBoundaryPressure } from '../../src/cli/formatters/foreshadow-boundary-pressure.js'
+import {
+  formatActForeshadowBoundaryPressure,
+  formatActiveForeshadowStatus,
+} from '../../src/cli/formatters/foreshadow-boundary-pressure.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 import type { ForeshadowMemory, StoryMemory } from '../../src/types/story-memory.js'
@@ -222,5 +225,44 @@ describe('formatActForeshadowBoundaryPressure', () => {
     expect(output).toContain('1 个 must_resolve')
     expect(output).toContain('fs-early')
     expect(output).not.toContain('fs-late')
+  })
+})
+
+describe('formatActiveForeshadowStatus', () => {
+  it('groups active canonical foreshadows by policy and excludes closed entries', () => {
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      foreshadows: {
+        'fs-must': foreshadow('fs-must', 6),
+        'fs-should': foreshadow('fs-should', null),
+        'fs-open': {
+          ...foreshadow('fs-open', null),
+          resolutionPolicy: 'may_remain_open',
+          required: false,
+        },
+        'fs-fulfilled': {
+          ...foreshadow('fs-fulfilled', 4),
+          fulfilledIn: 3,
+        },
+        'fs-waived': {
+          ...foreshadow('fs-waived', null),
+          waivedIn: 3,
+        },
+      },
+    }
+
+    expect(formatActiveForeshadowStatus(memory, '  ')).toBe(
+      '  伏笔状态: 3 个未结（必须回收 1 / 建议自然回收 1 / 可保持开放 1）'
+    )
+  })
+
+  it('formats empty story memory as zero active foreshadows', () => {
+    expect(formatActiveForeshadowStatus(createEmptyStoryMemory(), '  ')).toBe(
+      '  伏笔状态: 0 个未结'
+    )
+  })
+
+  it('formats null story memory as unavailable status', () => {
+    expect(formatActiveForeshadowStatus(null, '  ')).toBe('  伏笔状态: 未知（StoryMemory 不可用）')
   })
 })

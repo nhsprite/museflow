@@ -1,6 +1,10 @@
-import { getBoundaryBlockingForeshadowDetails } from '../../story-memory/foreshadow-policy.js'
+import {
+  getBoundaryBlockingForeshadowDetails,
+  groupActiveForeshadowsByPolicy,
+} from '../../story-memory/foreshadow-policy.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { ActArc } from '../../types/outline.js'
+import type { StoryMemory } from '../../types/story-memory.js'
 
 const MAX_FORESHADOW_TEXT_LENGTH = 60
 
@@ -11,6 +15,18 @@ function formatForeshadowText(text: string): string {
   if (characters.length <= MAX_FORESHADOW_TEXT_LENGTH) return normalized
 
   return `${characters.slice(0, MAX_FORESHADOW_TEXT_LENGTH).join('')}…`
+}
+
+export function formatActiveForeshadowStatus(memory: StoryMemory | null, indent = ''): string {
+  if (!memory) return `${indent}伏笔状态: 未知（StoryMemory 不可用）`
+
+  const groups = groupActiveForeshadowsByPolicy(memory)
+  const activeTotal =
+    groups.mustResolve.length + groups.shouldResolve.length + groups.mayRemainOpen.length
+
+  if (activeTotal === 0) return `${indent}伏笔状态: 0 个未结`
+
+  return `${indent}伏笔状态: ${activeTotal} 个未结（必须回收 ${groups.mustResolve.length} / 建议自然回收 ${groups.shouldResolve.length} / 可保持开放 ${groups.mayRemainOpen.length}）`
 }
 
 export function formatActForeshadowBoundaryPressure(
