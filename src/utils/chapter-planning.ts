@@ -12,6 +12,9 @@ export type CoreSectionJudge = (
 ) => Promise<boolean[]> | boolean[]
 
 export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = {
+  storyActCountMin: 3,
+  storyActCountMax: 5,
+  chapterWordCountToleranceRatio: 0.1,
   coreEventRatioMin: 0.3,
   coreEventRatioTarget: 0.5,
   maxNonCoreSectionWordCount: 800,
@@ -37,9 +40,14 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   foreshadowMaxFulfillmentsPerChapter: 3,
   foreshadowFulfillmentHeadroomPerChapter: 1,
   foreshadowMaxOpportunisticCandidatesPerChapter: 1,
-  closingPhaseRatio: 0.15,
+  bookClosingPhaseRatio: 0.15,
+  actClosingPhaseRatio: 0.2,
+  maxAutoFixAttempts: 3,
+  maxStateRepairAttempts: 2,
   maxErrorRewriteAttempts: 3,
   issueSetSimilarityThreshold: 0.5,
+  rewriteStallSimilarityThreshold: 0.7,
+  rewriteStallMinRounds: 3,
   downgradeInterpretiveErrors: true,
 }
 

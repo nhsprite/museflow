@@ -305,9 +305,9 @@ ${verifiedConstraints.map((constraint, i) => `${i + 1}. ${constraint}`).join('\n
 function buildClosingPhaseSection(
   totalChapters: number,
   chapterIndex: number,
-  closingPhaseRatio: number
+  bookClosingPhaseRatio: number
 ): string {
-  if (!isClosingPhase(totalChapters, chapterIndex, closingPhaseRatio)) return ''
+  if (!isClosingPhase(totalChapters, chapterIndex, bookClosingPhaseRatio)) return ''
 
   return `<closing_phase>
 【全书收尾阶段】本书仅剩 ${totalChapters - chapterIndex} 章结束。
@@ -360,7 +360,7 @@ export function buildChapterPlannerUserPrompt(
     closingPhaseSection: buildClosingPhaseSection(
       state.totalChapters,
       chapterIndex,
-      planningConfig.closingPhaseRatio
+      planningConfig.bookClosingPhaseRatio
     ),
     storyStateSection: buildStoryStateSection(state.storyState),
     chapterContractSection: buildChapterContractSection(state.chapterContract),

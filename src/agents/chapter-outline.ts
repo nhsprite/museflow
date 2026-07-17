@@ -73,7 +73,7 @@ ${formatMandatoryBeatList(consumedBeats)}
     const closingPhaseSection = isClosingPhase(
       state.totalChapters,
       chapterIndex,
-      planningConfig.closingPhaseRatio
+      planningConfig.bookClosingPhaseRatio
     )
       ? `<closing_phase>
 【全书收尾阶段】本书仅剩 ${state.totalChapters - chapterIndex} 章结束。

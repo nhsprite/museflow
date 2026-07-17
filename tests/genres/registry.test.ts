@@ -55,6 +55,14 @@ describe('genre registry', () => {
       'urban',
       'xianxia',
     ])
+    expect(registry.find((e) => e.skill.name === 'default')?.skill.chapterPlanning).toMatchObject({
+      storyActCountMin: 3,
+      storyActCountMax: 5,
+      bookClosingPhaseRatio: 0.15,
+      actClosingPhaseRatio: 0.2,
+      maxAutoFixAttempts: 3,
+      maxStateRepairAttempts: 2,
+    })
   })
 
   it('loads custom skills from mocked genres directory', async () => {

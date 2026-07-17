@@ -81,7 +81,10 @@ export function buildForeshadowingUserPrompt(
   const currentChapter = (state.chapterIndex ?? 0) + 1
   const totalChapters = state.totalChapters ?? currentChapter
 
-  const noNewThreshold = Math.max(3, Math.floor(totalChapters * planningConfig.closingPhaseRatio))
+  const noNewThreshold = Math.max(
+    3,
+    Math.floor(totalChapters * planningConfig.bookClosingPhaseRatio)
+  )
   const isClosingPhase = currentChapter > totalChapters - noNewThreshold
 
   const {

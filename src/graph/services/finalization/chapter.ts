@@ -669,7 +669,7 @@ export async function finalizeChapter(
         state.storyArc,
         updatedActProgress,
         chapterIndex,
-        planningConfig.closingPhaseRatio
+        planningConfig.bookClosingPhaseRatio
       )
     : undefined
   if (closingPhaseConstraint) {

@@ -1,6 +1,12 @@
 import type { FactAttribute } from './story-state.js'
 
 export interface ChapterPlanningConfig {
+  /** 全书幕数下限 */
+  storyActCountMin: number
+  /** 全书幕数上限 */
+  storyActCountMax: number
+  /** 章节字数校验相对目标值的容差比例 */
+  chapterWordCountToleranceRatio: number
   /** 核心事件字数占本章总字数的最低比例（硬底线） */
   coreEventRatioMin: number
   /** 核心事件字数占本章总字数的目标比例 */
@@ -51,12 +57,22 @@ export interface ChapterPlanningConfig {
   foreshadowFulfillmentHeadroomPerChapter: number
   /** 单章最多提供的无期限伏笔自然回收候选数量；0 表示关闭 */
   foreshadowMaxOpportunisticCandidatesPerChapter: number
-  /** 进入收尾阶段前剩余章节比例 */
-  closingPhaseRatio: number
+  /** 全书进入收尾阶段前的剩余章节比例 */
+  bookClosingPhaseRatio: number
+  /** 单幕进入收尾阶段前的剩余章节比例 */
+  actClosingPhaseRatio: number
+  /** 单章自动局部修复的最大尝试次数 */
+  maxAutoFixAttempts: number
+  /** 单章自动状态修复的最大尝试次数 */
+  maxStateRepairAttempts: number
   /** 错误级问题最大连续重写次数 */
   maxErrorRewriteAttempts: number
   /** 问题集合相似度阈值，超过则认为重写未收敛 */
   issueSetSimilarityThreshold: number
+  /** 多轮重写停滞检测的问题集合相似度阈值 */
+  rewriteStallSimilarityThreshold: number
+  /** 判断多轮重写停滞所需的最少连续轮数 */
+  rewriteStallMinRounds: number
   /** 当只剩解释性错误时是否自动降级为 warning */
   downgradeInterpretiveErrors: boolean
 }
