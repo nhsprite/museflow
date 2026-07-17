@@ -118,8 +118,8 @@ function makeStoryArc(): StoryArc {
 
 describe('story-arc utilities', () => {
   it('detects closing phase based on ratio', () => {
-    expect(isClosingPhase(20, 16)).toBe(true)
-    expect(isClosingPhase(20, 15)).toBe(false)
+    expect(isClosingPhase(20, 16, 0.15)).toBe(true)
+    expect(isClosingPhase(20, 15, 0.15)).toBe(false)
     expect(isClosingPhase(20, 16, 0.2)).toBe(true)
     expect(isClosingPhase(20, 15, 0.2)).toBe(true)
     expect(isClosingPhase(20, 14, 0.2)).toBe(false)
@@ -130,7 +130,7 @@ describe('story-arc utilities', () => {
     const actProgress = {
       1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] },
     }
-    const status = buildArcStatus(storyArc, actProgress, 1)
+    const status = buildArcStatus(storyArc, actProgress, 1, 0.15)
 
     expect(status.currentAct?.index).toBe(1)
     expect(status.beatsTotal).toBe(2)
@@ -144,7 +144,7 @@ describe('story-arc utilities', () => {
     const actProgress = {
       1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
     }
-    const status = buildArcStatus(storyArc, actProgress, 3)
+    const status = buildArcStatus(storyArc, actProgress, 3, 0.15)
 
     expect(status.beatsPending).toHaveLength(2)
     expect(status.riskLevel).toBe('high')
@@ -157,7 +157,7 @@ describe('story-arc utilities', () => {
       2: { consumed: ['主角找到盟友'], pending: [] },
       3: { consumed: [], pending: ['核心秘密揭晓'] },
     }
-    const status = buildArcStatus(storyArc, actProgress, 10)
+    const status = buildArcStatus(storyArc, actProgress, 10, 0.15)
 
     expect(status.overdueKeyBeats).toHaveLength(1)
     expect(status.overdueKeyBeats[0]?.beat).toBe('核心秘密被主角获悉')
@@ -461,7 +461,7 @@ describe('story-arc utilities', () => {
       3: { consumed: [], pending: ['核心秘密揭晓'] },
       4: { consumed: [], pending: ['最终对决'] },
     }
-    const constraint = buildClosingPhaseConstraint(storyArc, actProgress, 17)
+    const constraint = buildClosingPhaseConstraint(storyArc, actProgress, 17, 0.15)
 
     expect(constraint).toContain('全书收尾阶段')
     expect(constraint).toContain('禁止引入新的主要支线')
@@ -470,7 +470,7 @@ describe('story-arc utilities', () => {
 
   it('returns undefined when not in closing phase', () => {
     const storyArc = makeStoryArc()
-    const constraint = buildClosingPhaseConstraint(storyArc, {}, 5)
+    const constraint = buildClosingPhaseConstraint(storyArc, {}, 5, 0.15)
 
     expect(constraint).toBeUndefined()
   })

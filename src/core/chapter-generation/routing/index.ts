@@ -20,9 +20,6 @@ import { calculateFingerprintSetSimilarity, isFingerprintSubset } from './finger
 
 export * from './types.js'
 
-/** 每章自动状态修复（repair_state）的最大尝试次数。 */
-const MAX_STATE_REPAIR_ATTEMPTS = 2
-
 export interface RoutingDeps {
   issuePolicy: IssuePolicyDeps
   rewritePolicy: RewritePolicyDeps
@@ -34,8 +31,8 @@ export interface RoutingDeps {
 function isRewriteLoopStalled(
   history: string[][],
   currentFingerprints: string[],
-  threshold = 0.7,
-  minRounds = 3
+  threshold: number,
+  minRounds: number
 ): boolean {
   if (currentFingerprints.length === 0) return false
   const fullHistory = [...history, currentFingerprints]
@@ -49,16 +46,20 @@ function isRewriteLoopStalled(
   return true
 }
 
-function isRewriteLoopSubsetStalled(history: string[][], currentFingerprints: string[]): boolean {
+function isRewriteLoopSubsetStalled(
+  history: string[][],
+  currentFingerprints: string[],
+  minRounds: number
+): boolean {
   if (currentFingerprints.length === 0) return false
   const fullHistory = [...history, currentFingerprints]
-  if (fullHistory.length < 3) return false
+  if (fullHistory.length < minRounds) return false
 
-  const lastThree = fullHistory.slice(-3)
-  return (
-    isFingerprintSubset(lastThree[0]!, lastThree[1]!) &&
-    isFingerprintSubset(lastThree[1]!, lastThree[2]!)
-  )
+  const recentRounds = fullHistory.slice(-minRounds)
+  for (let i = 1; i < recentRounds.length; i++) {
+    if (!isFingerprintSubset(recentRounds[i - 1]!, recentRounds[i]!)) return false
+  }
+  return true
 }
 
 function decideStrategyFromRetryStrategies(errors: Issue[]): 'draft' | 'fix' | 'manual' {
@@ -103,8 +104,17 @@ export async function decideNextStep(
   if (
     remainingErrors.length > 0 &&
     session.rewriteApproved &&
-    (isRewriteLoopStalled(session.issueFingerprintHistory, currentErrorFingerprints) ||
-      isRewriteLoopSubsetStalled(session.issueFingerprintHistory, currentErrorFingerprints))
+    (isRewriteLoopStalled(
+      session.issueFingerprintHistory,
+      currentErrorFingerprints,
+      config.rewriteStallSimilarityThreshold,
+      config.rewriteStallMinRounds
+    ) ||
+      isRewriteLoopSubsetStalled(
+        session.issueFingerprintHistory,
+        currentErrorFingerprints,
+        config.rewriteStallMinRounds
+      ))
   ) {
     deps.rewritePolicy.log?.(
       'error',
@@ -127,14 +137,14 @@ export async function decideNextStep(
 
   // Case 1: 重写循环中出现上游状态污染。
   // 只要剩余 error 中至少有一个是状态污染类问题，就优先尝试自动状态修复；
-  // 每章最多尝试 MAX_STATE_REPAIR_ATTEMPTS 次，耗尽后退回人工 request_rewrite。
+  // 尝试次数由题材配置控制，耗尽后退回人工 request_rewrite。
   const hasStateCorruptionError = await Promise.all(
     remainingErrors.map((i) => deps.rewritePolicy.isStateCorruptionIssue(i))
   ).then((results) => results.some(Boolean))
 
   if (session.rewriteApproved && remainingErrors.length > 0 && hasStateCorruptionError) {
     const stateRepairAttempts = session.stateRepairAttempts ?? 0
-    if (stateRepairAttempts < MAX_STATE_REPAIR_ATTEMPTS) {
+    if (stateRepairAttempts < config.maxStateRepairAttempts) {
       return {
         step: { kind: 'repair_state' },
         sessionUpdate: {
@@ -164,7 +174,7 @@ export async function decideNextStep(
   if (remainingErrors.length === 0) {
     const patchable = hasPatchableIssues(policyResult.issues)
 
-    if (patchable && session.autoFixAttempts < 3) {
+    if (patchable && session.autoFixAttempts < config.maxAutoFixAttempts) {
       return {
         step: { kind: 'fix_chapter', patchableIssues: policyResult.issues },
         sessionUpdate: {

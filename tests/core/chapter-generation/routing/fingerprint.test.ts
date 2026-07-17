@@ -11,13 +11,13 @@ import type {
 } from '../../../../src/core/chapter-generation/routing/types.js'
 import type { Issue } from '../../../../src/types/agent.js'
 import type { ChapterPlanningConfig } from '../../../../src/types/genre.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../../../src/utils/chapter-planning.js'
 
 const planningConfig: ChapterPlanningConfig = {
-  maxNonErrorIssuesPerType: 3,
+  ...DEFAULT_CHAPTER_PLANNING_CONFIG,
   maxErrorRewriteAttempts: 5,
-  issueSetSimilarityThreshold: 0.5,
   downgradeInterpretiveErrors: false,
-} as ChapterPlanningConfig
+}
 
 function makeIssue(subject: string): Issue {
   return {
@@ -54,14 +54,14 @@ function makeSession(
   }
 }
 
-function makeDeps(): RoutingDeps {
+function makeDeps(config: ChapterPlanningConfig = planningConfig): RoutingDeps {
   return {
     issuePolicy: {
-      planningConfig,
+      planningConfig: config,
       isInterpretiveIssue: () => false,
     },
     rewritePolicy: {
-      planningConfig,
+      planningConfig: config,
       calculateIssueSetSimilarity: () => Promise.resolve(0),
       isInterpretiveIssue: () => false,
       isStateCorruptionIssue: () => false,
@@ -102,6 +102,86 @@ describe('calculateFingerprintSetSimilarity', () => {
 })
 
 describe('rewrite loop subset stall detection', () => {
+  it('does not schedule an automatic fix after the configured attempt limit', async () => {
+    const config = {
+      ...planningConfig,
+      maxAutoFixAttempts: 1,
+    }
+    const ctx: RoutingContext = {
+      session: makeSession({ rewriteApproved: false, autoFixAttempts: 1 }),
+      pendingIssues: [
+        {
+          id: 'quality-warning',
+          ruleId: 'quality.local-style',
+          type: 'consistency',
+          severity: 'warning',
+          description: '局部表达需要调整',
+          dimension: 'quality',
+          locationRef: { paragraphIndex: 0 },
+        },
+      ],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: undefined,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps(config))
+
+    expect(result.step.kind).toBe('finalize_chapter')
+  })
+
+  it('does not stall after three similar rounds when four are configured', async () => {
+    const config = {
+      ...planningConfig,
+      rewriteStallMinRounds: 4,
+    }
+    const repeated = fingerprints(['a', 'b'])
+    const ctx: RoutingContext = {
+      session: makeSession({
+        issueFingerprintHistory: [repeated, repeated],
+      }),
+      pendingIssues: [makeIssue('a'), makeIssue('b')],
+      genre: 'general',
+      chapterFileExists: false,
+      structuredValidationResult: undefined,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps(config))
+
+    expect(result.step.kind).toBe('draft_chapter')
+  })
+
+  it('does not stall when four rounds stay below the configured similarity threshold', async () => {
+    const config = {
+      ...planningConfig,
+      rewriteStallSimilarityThreshold: 0.9,
+      rewriteStallMinRounds: 4,
+    }
+    const ctx: RoutingContext = {
+      session: makeSession({
+        issueFingerprintHistory: [
+          fingerprints(['a', 'b', 'c', 'd', 'e']),
+          fingerprints(['a', 'b', 'c', 'd', 'f']),
+          fingerprints(['a', 'b', 'c', 'd', 'g']),
+        ],
+      }),
+      pendingIssues: [
+        makeIssue('a'),
+        makeIssue('b'),
+        makeIssue('c'),
+        makeIssue('d'),
+        makeIssue('h'),
+      ],
+      genre: 'general',
+      chapterFileExists: false,
+      structuredValidationResult: undefined,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps(config))
+
+    expect(result.step.kind).toBe('draft_chapter')
+  })
+
   it('stops a rewrite loop whose error set keeps shrinking as subsets', async () => {
     // 相似度视角下 2/5 = 0.4 < 0.7，旧检测不会触发；但两轮均为严格子集，应判定停滞。
     const ctx: RoutingContext = {

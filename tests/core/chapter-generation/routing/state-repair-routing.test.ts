@@ -6,13 +6,12 @@ import type {
 } from '../../../../src/core/chapter-generation/routing/types.js'
 import type { Issue } from '../../../../src/types/agent.js'
 import type { ChapterPlanningConfig } from '../../../../src/types/genre.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../../../src/utils/chapter-planning.js'
 
 const planningConfig: ChapterPlanningConfig = {
-  maxNonErrorIssuesPerType: 3,
-  maxErrorRewriteAttempts: 3,
-  issueSetSimilarityThreshold: 0.5,
+  ...DEFAULT_CHAPTER_PLANNING_CONFIG,
   downgradeInterpretiveErrors: false,
-} as ChapterPlanningConfig
+}
 
 function makeSession(
   overrides: Partial<RoutingContext['session']> = {}
@@ -32,14 +31,17 @@ function makeSession(
   }
 }
 
-function makeDeps(overrides: Partial<RoutingDeps> = {}): RoutingDeps {
+function makeDeps(
+  config: ChapterPlanningConfig = planningConfig,
+  overrides: Partial<RoutingDeps> = {}
+): RoutingDeps {
   return {
     issuePolicy: {
-      planningConfig,
+      planningConfig: config,
       isInterpretiveIssue: () => false,
     },
     rewritePolicy: {
-      planningConfig,
+      planningConfig: config,
       calculateIssueSetSimilarity: () => Promise.resolve(0),
       isInterpretiveIssue: () => false,
       isStateCorruptionIssue: (issue) => issue.dimension === 'structured_state',
@@ -111,6 +113,27 @@ describe('decideNextStep state repair routing (Case 1)', () => {
       reason: 'state_corruption',
     })
     expect(result.sessionUpdate.rewriteApproved).toBe(false)
+  })
+
+  it('uses the configured state repair attempt limit', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({ stateRepairAttempts: 1 }),
+      pendingIssues: [stateCorruptionError('e1')],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: undefined,
+    }
+    const config = {
+      ...planningConfig,
+      maxStateRepairAttempts: 1,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps(config))
+
+    expect(result.step).toMatchObject({
+      kind: 'request_rewrite',
+      reason: 'state_corruption',
+    })
   })
 
   it('routes to repair_state when at least one error is state-corruption, even if other errors exist', async () => {

@@ -92,6 +92,28 @@ describe('updateActProgress', () => {
     } as StoryMemory
   }
 
+  it('uses the configured act closing ratio for beat pressure', async () => {
+    const storyArc = makeStoryArc()
+    const state = {
+      storyArc,
+      outline: Array.from({ length: 8 }, (_, index) => ({
+        number: index + 1,
+        title: `Chapter ${index + 1}`,
+        description: '',
+      })),
+      storyMemory: makeStoryMemory(),
+      actProgress: {
+        1: { consumed: [], pending: ['身份暴露', '敌友洗牌', '终局布局'] },
+      },
+    } as unknown as ReducedGraphState
+
+    const narrowClosingWindow = await updateActProgress(state, 7, 0.1)
+    const wideClosingWindow = await updateActProgress(state, 7, 0.25)
+
+    expect(narrowClosingWindow.beatPressureConstraint).toBeUndefined()
+    expect(wideClosingWindow.beatPressureConstraint).toBeDefined()
+  })
+
   it('preserves existing actProgress when memory beat text differs from mandatory beat text', async () => {
     const storyArc = makeStoryArc()
     const state = {
@@ -118,7 +140,7 @@ describe('updateActProgress', () => {
       },
     } as unknown as ReducedGraphState
 
-    const result = await updateActProgress(state, 1)
+    const result = await updateActProgress(state, 1, 0.2)
 
     expect(result.actProgress[1]?.consumed).toContain('敌友洗牌')
     expect(result.actProgress[1]?.consumed.length).toBeGreaterThanOrEqual(1)
@@ -138,7 +160,7 @@ describe('updateActProgress', () => {
       },
     } as unknown as ReducedGraphState
 
-    const result = await updateActProgress(state, 1)
+    const result = await updateActProgress(state, 1, 0.2)
 
     expect(result.actProgress[1]?.consumed).not.toContain('身份暴露')
     expect(result.actProgress[1]?.pending).toContain('身份暴露')
@@ -158,7 +180,7 @@ describe('updateActProgress', () => {
       },
     } as unknown as ReducedGraphState
 
-    const result = await updateActProgress(state, 1)
+    const result = await updateActProgress(state, 1, 0.2)
 
     expect(result.actProgress[1]?.consumed).toContain('身份暴露')
     expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
@@ -195,7 +217,7 @@ describe('updateActProgress', () => {
       },
     } as unknown as ReducedGraphState
 
-    const result = await updateActProgress(state, 0)
+    const result = await updateActProgress(state, 0, 0.2)
 
     expect(result.actProgress[1]?.consumed).toContain('身份暴露')
     expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
@@ -238,7 +260,7 @@ describe('updateActProgress', () => {
       },
     } as unknown as ReducedGraphState
 
-    const result = await updateActProgress(state, 8)
+    const result = await updateActProgress(state, 8, 0.2)
 
     expect(result.beatVerificationIssues).toEqual([
       expect.objectContaining({
@@ -277,7 +299,7 @@ describe('updateActProgress', () => {
       },
     } as unknown as ReducedGraphState
 
-    const result = await updateActProgress(state, 1)
+    const result = await updateActProgress(state, 1, 0.2)
 
     expect(result.actProgress[1]?.consumed.filter((b) => b === '身份暴露').length).toBe(1)
   })

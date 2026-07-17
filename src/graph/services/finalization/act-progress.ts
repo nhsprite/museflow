@@ -119,19 +119,21 @@ export function pruneResolvedOutlineCoverageIssues(
 export async function updateActProgress(
   state: ReducedGraphState,
   chapterIndex: number,
+  actClosingPhaseRatio: number,
   _provider?: ModelProvider
 ): Promise<ActProgressUpdate> {
   const hasUsableMemory =
     state.storyMemory && Object.values(state.storyMemory.beats).some((beat) => beat.actIndex !== 0)
   if (hasUsableMemory) {
-    return updateActProgressFromMemory(state, chapterIndex)
+    return updateActProgressFromMemory(state, chapterIndex, actClosingPhaseRatio)
   }
-  return updateActProgressFromOutline(state, chapterIndex)
+  return updateActProgressFromOutline(state, chapterIndex, actClosingPhaseRatio)
 }
 
 function updateActProgressFromMemory(
   state: ReducedGraphState,
-  chapterIndex: number
+  chapterIndex: number,
+  actClosingPhaseRatio: number
 ): ActProgressUpdate {
   const memory = state.storyMemory!
   const storyArc = state.storyArc
@@ -219,8 +221,7 @@ function updateActProgressFromMemory(
   if (act) {
     const progress = actProgress[act.index] ?? { consumed: [], pending: [] }
     const chaptersRemaining = act.endChapter - (chapterIndex + 1)
-    const totalActChapters = act.endChapter - act.startChapter + 1
-    const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
+    const isInClosingPhase = isActClosingPhase(act, chapterIndex, actClosingPhaseRatio)
 
     if (isInClosingPhase && progress.pending.length > 0) {
       logger.warn(
@@ -239,6 +240,7 @@ function updateActProgressFromMemory(
       verifiedBeatIds,
       act,
       chapterIndex,
+      actClosingPhaseRatio,
       storyArc
     )
   }
@@ -296,7 +298,8 @@ function getClaimedBeatTexts(
  */
 async function updateActProgressFromOutline(
   state: ReducedGraphState,
-  chapterIndex: number
+  chapterIndex: number,
+  actClosingPhaseRatio: number
 ): Promise<ActProgressUpdate> {
   const storyArc = state.storyArc
   const act = getActForChapter(storyArc, chapterIndex)
@@ -326,8 +329,7 @@ async function updateActProgressFromOutline(
   const pending = act.mandatoryBeats.filter((beat) => !consumed.includes(beat))
 
   const chaptersRemaining = act.endChapter - (chapterIndex + 1)
-  const totalActChapters = act.endChapter - act.startChapter + 1
-  const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
+  const isInClosingPhase = isActClosingPhase(act, chapterIndex, actClosingPhaseRatio)
 
   const updatedActProgress: ReducedGraphState['actProgress'] = {
     ...state.actProgress,
@@ -340,6 +342,7 @@ async function updateActProgressFromOutline(
     undefined,
     act,
     chapterIndex,
+    actClosingPhaseRatio,
     storyArc
   )
 
@@ -380,10 +383,11 @@ function buildBeatVerificationIssues(
   verifiedBeatIds: ReadonlySet<BeatId> | undefined,
   act: ActArc,
   chapterIndex: number,
+  actClosingPhaseRatio: number,
   storyArc?: StoryArc | null
 ): Issue[] {
   const issues: Issue[] = []
-  const shouldBlock = shouldBlockUnverifiedClaimedBeat(act, chapterIndex)
+  const shouldBlock = shouldBlockUnverifiedClaimedBeat(act, chapterIndex, actClosingPhaseRatio)
   const claimedBeatIndexesFromIds = new Set<number>()
   const keyBeatsById = new Map(storyArc?.keyBeats.map((beat) => [beat.id, beat] as const) ?? [])
 
@@ -455,9 +459,21 @@ function buildBeatVerificationIssues(
   return issues
 }
 
-function shouldBlockUnverifiedClaimedBeat(act: ActArc, chapterIndex: number): boolean {
+function isActClosingPhase(
+  act: ActArc,
+  chapterIndex: number,
+  actClosingPhaseRatio: number
+): boolean {
   const chaptersRemaining = act.endChapter - (chapterIndex + 1)
   const totalActChapters = act.endChapter - act.startChapter + 1
-  const isInClosingPhase = chaptersRemaining / totalActChapters <= 0.2 && chaptersRemaining >= 0
-  return chaptersRemaining <= 1 || isInClosingPhase
+  return chaptersRemaining >= 0 && chaptersRemaining / totalActChapters <= actClosingPhaseRatio
+}
+
+function shouldBlockUnverifiedClaimedBeat(
+  act: ActArc,
+  chapterIndex: number,
+  actClosingPhaseRatio: number
+): boolean {
+  const chaptersRemaining = act.endChapter - (chapterIndex + 1)
+  return chaptersRemaining <= 1 || isActClosingPhase(act, chapterIndex, actClosingPhaseRatio)
 }

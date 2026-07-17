@@ -56,6 +56,20 @@ vi.mock('../../src/graph/checkpointer.js', () => ({
   }),
 }))
 
+vi.mock('../../src/utils/chapter-planning.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/chapter-planning.js')>()
+  return {
+    ...actual,
+    getChapterPlanningConfig: (genreName: string) =>
+      genreName === 'custom-policy'
+        ? {
+            ...actual.DEFAULT_CHAPTER_PLANNING_CONFIG,
+            maxErrorRewriteAttempts: 5,
+          }
+        : actual.getChapterPlanningConfig(genreName),
+  }
+})
+
 function createMockProvider(): ModelProvider {
   return { chat: vi.fn().mockResolvedValue(''), chatStructured: vi.fn().mockResolvedValue({}) }
 }
@@ -233,6 +247,24 @@ describe('chapter report generation', () => {
 
     expect(result.chapterReport!.storyId).toBe('test-story')
   })
+
+  it.each([
+    { attempts: 3, convergence: 'manual-rewrite-requested' },
+    { attempts: 5, convergence: 'max-attempts-reached' },
+  ] as const)(
+    'uses the configured rewrite limit in convergence reports: $attempts',
+    async ({ attempts, convergence }) => {
+      const state = buildState(tmpDir, {
+        genre: 'custom-policy',
+        rewriteRequested: true,
+        session: { errorRewriteAttempts: attempts },
+      })
+
+      const result = await finalize_chapter(createMockContext(), state)
+
+      expect(result.chapterReport?.convergence).toBe(convergence)
+    }
+  )
 
   it('records pending issues in the report', async () => {
     const issues: Issue[] = [

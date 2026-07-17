@@ -659,7 +659,12 @@ export async function finalizeChapter(
     actProgress: updatedActProgress,
     beatPressureConstraint,
     beatVerificationIssues,
-  } = await updateActProgress(stateForActProgress, chapterIndex, provider)
+  } = await updateActProgress(
+    stateForActProgress,
+    chapterIndex,
+    planningConfig.actClosingPhaseRatio,
+    provider
+  )
   if (beatPressureConstraint) {
     updatedVerifiedConstraints = [...updatedVerifiedConstraints, beatPressureConstraint]
   }
@@ -1031,7 +1036,8 @@ function inferDraftStrategy(state: ReducedGraphState): ChapterReport['draftStrat
 function inferConvergence(state: ReducedGraphState): ChapterReport['convergence'] {
   const session = state.session
   if (!state.rewriteRequested) return 'success'
-  if ((session?.errorRewriteAttempts ?? 0) >= 3) return 'max-attempts-reached'
+  const maxAttempts = getChapterPlanningConfig(state.genre).maxErrorRewriteAttempts
+  if ((session?.errorRewriteAttempts ?? 0) >= maxAttempts) return 'max-attempts-reached'
   return 'manual-rewrite-requested'
 }
 

@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { applyIssuePolicy } from '../../../../src/core/chapter-generation/routing/issue-policy.js'
 import type { Issue } from '../../../../src/types/agent.js'
 import type { ChapterPlanningConfig } from '../../../../src/types/genre.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../../../src/utils/chapter-planning.js'
 
 const planningConfig: ChapterPlanningConfig = {
+  ...DEFAULT_CHAPTER_PLANNING_CONFIG,
   maxNonErrorIssuesPerType: 3,
-} as ChapterPlanningConfig
+}
 
 function makeIssue(
   id: string,

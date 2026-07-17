@@ -7,13 +7,12 @@ import type {
 import type { Issue } from '../../../../src/types/agent.js'
 import type { StructuredValidationResult } from '../../../../src/story-memory/validator.js'
 import type { ChapterPlanningConfig } from '../../../../src/types/genre.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../../../src/utils/chapter-planning.js'
 
 const planningConfig: ChapterPlanningConfig = {
-  maxNonErrorIssuesPerType: 3,
-  maxErrorRewriteAttempts: 3,
-  issueSetSimilarityThreshold: 0.5,
+  ...DEFAULT_CHAPTER_PLANNING_CONFIG,
   downgradeInterpretiveErrors: false,
-} as ChapterPlanningConfig
+}
 
 function makeSession(
   overrides: Partial<RoutingContext['session']> = {}

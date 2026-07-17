@@ -3,6 +3,7 @@ import type { ChapterReport } from '../../types/chapter-report.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
 import { buildArcStatus } from '../../utils/story-arc.js'
+import { getChapterPlanningConfig } from '../../utils/chapter-planning.js'
 import {
   formatActiveForeshadowStatus,
   formatActForeshadowBoundaryPressure,
@@ -33,7 +34,12 @@ export function printActProgress(
 ): void {
   if (!state.storyArc) return
 
-  const arcStatus = buildArcStatus(state.storyArc, state.actProgress ?? {}, chapterIndex)
+  const arcStatus = buildArcStatus(
+    state.storyArc,
+    state.actProgress ?? {},
+    chapterIndex,
+    getChapterPlanningConfig(state.genre).bookClosingPhaseRatio
+  )
   const act = arcStatus.currentAct
   if (!act) return
 
@@ -130,7 +136,8 @@ export function printChapterReport(
     const arcStatus = buildArcStatus(
       state.storyArc,
       state.actProgress ?? {},
-      state.currentChapterIndex
+      state.currentChapterIndex,
+      getChapterPlanningConfig(state.genre).bookClosingPhaseRatio
     )
     if (arcStatus.currentAct) {
       for (const line of formatActForeshadowBoundaryPressure(state, arcStatus.currentAct, '   ')) {

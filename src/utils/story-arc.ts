@@ -20,7 +20,7 @@ export function getActForChapter(
 export function isClosingPhase(
   totalChapters: number,
   currentChapterIndex: number,
-  ratio = 0.15
+  ratio: number
 ): boolean {
   return currentChapterIndex + 1 >= totalChapters * (1 - ratio)
 }
@@ -77,11 +77,16 @@ export interface ArcStatus {
 export function buildArcStatus(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
-  currentChapterIndex: number
+  currentChapterIndex: number,
+  bookClosingPhaseRatio: number
 ): ArcStatus {
   const currentAct = getActForChapter(storyArc, currentChapterIndex)
   const chaptersRemaining = storyArc.totalChapters - (currentChapterIndex + 1)
-  const closingPhase = isClosingPhase(storyArc.totalChapters, currentChapterIndex)
+  const closingPhase = isClosingPhase(
+    storyArc.totalChapters,
+    currentChapterIndex,
+    bookClosingPhaseRatio
+  )
 
   const progress = currentAct
     ? (actProgress[currentAct.index] ?? { consumed: [], pending: [...currentAct.mandatoryBeats] })
@@ -145,9 +150,11 @@ export function buildClosingPhaseConstraint(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
   currentChapterIndex: number,
-  ratio = 0.15
+  bookClosingPhaseRatio: number
 ): string | undefined {
-  if (!isClosingPhase(storyArc.totalChapters, currentChapterIndex, ratio)) return undefined
+  if (!isClosingPhase(storyArc.totalChapters, currentChapterIndex, bookClosingPhaseRatio)) {
+    return undefined
+  }
 
   const currentAct = getActForChapter(storyArc, currentChapterIndex)
   const currentActIndex = currentAct?.index ?? storyArc.acts.length

@@ -2,6 +2,7 @@ import { getForeshadowAlerts, formatForeshadowAlerts } from './foreshadow-alerts
 import { formatActForeshadowBoundaryPressure } from './foreshadow-boundary-pressure.js'
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import { buildArcStatus } from '../../utils/story-arc.js'
+import { getChapterPlanningConfig } from '../../utils/chapter-planning.js'
 import type { Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import {
@@ -87,7 +88,12 @@ export function printChapterProgress(state: ReducedGraphState): void {
   console.log(`章节进度: ${doneChapters}/${total} (${progress}%)`)
 
   if (state.storyArc) {
-    const arcStatus = buildArcStatus(state.storyArc, state.actProgress, current)
+    const arcStatus = buildArcStatus(
+      state.storyArc,
+      state.actProgress,
+      current,
+      getChapterPlanningConfig(state.genre).bookClosingPhaseRatio
+    )
     console.log('')
     console.log('故事弧线')
     console.log('-'.repeat(50))

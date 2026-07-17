@@ -210,17 +210,18 @@ export async function convergeAndDecide(
   const chapterNumber = state.currentChapterIndex + 1
   const existingContent = await readChapterContentForRun(state.story.outputDir, chapterNumber)
   const chapterFileExists = existingContent !== null && existingContent.trim().length > 0
+  const planningConfig = getChapterPlanningConfig(state.genre)
 
   const routingDeps: RoutingDeps = {
     issuePolicy: {
-      planningConfig: getChapterPlanningConfig(state.genre),
+      planningConfig,
       isInterpretiveIssue,
       // 使用规则去重，避免 issue 在多次校验步骤中被重复累积。
       deduplicateIssues: (issues) => deduplicateByRule(issues),
       log: (level, message, ...meta) => logger[level](message, ...meta),
     },
     rewritePolicy: {
-      planningConfig: getChapterPlanningConfig(state.genre),
+      planningConfig,
       calculateIssueSetSimilarity: (prev, curr) => calculateIssueSetSimilarity(prev, curr),
       isInterpretiveIssue,
       isStateCorruptionIssue,
@@ -263,8 +264,8 @@ export async function convergeAndDecide(
     ...newConstraints.map((text) => createGenericVerifiedConstraint(text)),
   ]
   const trimmedConstraints =
-    nextVerifiedConstraints.length > getChapterPlanningConfig(state.genre).maxVerifiedConstraints
-      ? nextVerifiedConstraints.slice(-getChapterPlanningConfig(state.genre).maxVerifiedConstraints)
+    nextVerifiedConstraints.length > planningConfig.maxVerifiedConstraints
+      ? nextVerifiedConstraints.slice(-planningConfig.maxVerifiedConstraints)
       : nextVerifiedConstraints
   update.verifiedConstraints = trimmedConstraints
 

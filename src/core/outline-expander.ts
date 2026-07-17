@@ -884,9 +884,10 @@ function ensureActCapacityAfterForeshadowAdjudication(
 function buildArcStatusConstraint(
   storyArc: import('../types/outline.js').StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
-  chapterIndex: number
+  chapterIndex: number,
+  bookClosingPhaseRatio: number
 ): string | undefined {
-  const arcStatus = buildArcStatus(storyArc, actProgress, chapterIndex)
+  const arcStatus = buildArcStatus(storyArc, actProgress, chapterIndex, bookClosingPhaseRatio)
   const currentAct = arcStatus.currentAct
   if (!currentAct) return undefined
 
@@ -1814,7 +1815,12 @@ async function expandOutlineForChapterInternal(
   // 前置幕边界压力提示：当当前幕存在 mandatory beat 消费风险时，提前向规划层注入约束，
   // 避免到了幕末才发现 pending beats 无法消费完。
   const arcStatusConstraint = state.storyArc
-    ? buildArcStatusConstraint(state.storyArc, state.actProgress ?? {}, chapterIndex)
+    ? buildArcStatusConstraint(
+        state.storyArc,
+        state.actProgress ?? {},
+        chapterIndex,
+        planningConfig.bookClosingPhaseRatio
+      )
     : undefined
   if (arcStatusConstraint) {
     currentConstraints = [
