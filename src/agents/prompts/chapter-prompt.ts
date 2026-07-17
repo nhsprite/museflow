@@ -30,7 +30,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 <instruction>请撰写第 {displayChapterNumber} 章的正文内容。</instruction>
 
 <main_character>
-<important>【重要】本章主角姓名是"{mainCharacterName}"，主角的姓名在整章中必须保持一致，不得擅自更改为主角起其他名字！</important>
+<important>【重要】本章主角列表：{protagonistList}。所有列出的主角姓名在整章中必须保持一致，不得擅自更名！</important>
 </main_character>
 
 <chapter_outline>
@@ -199,7 +199,7 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 <content>
 ${CHAPTER_OUTPUT_RULES}
 <rule id="1"><mandatory>【必须】</mandatory>严格按照大纲的每一个情节点展开剧情，大纲中提到的所有事件都必须完整呈现</rule>
-<rule id="2"><mandatory>【必须】</mandatory>主角姓名必须保持为"{mainCharacterName}"，不得擅自为主角起其他名字</rule>
+<rule id="2"><mandatory>【必须】</mandatory>所有列出的主角姓名必须保持为"{protagonistList}"中的对应姓名，不得擅自更名</rule>
 <rule id="3"><mandatory>【必须】</mandatory>物品名称、专有名词、特殊设定名称等必须与大纲完全一致</rule>
 ${TIMELINE_RULES}
 <rule id="5"><mandatory>【必须】</mandatory>关键台词必须原样出现：
@@ -261,7 +261,7 @@ export interface ChapterPromptSections {
 
 export interface ChapterPromptVariables {
   displayChapterNumber: string | number
-  mainCharacterName: string
+  protagonistList: string
   chapterTitle: string
   chapterDescription: string
   worldSetting: string

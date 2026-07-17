@@ -37,8 +37,20 @@ function makeCharacterOutput(): AgentOutput {
   return {
     success: true,
     data: [
-      { 姓名: '主角', 背景故事: '测试主角背景', 对话风格: '沉稳' },
-      { 姓名: '配角', 背景故事: '测试配角背景', 对话风格: '活泼' },
+      {
+        name: '主角',
+        description: '测试主角背景',
+        dialogueStyle: '沉稳',
+        aliases: [],
+        isProtagonist: true,
+      },
+      {
+        name: '配角',
+        description: '测试配角背景',
+        dialogueStyle: '活泼',
+        aliases: [],
+        isProtagonist: false,
+      },
     ],
   }
 }
@@ -83,13 +95,21 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
   getCharacterAgent: () => ({
     run: vi.fn(async () => makeCharacterOutput()),
     processOutput: vi.fn((output: AgentOutput, storyId: string): Character[] => {
-      const data = output.data as Array<Record<string, string>>
+      const data = output.data as Array<{
+        name: string
+        description: string
+        dialogueStyle: string
+        aliases: string[]
+        isProtagonist: boolean
+      }>
       return data.map((c, idx) => ({
         id: `char-test-${idx}`,
         storyId,
-        name: String(c['姓名'] || c['name'] || '未命名'),
-        description: (c['背景故事'] || c['description'] || null) as string | null,
-        dialogueStyle: (c['对话风格'] || c['dialogueStyle'] || null) as string | null,
+        name: c.name,
+        aliases: c.aliases,
+        isProtagonist: c.isProtagonist,
+        description: c.description,
+        dialogueStyle: c.dialogueStyle,
         createdAt: Date.now(),
       }))
     }),

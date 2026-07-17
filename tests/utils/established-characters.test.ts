@@ -15,6 +15,7 @@ describe('extractEstablishedCharacters', () => {
     const result = extractEstablishedCharacters([summary1, summary2])
     const names = result.map((c) => c.name).sort()
     expect(names).toEqual(['陆廷樾'])
+    expect(result[0]).toMatchObject({ aliases: [], isProtagonist: false })
   })
 
   it('extracts names from storyState and pending tasks', () => {

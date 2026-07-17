@@ -19,6 +19,8 @@ function makeCharacter(name: string): Character {
     id: `c_${name}`,
     storyId: 's1',
     name,
+    aliases: [],
+    isProtagonist: true,
     description: null,
     dialogueStyle: null,
     createdAt: 1,
@@ -89,6 +91,7 @@ describe('mergeCharacterLists', () => {
     ]
     const merged = mergeCharacterLists(official, outline)
     expect(merged.map((c) => c.name)).toEqual(['苏半城', '陈裕堂'])
+    expect(merged[1]).toMatchObject({ aliases: [], isProtagonist: false })
   })
 
   it('skips outline characters already in official list', () => {

@@ -16,8 +16,11 @@ const CHARACTER_USER_PROMPT_TEMPLATE = `<task>
 
 <requirements>
   <requirement>为故事创建 {MAIN_CHARACTER_COUNT_MIN}-{MAIN_CHARACTER_COUNT_MAX} 个主要人物</requirement>
-  <requirement>每个角色需要包含：姓名、角色定位、性格特点、背景故事、在故事中的目标或动机、与其他角色的关系、对话风格</requirement>
-  <requirement>请以 JSON 数组格式输出</requirement>
+  <requirement>每个角色对象必须使用以下英文键：name、description、dialogueStyle、aliases、isProtagonist</requirement>
+  <requirement>description 应涵盖角色定位、性格特点、背景故事、目标或动机以及与其他角色的关系</requirement>
+  <requirement>aliases 必须是字符串数组；没有别名时输出空数组，不得根据姓名自行缩写</requirement>
+  <requirement>isProtagonist 必须是布尔值，完整数组中至少有一个角色为 true</requirement>
+  <requirement>请直接输出 JSON 数组，不要使用外层对象包装</requirement>
 </requirements>
 {FORMAT_REMINDER}`
 

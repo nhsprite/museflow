@@ -58,49 +58,61 @@ ${wd.powerSystem ? `- 力量/规则体系：${wd.powerSystem}` : ''}
   }
 
   processOutput(output: AgentOutput, storyId: string): Character[] {
-    if (!output.success) {
-      return []
-    }
-    if (!Array.isArray(output.data)) {
-      if (output.data && typeof output.data === 'object') {
-        const obj = output.data as Record<string, unknown>
-        let chars: unknown[] = []
-        if (Array.isArray(obj.characters)) {
-          chars = obj.characters
-        } else {
-          for (const val of Object.values(obj)) {
-            if (Array.isArray(val)) {
-              chars = val
-              break
-            }
-          }
-        }
-        if (chars.length > 0) {
-          return chars.map((char: unknown) => {
-            const c = char as Record<string, unknown>
-            return {
-              id: generateId(),
-              storyId,
-              name: String(c['姓名'] || c['name'] || '未命名'),
-              description: (c['背景故事'] || c['description'] || null) as string | null,
-              dialogueStyle: (c['对话风格'] || c['dialogueStyle'] || null) as string | null,
-              createdAt: Date.now(),
-            }
-          })
-        }
+    if (!output.success || !Array.isArray(output.data) || output.data.length === 0) return []
+
+    const parsed: Array<{
+      name: string
+      aliases: string[]
+      isProtagonist: boolean
+      description: string | null
+      dialogueStyle: string | null
+    }> = []
+
+    for (const value of output.data) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+      const character = value as Record<string, unknown>
+      if (typeof character.name !== 'string' || character.name.trim().length === 0) return []
+      if (
+        !Array.isArray(character.aliases) ||
+        !character.aliases.every((alias) => typeof alias === 'string' && alias.trim().length > 0)
+      ) {
+        return []
       }
-      return []
-    }
-    return output.data.map((char: unknown) => {
-      const c = char as Record<string, unknown>
-      return {
-        id: generateId(),
-        storyId,
-        name: String(c['姓名'] || c['name'] || '未命名'),
-        description: (c['背景故事'] || c['description'] || null) as string | null,
-        dialogueStyle: (c['对话风格'] || c['dialogueStyle'] || null) as string | null,
-        createdAt: Date.now(),
+      if (typeof character.isProtagonist !== 'boolean') return []
+      if (
+        character.description !== undefined &&
+        character.description !== null &&
+        typeof character.description !== 'string'
+      ) {
+        return []
       }
-    })
+      if (
+        character.dialogueStyle !== undefined &&
+        character.dialogueStyle !== null &&
+        typeof character.dialogueStyle !== 'string'
+      ) {
+        return []
+      }
+
+      parsed.push({
+        name: character.name.trim(),
+        aliases: Array.from(new Set(character.aliases.map((alias) => alias.trim()))),
+        isProtagonist: character.isProtagonist,
+        description:
+          typeof character.description === 'string' ? character.description.trim() : null,
+        dialogueStyle:
+          typeof character.dialogueStyle === 'string' ? character.dialogueStyle.trim() : null,
+      })
+    }
+
+    if (!parsed.some((character) => character.isProtagonist)) return []
+
+    const createdAt = Date.now()
+    return parsed.map((character) => ({
+      id: generateId(),
+      storyId,
+      ...character,
+      createdAt,
+    }))
   }
 }

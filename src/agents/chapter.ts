@@ -160,7 +160,11 @@ ${state.chapterContent}
 </chapter_time_anchor>`
       : ''
 
-    const mainCharacterName = state.charactersList?.[0]?.name ?? '（未设定主角）'
+    const protagonistNames = (state.charactersList ?? [])
+      .filter((character) => character.isProtagonist)
+      .map((character) => character.name)
+    const protagonistList =
+      protagonistNames.length > 0 ? protagonistNames.join('、') : '（未设定主角）'
 
     const characterWhitelistSection = buildCharacterWhitelistSection({
       charactersList: state.charactersList,
@@ -271,7 +275,7 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
       },
       {
         displayChapterNumber,
-        mainCharacterName,
+        protagonistList,
         chapterTitle: chapterInfo.title,
         chapterDescription: chapterInfo.description,
         worldSetting: state.world || '（尚未构建）',

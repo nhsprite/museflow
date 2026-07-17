@@ -221,8 +221,26 @@ function buildBaseSession(overrides: Partial<ChapterSession> = {}): ChapterSessi
 
 function makeGraphState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphState {
   const characters: Character[] = [
-    { id: '1', storyId: 's', name: '主角', description: '', createdAt: 1 },
-    { id: '2', storyId: 's', name: '侍女', description: '', createdAt: 2 },
+    {
+      id: '1',
+      storyId: 's',
+      name: '主角',
+      aliases: [],
+      isProtagonist: true,
+      description: '',
+      dialogueStyle: null,
+      createdAt: 1,
+    },
+    {
+      id: '2',
+      storyId: 's',
+      name: '侍女',
+      aliases: [],
+      isProtagonist: false,
+      description: '',
+      dialogueStyle: null,
+      createdAt: 2,
+    },
   ]
   return {
     story: {

@@ -86,8 +86,26 @@ function makeConflict(overrides: Partial<Conflict>): Conflict {
 }
 
 const characters: Character[] = [
-  { id: '1', storyId: 's', name: '主角', description: '', createdAt: 1 },
-  { id: '2', storyId: 's', name: '侍女', description: '', createdAt: 2 },
+  {
+    id: '1',
+    storyId: 's',
+    name: '主角',
+    aliases: [],
+    isProtagonist: true,
+    description: '',
+    dialogueStyle: null,
+    createdAt: 1,
+  },
+  {
+    id: '2',
+    storyId: 's',
+    name: '侍女',
+    aliases: [],
+    isProtagonist: false,
+    description: '',
+    dialogueStyle: null,
+    createdAt: 2,
+  },
 ]
 
 describe('mergeStoryState', () => {
@@ -212,6 +230,47 @@ describe('mergeStoryState', () => {
 })
 
 describe('sanitizeStoryState', () => {
+  it('writes exact character names and aliases as EntityId keys', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterLocations: { 主角: '正厅', 阿侍: '门外' },
+      characterStatus: { 主角: '冷静', 侍女: '疲惫' },
+    }
+    const explicitCharacters: Character[] = [
+      {
+        id: 'char-lead',
+        storyId: 's',
+        name: '主角',
+        aliases: [],
+        isProtagonist: true,
+        description: '',
+        dialogueStyle: null,
+        createdAt: 1,
+      },
+      {
+        id: 'char-attendant',
+        storyId: 's',
+        name: '侍女',
+        aliases: ['阿侍'],
+        isProtagonist: false,
+        description: '',
+        dialogueStyle: null,
+        createdAt: 2,
+      },
+    ]
+
+    const report = sanitizeStoryState(state, explicitCharacters)
+
+    expect(report.state.characterLocations).toEqual({
+      'char-lead': '正厅',
+      'char-attendant': '门外',
+    })
+    expect(report.state.characterStatus).toEqual({
+      'char-lead': '冷静',
+      'char-attendant': '疲惫',
+    })
+  })
+
   it('removes invented characters from locations/status', () => {
     const state: StoryState = {
       ...emptyState(),
@@ -219,8 +278,8 @@ describe('sanitizeStoryState', () => {
       characterStatus: { 主角: '冷静', 配角甲: '疲惫' },
     }
     const report = sanitizeStoryState(state, characters)
-    expect(report.state.characterLocations).toEqual({ 主角: '正厅' })
-    expect(report.state.characterStatus).toEqual({ 主角: '冷静' })
+    expect(report.state.characterLocations).toEqual({ '1': '正厅' })
+    expect(report.state.characterStatus).toEqual({ '1': '冷静' })
     expect(report.removedCharacters).toContain('配角甲')
     expect(report.removedCharacters).toContain('配角乙')
   })
@@ -240,8 +299,8 @@ describe('sanitizeStoryState', () => {
       preserveExisting: true,
       existingStoryState,
     })
-    expect(report.state.characterLocations).toEqual({ 主角: '正厅', 权贵: '王府' })
-    expect(report.state.characterStatus).toEqual({ 主角: '冷静', 权贵: '阴沉' })
+    expect(report.state.characterLocations).toEqual({ '1': '正厅', 权贵: '王府' })
+    expect(report.state.characterStatus).toEqual({ '1': '冷静', 权贵: '阴沉' })
     expect(report.removedCharacters).toContain('配角甲')
   })
 
@@ -1339,7 +1398,18 @@ describe('prepareStoryStateForChapter', () => {
       genre: 'default',
       totalChapters: 3,
       world: null,
-      characters: [{ id: 'c1', storyId: 's1', name: '主角', description: '', createdAt: 1 }],
+      characters: [
+        {
+          id: 'c1',
+          storyId: 's1',
+          name: '主角',
+          aliases: [],
+          isProtagonist: true,
+          description: '',
+          dialogueStyle: null,
+          createdAt: 1,
+        },
+      ],
       outline: [{ id: 'o1', number: 1, title: 'Test', description: '主角秘密抵达京城。' }],
       chapters: [],
       currentChapterIndex: 0,
@@ -1857,7 +1927,16 @@ describe('applyCanonicalFactsToState', () => {
       ],
     }
     const characters: Character[] = [
-      { id: 'c1', storyId: 's1', name: '顾承舟', description: '', dialogueStyle: '', createdAt: 0 },
+      {
+        id: 'c1',
+        storyId: 's1',
+        name: '顾承舟',
+        aliases: [],
+        isProtagonist: true,
+        description: '',
+        dialogueStyle: '',
+        createdAt: 0,
+      },
     ]
     const result = applyCanonicalFactsToState(state, characters)
     expect(result.characterStatus['顾承舟']).toBe('负伤')

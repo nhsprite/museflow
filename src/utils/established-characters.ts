@@ -64,6 +64,8 @@ export function extractEstablishedCharacters(
     id: `established_${name}`,
     storyId: '',
     name,
+    aliases: [],
+    isProtagonist: false,
     description: `【前文已建立角色】${source}`,
     dialogueStyle: null,
     createdAt: 0,

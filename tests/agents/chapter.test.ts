@@ -31,6 +31,60 @@ class TestableChapterAgent extends (await import('../../src/agents/chapter.ts'))
 }
 
 describe('ChapterAgent chapter numbering', () => {
+  it('renders every explicit protagonist instead of selecting the first character', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '群像故事',
+      genre: 'default',
+      totalChapters: 3,
+      world: '',
+      characters: '人物设定',
+      charactersList: [
+        {
+          id: 'support-1',
+          storyId: 'story-1',
+          name: '配角先行',
+          aliases: [],
+          isProtagonist: false,
+          description: null,
+          dialogueStyle: null,
+          createdAt: 1,
+        },
+        {
+          id: 'lead-1',
+          storyId: 'story-1',
+          name: '主角甲',
+          aliases: [],
+          isProtagonist: true,
+          description: null,
+          dialogueStyle: null,
+          createdAt: 2,
+        },
+        {
+          id: 'lead-2',
+          storyId: 'story-1',
+          name: '主角乙',
+          aliases: [],
+          isProtagonist: true,
+          description: null,
+          dialogueStyle: null,
+          createdAt: 3,
+        },
+      ],
+      outline: '第1章：相遇',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('本章主角列表：主角甲、主角乙')
+    expect(userMessage).toContain('所有列出的主角姓名')
+    expect(userMessage).not.toContain('本章主角姓名是"配角先行"')
+  })
+
   it('builds the first chapter prompt with display numbering', () => {
     const agent = new TestableChapterAgent(createMockProvider())
 

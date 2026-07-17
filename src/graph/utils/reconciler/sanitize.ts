@@ -55,20 +55,26 @@ export function sanitizeStoryState(
   const removedCharactersSet = new Set<string>()
 
   const characterLocations: Record<string, string> = {}
-  for (const [name, location] of Object.entries(state.characterLocations)) {
-    if (whitelist.isOfficial(name) || establishedNames.has(name)) {
-      characterLocations[name] = location
+  for (const [reference, location] of Object.entries(state.characterLocations)) {
+    const entityId = whitelist.canonical(reference)
+    if (entityId) {
+      characterLocations[entityId] = location
+    } else if (establishedNames.has(reference)) {
+      characterLocations[reference] = location
     } else {
-      removedCharactersSet.add(name)
+      removedCharactersSet.add(reference)
     }
   }
 
   const characterStatus: Record<string, string> = {}
-  for (const [name, status] of Object.entries(state.characterStatus)) {
-    if (whitelist.isOfficial(name) || establishedNames.has(name)) {
-      characterStatus[name] = status
+  for (const [reference, status] of Object.entries(state.characterStatus)) {
+    const entityId = whitelist.canonical(reference)
+    if (entityId) {
+      characterStatus[entityId] = status
+    } else if (establishedNames.has(reference)) {
+      characterStatus[reference] = status
     } else {
-      removedCharactersSet.add(name)
+      removedCharactersSet.add(reference)
     }
   }
 

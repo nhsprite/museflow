@@ -58,6 +58,8 @@ export function mergeCharacterLists(
       id: `outline_${oc.sourceChapter}_${name}`,
       storyId: '',
       name,
+      aliases: [],
+      isProtagonist: false,
       description: `大纲第${oc.sourceChapter}章「${oc.sourceTitle}」引入：${oc.sourceDescription.substring(0, 80)}`,
       dialogueStyle: null,
       createdAt: 0,

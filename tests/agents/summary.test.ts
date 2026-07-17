@@ -83,7 +83,16 @@ describe('SummaryAgent prompt', () => {
       chapterIndex: 0,
       chapterSummaries: [],
       charactersList: [
-        { id: '1', storyId: 's', name: '苏半城', description: '主角', createdAt: 1 },
+        {
+          id: '1',
+          storyId: 's',
+          name: '苏半城',
+          aliases: [],
+          isProtagonist: true,
+          description: '主角',
+          dialogueStyle: null,
+          createdAt: 1,
+        },
       ],
     })
     const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
