@@ -9,6 +9,8 @@ import { BlockingConflictError } from '../../src/utils/errors.js'
 import type { Conflict } from '../../src/types/story-state.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 import type { ForeshadowMemory } from '../../src/types/story-memory.js'
+import type { RuntimeContext } from '../../src/core/context.js'
+import { prepareStoryStateForChapterCached } from '../../src/graph/utils/chapter-context.js'
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-ar-${randomUUID().slice(0, 8)}`)
 
@@ -28,6 +30,14 @@ function createMockProvider(): ModelProvider {
   return {
     chat: mockChat,
     chatStructured: mockChatStructured,
+  }
+}
+
+function createMockContext(): RuntimeContext {
+  return {
+    provider: createMockProvider(),
+    checkpointer: {} as RuntimeContext['checkpointer'],
+    config: { model: { provider: 'openai', model: 'test', temperature: 0.1, maxTokens: 8192 } },
   }
 }
 
@@ -295,6 +305,40 @@ describe('expandOutlineForChapter auto-revision', () => {
 
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
     expect(result.outline?.[1]?.description).toBe('有效修订。')
+    expect(prepareStoryStateForChapterMock.mock.calls[1]?.[3]).toEqual({
+      proposalMode: 'omit',
+    })
+  })
+
+  it('reuses a validated JIT revision when draft preparation requests the same state', async () => {
+    const proposal = {
+      revisedDescription: '有效修订。',
+      explanation: '解释',
+    }
+    prepareStoryStateForChapterMock
+      .mockRejectedValueOnce(new BlockingConflictError([createConflict()], 1, proposal))
+      .mockResolvedValueOnce({
+        reconciledState: {},
+        stateConflicts: '',
+        itemLocationConflicts: [],
+      })
+      .mockRejectedValueOnce(new Error('revalidated revised outline'))
+
+    const context = createMockContext()
+    const initialState = createJitState()
+    const result = await expandOutlineForChapter(initialState, 1, context)
+    const expandedState: ReducedGraphState = {
+      ...initialState,
+      outline: (result.outline ?? initialState.outline).map((item, index) =>
+        index === 1 ? { ...item, fulfilledForeshadowIds: ['fs-after-planning'] } : item
+      ),
+      chapterPlan: result.chapterPlan,
+    }
+
+    await expect(
+      prepareStoryStateForChapterCached(expandedState, 1, context)
+    ).resolves.toBeDefined()
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
     expect(prepareStoryStateForChapterMock.mock.calls[1]?.[3]).toEqual({
       proposalMode: 'omit',
     })

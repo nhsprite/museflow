@@ -243,9 +243,22 @@ async function detectContradictions(
   conflicts: Conflict[],
   provider: ModelProvider
 ): Promise<boolean[]> {
-  const descriptions = conflicts.map((c) => c.description)
-  const results = await batchJudgeBlockingConflictDescriptions(provider, descriptions)
-  return results
+  const flags = conflicts.map(() => false)
+  const candidates = conflicts
+    .map((conflict, index) => ({ conflict, index }))
+    .filter(({ conflict }) => conflict.type !== 'time_jump')
+  if (candidates.length === 0) {
+    return flags
+  }
+
+  const results = await batchJudgeBlockingConflictDescriptions(
+    provider,
+    candidates.map(({ conflict }) => conflict.description)
+  )
+  for (const [candidateIndex, candidate] of candidates.entries()) {
+    flags[candidate.index] = results[candidateIndex] ?? false
+  }
+  return flags
 }
 
 export async function classifyConflicts(
@@ -259,6 +272,10 @@ export async function classifyConflicts(
   }
 
   return conflicts.map((conflict, index) => {
+    if (conflict.type === 'time_jump') {
+      return { ...conflict, type: 'time_jump', severity: 'auto' }
+    }
+
     const isBlockingContradiction = blockingFlags[index] ?? false
     const requestedSeverity: ConflictSeverity =
       isBlockingContradiction || conflict.type === 'contradiction' ? 'blocking' : conflict.severity
@@ -275,8 +292,6 @@ export async function classifyConflicts(
       type = 'retcon'
     } else if (conflict.attribute === 'status') {
       type = 'retcon'
-    } else if (conflict.type === 'time_jump') {
-      type = 'time_jump'
     }
 
     return {

@@ -14,6 +14,7 @@ import {
   formatCanonicalFactsSections,
   formatStoryState,
   prepareStoryStateForChapter,
+  type PrepareStoryStateOptions,
   type PreparedStoryState,
 } from './reconciler/index.js'
 import { buildEffectiveCharactersList, charactersToString } from './characters.js'
@@ -27,14 +28,44 @@ function isRuntimeContext(source: ChapterContextSource): source is RuntimeContex
   return 'provider' in source
 }
 
+function normalizedIds(ids: readonly string[] | undefined): string[] {
+  return [...(ids ?? [])].sort()
+}
+
 function buildPreparedStoryStateCacheKey(state: ReducedGraphState, chapterIndex: number): string {
   const outlineItem = state.outline[chapterIndex]
+  const outlineInput = outlineItem
+    ? {
+        description: outlineItem.description,
+        touchedCharacterIds: normalizedIds(outlineItem.touchedCharacterIds),
+        touchedItemIds: normalizedIds(outlineItem.touchedItemIds),
+        touchedLocationIds: normalizedIds(outlineItem.touchedLocationIds),
+      }
+    : null
+  const storyMemoryInput = state.storyMemory
+    ? {
+        version: state.storyMemory.version,
+        lastChapterIndex: state.storyMemory.lastChapterIndex,
+        entities: state.storyMemory.entities,
+        beats: state.storyMemory.beats,
+      }
+    : null
+  const storyArcInput = state.storyArc
+    ? {
+        totalChapters: state.storyArc.totalChapters,
+        acts: state.storyArc.acts,
+        keyBeats: state.storyArc.keyBeats,
+      }
+    : null
+
   return JSON.stringify({
     storyId: state.story.id,
     chapterIndex,
-    outlineItem,
+    outlineInput,
     characters: state.characters,
     storyState: state.storyState,
+    storyMemoryInput,
+    storyArcInput,
     authorDecisions: state.authorDecisions,
   })
 }
@@ -42,10 +73,11 @@ function buildPreparedStoryStateCacheKey(state: ReducedGraphState, chapterIndex:
 export async function prepareStoryStateForChapterCached(
   state: ReducedGraphState,
   chapterIndex: number,
-  source: ChapterContextSource
+  source: ChapterContextSource,
+  options: PrepareStoryStateOptions = {}
 ): Promise<PreparedStoryState> {
   if (!isRuntimeContext(source)) {
-    return prepareStoryStateForChapter(state, chapterIndex, source)
+    return prepareStoryStateForChapter(state, chapterIndex, source, options)
   }
 
   const key = buildPreparedStoryStateCacheKey(state, chapterIndex)
@@ -60,7 +92,7 @@ export async function prepareStoryStateForChapterCached(
     return cached
   }
 
-  const prepared = await prepareStoryStateForChapter(state, chapterIndex, source.provider)
+  const prepared = await prepareStoryStateForChapter(state, chapterIndex, source.provider, options)
   cache.set(key, prepared)
   return prepared
 }

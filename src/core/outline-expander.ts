@@ -1476,8 +1476,8 @@ async function validateOutlineState(
   source: ChapterContextSource,
   proposalMode: 'generate' | 'omit'
 ): Promise<void> {
-  if (proposalMode === 'generate' && isRuntimeContext(source)) {
-    await prepareStoryStateForChapterCached(state, chapterIndex, source)
+  if (isRuntimeContext(source)) {
+    await prepareStoryStateForChapterCached(state, chapterIndex, source, { proposalMode })
     return
   }
   await prepareStoryStateForChapter(state, chapterIndex, getProvider(source), {

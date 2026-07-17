@@ -878,6 +878,66 @@ describe('conflict detection & classification', () => {
     expect(result[0].severity).toBe('auto')
   })
 
+  it('never elevates an advisory time jump to blocking', async () => {
+    const conflict = makeConflict({
+      type: 'time_jump',
+      subject: '叙事时间',
+      attribute: 'event',
+      severity: 'auto',
+    })
+    vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValueOnce([true])
+
+    const [result] = await classifyConflicts([conflict], createMockProvider())
+
+    expect(result).toMatchObject({ type: 'time_jump', severity: 'auto' })
+  })
+
+  it('auto-resolves narrative time progression even when blocking classification returns true', async () => {
+    vi.mocked(contextJudge.batchDetectTimeJumps).mockResolvedValueOnce([true])
+    vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValueOnce([true])
+
+    const report = await reconcileStoryState(
+      { ...emptyState(), storyTime: '第一日丑时将至' },
+      '夜色渐深，众人继续等候下一次鼓声。',
+      [],
+      9,
+      createMockProvider()
+    )
+
+    expect(report.autoResolved).toEqual([
+      expect.objectContaining({ type: 'time_jump', severity: 'auto' }),
+    ])
+    expect(report.requiresAuthorDecision).toEqual([])
+  })
+
+  it('excludes time jumps from blocking classification while preserving genuine conflicts', async () => {
+    const conflicts = [
+      makeConflict({
+        id: 'time',
+        type: 'time_jump',
+        subject: '叙事时间',
+        attribute: 'event',
+        description: 'advisory time transition',
+      }),
+      makeConflict({
+        id: 'hard',
+        type: 'extension',
+        attribute: 'event',
+        description: 'established event reversal',
+      }),
+    ]
+    vi.mocked(contextJudge.batchJudgeBlockingConflictDescriptions).mockResolvedValueOnce([true])
+
+    const results = await classifyConflicts(conflicts, createMockProvider())
+
+    expect(contextJudge.batchJudgeBlockingConflictDescriptions).toHaveBeenCalledWith(
+      expect.anything(),
+      ['established event reversal']
+    )
+    expect(results[0]).toMatchObject({ type: 'time_jump', severity: 'auto' })
+    expect(results[1]).toMatchObject({ type: 'contradiction', severity: 'blocking' })
+  })
+
   it('only checks item locations in filterSubjects when filter is provided', async () => {
     const state = emptyState()
     state.keyItemsLocation = { 密信: '书桌抽屉', 白玉牌: '赵管事腰间' }

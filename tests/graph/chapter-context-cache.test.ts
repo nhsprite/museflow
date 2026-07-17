@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { RuntimeContext } from '../../src/core/context.js'
-import { buildChapterAgentContext } from '../../src/graph/utils/chapter-context.js'
+import {
+  buildChapterAgentContext,
+  prepareStoryStateForChapterCached,
+} from '../../src/graph/utils/chapter-context.js'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 const { prepareStoryStateForChapterMock } = vi.hoisted(() => ({
   prepareStoryStateForChapterMock: vi.fn(),
@@ -101,6 +105,81 @@ describe('buildChapterAgentContext cache', () => {
     await buildChapterAgentContext(state, 0, context)
 
     expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('forwards proposal mode and reuses the successful preparation across modes', async () => {
+    const context = createMockContext()
+    const state = buildState()
+
+    await prepareStoryStateForChapterCached(state, 0, context, { proposalMode: 'omit' })
+    await prepareStoryStateForChapterCached(state, 0, context)
+
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(1)
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledWith(state, 0, context.provider, {
+      proposalMode: 'omit',
+    })
+  })
+
+  it('does not cache failed preparation attempts', async () => {
+    const context = createMockContext()
+    const state = buildState()
+    prepareStoryStateForChapterMock
+      .mockRejectedValueOnce(new Error('blocking conflict'))
+      .mockImplementationOnce(async (currentState: ReducedGraphState) => ({
+        reconciledState: currentState.storyState,
+        stateConflicts: '',
+        itemLocationConflicts: [],
+      }))
+
+    await expect(
+      prepareStoryStateForChapterCached(state, 0, context, { proposalMode: 'omit' })
+    ).rejects.toThrow('blocking conflict')
+    await prepareStoryStateForChapterCached(state, 0, context)
+
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('reuses preparation when only post-validation foreshadow claims change', async () => {
+    const context = createMockContext()
+    const state = buildState()
+    const changedState: ReducedGraphState = {
+      ...state,
+      outline: state.outline.map((item, index) =>
+        index === 0 ? { ...item, deferredForeshadowIds: ['fs-after-validation'] } : item
+      ),
+    }
+
+    await prepareStoryStateForChapterCached(state, 0, context)
+    await prepareStoryStateForChapterCached(changedState, 0, context)
+
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('recomputes preparation when story memory changes', async () => {
+    const context = createMockContext()
+    const memory = createEmptyStoryMemory()
+    const state = buildState({ storyMemory: memory })
+    const changedState = buildState({
+      storyMemory: { ...memory, lastChapterIndex: memory.lastChapterIndex + 1 },
+    })
+
+    await prepareStoryStateForChapterCached(state, 0, context)
+    await prepareStoryStateForChapterCached(changedState, 0, context)
+
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('recomputes preparation when the story arc changes', async () => {
+    const context = createMockContext()
+    const state = buildState()
+    const changedState = buildState({
+      storyArc: { totalChapters: 2, acts: [], keyBeats: [] },
+    })
+
+    await prepareStoryStateForChapterCached(state, 0, context)
+    await prepareStoryStateForChapterCached(changedState, 0, context)
+
+    expect(prepareStoryStateForChapterMock).toHaveBeenCalledTimes(2)
   })
 
   it('recomputes prepared story state when the story state fingerprint changes', async () => {
