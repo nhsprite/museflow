@@ -3,14 +3,12 @@ import type { ModelProvider } from '../model/provider.js'
 import { batchValidateFixedContent } from './context-judge.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 import { getGenreSkill } from '../genres/registry.js'
+import { getChapterPlanningConfig } from './chapter-planning.js'
 
 interface ValidationOptions {
   chapterIndex: number
-  minWordCount?: number
-  maxWordCount?: number
+  wordCountPolicy?: ChapterWordCountPolicy
   enforceWordCount?: boolean
-  /** 允许超出 maxWordCount 的字数容差（字符数），默认 0 */
-  maxWordCountTolerance?: number
 }
 
 interface ValidationResult {
@@ -170,11 +168,30 @@ export interface ChapterWordCountBounds {
   max: number
 }
 
+export interface ChapterWordCountPolicy extends ChapterWordCountBounds {
+  toleranceRatio: number
+  tolerance: number
+  effectiveMax: number
+}
+
 export function getChapterWordCountBounds(genre: string | undefined): ChapterWordCountBounds {
   const skill = genre ? getGenreSkill(genre) : null
   return {
     min: skill?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN,
     max: skill?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX,
+  }
+}
+
+export function getChapterWordCountPolicy(genre: string | undefined): ChapterWordCountPolicy {
+  const bounds = getChapterWordCountBounds(genre)
+  const config = getChapterPlanningConfig(genre ?? 'default')
+  const toleranceRatio = config.chapterWordCountToleranceRatio
+  const tolerance = Math.round(bounds.max * toleranceRatio)
+  return {
+    ...bounds,
+    toleranceRatio,
+    tolerance,
+    effectiveMax: bounds.max + tolerance,
   }
 }
 
@@ -186,23 +203,21 @@ export interface WordCountValidationResult {
 
 export function validateWordCount(
   content: string,
-  bounds: ChapterWordCountBounds,
-  tolerance = 0
+  policy: ChapterWordCountPolicy
 ): WordCountValidationResult {
   const wordCount = countChineseWords(content)
-  if (wordCount < bounds.min) {
+  if (wordCount < policy.min) {
     return {
       valid: false,
       wordCount,
-      error: `字数 ${wordCount} 低于最低要求 ${bounds.min}`,
+      error: `字数 ${wordCount} 低于最低要求 ${policy.min}`,
     }
   }
-  const effectiveMax = bounds.max + tolerance
-  if (wordCount > effectiveMax) {
+  if (wordCount > policy.effectiveMax) {
     return {
       valid: false,
       wordCount,
-      error: `字数 ${wordCount} 超过上限 ${effectiveMax}（含 ${tolerance} 字容差）`,
+      error: `字数 ${wordCount} 超过上限 ${policy.effectiveMax}（含 ${policy.tolerance} 字容差）`,
     }
   }
   return { valid: true, wordCount }
@@ -215,10 +230,8 @@ export async function validateFixedChapterContent(
 ): Promise<ValidationResult> {
   const {
     chapterIndex,
-    minWordCount = DEFAULT_CHAPTER_WORD_COUNT_MIN,
-    maxWordCount = DEFAULT_CHAPTER_WORD_COUNT_MAX,
+    wordCountPolicy = getChapterWordCountPolicy(undefined),
     enforceWordCount = true,
-    maxWordCountTolerance = 0,
   } = options
 
   if (!rawContent || rawContent.trim().length === 0) {
@@ -240,11 +253,7 @@ export async function validateFixedChapterContent(
   }
 
   if (enforceWordCount) {
-    const wordCountResult = validateWordCount(
-      rawContent,
-      { min: minWordCount, max: maxWordCount },
-      maxWordCountTolerance
-    )
+    const wordCountResult = validateWordCount(rawContent, wordCountPolicy)
     if (!wordCountResult.valid) {
       return { valid: false, error: `修复后的内容${wordCountResult.error}` }
     }

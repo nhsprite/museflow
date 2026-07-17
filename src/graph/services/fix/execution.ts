@@ -6,7 +6,7 @@ import type { Issue } from '../../../types/agent.js'
 import type { StoryEvent } from '../../../types/story-memory.js'
 import { writeStagedChapterContent } from '../../../storage/filesystem/writer.js'
 import {
-  getChapterWordCountBounds,
+  getChapterWordCountPolicy,
   validateFixedChapterContent,
 } from '../../../utils/chapter-content-validation.js'
 import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
@@ -28,10 +28,10 @@ async function validateMergedFixContent(
   chapterIndex: number,
   provider: ModelProvider
 ): Promise<{ valid: boolean; error?: string }> {
-  const bounds = getChapterWordCountBounds(state.genre)
+  const wordCountPolicy = getChapterWordCountPolicy(state.genre)
   const baseValidation = await validateFixedChapterContent(
     content,
-    { chapterIndex, minWordCount: bounds.min, maxWordCount: bounds.max, enforceWordCount: false },
+    { chapterIndex, wordCountPolicy, enforceWordCount: false },
     provider
   )
   if (!baseValidation.valid) {
@@ -390,14 +390,13 @@ export async function runLegacyFix(
     )
   }
 
-  const bounds = getChapterWordCountBounds(state.genre)
+  const wordCountPolicy = getChapterWordCountPolicy(state.genre)
 
   const validation = await validateFixedChapterContent(
     rawContent,
     {
       chapterIndex,
-      minWordCount: bounds.min,
-      maxWordCount: bounds.max,
+      wordCountPolicy,
       enforceWordCount: false,
     },
     provider

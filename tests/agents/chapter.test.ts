@@ -5,6 +5,41 @@ import type { Issue } from '../../src/types/agent.ts'
 import type { StoryEvent } from '../../src/types/story-memory.js'
 import type { StoryArc } from '../../src/types/outline.js'
 
+vi.mock('../../src/genres/registry.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/genres/registry.js')>()
+  return {
+    ...actual,
+    getGenreSkill: (genreName: string) =>
+      genreName === 'custom-genre'
+        ? {
+            name: 'custom-genre',
+            displayName: 'Custom',
+            version: '1.0.0',
+            worldbuildingPrompt: '',
+            chapterPromptSupplement: '',
+            tropes: [],
+            chapterWordCountMin: 100,
+            chapterWordCountMax: 1000,
+            chapterPlanning: { chapterWordCountToleranceRatio: 0.05 },
+          }
+        : actual.getGenreSkill(genreName),
+  }
+})
+
+vi.mock('../../src/utils/chapter-planning.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/chapter-planning.js')>()
+  return {
+    ...actual,
+    getChapterPlanningConfig: (genreName: string) =>
+      genreName === 'custom-genre'
+        ? {
+            ...actual.DEFAULT_CHAPTER_PLANNING_CONFIG,
+            chapterWordCountToleranceRatio: 0.05,
+          }
+        : actual.getChapterPlanningConfig(genreName),
+  }
+})
+
 function createMockProvider(chatResponse?: string): ModelProvider {
   return {
     chat: vi.fn().mockResolvedValue(chatResponse ?? ''),
@@ -109,6 +144,27 @@ describe('ChapterAgent chapter numbering', () => {
     expect(messages[1]?.content).not.toContain('第 0 章')
     expect(messages[1]?.content).toContain('本章正文总字数应控制在')
     expect(messages[1]?.content).toContain('允许少量超出（约 10% 以内')
+  })
+
+  it('renders the configured word-count tolerance', () => {
+    const agent = new TestableChapterAgent(createMockProvider())
+
+    const messages = agent.exposePrompt({
+      idea: 'test',
+      genre: 'custom-genre',
+      totalChapters: 3,
+      world: '',
+      characters: '',
+      outline: '第1章：开篇',
+      previousChapters: '',
+      chapterContent: '',
+      chapterIndex: 0,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    expect(messages[1]?.content).toContain('约 5% 以内')
+    expect(messages[1]?.content).not.toContain('约 10% 以内')
   })
 
   it('keeps may_remain_open foreshadows out of the mandatory overdue section', () => {

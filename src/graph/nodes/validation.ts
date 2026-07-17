@@ -8,7 +8,7 @@ import { readChapterContent, readChapterContentForRun } from '../../storage/file
 import { buildConsistencyOutlineContext } from './planning.js'
 import { countChineseWords } from '../../utils/text.js'
 import {
-  getChapterWordCountBounds,
+  getChapterWordCountPolicy,
   validateWordCount,
 } from '../../utils/chapter-content-validation.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
@@ -318,12 +318,12 @@ export async function validate_chapter(
   }
 
   const wordCount = countChineseWords(content)
-  const bounds = getChapterWordCountBounds(state.genre)
+  const wordCountPolicy = getChapterWordCountPolicy(state.genre)
 
   // 只返回本轮新发现的字数问题，旧的 pendingIssues 由 orchestration 层统一维护。
   const newIssues: Issue[] = []
 
-  const wordCountResult = validateWordCount(content, bounds)
+  const wordCountResult = validateWordCount(content, wordCountPolicy)
   if (!wordCountResult.valid) {
     newIssues.push(
       createIssue(

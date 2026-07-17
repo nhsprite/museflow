@@ -4,6 +4,18 @@ import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { Issue } from '../../../src/types/agent.js'
 import type { RuntimeContext } from '../../../src/core/context.js'
 
+vi.mock('../../../src/genres/registry.js', () => ({
+  getGenreSkill: vi.fn((genreName: string) =>
+    genreName === 'custom-genre'
+      ? {
+          chapterWordCountMin: 100,
+          chapterWordCountMax: 1000,
+          chapterPlanning: { chapterWordCountToleranceRatio: 0.05 },
+        }
+      : null
+  ),
+}))
+
 vi.mock('../../../src/storage/filesystem/writer.js', () => ({
   readChapterContent: vi.fn(),
   readChapterContentForRun: vi.fn(),
@@ -70,7 +82,7 @@ describe('validate_chapter', () => {
   })
 
   it('treats chapters above the word count max as fix-retry errors', async () => {
-    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('超'.repeat(8001))
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('超'.repeat(8801))
 
     const state = makeState()
     const result = await validate_chapter(context, state)
@@ -83,8 +95,28 @@ describe('validate_chapter', () => {
         retryStrategy: 'fix',
       }),
     ])
-    expect(result.pendingIssues?.[0]?.description).toContain('超过上限 8000')
+    expect(result.pendingIssues?.[0]?.description).toContain('超过上限 8800')
   })
+
+  it.each([
+    { wordCount: 1050, expectedIssues: 0 },
+    { wordCount: 1051, expectedIssues: 1 },
+  ])(
+    'uses the configured effective maximum during comprehensive validation: $wordCount',
+    async ({ wordCount, expectedIssues }) => {
+      vi.mocked(readChapterContentForRun).mockResolvedValueOnce('字'.repeat(wordCount))
+
+      const result = await validate_chapter(
+        context,
+        makeState({ genre: 'custom-genre' } as Partial<ReducedGraphState>)
+      )
+
+      expect(result.pendingIssues).toHaveLength(expectedIssues)
+      if (expectedIssues > 0) {
+        expect(result.pendingIssues?.[0]?.description).toContain('超过上限 1050')
+      }
+    }
+  )
 })
 
 describe('pruneRerunDetectorIssues', () => {

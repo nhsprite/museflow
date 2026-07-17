@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as contextJudge from '../../src/utils/context-judge.js'
 import {
+  getChapterWordCountPolicy,
   validateFixedChapterContent,
+  validateWordCount,
   tryCorrectOffByOneChapterHeading,
   extractChapterNumber,
   findChapterHeading,
@@ -14,9 +16,52 @@ vi.mock('../../src/utils/context-judge.js', () => ({
     .mockResolvedValue([{ looksLikeRevisionPlan: false, containsChecklistArtifacts: false }]),
 }))
 
+vi.mock('../../src/genres/registry.js', () => ({
+  getGenreSkill: vi.fn((genreName: string) =>
+    genreName === 'custom-genre'
+      ? {
+          chapterWordCountMin: 100,
+          chapterWordCountMax: 1000,
+          chapterPlanning: { chapterWordCountToleranceRatio: 0.05 },
+        }
+      : null
+  ),
+}))
+
 function createProvider(): ModelProvider {
   return { chat: vi.fn() }
 }
+
+function contentWithWords(wordCount: number): string {
+  return '字'.repeat(wordCount)
+}
+
+function createWordCountPolicy(min: number, max = 8000, toleranceRatio = 0.1) {
+  const tolerance = Math.round(max * toleranceRatio)
+  return {
+    min,
+    max,
+    toleranceRatio,
+    tolerance,
+    effectiveMax: max + tolerance,
+  }
+}
+
+describe('chapter word count policy', () => {
+  it('uses one configured tolerance boundary', () => {
+    const policy = getChapterWordCountPolicy('custom-genre')
+
+    expect(policy).toEqual({
+      min: 100,
+      max: 1000,
+      tolerance: 50,
+      effectiveMax: 1050,
+      toleranceRatio: 0.05,
+    })
+    expect(validateWordCount(contentWithWords(1050), policy).valid).toBe(true)
+    expect(validateWordCount(contentWithWords(1051), policy).valid).toBe(false)
+  })
+})
 
 describe('validateFixedChapterContent', () => {
   beforeEach(() => {
@@ -30,7 +75,7 @@ describe('validateFixedChapterContent', () => {
     const content = '# 第四章 王府递帖\n\n卯时刚过，灵堂里已经站满了人。\n\n苏半城垂手立在棺前。'
     const result = await validateFixedChapterContent(
       content,
-      { chapterIndex: 3, minWordCount: 10 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
       createProvider()
     )
     expect(result.valid).toBe(true)
@@ -40,7 +85,7 @@ describe('validateFixedChapterContent', () => {
   it('rejects empty content', async () => {
     const result = await validateFixedChapterContent(
       '   ',
-      { chapterIndex: 3, minWordCount: 10 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
       createProvider()
     )
     expect(result.valid).toBe(false)
@@ -50,7 +95,7 @@ describe('validateFixedChapterContent', () => {
   it('rejects content without chapter heading', async () => {
     const result = await validateFixedChapterContent(
       '王府递帖。苏半城站在灵堂。',
-      { chapterIndex: 3, minWordCount: 10 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
       createProvider()
     )
     expect(result.valid).toBe(false)
@@ -60,7 +105,7 @@ describe('validateFixedChapterContent', () => {
   it('rejects content with wrong chapter number', async () => {
     const result = await validateFixedChapterContent(
       '# 第五章 王府递帖\n\n正文内容。',
-      { chapterIndex: 3, minWordCount: 10 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
       createProvider()
     )
     expect(result.valid).toBe(false)
@@ -70,7 +115,7 @@ describe('validateFixedChapterContent', () => {
   it('rejects content below minimum word count', async () => {
     const result = await validateFixedChapterContent(
       '# 第四章 王府递帖\n\n正文。',
-      { chapterIndex: 3, minWordCount: 100 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(100) },
       createProvider()
     )
     expect(result.valid).toBe(false)
@@ -82,7 +127,7 @@ describe('validateFixedChapterContent', () => {
     const content = `# 第四章 王府递帖\n\n${sentence.repeat(55)}`
     const result = await validateFixedChapterContent(
       content,
-      { chapterIndex: 3, minWordCount: 10, maxWordCount: 1000, maxWordCountTolerance: 100 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10, 1000, 0.1) },
       createProvider()
     )
     expect(result.valid).toBe(true)
@@ -93,7 +138,7 @@ describe('validateFixedChapterContent', () => {
     const content = `# 第四章 王府递帖\n\n${sentence.repeat(80)}`
     const result = await validateFixedChapterContent(
       content,
-      { chapterIndex: 3, minWordCount: 10, maxWordCount: 1000, maxWordCountTolerance: 100 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10, 1000, 0.1) },
       createProvider()
     )
     expect(result.valid).toBe(false)
@@ -109,7 +154,7 @@ describe('validateFixedChapterContent', () => {
     ])
     const result = await validateFixedChapterContent(
       plan,
-      { chapterIndex: 3, minWordCount: 10 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
       createProvider()
     )
     expect(result.valid).toBe(false)
@@ -124,7 +169,7 @@ describe('validateFixedChapterContent', () => {
     ])
     const result = await validateFixedChapterContent(
       checklist,
-      { chapterIndex: 3, minWordCount: 10 },
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
       createProvider()
     )
     expect(result.valid).toBe(false)

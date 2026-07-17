@@ -215,7 +215,7 @@ ${AI_PHRASE_PROHIBITIONS}
      - 本章总字数应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间
      - 每章字数应均匀分布，避免出现过短章节
      - 严禁用几句话草率收尾，每章都必须有充实的情节展开</rule>
-<rule id="12b"><mandatory>【必须】</mandatory>本章正文总字数应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间，允许少量超出（约 10% 以内，作为收尾缓冲）。若超出过多，必须压缩描写、合并段落、删除冗余修辞；严重超限将被拒绝并要求重写。</rule>
+<rule id="12b"><mandatory>【必须】</mandatory>本章正文总字数应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间，允许少量超出（约 {CHAPTER_WORD_COUNT_TOLERANCE_PERCENT}% 以内，作为收尾缓冲）。若超出过多，必须压缩描写、合并段落、删除冗余修辞；严重超限将被拒绝并要求重写。</rule>
 ${CROSS_CHAPTER_CONTINUITY_RULES}
 ${FACT_CONSISTENCY_RULES}
 ${FORESHADOW_BOUNDARY_RULES}
@@ -268,6 +268,7 @@ export interface ChapterPromptVariables {
   characterSetting: string
   CHAPTER_WORD_COUNT_MIN: number
   CHAPTER_WORD_COUNT_MAX: number
+  CHAPTER_WORD_COUNT_TOLERANCE_PERCENT: number
   MAX_BACKGROUND_TASK_WORD_COUNT: number
   CLOSING_FORESHADOW_RECOVERY_PERCENT: number
 }

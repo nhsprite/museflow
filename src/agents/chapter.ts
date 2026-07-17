@@ -7,7 +7,6 @@ import type { StoryEvent } from '../types/story-memory.js'
 import { generateId } from '../utils/id.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import { getChapterPlanningConfig } from '../utils/chapter-planning.js'
-import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 import {
   buildCharacterWhitelistSection,
   FACT_CONSISTENCY_RULES,
@@ -22,6 +21,7 @@ import { parseStoryEventsBlock, parseStoryFinalStateBlock } from '../story-memor
 import {
   CHAPTER_HEADING_PATTERN,
   CHAPTER_TITLE_ONLY_PATTERN,
+  getChapterWordCountPolicy,
 } from '../utils/chapter-content-validation.js'
 import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
 import { classifyForeshadows } from '../story-memory/foreshadow-policy.js'
@@ -46,6 +46,7 @@ export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   protected buildPrompt(state: ChapterAgentInput): import('../model/provider.js').Message[] {
     const genre = this.getGenre(state.genre)
     const planningConfig = getChapterPlanningConfig(state.genre)
+    const wordCountPolicy = getChapterWordCountPolicy(state.genre)
     const chapterSupplement = genre?.chapterPromptSupplement ?? ''
     const chapterIndex = state.chapterIndex ?? 0
     const displayChapterNumber = toDisplayChapterNumber(chapterIndex)
@@ -280,8 +281,9 @@ ${taskResolutions.map((t, i) => `${i + 1}. [${t.resolution}] ${t.assignee}：${t
         chapterDescription: chapterInfo.description,
         worldSetting: state.world || '（尚未构建）',
         characterSetting: state.characters || '（尚未创建）',
-        CHAPTER_WORD_COUNT_MIN: genre?.chapterWordCountMin ?? DEFAULT_CHAPTER_WORD_COUNT_MIN,
-        CHAPTER_WORD_COUNT_MAX: genre?.chapterWordCountMax ?? DEFAULT_CHAPTER_WORD_COUNT_MAX,
+        CHAPTER_WORD_COUNT_MIN: wordCountPolicy.min,
+        CHAPTER_WORD_COUNT_MAX: wordCountPolicy.max,
+        CHAPTER_WORD_COUNT_TOLERANCE_PERCENT: Math.round(wordCountPolicy.toleranceRatio * 100),
         MAX_BACKGROUND_TASK_WORD_COUNT: planningConfig.maxBackgroundTaskWordCount,
         CLOSING_FORESHADOW_RECOVERY_PERCENT: Math.round(
           planningConfig.closingForeshadowRecoveryRatio * 100

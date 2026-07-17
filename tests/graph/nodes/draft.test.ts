@@ -6,6 +6,7 @@ import { expandOutlineForChapter } from '../../../src/core/outline-expander.js'
 import { getGenreSkill } from '../../../src/genres/registry.js'
 import type { ReducedGraphState } from '../../../src/graph/state.js'
 import { createMockContext } from '../../utils/mock-context.ts'
+import { countChineseWords } from '../../../src/utils/text.js'
 
 const chapterAgentRunMock = vi.fn(async () => ({
   success: true,
@@ -38,11 +39,24 @@ vi.mock('../../../src/graph/agent-factory.js', () => ({
 }))
 
 vi.mock('../../../src/genres/registry.js', () => ({
-  getGenreSkill: vi.fn(() => ({
-    chapterWordCountMin: 10,
-    chapterWordCountMax: 100000,
-  })),
+  getGenreSkill: vi.fn((genreName: string) =>
+    genreName === 'custom-genre'
+      ? {
+          chapterWordCountMin: 100,
+          chapterWordCountMax: 1000,
+          chapterPlanning: { chapterWordCountToleranceRatio: 0.05 },
+        }
+      : {
+          chapterWordCountMin: 10,
+          chapterWordCountMax: 100000,
+        }
+  ),
 }))
+
+function chapterContentWithWords(wordCount: number): string {
+  const heading = '# 第1章 开篇\n\n'
+  return `${heading}${'字'.repeat(wordCount - countChineseWords(heading))}`
+}
 
 describe('draft_chapter output validation', () => {
   let tmpDir: string
@@ -122,6 +136,42 @@ describe('draft_chapter output validation', () => {
 
     await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/超过上限/)
   })
+
+  it.each([
+    { wordCount: 1050, accepted: true },
+    { wordCount: 1051, accepted: false },
+  ])(
+    'uses the configured effective maximum at draft stage: $wordCount',
+    async ({ wordCount, accepted }) => {
+      const state = {
+        story: { id: 'test', title: 'Test', outputDir: tmpDir },
+        idea: 'test',
+        genre: 'custom-genre',
+        totalChapters: 10,
+        currentChapterIndex: 0,
+        outline: [{ number: 1, title: '开篇', description: '测试' }],
+        chapters: [null],
+        chapterSummaries: [],
+        foreshadowStack: [],
+        characters: [],
+        world: null,
+        storyState: null,
+        pendingIssues: [],
+        rewriteApproved: false,
+      } as unknown as ReducedGraphState
+      chapterAgentRunMock.mockResolvedValueOnce({
+        success: true,
+        content: chapterContentWithWords(wordCount),
+      })
+
+      const result = draft_chapter(createMockContext(), state)
+      if (accepted) {
+        await expect(result).resolves.toBeDefined()
+      } else {
+        await expect(result).rejects.toThrow(/超过上限 1050/)
+      }
+    }
+  )
 
   it(
     'uses updated JIT outline after outline expansion when adding a missing heading',
