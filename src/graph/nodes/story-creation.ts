@@ -178,6 +178,7 @@ export async function validate_outline(
   if (!storyArc) {
     issues.push({
       id: generateId(),
+      ruleId: 'story-arc.missing',
       type: 'outline_missing',
       severity: 'error',
       description: '故事弧线未生成',
@@ -193,6 +194,7 @@ export async function validate_outline(
     if (act.startChapter !== expectedStart) {
       issues.push({
         id: generateId(),
+        ruleId: 'story-arc.gap',
         type: 'outline_gap',
         severity: 'error',
         description: `幕结构存在缺口：第 ${expectedStart} 章未落入任何一幕`,
@@ -202,6 +204,7 @@ export async function validate_outline(
     if (act.endChapter < act.startChapter) {
       issues.push({
         id: generateId(),
+        ruleId: 'story-arc.range',
         type: 'outline_invalid',
         severity: 'error',
         description: `第 ${act.index} 幕的结束章节小于起始章节`,
@@ -213,6 +216,7 @@ export async function validate_outline(
   if (expectedStart - 1 !== state.totalChapters) {
     issues.push({
       id: generateId(),
+      ruleId: 'story-arc.coverage',
       type: 'outline_coverage',
       severity: 'error',
       description: `幕结构未覆盖全部 ${state.totalChapters} 章，实际覆盖到第 ${expectedStart - 1} 章`,
@@ -225,6 +229,7 @@ export async function validate_outline(
     if (act.mandatoryBeats.length === 0) {
       issues.push({
         id: generateId(),
+        ruleId: 'story-arc.empty-beats',
         type: 'outline_empty_beats',
         severity: 'warning',
         description: `第 ${act.index} 幕「${act.title}」没有 mandatory beats，可能导致该幕缺乏叙事目标`,
@@ -239,6 +244,7 @@ export async function validate_outline(
     if (keyBeat.deadlineAct < 1 || keyBeat.deadlineAct > maxAct) {
       issues.push({
         id: generateId(),
+        ruleId: 'story-arc.invalid-deadline',
         type: 'outline_invalid_deadline',
         severity: 'warning',
         description: `关键情节点「${keyBeat.beat}」的截止幕 ${keyBeat.deadlineAct} 超出有效范围 1–${maxAct}`,

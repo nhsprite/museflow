@@ -209,6 +209,7 @@ async function judgeChapterOpeningContinuity(
 
     const issue: Issue = {
       id: generateId(),
+      ruleId: 'continuity.opening',
       type: 'continuity',
       severity: normalizeContinuitySeverity(result.severity),
       description: `第 ${chapterNumber} 章开头承接上一章结尾失败：${reason}`,
@@ -304,6 +305,7 @@ export async function validate_chapter(
         tagIssueSource(
           {
             id: generateId(),
+            ruleId: 'word-count.content-missing',
             type: 'word_count' as const,
             severity: 'error' as const,
             description: `第 ${chapterIndex + 1} 章正文文件未找到`,
@@ -326,6 +328,7 @@ export async function validate_chapter(
     newIssues.push(
       createIssue(
         {
+          ruleId: 'word-count.bounds',
           type: 'word_count',
           severity: 'error',
           description: `第 ${chapterIndex + 1} 章${wordCountResult.error}`,
@@ -347,6 +350,7 @@ export async function validate_chapter(
           tagIssueSource(
             {
               id: generateId(),
+              ruleId: 'word-count.chapter-variance',
               type: 'word_count' as const,
               severity: 'warning',
               description: `第 ${chapterIndex + 1} 章字数 ${wordCount} 与上一章 ${prevWordCount} 差异超过50%，请检查章节内容是否完整`,
@@ -366,6 +370,7 @@ export async function validate_chapter(
         newIssues.push(
           createIssue(
             {
+              ruleId: 'continuity.duplicate-ending',
               type: 'consistency',
               severity: 'error',
               description: duplicateMessage,
@@ -545,6 +550,7 @@ export async function validate_chapter_comprehensive(
         tagIssueSource(
           {
             id: generateId(),
+            ruleId: 'continuity.memory-projection',
             type: 'continuity',
             severity: 'warning',
             description,

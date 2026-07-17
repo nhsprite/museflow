@@ -160,6 +160,7 @@ describe('FixAgent processOutput scope protection', () => {
 
     const uncovered = issues.find((i) => i.locationRef?.paragraphIndex === 2)
     expect(uncovered).toBeDefined()
+    expect(uncovered?.ruleId).toBe('fix.uncovered-paragraph')
     expect(uncovered?.severity).toBe('warning')
     expect(uncovered?.retryStrategy).toBe('fix')
   })

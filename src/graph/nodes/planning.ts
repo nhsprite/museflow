@@ -57,6 +57,7 @@ async function runPlanChapter(
               ...(agentState.issues ?? []),
               {
                 id: `planner-event-contract-${chapterIndex}`,
+                ruleId: 'planning.event-contract',
                 type: 'outline_invalid',
                 severity: 'error',
                 description: `${lastError}（修复提示：expectedEvents 中所有 ID 字段必须使用上下文已提供的权威机器可读 ID；没有权威 ID 的无名临时角色禁止出现在 expectedEvents 中，禁止用中文名或自造 ID 充当 ID 字段，其动作只写入 sections/timeline 文本。）`,

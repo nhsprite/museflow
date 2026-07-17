@@ -200,6 +200,7 @@ function buildActBoundaryPendingIssue(storyId: string, act: ActArc, pendingBeats
 
   return {
     id: `act-${act.index}-pending-beats-at-boundary`,
+    ruleId: 'outline-coverage.pending-beats-at-boundary',
     type: 'outline_coverage',
     severity: 'error',
     subject: `act-${act.index}`,
@@ -347,6 +348,7 @@ export async function finalizeChapter(
             ...state.pendingIssues,
             {
               id: `foreshadow-equivalence-failed-${chapterIndex}-${generateId()}`,
+              ruleId: 'foreshadow.equivalence',
               type: 'foreshadow_equivalence_failed',
               severity: 'error',
               description: `第 ${chapterIndex + 1} 章伏笔等价检测失败：${error.message}`,
@@ -520,6 +522,7 @@ export async function finalizeChapter(
             ...state.pendingIssues,
             {
               id: generateId(),
+              ruleId: 'finalization.state-extraction',
               type: 'state_corruption',
               severity: 'error',
               description: `第 ${chapterIndex + 1} 章摘要提取失败，无法安全进入下一章。`,
@@ -689,6 +692,7 @@ export async function finalizeChapter(
       ...updatedPendingIssues,
       ...invalidForeshadowDeadlineEvents.map((event) => ({
         id: `invalid-foreshadow-deadline-${event.id}`,
+        ruleId: 'structured.foreshadow-invalid-deadline',
         type: 'foreshadow_invalid_deadline' as const,
         severity: 'error' as const,
         description: `伏笔 ${event.foreshadowId} 的预期回收章节 ${String(event.expectedFulfillChapter)} 必须晚于引入章节 ${event.chapterIndex + 1}`,
@@ -716,6 +720,7 @@ export async function finalizeChapter(
       ...updatedPendingIssues,
       {
         id: `final-act-new-foreshadow-${chapterIndex}-${generateId()}`,
+        ruleId: 'foreshadow.final-act-introduction',
         type: 'foreshadow_final_act_introduce' as const,
         severity: 'error' as const,
         description: `最终幕不得引入新伏笔：${ids.join('、')}。请修改本章正文或大纲，将相关内容改为既有线索的回收、场景氛围描写或人物心理刻画。`,
@@ -775,6 +780,7 @@ export async function finalizeChapter(
                 ...updatedPendingIssues,
                 {
                   id: `auto-extension-limit-${proposal.actIndex}-${generateId()}`,
+                  ruleId: 'outline-coverage.auto-extension-limit',
                   type: 'outline_coverage',
                   severity: 'error',
                   description: `第 ${proposal.actIndex} 幕自动延长已达到上限，仍有 mandatory beats 未消费。`,
@@ -841,6 +847,7 @@ export async function finalizeChapter(
         ...updatedPendingIssues,
         ...unresolvedForeshadows.map((foreshadowId) => ({
           id: `foreshadow-boundary-unresolved-${foreshadowId}-${chapterIndex}`,
+          ruleId: 'foreshadow.boundary',
           type: 'foreshadow_boundary_unresolved' as const,
           severity: 'error' as const,
           description: isStoryEnd

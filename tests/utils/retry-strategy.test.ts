@@ -5,6 +5,7 @@ import type { Issue } from '../../src/types/agent.js'
 function makeIssue(dimension: string, locationRef?: Issue['locationRef']): Issue {
   return {
     id: '1',
+    ruleId: 'test.retry-strategy',
     type: 'consistency',
     severity: 'error',
     description: 'test',
@@ -50,6 +51,7 @@ describe('inferRetryStrategy', () => {
   it('respects explicit retryStrategy overrides', () => {
     const issue: Issue = {
       id: '1',
+      ruleId: 'test.retry-strategy',
       type: 'consistency',
       severity: 'error',
       description: 'test',

@@ -36,6 +36,7 @@ describe('validate_chapter', () => {
   it('does not carry over existing pendingIssues when no new word count issues', async () => {
     const oldIssue: Issue = {
       id: 'old-1',
+      ruleId: 'test.old-consistency',
       type: 'consistency',
       severity: 'error',
       description: '已有问题',
@@ -53,6 +54,7 @@ describe('validate_chapter', () => {
   it('returns only new word_count issues', async () => {
     const oldIssue: Issue = {
       id: 'old-1',
+      ruleId: 'test.old-consistency',
       type: 'consistency',
       severity: 'error',
       description: '已有问题',
@@ -75,6 +77,7 @@ describe('validate_chapter', () => {
 
     expect(result.pendingIssues).toEqual([
       expect.objectContaining({
+        ruleId: 'word-count.bounds',
         type: 'word_count',
         severity: 'error',
         retryStrategy: 'fix',
@@ -88,6 +91,7 @@ describe('pruneRerunDetectorIssues', () => {
   it('removes issues from rerun detector sources while preserving other sources', () => {
     const wordCountIssue: Issue = {
       id: 'w1',
+      ruleId: 'word-count.chapter-variance',
       type: 'word_count',
       severity: 'warning',
       description: '字数差异',
@@ -95,6 +99,7 @@ describe('pruneRerunDetectorIssues', () => {
     }
     const consistencyIssue: Issue = {
       id: 'c1',
+      ruleId: 'test.consistency',
       type: 'consistency',
       severity: 'error',
       description: '上一轮一致性错误',
@@ -102,6 +107,7 @@ describe('pruneRerunDetectorIssues', () => {
     }
     const structuredIssue: Issue = {
       id: 's1',
+      ruleId: 'structured.event-missing',
       type: 'event_missing',
       severity: 'error',
       description: '结构化事件缺失',
@@ -109,6 +115,7 @@ describe('pruneRerunDetectorIssues', () => {
     }
     const untaggedIssue: Issue = {
       id: 'u1',
+      ruleId: 'test.untagged',
       type: 'outline_gap',
       severity: 'warning',
       description: '无来源标记的问题',
@@ -128,6 +135,7 @@ describe('pruneRerunDetectorIssues', () => {
     const issues: Issue[] = [
       {
         id: 'w1',
+        ruleId: 'word-count.chapter-variance',
         type: 'word_count',
         severity: 'warning',
         description: '字数差异',
@@ -135,6 +143,7 @@ describe('pruneRerunDetectorIssues', () => {
       },
       {
         id: 'c1',
+        ruleId: 'continuity.opening',
         type: 'continuity',
         severity: 'error',
         description: '承接断裂',

@@ -309,6 +309,7 @@ function buildFixMergeIssue(
   const patchable = options.patchable ?? false
   return {
     id: generateId(),
+    ruleId: 'fix.merge-output',
     type: 'consistency',
     severity: 'warning',
     description,
@@ -322,6 +323,7 @@ function buildFixMergeIssue(
 function buildUncoveredParagraphIssue(paragraphIndex: number): Issue {
   return {
     id: generateId(),
+    ruleId: 'fix.uncovered-paragraph',
     type: 'consistency',
     severity: 'warning',
     description: `受影响段落 ${paragraphIndex} 未被模型修改，相关问题可能仍未解决`,

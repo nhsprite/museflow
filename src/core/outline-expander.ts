@@ -1422,6 +1422,7 @@ async function generateChapterOutlineIfNeeded(
   if (autoDeferredForeshadowIds.length > 0) {
     pendingIssues.push({
       id: `outline-foreshadow-auto-deferred-${chapterIndex}`,
+      ruleId: 'outline.foreshadow-compliance',
       type: 'outline_foreshadow',
       severity: 'warning',
       description: `即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未对候选伏笔 ${autoDeferredForeshadowIds.join(', ')} 作出裁决，已自动顺延至 deferredForeshadowIds。`,
@@ -1971,6 +1972,7 @@ async function expandOutlineForChapterInternal(
       if (missingDeadlineIds.length > 0) {
         pendingIssues.push({
           id: `plan-foreshadow-auto-deferred-${chapterIndex}`,
+          ruleId: 'outline.foreshadow-compliance',
           type: 'outline_foreshadow',
           severity: 'warning',
           description: `章节规划连续 2 次无法为大纲声称的伏笔 ${missingDeadlineIds.join(', ')} 生成结构化兑现证据，已自动将其顺延。`,
@@ -2022,6 +2024,7 @@ async function expandOutlineForChapterInternal(
           ...pendingIssues,
           {
             id: `time-anchor-removed-${chapterIndex}`,
+            ruleId: 'continuity.time-anchor',
             type: 'continuity',
             severity: 'warning',
             description: `本章 chapterTimeAnchor 经过 ${maxTimeAnchorAttempts} 次重新规划仍与上一章正文不一致，已移除：${reason}。`,
@@ -2140,6 +2143,7 @@ async function expandOutlineForChapterInternal(
     pendingIssues = [
       {
         id: `outline-budget-failure-${chapterIndex}`,
+        ruleId: 'outline.density',
         type: 'outline_density',
         severity: 'warning',
         description: `经过 ${maxBudgetAttempts} 次预算修正仍存在重心问题：${budgetValidation.reason}。`,

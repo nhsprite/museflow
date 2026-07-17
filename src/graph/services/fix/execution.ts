@@ -61,6 +61,7 @@ async function validateMergedFixContent(
 function buildFixValidationFailureIssue(chapterIndex: number, error: string): Issue {
   return createIssue(
     {
+      ruleId: 'fix.merge-output',
       type: 'draft_failure',
       severity: 'error',
       description: `第 ${chapterIndex + 1} 章修复后内容校验失败：${error}`,
@@ -93,6 +94,7 @@ function refreshDraftChapterEventsAfterFix(
       issues.push(
         createIssue(
           {
+            ruleId: 'structured.event-evidence-invalid',
             type: 'event_evidence_invalid',
             severity: 'warning',
             description: `结构化事件 ${event.id}（${event.type}）的段落证据 @p${evidence.paragraphIndex} 在第 ${chapterIndex + 1} 章修复后的正文中不存在，已将其从 draftChapterEvents 移除，避免写入 StoryMemory`,

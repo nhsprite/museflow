@@ -44,6 +44,7 @@ describe('buildStructuredIssues final-state mismatches', () => {
     const issues = buildStructuredIssues(result, 24)
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({
+      ruleId: 'structured.final-state-uncorroborated',
       type: 'event_missing',
       severity: 'warning',
     })
@@ -66,7 +67,11 @@ describe('buildStructuredIssues final-state mismatches', () => {
     })
     const issues = buildStructuredIssues(result, 24)
     expect(issues).toHaveLength(1)
-    expect(issues[0]).toMatchObject({ type: 'event_missing', severity: 'error' })
+    expect(issues[0]).toMatchObject({
+      ruleId: 'structured.final-state-mismatch',
+      type: 'event_missing',
+      severity: 'error',
+    })
     expect(issues[0]?.description).toContain('loc-drawer-right')
     expect(issues[0]?.description).toContain('loc-drawer-deep')
   })
@@ -96,6 +101,7 @@ describe('buildStructuredIssues foreshadow semantic rejections', () => {
 
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({
+      ruleId: 'structured.foreshadow-false-fulfillment',
       type: 'foreshadow_false_fulfillment',
       severity: 'error',
       source: 'foreshadowing',

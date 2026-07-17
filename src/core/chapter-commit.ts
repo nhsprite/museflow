@@ -72,6 +72,7 @@ export async function reconcileStagedChapterCommits(
     logger.warn(`[MuseFlow] 恢复对账：第 ${chapterNumber} 章已完成但正文文件缺失`)
     issues.push({
       id: `chapter-${chapterNumber}-content-missing`,
+      ruleId: 'finalization.chapter-content-missing',
       type: 'draft_failure',
       severity: 'error',
       subject: `chapter-${chapterNumber}`,

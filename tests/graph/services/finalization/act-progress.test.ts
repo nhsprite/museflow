@@ -243,6 +243,7 @@ describe('updateActProgress', () => {
     expect(result.beatVerificationIssues).toEqual([
       expect.objectContaining({
         id: 'unverified-beat-id-A1-B1',
+        ruleId: 'outline-coverage.unverified-mandatory-beat',
         severity: 'error',
         subject: 'A1-B1',
         description: expect.stringContaining('身份暴露'),

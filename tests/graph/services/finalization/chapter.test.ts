@@ -1156,6 +1156,7 @@ describe('finalizeChapter', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'unverified-beat-id-beat-1',
+          ruleId: 'outline-coverage.unverified-mandatory-beat',
           type: 'outline_coverage',
           severity: 'error',
           subject: 'beat-1',
@@ -1220,6 +1221,7 @@ describe('finalizeChapter', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'unverified-beat-1-0',
+          ruleId: 'outline-coverage.unverified-mandatory-beat',
           type: 'outline_coverage',
           severity: 'warning',
         }),
@@ -2062,6 +2064,7 @@ describe('finalizeChapter', () => {
     expect(result.rewriteRequested).toBe(true)
     expect(result.pendingIssues).toEqual([
       expect.objectContaining({
+        ruleId: 'foreshadow.equivalence',
         type: 'foreshadow_equivalence_failed',
         severity: 'error',
         source: 'foreshadowing',

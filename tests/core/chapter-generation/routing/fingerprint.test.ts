@@ -22,6 +22,7 @@ const planningConfig: ChapterPlanningConfig = {
 function makeIssue(subject: string): Issue {
   return {
     id: `issue-${subject}`,
+    ruleId: 'consistency.character-state',
     type: 'consistency',
     severity: 'error',
     description: `角色 ${subject} 状态不一致`,

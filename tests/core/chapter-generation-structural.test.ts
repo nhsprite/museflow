@@ -6,6 +6,7 @@ describe('isStructuralIssue rule-based classification', () => {
   it('classifies outline violations as structural by rule', () => {
     const issue: Issue = {
       id: '1',
+      ruleId: 'test.outline-violation',
       type: 'outline_violation',
       severity: 'error',
       description: '缺少大纲事件',
@@ -16,6 +17,7 @@ describe('isStructuralIssue rule-based classification', () => {
   it('classifies outline deviation errors as structural by rule', () => {
     const issue: Issue = {
       id: '1',
+      ruleId: 'test.outline-deviation',
       type: 'outline_deviation',
       severity: 'error',
       description: '偏离大纲',
@@ -26,6 +28,7 @@ describe('isStructuralIssue rule-based classification', () => {
   it('classifies quality-dimension errors as non-structural (local) by rule', () => {
     const issue: Issue = {
       id: '1',
+      ruleId: 'test.quality',
       type: 'consistency',
       severity: 'error',
       description: '用词重复',
@@ -37,6 +40,7 @@ describe('isStructuralIssue rule-based classification', () => {
   it('classifies consistency errors as structural by rule', () => {
     const issue: Issue = {
       id: '1',
+      ruleId: 'test.consistency',
       type: 'consistency',
       severity: 'error',
       description: 'cross-chapter fact mismatch',
@@ -47,6 +51,7 @@ describe('isStructuralIssue rule-based classification', () => {
   it('classifies world_integrity consistency errors as structural by rule', () => {
     const issue: Issue = {
       id: '1',
+      ruleId: 'test.world-integrity',
       type: 'consistency',
       severity: 'error',
       description: '使用了未介绍的人物',

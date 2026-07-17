@@ -240,6 +240,7 @@ function buildPastActPendingIssue(
 
   return {
     id: `act-${act.index}-pending-beats-at-boundary`,
+    ruleId: 'outline-coverage.pending-beats-at-boundary',
     type: 'outline_coverage',
     severity: 'error',
     subject: `act-${act.index}`,

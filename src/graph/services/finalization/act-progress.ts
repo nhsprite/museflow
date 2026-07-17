@@ -396,6 +396,7 @@ function buildBeatVerificationIssues(
 
     issues.push({
       id: `unverified-mandatory-beat-id-${beatId}`,
+      ruleId: 'outline-coverage.unverified-mandatory-beat',
       type: 'outline_coverage',
       severity: shouldBlock ? 'error' : 'warning',
       subject: beatId,
@@ -422,6 +423,7 @@ function buildBeatVerificationIssues(
 
     issues.push({
       id: `unverified-beat-id-${beatId}`,
+      ruleId: 'outline-coverage.unverified-mandatory-beat',
       type: 'outline_coverage',
       severity: shouldBlock ? 'error' : 'warning',
       subject: beatId,
@@ -441,6 +443,7 @@ function buildBeatVerificationIssues(
     if (beatIndex >= 0 && !claimedBeatIndexesFromIds.has(beatIndex)) {
       issues.push({
         id: `unverified-beat-${act.index}-${beatIndex}`,
+        ruleId: 'outline-coverage.unverified-mandatory-beat',
         type: 'outline_coverage',
         severity: 'warning',
         description: `本章大纲声称推进 mandatory beat「${beat}」，但正文未验证到该 beat 的发生。`,
