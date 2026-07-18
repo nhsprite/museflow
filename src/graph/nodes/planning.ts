@@ -14,12 +14,28 @@ import type { ModelProvider } from '../../model/provider.js'
 import { renderVerifiedConstraints } from '../../utils/verified-constraints.js'
 import { findForeshadowFulfillmentConflictIds } from '../../story-memory/foreshadow-alias.js'
 import {
+  buildStoryEventAuthorityRegistry,
   validatePlannedStoryEventAuthority,
   type PlannedStoryEventAuthorityIssue,
 } from '../../story-memory/event-authority.js'
 
 function formatAuthorityIssue(issue: PlannedStoryEventAuthorityIssue): string {
   return `expectedEvents[${issue.index}].${issue.field} 引用了未授权 ID ${issue.id}（事件类型：${issue.eventType}）`
+}
+
+function buildPlannerValidationIssue(
+  chapterIndex: number,
+  ruleId: string,
+  description: string,
+  issueIndex: number
+): NonNullable<ChapterPlannerAgentInput['issues']>[number] {
+  return {
+    id: `planner-validation-${chapterIndex}-${issueIndex}`,
+    ruleId,
+    type: 'outline_invalid',
+    severity: 'error',
+    description: `${description}（修复提示：expectedEvents 中所有 ID 字段必须使用上下文已提供的权威机器可读 ID；没有权威 ID 的无名临时角色禁止出现在 expectedEvents 中，禁止用中文名或自造 ID 充当 ID 字段，其动作只写入 sections/timeline 文本。）`,
+  }
 }
 
 async function runPlanChapter(
@@ -36,10 +52,12 @@ async function runPlanChapter(
 
   const baseContext = await buildChapterAgentContext(state, chapterIndex, provider)
   const verifiedConstraints = renderVerifiedConstraints(state.verifiedConstraints)
+  const storyEventAuthority = buildStoryEventAuthorityRegistry(state)
 
   const agentState: ChapterPlannerAgentInput = mergeAgentState(baseContext, {
     outline: outlineOverride ?? formatChapterOutlineForAgent(state, chapterIndex),
     chapterSummaries: selectChapterSummaries(state.chapters, chapterIndex),
+    storyEventAuthority,
     ...(state.pendingIssues && state.pendingIssues.length > 0
       ? { issues: state.pendingIssues }
       : {}),
@@ -53,8 +71,8 @@ async function runPlanChapter(
   }) as ChapterPlannerAgentInput
 
   let output: Awaited<ReturnType<typeof agent.run>> | undefined
-  let lastError = '无法生成章节规划。请检查模型输出或重试。'
-  let lastErrorRuleId = 'planning.event-contract'
+  let lastErrors = ['无法生成章节规划。请检查模型输出或重试。']
+  let retryIssues: NonNullable<ChapterPlannerAgentInput['issues']> = []
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const retryState: ChapterPlannerAgentInput =
@@ -62,21 +80,14 @@ async function runPlanChapter(
         ? agentState
         : {
             ...agentState,
-            issues: [
-              ...(agentState.issues ?? []),
-              {
-                id: `planner-event-contract-${chapterIndex}`,
-                ruleId: lastErrorRuleId,
-                type: 'outline_invalid',
-                severity: 'error',
-                description: `${lastError}（修复提示：expectedEvents 中所有 ID 字段必须使用上下文已提供的权威机器可读 ID；没有权威 ID 的无名临时角色禁止出现在 expectedEvents 中，禁止用中文名或自造 ID 充当 ID 字段，其动作只写入 sections/timeline 文本。）`,
-              },
-            ],
+            issues: [...(agentState.issues ?? []), ...retryIssues],
           }
     output = await agent.run(retryState)
     if (!output.success || !output.data) {
-      lastError = output.error ?? lastError
-      lastErrorRuleId = 'planning.event-contract'
+      lastErrors = [output.error ?? lastErrors.join('；')]
+      retryIssues = [
+        buildPlannerValidationIssue(chapterIndex, 'planning.event-contract', lastErrors[0]!, 0),
+      ]
       continue
     }
 
@@ -86,16 +97,18 @@ async function runPlanChapter(
       Array.isArray(candidate.expectedEvents) ? candidate.expectedEvents : []
     )
     if (authorityIssues.length > 0) {
-      lastError = formatAuthorityIssue(authorityIssues[0]!)
-      lastErrorRuleId = 'planning.event-authority'
-      output = { success: false, error: lastError }
+      lastErrors = authorityIssues.map(formatAuthorityIssue)
+      retryIssues = lastErrors.map((description, index) =>
+        buildPlannerValidationIssue(chapterIndex, 'planning.event-authority', description, index)
+      )
+      output = { success: false, error: lastErrors.join('；') }
       continue
     }
     break
   }
 
   if (!output?.success || !output.data) {
-    throw new Error(`第 ${chapterIndex + 1} 章规划失败：${lastError}`)
+    throw new Error(`第 ${chapterIndex + 1} 章规划失败：${lastErrors.join('；')}`)
   }
 
   const parsedPlan: ChapterPlan = {

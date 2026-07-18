@@ -263,7 +263,76 @@ describe('plan_chapter_with_override', () => {
     expect(plannerRun).toHaveBeenCalledTimes(1)
   })
 
-  it('retries an unauthorized planned reference before drafting', async () => {
+  it('passes the sorted typed authority registry to the planner', async () => {
+    plannerRun.mockResolvedValue({
+      success: true,
+      data: {
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [],
+      },
+    })
+
+    await plan_chapter_with_override(
+      createMockProvider(),
+      buildState({
+        characters: [
+          {
+            id: 'character-z',
+            storyId: 'story-1',
+            name: 'Character Z',
+            aliases: [],
+            isProtagonist: true,
+            description: null,
+            dialogueStyle: null,
+            createdAt: 1,
+          },
+          {
+            id: 'character-a',
+            storyId: 'story-1',
+            name: 'Character A',
+            aliases: [],
+            isProtagonist: false,
+            description: null,
+            dialogueStyle: null,
+            createdAt: 1,
+          },
+        ],
+        storyState: {
+          characterLocations: {
+            'character-z': 'location-z',
+            'character-a': 'location-a',
+          },
+          characterStatus: {},
+          keyItemsLocation: {},
+          keyItemsState: {},
+          activePlots: [],
+          revealedSecrets: [],
+          pendingTasks: [],
+          currentScene: '',
+          storyTime: '',
+        },
+      }),
+      'outline'
+    )
+
+    expect(plannerRun.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        storyEventAuthority: {
+          characterIds: ['character-a', 'character-z'],
+          itemIds: [],
+          locationIds: ['location-a', 'location-z'],
+          plotIds: [],
+          beatIds: [],
+          foreshadowIds: [],
+          taskIds: [],
+        },
+      })
+    )
+  })
+
+  it('retries every unauthorized planned reference while preserving pending issues', async () => {
     plannerRun
       .mockResolvedValueOnce({
         success: true,
@@ -280,6 +349,14 @@ describe('plan_chapter_with_override', () => {
               chapterIndex: 25,
               source: 'chapter',
             },
+            {
+              id: 'evt-invalid-character',
+              type: 'character-location',
+              characterId: 'character-unknown',
+              locationId: null,
+              chapterIndex: 25,
+              source: 'chapter',
+            },
           ],
         },
       })
@@ -291,6 +368,15 @@ describe('plan_chapter_with_override', () => {
     const result = await plan_chapter_with_override(
       createMockProvider(),
       buildState({
+        pendingIssues: [
+          {
+            id: 'existing-issue',
+            ruleId: 'existing.rule',
+            type: 'outline_invalid',
+            severity: 'error',
+            description: 'Existing structured feedback',
+          },
+        ],
         characters: [
           {
             id: 'character-main',
@@ -309,19 +395,36 @@ describe('plan_chapter_with_override', () => {
 
     expect(plannerRun).toHaveBeenCalledTimes(2)
     expect(result.chapterPlan?.expectedEvents).toEqual([])
-    expect(plannerRun.mock.calls[1]?.[0]).toEqual(
-      expect.objectContaining({
-        issues: [
-          expect.objectContaining({
-            ruleId: 'planning.event-authority',
-            description: expect.stringContaining('expectedEvents[0].locationId'),
-          }),
-        ],
-      })
+    const retryInput = plannerRun.mock.calls[1]?.[0] as {
+      issues: Array<{ id: string; ruleId: string; description: string }>
+      storyEventAuthority: unknown
+    }
+    expect(retryInput.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'existing-issue', ruleId: 'existing.rule' }),
+        expect.objectContaining({
+          ruleId: 'planning.event-authority',
+          description: expect.stringContaining('expectedEvents[0].locationId'),
+        }),
+        expect.objectContaining({
+          ruleId: 'planning.event-authority',
+          description: expect.stringContaining('expectedEvents[1].characterId'),
+        }),
+      ])
+    )
+    const authorityFeedback = retryInput.issues.filter(
+      (issue) => issue.ruleId === 'planning.event-authority'
+    )
+    expect(authorityFeedback).toHaveLength(2)
+    expect(authorityFeedback.every((issue) => issue.id.startsWith('planner-validation-'))).toBe(
+      true
+    )
+    expect(retryInput.storyEventAuthority).toEqual(
+      expect.objectContaining({ characterIds: ['character-main'] })
     )
   })
 
-  it('aborts after two unauthorized planned references', async () => {
+  it('aborts after two unauthorized plans and reports every current authority failure', async () => {
     plannerRun.mockResolvedValue({
       success: true,
       data: {
@@ -333,7 +436,7 @@ describe('plan_chapter_with_override', () => {
             id: 'evt-invalid',
             type: 'character-location',
             characterId: 'character-unknown',
-            locationId: null,
+            locationId: 'location-unknown',
             chapterIndex: 25,
             source: 'chapter',
           },
@@ -343,7 +446,51 @@ describe('plan_chapter_with_override', () => {
 
     await expect(
       plan_chapter_with_override(createMockProvider(), buildState(), 'outline')
+    ).rejects.toThrow(
+      'expectedEvents[0].characterId 引用了未授权 ID character-unknown（事件类型：character-location）；expectedEvents[0].locationId 引用了未授权 ID location-unknown（事件类型：character-location）'
+    )
+    expect(plannerRun).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects an authority failure on the final attempt after a contract retry', async () => {
+    plannerRun
+      .mockResolvedValueOnce({
+        success: false,
+        error: 'expectedEvents[0] 格式错误：invalid contract',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          sections: [],
+          timeline: [],
+          outlineCheck: [],
+          expectedEvents: [
+            {
+              id: 'evt-invalid',
+              type: 'character-location',
+              characterId: 'character-unknown',
+              locationId: null,
+              chapterIndex: 25,
+              source: 'chapter',
+            },
+          ],
+        },
+      })
+
+    await expect(
+      plan_chapter_with_override(createMockProvider(), buildState(), 'outline')
     ).rejects.toThrow('expectedEvents[0].characterId 引用了未授权 ID character-unknown')
+    const retryInput = plannerRun.mock.calls[1]?.[0] as {
+      issues: Array<{ ruleId: string; description: string }>
+    }
+    expect(retryInput.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: 'planning.event-contract',
+          description: expect.stringContaining('invalid contract'),
+        }),
+      ])
+    )
     expect(plannerRun).toHaveBeenCalledTimes(2)
   })
 })

@@ -552,6 +552,52 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(prompt).toContain('不输出 expectedEvents 的临时龙套')
   })
 
+  it('renders only the typed story event authority registry in its machine-readable section', () => {
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 50,
+      world: 'prose-plot-id',
+      characters: 'prose-character-id',
+      outline: '第26章：底稿',
+      previousChapters: 'prose-location-id',
+      chapterIndex: 25,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyEventAuthority: {
+        characterIds: ['character-authority'],
+        itemIds: ['item-authority'],
+        locationIds: ['location-authority'],
+        plotIds: ['plot-authority'],
+        beatIds: ['beat-authority'],
+        foreshadowIds: ['foreshadow-authority'],
+        taskIds: ['task-authority'],
+      },
+    })
+
+    const prompt = messages[1]?.content ?? ''
+    const authoritySection =
+      prompt.match(/<story_event_authority>([\s\S]*?)<\/story_event_authority>/)?.[1] ?? ''
+
+    expect(authoritySection).toContain('"characterIds": [')
+    for (const id of [
+      'character-authority',
+      'item-authority',
+      'location-authority',
+      'plot-authority',
+      'beat-authority',
+      'foreshadow-authority',
+      'task-authority',
+    ]) {
+      expect(authoritySection).toContain(id)
+    }
+    expect(authoritySection).not.toContain('prose-character-id')
+    expect(authoritySection).not.toContain('prose-plot-id')
+    expect(authoritySection).not.toContain('prose-location-id')
+    expect(authoritySection).toContain('只有创建事件')
+  })
+
   it('renders the complete strict StoryEvent JSON contract', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
     const messages = agent.exposePrompt({

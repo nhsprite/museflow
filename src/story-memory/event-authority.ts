@@ -1,5 +1,5 @@
 import type { ReducedGraphState } from '../graph/state.js'
-import type { StoryEvent } from '../types/story-memory.js'
+import type { StoryEvent, StoryEventAuthorityRegistry } from '../types/story-memory.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import { isMachineReadableId } from './identifier.js'
 import { GLOBAL_KEY_BEAT_PLOT_ID } from './protocol-ids.js'
@@ -127,6 +127,25 @@ export function collectStoryEventAuthority(state: ReducedGraphState): StoryEvent
 
   for (const event of memory?.events ?? []) collectEventReferences(authority, event)
   return authority
+}
+
+function sortedIds(ids: ReadonlySet<string>): string[] {
+  return [...ids].sort()
+}
+
+export function buildStoryEventAuthorityRegistry(
+  state: ReducedGraphState
+): StoryEventAuthorityRegistry {
+  const authority = collectStoryEventAuthority(state)
+  return {
+    characterIds: sortedIds(authority.characterIds),
+    itemIds: sortedIds(authority.itemIds),
+    locationIds: sortedIds(authority.locationIds),
+    plotIds: sortedIds(authority.plotIds),
+    beatIds: sortedIds(authority.beatIds),
+    foreshadowIds: sortedIds(authority.foreshadowIds),
+    taskIds: sortedIds(authority.taskIds),
+  }
 }
 
 function requireKnown(

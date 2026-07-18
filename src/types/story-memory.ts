@@ -3,6 +3,17 @@ export type ForeshadowId = string
 export type BeatId = string
 export type TaskId = string
 export type EventId = string
+
+export interface StoryEventAuthorityRegistry {
+  characterIds: EntityId[]
+  itemIds: EntityId[]
+  locationIds: EntityId[]
+  plotIds: EntityId[]
+  beatIds: BeatId[]
+  foreshadowIds: ForeshadowId[]
+  taskIds: TaskId[]
+}
+
 export type ForeshadowKind =
   | 'character_arc'
   | 'environmental_detail'

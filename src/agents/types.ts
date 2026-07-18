@@ -10,6 +10,7 @@ import type {
   ForeshadowId,
   ForeshadowKind,
   ForeshadowResolutionPolicy,
+  StoryEventAuthorityRegistry,
   TaskId,
 } from '../types/story-memory.js'
 
@@ -162,6 +163,7 @@ export interface AgentInput {
     context: string
   }
   chapterPlan?: ChapterPlan
+  storyEventAuthority?: StoryEventAuthorityRegistry
 }
 
 export type WorldbuilderAgentInput = AgentInput

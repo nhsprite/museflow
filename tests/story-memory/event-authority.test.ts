@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ReducedGraphState } from '../../src/graph/state.js'
 import {
+  buildStoryEventAuthorityRegistry,
   collectStoryEventAuthority,
   validatePlannedStoryEventAuthority,
 } from '../../src/story-memory/event-authority.js'
@@ -118,6 +119,98 @@ describe('planned story event authority', () => {
     expect(authority.characterIds).toContain('character-memory')
     expect(authority.locationIds).toContain('l-2')
     expect(authority.locationIds).not.toContain('location-prose-must-not-be-authority')
+  })
+
+  it('serializes every authority type as sorted arrays', () => {
+    const memory = createEmptyStoryMemory()
+    memory.entities.items['item-z'] = {
+      id: 'item-z',
+      name: 'Item',
+      holderId: null,
+      locationId: 'location-z',
+      state: {},
+      introducedIn: 1,
+    }
+    memory.entities.plots['plot-z'] = {
+      id: 'plot-z',
+      name: 'Plot',
+      introducedIn: 1,
+    }
+    memory.beats['beat-z'] = {
+      id: 'beat-z',
+      description: 'Beat',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+    memory.foreshadows['foreshadow-z'] = {
+      id: 'foreshadow-z',
+      text: 'Foreshadow',
+      kind: null,
+      introducedIn: 1,
+      expectedFulfillChapter: null,
+      fulfilledIn: null,
+      resolutionPolicy: 'should_resolve',
+      required: true,
+      beatId: null,
+    }
+    memory.tasks['task-z'] = {
+      id: 'task-z',
+      description: 'Task',
+      createdIn: 1,
+      resolvedIn: null,
+    }
+
+    const registry = buildStoryEventAuthorityRegistry(
+      state({
+        characters: [
+          {
+            id: 'character-z',
+            storyId: 'story-1',
+            name: 'Character Z',
+            aliases: [],
+            isProtagonist: true,
+            description: null,
+            dialogueStyle: null,
+            createdAt: 1,
+          },
+          {
+            id: 'character-a',
+            storyId: 'story-1',
+            name: 'Character A',
+            aliases: [],
+            isProtagonist: false,
+            description: null,
+            dialogueStyle: null,
+            createdAt: 1,
+          },
+        ],
+        storyMemory: memory,
+        storyState: {
+          ...state().storyState,
+          keyItemsState: { 'item-a': 'active' },
+          characterLocations: {
+            'character-z': 'location-z',
+            'character-a': 'location-a',
+          },
+          activePlots: [],
+          currentScene: 'prose-id-must-not-be-authority',
+        },
+      })
+    )
+
+    expect(registry).toEqual({
+      characterIds: ['character-a', 'character-z'],
+      itemIds: ['item-a', 'item-z'],
+      locationIds: ['location-a', 'location-z'],
+      plotIds: ['plot-z'],
+      beatIds: ['beat-z'],
+      foreshadowIds: ['foreshadow-z'],
+      taskIds: ['task-z'],
+    })
+    expect(JSON.stringify(registry)).not.toContain('prose-id-must-not-be-authority')
   })
 
   it('allows creation events to introduce new IDs', () => {

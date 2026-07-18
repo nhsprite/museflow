@@ -7,6 +7,7 @@ import {
   buildPlannerStoryEventContract,
 } from './fragments/index.js'
 import { isClosingPhase } from '../../utils/story-arc.js'
+import type { StoryEventAuthorityRegistry } from '../../types/story-memory.js'
 
 const CHAPTER_PLANNER_SYSTEM_PROMPT =
   '你是一位严谨的小说结构规划师。你的任务是在写作前生成详细的章节规划，确保每个大纲要求都被精确落实。你对时间线和情节顺序的准确性有零容忍态度。'
@@ -42,6 +43,8 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
 </characters>
 
 {characterWhitelistSection}
+
+{storyEventAuthoritySection}
 
 <previous_summary>
 前几章摘要：
@@ -235,6 +238,7 @@ export interface ChapterPlannerPromptSections {
   chapterContractSection: string
   stateConflictsSection: string
   characterWhitelistSection: string
+  storyEventAuthoritySection: string
   storyEventContractSection: string
 }
 
@@ -344,6 +348,18 @@ ${chapterContract}
 </chapter_contract>`
 }
 
+function buildStoryEventAuthoritySection(
+  authority: StoryEventAuthorityRegistry | undefined
+): string {
+  if (!authority) return ''
+
+  return `<story_event_authority>
+以下 JSON 是 expectedEvents 可引用的权威机器 ID 注册表。所有已有实体或义务的引用字段必须使用对应类型数组中的 ID，不得从人物名、描述、摘要或其他叙事文本推断或自造 ID。
+只有创建事件声明的新 ID 可以不在注册表中：foreshadow-introduce.foreshadowId 与 task-create.taskId。创建事件内对既有实体或节拍的其他引用仍必须来自注册表。
+${JSON.stringify(authority, null, 2)}
+</story_event_authority>`
+}
+
 export function buildChapterPlannerUserPrompt(
   state: import('../types.js').ChapterPlannerAgentInput,
   planningConfig: import('../../types/genre.js').ChapterPlanningConfig,
@@ -369,6 +385,7 @@ export function buildChapterPlannerUserPrompt(
       charactersList: state.charactersList,
       outlineCharacters: state.outlineCharacters,
     }),
+    storyEventAuthoritySection: buildStoryEventAuthoritySection(state.storyEventAuthority),
     storyEventContractSection: buildPlannerStoryEventContract(chapterIndex),
   }
 
