@@ -124,6 +124,26 @@ describe('SummaryAgent prompt', () => {
     expect(userMessage).toContain('task-create')
   })
 
+  it('does not expose copyable synthetic story event IDs in the output format', () => {
+    const agent = new TestableSummaryAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      chapterContent: 'test content',
+      chapterTitle: 'Test',
+      chapterIndex: 5,
+      chapterSummaries: [],
+    })
+
+    const userMessage = messages.find((m) => m.role === 'user')?.content ?? ''
+    expect(userMessage).toContain('<story_events>\n  []\n  </story_events>')
+    expect(userMessage).toContain('按 event_types 与 event_rules 填充')
+    expect(userMessage).not.toContain('"evt-1"')
+    expect(userMessage).not.toContain('"c-1"')
+    expect(userMessage).not.toContain('"l-1"')
+  })
+
   it('exposes exact planned foreshadow fulfillment IDs with an evidence warning', () => {
     const agent = new TestableSummaryAgent(createMockProvider())
     const messages = agent.exposePrompt({

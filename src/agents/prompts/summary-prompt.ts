@@ -136,11 +136,9 @@ ${STATE_AUTHORITY_RULES}
   </chapter_handoff>
 
   <story_events>
-  [
-    { "id": "evt-1", "type": "character-location", "characterId": "c-1", "locationId": "l-1", "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 1 } },
-    { "id": "evt-2", "type": "foreshadow-introduce", "foreshadowId": "fs-1", "text": "本章正文中出现的具体暗示", "resolutionQuestion": "该暗示留下的待解问题", "fulfillmentCriteria": "可观察的叙事完成判据", "kind": "dialogue_hint", "resolutionPolicy": "must_resolve", "required": true, "beatId": "A1-M2", "expectedFulfillChapter": 5, "chapterIndex": 1, "source": "chapter", "evidence": { "paragraphIndex": 2 } }
-  ]
+  []
   </story_events>
+  story_events 按 event_types 与 event_rules 填充；无事件时输出 []。
 </output_format>
 
 <warnings>

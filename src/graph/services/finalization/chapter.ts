@@ -64,6 +64,7 @@ import {
 } from '../../../utils/mandatory-beat-ids.js'
 import { reconcileForeshadowEquivalence } from '../foreshadow-equivalence/reconcile.js'
 import { ForeshadowEquivalenceError } from '../foreshadow-equivalence/detector.js'
+import { validatePlannedStoryEventAuthority } from '../../../story-memory/event-authority.js'
 
 function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
@@ -177,6 +178,32 @@ function filterSummaryFallbackEvents(
     seenEventIds.add(event.id)
     return true
   })
+}
+
+function filterSummaryFallbackEventsForAuthority(
+  state: ReducedGraphState,
+  events: StoryEvent[],
+  chapterIndex: number
+): StoryEvent[] {
+  const issues = validatePlannedStoryEventAuthority(state, events)
+  if (issues.length === 0) return events
+
+  const fieldsByEventIndex = new Map<number, Set<string>>()
+  for (const issue of issues) {
+    const fields = fieldsByEventIndex.get(issue.index) ?? new Set<string>()
+    fields.add(issue.field)
+    fieldsByEventIndex.set(issue.index, fields)
+  }
+
+  for (const [eventIndex, fields] of fieldsByEventIndex) {
+    const event = events[eventIndex]
+    if (!event) continue
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章摘要补提事件未通过结构化 ID 权威校验，已丢弃（eventId=${event.id}, eventIndex=${eventIndex}, type=${event.type}, fields=${[...fields].sort().join(',')}）`
+    )
+  }
+
+  return events.filter((_, eventIndex) => !fieldsByEventIndex.has(eventIndex))
 }
 
 function ensureChaptersLength(
@@ -465,8 +492,17 @@ export async function finalizeChapter(
             chapterIndex,
             new Set(updatedStoryMemory.events.map((event) => event.id))
           )
+          const authorizedSummaryEventCandidates = filterSummaryFallbackEventsForAuthority(
+            {
+              ...state,
+              storyMemory: updatedStoryMemory,
+              storyState: updatedStoryState,
+            },
+            summaryEventCandidates,
+            chapterIndex
+          )
           const { valid: actualEvents, invalid: invalidSummaryForeshadows } =
-            partitionInvalidForeshadowIntroductions(summaryEventCandidates)
+            partitionInvalidForeshadowIntroductions(authorizedSummaryEventCandidates)
           invalidForeshadowDeadlineEvents.push(...invalidSummaryForeshadows)
           const newEvents = actualEvents.filter((event) => {
             if (event.type === 'plot-advance') {

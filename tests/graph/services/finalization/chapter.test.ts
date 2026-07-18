@@ -32,7 +32,7 @@ function createBaseSummaryAgent() {
           {
             id: 'evt-1',
             type: 'plot-advance',
-            plotId: 'plot-1',
+            plotId: 'act-1',
             beatId: 'A1-M1',
             chapterIndex: 0,
             source: 'chapter',
@@ -352,6 +352,110 @@ describe('finalizeChapter', () => {
     expect(result.storyMemory?.events.some((event) => event.id === 'evt-no-evidence')).toBe(false)
     expect(result.storyMemory?.beats['beat-1']?.provenByEventIds).toEqual([])
     expect(result.actProgress?.[1]?.consumed).not.toContain('主角离开家乡')
+  })
+
+  it('drops a summary fallback event when any referenced structured ID is unauthorized', async () => {
+    const warn = vi.spyOn(logger, 'warn')
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-summary-unknown',
+              type: 'character-location',
+              characterId: 'character-unknown',
+              locationId: 'location-unknown',
+              chapterIndex: 0,
+              source: 'chapter',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+
+    const result = await finalizeChapter(buildState(tmpDir), createMockProvider())
+
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-summary-unknown')).toBe(
+      false
+    )
+    expect(result.storyMemory?.entities.characters['character-unknown']).toBeUndefined()
+    expect(result.storyMemory?.entities.locations['location-unknown']).toBeUndefined()
+    expect(
+      warn.mock.calls.filter(([message]) => String(message).includes('evt-summary-unknown'))
+    ).toHaveLength(1)
+  })
+
+  it('keeps a summary fallback event whose referenced structured IDs are authorized', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-summary-known',
+              type: 'character-location',
+              characterId: 'char-1',
+              locationId: 'location-known',
+              chapterIndex: 0,
+              source: 'chapter',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+    const storyState = createEmptyStoryState()
+    storyState.characterLocations['char-1'] = 'location-known'
+
+    const result = await finalizeChapter(buildState(tmpDir, { storyState }), createMockProvider())
+
+    expect(result.storyMemory?.events.some((event) => event.id === 'evt-summary-known')).toBe(true)
+    expect(result.storyMemory?.entities.characters['char-1']?.locationId).toBe('location-known')
+  })
+
+  it('lets a summary fallback event reference an ID created by a draft event in this chapter', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue({
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          chapterSummary: '摘要',
+          storyEvents: [
+            {
+              id: 'evt-summary-resolve-new-task',
+              type: 'task-resolve',
+              taskId: 'task-created-by-draft',
+              resolution: '本章已完成',
+              chapterIndex: 0,
+              source: 'chapter',
+              evidence: { paragraphIndex: 1 },
+            },
+          ],
+        },
+      }),
+    } as unknown as ReturnType<typeof getSummaryAgent>)
+    const draftEvent: StoryEvent = {
+      id: 'evt-draft-create-task',
+      type: 'task-create',
+      taskId: 'task-created-by-draft',
+      description: '本章创建的任务',
+      chapterIndex: 0,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+
+    const result = await finalizeChapter(
+      buildState(tmpDir, { draftChapterEvents: [draftEvent] }),
+      createMockProvider()
+    )
+
+    expect(
+      result.storyMemory?.events.some((event) => event.id === 'evt-summary-resolve-new-task')
+    ).toBe(true)
+    expect(result.storyMemory?.tasks['task-created-by-draft']?.resolvedIn).toBe(0)
   })
 
   it('passes only current-chapter planned foreshadows from StoryMemory to SummaryAgent', async () => {
