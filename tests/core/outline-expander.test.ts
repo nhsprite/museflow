@@ -347,7 +347,23 @@ describe('expandOutlineForChapter', () => {
     })
 
     const result = await expandOutlineForChapter(
-      { ...baseState, storyMemory: null, chapterPlan: legacyPlan },
+      {
+        ...baseState,
+        storyMemory: null,
+        foreshadowStack: [
+          {
+            id: 'legacy-foreshadow',
+            text: 'Legacy foreshadow',
+            expectedFulfillChapter: 3,
+            createdAt: 0,
+            createdAtChapter: 1,
+            status: 'planted',
+            isExplicit: false,
+            required: true,
+          },
+        ],
+        chapterPlan: legacyPlan,
+      },
       1,
       createMockProvider()
     )
@@ -357,6 +373,106 @@ describe('expandOutlineForChapter', () => {
     expect(result.chapterPlan.expectedEvents).toEqual([
       createForeshadowFulfillEvent('legacy-foreshadow', 1),
     ])
+  })
+
+  it('replans a reusable chapter plan whose expected events reference unauthorized IDs', async () => {
+    const storyMemory = {
+      ...createEmptyStoryMemory(),
+      entities: {
+        ...createEmptyStoryMemory().entities,
+        characters: {
+          'character-main': {
+            id: 'character-main',
+            name: 'Main',
+            locationId: 'l-1',
+            status: {},
+            introducedIn: 0,
+          },
+        },
+        locations: {
+          'l-1': { id: 'l-1', name: 'Known place', introducedIn: 0 },
+        },
+      },
+    }
+    const unauthorizedPlan = createCompleteChapterPlan({
+      chapterIndex: 1,
+      expectedEvents: [
+        {
+          id: 'evt-unauthorized-location',
+          type: 'character-location',
+          characterId: 'character-unknown',
+          locationId: 'location-unknown',
+          chapterIndex: 1,
+          source: 'chapter',
+        },
+      ],
+    })
+    const replacementPlan = createCompleteChapterPlan({
+      chapterIndex: 1,
+      expectedEvents: [
+        {
+          id: 'evt-authorized-location',
+          type: 'character-location',
+          characterId: 'character-main',
+          locationId: 'l-1',
+          chapterIndex: 1,
+          source: 'chapter',
+        },
+      ],
+    })
+    planChapterWithOverrideMock.mockResolvedValueOnce({ chapterPlan: replacementPlan })
+
+    const result = await expandOutlineForChapter(
+      { ...baseState, storyMemory, chapterPlan: unauthorizedPlan },
+      1,
+      createMockProvider()
+    )
+
+    expect(planChapterWithOverrideMock).toHaveBeenCalledTimes(1)
+    expect(result.chapterPlan).toEqual(replacementPlan)
+  })
+
+  it('reuses a chapter plan whose expected events reference authoritative l-1', async () => {
+    const storyMemory = {
+      ...createEmptyStoryMemory(),
+      entities: {
+        ...createEmptyStoryMemory().entities,
+        characters: {
+          'character-main': {
+            id: 'character-main',
+            name: 'Main',
+            locationId: 'l-1',
+            status: {},
+            introducedIn: 0,
+          },
+        },
+        locations: {
+          'l-1': { id: 'l-1', name: 'Known place', introducedIn: 0 },
+        },
+      },
+    }
+    const reusablePlan = createCompleteChapterPlan({
+      chapterIndex: 1,
+      expectedEvents: [
+        {
+          id: 'evt-authorized-location',
+          type: 'character-location',
+          characterId: 'character-main',
+          locationId: 'l-1',
+          chapterIndex: 1,
+          source: 'chapter',
+        },
+      ],
+    })
+
+    const result = await expandOutlineForChapter(
+      { ...baseState, storyMemory, chapterPlan: reusablePlan },
+      1,
+      createMockProvider()
+    )
+
+    expect(planChapterWithOverrideMock).not.toHaveBeenCalled()
+    expect(result.chapterPlan).toEqual(reusablePlan)
   })
 
   it('removes an internal legacy conflict signal when compliance auto-defers the claim', async () => {
@@ -374,7 +490,24 @@ describe('expandOutlineForChapter', () => {
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: conflictingPlan })
 
     const result = await expandOutlineForChapter(
-      { ...baseState, outline, storyMemory: null, chapterPlan: conflictingPlan },
+      {
+        ...baseState,
+        outline,
+        storyMemory: null,
+        foreshadowStack: [
+          {
+            id: 'legacy-foreshadow',
+            text: 'Legacy foreshadow',
+            expectedFulfillChapter: 3,
+            createdAt: 0,
+            createdAtChapter: 1,
+            status: 'planted',
+            isExplicit: false,
+            required: true,
+          },
+        ],
+        chapterPlan: conflictingPlan,
+      },
       1,
       createMockProvider()
     )
@@ -419,6 +552,26 @@ describe('expandOutlineForChapter', () => {
     const state: ReducedGraphState = {
       ...scheduledState,
       outline: scheduledState.outline.map((item, index) => (index === 1 ? outlineItem : item)),
+      storyMemory: {
+        ...scheduledState.storyMemory!,
+        entities: {
+          ...scheduledState.storyMemory!.entities,
+          characters: {
+            ...scheduledState.storyMemory!.entities.characters,
+            'character-1': {
+              id: 'character-1',
+              name: 'Character',
+              locationId: 'location-1',
+              status: {},
+              introducedIn: 0,
+            },
+          },
+          locations: {
+            ...scheduledState.storyMemory!.entities.locations,
+            'location-1': { id: 'location-1', name: 'Location', introducedIn: 0 },
+          },
+        },
+      },
       chapterPlan,
     }
 
@@ -822,7 +975,30 @@ describe('expandOutlineForChapter', () => {
     })
 
     const result = await expandOutlineForChapter(
-      { ...baseState, storyMemory: null, chapterPlan: stalePlan },
+      {
+        ...baseState,
+        storyMemory: {
+          ...createEmptyStoryMemory(),
+          entities: {
+            ...createEmptyStoryMemory().entities,
+            plots: {
+              'act-2': { id: 'act-2', name: 'Act 2', introducedIn: 0 },
+            },
+          },
+          beats: {
+            'A2-B3': {
+              id: 'A2-B3',
+              description: 'Stale beat',
+              actIndex: 2,
+              deadlineAct: 2,
+              required: false,
+              claimedIn: null,
+              provenByEventIds: [],
+            },
+          },
+        },
+        chapterPlan: stalePlan,
+      },
       1,
       createMockProvider()
     )

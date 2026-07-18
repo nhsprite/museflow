@@ -66,6 +66,7 @@ import {
   findForeshadowFulfillmentConflictIds,
   resolveCanonicalForeshadowId,
 } from '../story-memory/foreshadow-alias.js'
+import { validatePlannedStoryEventAuthority } from '../story-memory/event-authority.js'
 import type {
   ForeshadowFulfillEvent,
   ForeshadowId,
@@ -106,8 +107,9 @@ function getProvider(source: ChapterContextSource): ModelProvider {
 function normalizeReusableChapterPlan(
   plan: ChapterPlan,
   chapterIndex: number,
-  memory: StoryMemory | null | undefined
+  state: ReducedGraphState
 ): ChapterPlan | null {
+  const memory = state.storyMemory
   const expectedEvents = Array.isArray(plan.expectedEvents) ? plan.expectedEvents : []
   const existingConflictIds = Array.isArray(plan.foreshadowFulfillmentConflictIds)
     ? plan.foreshadowFulfillmentConflictIds
@@ -128,12 +130,25 @@ function normalizeReusableChapterPlan(
     return null
   }
   const { foreshadowFulfillmentConflictIds: _existingConflictIds, ...normalizedPlan } = plan
-  return {
+  const reusablePlan: ChapterPlan = {
     ...normalizedPlan,
     chapterIndex,
     expectedEvents: result.events,
     ...(conflictIds.length > 0 ? { foreshadowFulfillmentConflictIds: conflictIds } : {}),
   }
+  const authorityIssues = validatePlannedStoryEventAuthority(state, reusablePlan.expectedEvents)
+  if (authorityIssues.length > 0) {
+    const details = authorityIssues
+      .map(
+        (issue) => `expectedEvents[${issue.index}].${issue.field}=${issue.id} (${issue.eventType})`
+      )
+      .join(', ')
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章既有规划引用了未授权的结构化 ID：${details}，将重新规划`
+    )
+    return null
+  }
+  return reusablePlan
 }
 
 function reconcileChapterPlanBeatContract(
@@ -1790,7 +1805,7 @@ async function expandOutlineForChapterInternal(
 
   let chapterPlan: ChapterPlan | null =
     state.chapterPlan?.chapterIndex === chapterIndex
-      ? normalizeReusableChapterPlan(state.chapterPlan, chapterIndex, state.storyMemory)
+      ? normalizeReusableChapterPlan(state.chapterPlan, chapterIndex, state)
       : null
   let currentConstraints = filterVerifiedConstraintsForChapter(
     state.verifiedConstraints,
