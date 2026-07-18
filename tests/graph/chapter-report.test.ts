@@ -28,7 +28,7 @@ function createBaseSummaryAgent() {
           {
             id: 'evt-1',
             type: 'plot-advance',
-            plotId: 'plot-1',
+            plotId: 'act-1',
             beatId: 'A1-M1',
             chapterIndex: 0,
             source: 'chapter',
