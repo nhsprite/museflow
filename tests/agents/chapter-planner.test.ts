@@ -566,13 +566,18 @@ describe('ChapterPlannerAgent issues integration', () => {
       foreshadowStack: [],
       chapterSummaries: [],
       storyEventAuthority: {
-        characterIds: ['character-authority'],
+        characterIds: ['opaque-character-a', 'opaque-character-b'],
         itemIds: ['item-authority'],
         locationIds: ['location-authority'],
         plotIds: ['plot-authority'],
         beatIds: ['beat-authority'],
         foreshadowIds: ['foreshadow-authority'],
         taskIds: ['task-authority'],
+        references: [
+          { kind: 'character', id: 'opaque-character-a', label: 'Trusted Character A' },
+          { kind: 'character', id: 'opaque-character-b', label: 'Trusted Character B' },
+          { kind: 'item', id: 'item-authority', label: 'Trusted Item' },
+        ],
       },
     })
 
@@ -582,7 +587,8 @@ describe('ChapterPlannerAgent issues integration', () => {
 
     expect(authoritySection).toContain('"characterIds": [')
     for (const id of [
-      'character-authority',
+      'opaque-character-a',
+      'opaque-character-b',
       'item-authority',
       'location-authority',
       'plot-authority',
@@ -595,6 +601,19 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(authoritySection).not.toContain('prose-character-id')
     expect(authoritySection).not.toContain('prose-plot-id')
     expect(authoritySection).not.toContain('prose-location-id')
+    expect(authoritySection).toContain('"id": "opaque-character-a"')
+    expect(authoritySection).toContain('"label": "Trusted Character A"')
+    expect(authoritySection).toContain('"id": "opaque-character-b"')
+    expect(authoritySection).toContain('"label": "Trusted Character B"')
+    expect(authoritySection).toContain('"id": "item-authority"')
+    expect(authoritySection).toContain('"label": "Trusted Item"')
+    expect(authoritySection).toContain('item-location.holderId ∈ characterIds ∪ itemIds ∪ {null}')
+    expect(authoritySection).toContain(
+      'item-location.locationId ∈ locationIds ∪ characterIds ∪ itemIds ∪ {null}'
+    )
+    expect(authoritySection).toContain('事件记录自身的 id 每次都使用新的唯一机器 ID')
+    expect(authoritySection).toContain('foreshadow-introduce.foreshadowId')
+    expect(authoritySection).toContain('task-create.taskId')
     expect(authoritySection).toContain('只有创建事件')
   })
 

@@ -1,5 +1,10 @@
 import type { ReducedGraphState } from '../graph/state.js'
-import type { StoryEvent, StoryEventAuthorityRegistry } from '../types/story-memory.js'
+import type {
+  StoryEvent,
+  StoryEventAuthorityReference,
+  StoryEventAuthorityReferenceKind,
+  StoryEventAuthorityRegistry,
+} from '../types/story-memory.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import { isMachineReadableId } from './identifier.js'
 import { GLOBAL_KEY_BEAT_PLOT_ID } from './protocol-ids.js'
@@ -133,6 +138,108 @@ function sortedIds(ids: ReadonlySet<string>): string[] {
   return [...ids].sort()
 }
 
+const REFERENCE_KIND_ORDER: Record<StoryEventAuthorityReferenceKind, number> = {
+  character: 0,
+  item: 1,
+  location: 2,
+  plot: 3,
+  beat: 4,
+  foreshadow: 5,
+  task: 6,
+}
+
+function addReference(
+  references: Map<string, StoryEventAuthorityReference>,
+  authority: StoryEventAuthority,
+  kind: StoryEventAuthorityReferenceKind,
+  id: unknown,
+  label: unknown
+): void {
+  if (!isMachineReadableId(id) || typeof label !== 'string' || label.trim().length === 0) return
+
+  const knownIds =
+    kind === 'character'
+      ? authority.characterIds
+      : kind === 'item'
+        ? authority.itemIds
+        : kind === 'location'
+          ? authority.locationIds
+          : kind === 'plot'
+            ? authority.plotIds
+            : kind === 'beat'
+              ? authority.beatIds
+              : kind === 'foreshadow'
+                ? authority.foreshadowIds
+                : authority.taskIds
+  if (!knownIds.has(id)) return
+
+  const key = `${kind}:${id}`
+  if (!references.has(key)) references.set(key, { kind, id, label })
+}
+
+function collectAuthorityReferences(
+  state: ReducedGraphState,
+  authority: StoryEventAuthority
+): StoryEventAuthorityReference[] {
+  const references = new Map<string, StoryEventAuthorityReference>()
+  const memory = state.storyMemory
+
+  for (const character of state.characters ?? []) {
+    addReference(references, authority, 'character', character.id, character.name)
+  }
+  if (memory) {
+    for (const entity of Object.values(memory.entities.characters)) {
+      addReference(references, authority, 'character', entity.id, entity.name)
+    }
+    for (const entity of Object.values(memory.entities.items)) {
+      addReference(references, authority, 'item', entity.id, entity.name)
+    }
+    for (const entity of Object.values(memory.entities.locations)) {
+      addReference(references, authority, 'location', entity.id, entity.name)
+    }
+    for (const entity of Object.values(memory.entities.plots)) {
+      addReference(references, authority, 'plot', entity.id, entity.name)
+    }
+    for (const entity of Object.values(memory.foreshadows)) {
+      addReference(references, authority, 'foreshadow', entity.id, entity.text)
+    }
+    for (const entity of Object.values(memory.tasks)) {
+      addReference(references, authority, 'task', entity.id, entity.description)
+    }
+  }
+  for (const foreshadow of state.foreshadowStack ?? []) {
+    addReference(references, authority, 'foreshadow', foreshadow.id, foreshadow.text)
+  }
+  for (const task of state.storyState?.pendingTasks ?? []) {
+    addReference(references, authority, 'task', task.id, task.description)
+  }
+
+  const currentAct = state.storyArc?.acts.find(
+    (act) =>
+      state.currentChapterIndex + 1 >= act.startChapter &&
+      state.currentChapterIndex + 1 <= act.endChapter
+  )
+  if (state.storyArc && currentAct) {
+    addReference(references, authority, 'plot', `act-${currentAct.index}`, currentAct.title)
+    for (const beat of getMandatoryBeatEntries(state.storyArc)) {
+      if (beat.actIndex === currentAct.index) {
+        addReference(references, authority, 'beat', beat.id, beat.beat)
+      }
+    }
+    for (const beat of state.storyArc.keyBeats) {
+      if (beat.deadlineAct === currentAct.index) {
+        addReference(references, authority, 'beat', beat.id, beat.beat)
+      }
+    }
+  }
+
+  return [...references.values()].sort(
+    (left, right) =>
+      REFERENCE_KIND_ORDER[left.kind] - REFERENCE_KIND_ORDER[right.kind] ||
+      left.id.localeCompare(right.id)
+  )
+}
+
 export function buildStoryEventAuthorityRegistry(
   state: ReducedGraphState
 ): StoryEventAuthorityRegistry {
@@ -145,6 +252,7 @@ export function buildStoryEventAuthorityRegistry(
     beatIds: sortedIds(authority.beatIds),
     foreshadowIds: sortedIds(authority.foreshadowIds),
     taskIds: sortedIds(authority.taskIds),
+    references: collectAuthorityReferences(state, authority),
   }
 }
 

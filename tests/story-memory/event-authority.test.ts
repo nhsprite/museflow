@@ -209,6 +209,14 @@ describe('planned story event authority', () => {
       beatIds: ['beat-z'],
       foreshadowIds: ['foreshadow-z'],
       taskIds: ['task-z'],
+      references: [
+        { kind: 'character', id: 'character-a', label: 'Character A' },
+        { kind: 'character', id: 'character-z', label: 'Character Z' },
+        { kind: 'item', id: 'item-z', label: 'Item' },
+        { kind: 'plot', id: 'plot-z', label: 'Plot' },
+        { kind: 'foreshadow', id: 'foreshadow-z', label: 'Foreshadow' },
+        { kind: 'task', id: 'task-z', label: 'Task' },
+      ],
     })
     expect(JSON.stringify(registry)).not.toContain('prose-id-must-not-be-authority')
   })

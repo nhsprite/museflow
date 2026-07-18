@@ -354,8 +354,17 @@ function buildStoryEventAuthoritySection(
   if (!authority) return ''
 
   return `<story_event_authority>
-以下 JSON 是 expectedEvents 可引用的权威机器 ID 注册表。所有已有实体或义务的引用字段必须使用对应类型数组中的 ID，不得从人物名、描述、摘要或其他叙事文本推断或自造 ID。
-只有创建事件声明的新 ID 可以不在注册表中：foreshadow-introduce.foreshadowId 与 task-create.taskId。创建事件内对既有实体或节拍的其他引用仍必须来自注册表。
+以下 JSON 是 expectedEvents 可引用的权威机器 ID 注册表。references 仅用于把可信结构化名称与 ID 对应起来；运行时授权始终以各类 *Ids 数组为准，不得从其他人物名、描述、摘要或叙事文本推断或自造 ID。
+字段授权映射：
+- characterId ∈ characterIds
+- character-location.locationId ∈ locationIds ∪ {null}
+- itemId ∈ itemIds
+- item-location.holderId ∈ characterIds ∪ itemIds ∪ {null}
+- item-location.locationId ∈ locationIds ∪ characterIds ∪ itemIds ∪ {null}
+- plotId ∈ plotIds；beatId ∈ beatIds，允许为 null 的事件可显式输出 null
+- 引用既有伏笔的 foreshadowId ∈ foreshadowIds；task-resolve.taskId ∈ taskIds
+事件记录自身的 id 每次都使用新的唯一机器 ID，它不是实体引用，也不需要出现在注册表中。
+只有创建事件声明的新实体 ID 可以不在注册表中：foreshadow-introduce.foreshadowId 与 task-create.taskId。创建事件内对既有节拍的 beatId 等其他引用仍必须来自注册表。
 ${JSON.stringify(authority, null, 2)}
 </story_event_authority>`
 }

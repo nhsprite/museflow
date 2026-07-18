@@ -4,6 +4,15 @@ export type BeatId = string
 export type TaskId = string
 export type EventId = string
 
+export type StoryEventAuthorityReferenceKind =
+  'character' | 'item' | 'location' | 'plot' | 'beat' | 'foreshadow' | 'task'
+
+export interface StoryEventAuthorityReference {
+  kind: StoryEventAuthorityReferenceKind
+  id: string
+  label: string
+}
+
 export interface StoryEventAuthorityRegistry {
   characterIds: EntityId[]
   itemIds: EntityId[]
@@ -12,6 +21,8 @@ export interface StoryEventAuthorityRegistry {
   beatIds: BeatId[]
   foreshadowIds: ForeshadowId[]
   taskIds: TaskId[]
+  /** Prompt-only trusted labels; runtime validation uses the typed ID arrays above. */
+  references: StoryEventAuthorityReference[]
 }
 
 export type ForeshadowKind =

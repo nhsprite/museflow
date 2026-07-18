@@ -327,6 +327,10 @@ describe('plan_chapter_with_override', () => {
           beatIds: [],
           foreshadowIds: [],
           taskIds: [],
+          references: [
+            { kind: 'character', id: 'character-a', label: 'Character A' },
+            { kind: 'character', id: 'character-z', label: 'Character Z' },
+          ],
         },
       })
     )
@@ -488,6 +492,48 @@ describe('plan_chapter_with_override', () => {
         expect.objectContaining({
           ruleId: 'planning.event-contract',
           description: expect.stringContaining('invalid contract'),
+        }),
+      ])
+    )
+    expect(plannerRun).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports a contract failure on the final attempt after an authority retry', async () => {
+    plannerRun
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          sections: [],
+          timeline: [],
+          outlineCheck: [],
+          expectedEvents: [
+            {
+              id: 'evt-invalid',
+              type: 'character-location',
+              characterId: 'character-unknown',
+              locationId: null,
+              chapterIndex: 25,
+              source: 'chapter',
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: false,
+        error: 'expectedEvents[0] 格式错误：invalid contract',
+      })
+
+    await expect(
+      plan_chapter_with_override(createMockProvider(), buildState(), 'outline')
+    ).rejects.toThrow('expectedEvents[0] 格式错误：invalid contract')
+    const retryInput = plannerRun.mock.calls[1]?.[0] as {
+      issues: Array<{ ruleId: string; description: string }>
+    }
+    expect(retryInput.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: 'planning.event-authority',
+          description: expect.stringContaining('character-unknown'),
         }),
       ])
     )
