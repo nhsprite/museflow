@@ -354,7 +354,7 @@ function buildStoryEventAuthoritySection(
   if (!authority) return ''
 
   return `<story_event_authority>
-以下 JSON 是 expectedEvents 可引用的权威机器 ID 注册表。references 仅用于把可信结构化名称与 ID 对应起来；运行时授权始终以各类 *Ids 数组为准，不得从其他人物名、描述、摘要或叙事文本推断或自造 ID。
+以下 JSON 是为本章筛选并限量的 expectedEvents 权威机器 ID 视图。references 仅用于把可信结构化名称与 ID 对应起来；各类 *Ids 数组是本章规划应优先使用的引用 ID，不得从其他人物名、描述、摘要或叙事文本推断或自造 ID。omittedCounts 仅表示完整运行时权威库中还有未展示的历史 ID，禁止据此猜测其值。
 字段授权映射：
 - characterId ∈ characterIds
 - character-location.locationId ∈ locationIds ∪ {null}

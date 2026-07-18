@@ -578,6 +578,15 @@ describe('ChapterPlannerAgent issues integration', () => {
           { kind: 'character', id: 'opaque-character-b', label: 'Trusted Character B' },
           { kind: 'item', id: 'item-authority', label: 'Trusted Item' },
         ],
+        omittedCounts: {
+          characterIds: 0,
+          itemIds: 0,
+          locationIds: 0,
+          plotIds: 0,
+          beatIds: 0,
+          foreshadowIds: 0,
+          taskIds: 0,
+        },
       },
     })
 

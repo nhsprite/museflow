@@ -134,10 +134,6 @@ export function collectStoryEventAuthority(state: ReducedGraphState): StoryEvent
   return authority
 }
 
-function sortedIds(ids: ReadonlySet<string>): string[] {
-  return [...ids].sort()
-}
-
 const REFERENCE_KIND_ORDER: Record<StoryEventAuthorityReferenceKind, number> = {
   character: 0,
   item: 1,
@@ -148,70 +144,130 @@ const REFERENCE_KIND_ORDER: Record<StoryEventAuthorityReferenceKind, number> = {
   task: 6,
 }
 
-function addReference(
-  references: Map<string, StoryEventAuthorityReference>,
-  authority: StoryEventAuthority,
-  kind: StoryEventAuthorityReferenceKind,
-  id: unknown,
-  label: unknown
-): void {
-  if (!isMachineReadableId(id) || typeof label !== 'string' || label.trim().length === 0) return
+const MAX_PLANNER_AUTHORITY_IDS_PER_KIND = 64
+const MAX_PLANNER_AUTHORITY_REFERENCES_PER_KIND = 24
+const MAX_PLANNER_AUTHORITY_LABEL_LENGTH = 80
 
-  const knownIds =
-    kind === 'character'
-      ? authority.characterIds
-      : kind === 'item'
-        ? authority.itemIds
-        : kind === 'location'
-          ? authority.locationIds
-          : kind === 'plot'
-            ? authority.plotIds
-            : kind === 'beat'
-              ? authority.beatIds
-              : kind === 'foreshadow'
-                ? authority.foreshadowIds
-                : authority.taskIds
-  if (!knownIds.has(id)) return
-
-  const key = `${kind}:${id}`
-  if (!references.has(key)) references.set(key, { kind, id, label })
+function compareMachineStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }
 
-function collectAuthorityReferences(
+function createEmptyAuthority(): StoryEventAuthority {
+  return {
+    characterIds: new Set(),
+    itemIds: new Set(),
+    locationIds: new Set(),
+    plotIds: new Set(),
+    beatIds: new Set(),
+    foreshadowIds: new Set(),
+    taskIds: new Set(),
+  }
+}
+
+function addRelevantId(
+  relevantIds: Set<string>,
+  knownIds: ReadonlySet<string>,
+  value: unknown
+): void {
+  if (isMachineReadableId(value) && knownIds.has(value)) relevantIds.add(value)
+}
+
+function collectPlannerRelevantAuthority(
   state: ReducedGraphState,
   authority: StoryEventAuthority
-): StoryEventAuthorityReference[] {
-  const references = new Map<string, StoryEventAuthorityReference>()
+): StoryEventAuthority {
+  const relevant = createEmptyAuthority()
+  const outline = state.outline?.[state.currentChapterIndex]
   const memory = state.storyMemory
 
-  for (const character of state.characters ?? []) {
-    addReference(references, authority, 'character', character.id, character.name)
+  for (const id of outline?.touchedCharacterIds ?? []) {
+    addRelevantId(relevant.characterIds, authority.characterIds, id)
   }
-  if (memory) {
-    for (const entity of Object.values(memory.entities.characters)) {
-      addReference(references, authority, 'character', entity.id, entity.name)
-    }
-    for (const entity of Object.values(memory.entities.items)) {
-      addReference(references, authority, 'item', entity.id, entity.name)
-    }
-    for (const entity of Object.values(memory.entities.locations)) {
-      addReference(references, authority, 'location', entity.id, entity.name)
-    }
-    for (const entity of Object.values(memory.entities.plots)) {
-      addReference(references, authority, 'plot', entity.id, entity.name)
-    }
-    for (const entity of Object.values(memory.foreshadows)) {
-      addReference(references, authority, 'foreshadow', entity.id, entity.text)
-    }
-    for (const entity of Object.values(memory.tasks)) {
-      addReference(references, authority, 'task', entity.id, entity.description)
-    }
+  for (const id of Object.keys(state.storyState?.characterLocations ?? {})) {
+    addRelevantId(relevant.characterIds, authority.characterIds, id)
+  }
+  for (const id of Object.keys(state.storyState?.characterStatus ?? {})) {
+    addRelevantId(relevant.characterIds, authority.characterIds, id)
+  }
+  for (const character of state.characters ?? []) {
+    addRelevantId(relevant.characterIds, authority.characterIds, character.id)
+  }
+
+  for (const id of outline?.touchedItemIds ?? []) {
+    addRelevantId(relevant.itemIds, authority.itemIds, id)
+  }
+  for (const id of Object.keys(state.storyState?.keyItemsLocation ?? {})) {
+    addRelevantId(relevant.itemIds, authority.itemIds, id)
+  }
+  for (const id of Object.keys(state.storyState?.keyItemsState ?? {})) {
+    addRelevantId(relevant.itemIds, authority.itemIds, id)
+  }
+
+  for (const id of outline?.touchedLocationIds ?? []) {
+    addRelevantId(relevant.locationIds, authority.locationIds, id)
+  }
+  for (const id of Object.values(state.storyState?.characterLocations ?? {})) {
+    addRelevantId(relevant.locationIds, authority.locationIds, id)
+  }
+  for (const id of Object.values(state.storyState?.keyItemsLocation ?? {})) {
+    addRelevantId(relevant.locationIds, authority.locationIds, id)
+  }
+  for (const id of relevant.characterIds) {
+    addRelevantId(
+      relevant.locationIds,
+      authority.locationIds,
+      memory?.entities.characters[id]?.locationId
+    )
+  }
+  for (const id of relevant.itemIds) {
+    addRelevantId(
+      relevant.locationIds,
+      authority.locationIds,
+      memory?.entities.items[id]?.locationId
+    )
+  }
+
+  for (const id of state.storyState?.activePlots ?? []) {
+    addRelevantId(relevant.plotIds, authority.plotIds, id)
+  }
+  for (const id of outline?.claimedMandatoryBeatIds ?? []) {
+    addRelevantId(relevant.beatIds, authority.beatIds, id)
+  }
+  for (const id of outline?.claimedBeatIds ?? []) {
+    addRelevantId(relevant.beatIds, authority.beatIds, id)
+  }
+
+  for (const id of [
+    ...(outline?.fulfilledForeshadowIds ?? []),
+    ...(outline?.deferredForeshadowIds ?? []),
+  ]) {
+    addRelevantId(relevant.foreshadowIds, authority.foreshadowIds, id)
   }
   for (const foreshadow of state.foreshadowStack ?? []) {
-    addReference(references, authority, 'foreshadow', foreshadow.id, foreshadow.text)
+    if (foreshadow.fulfilledChapter === undefined) {
+      addRelevantId(relevant.foreshadowIds, authority.foreshadowIds, foreshadow.id)
+    }
+  }
+  for (const foreshadow of Object.values(memory?.foreshadows ?? {})) {
+    if (
+      foreshadow.fulfilledIn === null &&
+      foreshadow.waivedIn === undefined &&
+      foreshadow.mergedInto === undefined
+    ) {
+      addRelevantId(relevant.foreshadowIds, authority.foreshadowIds, foreshadow.id)
+    }
+  }
+
+  for (const id of outline?.resolvedTaskIds ?? []) {
+    addRelevantId(relevant.taskIds, authority.taskIds, id)
   }
   for (const task of state.storyState?.pendingTasks ?? []) {
-    addReference(references, authority, 'task', task.id, task.description)
+    if (task.status === 'pending' || task.status === 'postponed') {
+      addRelevantId(relevant.taskIds, authority.taskIds, task.id)
+    }
+  }
+  for (const task of Object.values(memory?.tasks ?? {})) {
+    if (task.resolvedIn === null) addRelevantId(relevant.taskIds, authority.taskIds, task.id)
   }
 
   const currentAct = state.storyArc?.acts.find(
@@ -220,23 +276,129 @@ function collectAuthorityReferences(
       state.currentChapterIndex + 1 <= act.endChapter
   )
   if (state.storyArc && currentAct) {
-    addReference(references, authority, 'plot', `act-${currentAct.index}`, currentAct.title)
+    addRelevantId(relevant.plotIds, authority.plotIds, `act-${currentAct.index}`)
     for (const beat of getMandatoryBeatEntries(state.storyArc)) {
       if (beat.actIndex === currentAct.index) {
-        addReference(references, authority, 'beat', beat.id, beat.beat)
+        addRelevantId(relevant.beatIds, authority.beatIds, beat.id)
       }
     }
-    for (const beat of state.storyArc.keyBeats) {
-      if (beat.deadlineAct === currentAct.index) {
-        addReference(references, authority, 'beat', beat.id, beat.beat)
+    const currentKeyBeats = state.storyArc.keyBeats.filter(
+      (beat) => beat.deadlineAct === currentAct.index
+    )
+    if (currentKeyBeats.length > 0) {
+      addRelevantId(relevant.plotIds, authority.plotIds, GLOBAL_KEY_BEAT_PLOT_ID)
+    }
+    for (const beat of currentKeyBeats) {
+      addRelevantId(relevant.beatIds, authority.beatIds, beat.id)
+      for (const id of beat.involvedCharacterIds ?? []) {
+        addRelevantId(relevant.characterIds, authority.characterIds, id)
       }
+      for (const id of beat.involvedItemIds ?? []) {
+        addRelevantId(relevant.itemIds, authority.itemIds, id)
+      }
+      addRelevantId(relevant.foreshadowIds, authority.foreshadowIds, beat.foreshadowId)
     }
   }
 
-  return [...references.values()].sort(
+  return relevant
+}
+
+interface SelectedAuthorityIds {
+  selected: string[]
+  rendered: string[]
+  omitted: number
+}
+
+function selectAuthorityIds(
+  authorityIds: ReadonlySet<string>,
+  relevantIds: ReadonlySet<string>
+): SelectedAuthorityIds {
+  const selected = [...relevantIds]
+    .filter((id) => authorityIds.has(id))
+    .slice(0, MAX_PLANNER_AUTHORITY_IDS_PER_KIND)
+  return {
+    selected,
+    rendered: [...selected].sort(compareMachineStrings),
+    omitted: Math.max(0, authorityIds.size - selected.length),
+  }
+}
+
+function truncateReferenceLabel(value: string): string {
+  const trimmed = value.trim()
+  return trimmed.length <= MAX_PLANNER_AUTHORITY_LABEL_LENGTH
+    ? trimmed
+    : `${trimmed.slice(0, MAX_PLANNER_AUTHORITY_LABEL_LENGTH - 1)}…`
+}
+
+function getReferenceLabel(
+  state: ReducedGraphState,
+  kind: StoryEventAuthorityReferenceKind,
+  id: string
+): string | undefined {
+  const memory = state.storyMemory
+  if (kind === 'character') {
+    return (
+      state.characters?.find((character) => character.id === id)?.name ??
+      memory?.entities.characters[id]?.name
+    )
+  }
+  if (kind === 'item') return memory?.entities.items[id]?.name
+  if (kind === 'location') return memory?.entities.locations[id]?.name
+  if (kind === 'plot') {
+    const currentAct = state.storyArc?.acts.find((act) => `act-${act.index}` === id)
+    return memory?.entities.plots[id]?.name ?? currentAct?.title
+  }
+  if (kind === 'foreshadow') {
+    return (
+      state.foreshadowStack?.find((foreshadow) => foreshadow.id === id)?.text ??
+      memory?.foreshadows[id]?.text
+    )
+  }
+  if (kind === 'task') {
+    return (
+      state.storyState?.pendingTasks.find((task) => task.id === id)?.description ??
+      memory?.tasks[id]?.description
+    )
+  }
+  const currentAct = state.storyArc?.acts.find(
+    (act) =>
+      state.currentChapterIndex + 1 >= act.startChapter &&
+      state.currentChapterIndex + 1 <= act.endChapter
+  )
+  if (!state.storyArc || !currentAct) return undefined
+  const mandatoryBeat = getMandatoryBeatEntries(state.storyArc).find(
+    (beat) => beat.actIndex === currentAct.index && beat.id === id
+  )
+  return (
+    mandatoryBeat?.beat ??
+    state.storyArc.keyBeats.find((beat) => beat.deadlineAct === currentAct.index && beat.id === id)
+      ?.beat ??
+    memory?.beats[id]?.description
+  )
+}
+
+function buildAuthorityReferences(
+  state: ReducedGraphState,
+  selectedByKind: Array<{
+    kind: StoryEventAuthorityReferenceKind
+    ids: readonly string[]
+  }>
+): StoryEventAuthorityReference[] {
+  const references: StoryEventAuthorityReference[] = []
+  for (const { kind, ids } of selectedByKind) {
+    let added = 0
+    for (const id of ids) {
+      if (added >= MAX_PLANNER_AUTHORITY_REFERENCES_PER_KIND) break
+      const label = getReferenceLabel(state, kind, id)
+      if (!label?.trim()) continue
+      references.push({ kind, id, label: truncateReferenceLabel(label) })
+      added++
+    }
+  }
+  return references.sort(
     (left, right) =>
       REFERENCE_KIND_ORDER[left.kind] - REFERENCE_KIND_ORDER[right.kind] ||
-      left.id.localeCompare(right.id)
+      compareMachineStrings(left.id, right.id)
   )
 }
 
@@ -244,15 +406,41 @@ export function buildStoryEventAuthorityRegistry(
   state: ReducedGraphState
 ): StoryEventAuthorityRegistry {
   const authority = collectStoryEventAuthority(state)
+  const relevant = collectPlannerRelevantAuthority(state, authority)
+  const characterIds = selectAuthorityIds(authority.characterIds, relevant.characterIds)
+  const itemIds = selectAuthorityIds(authority.itemIds, relevant.itemIds)
+  const locationIds = selectAuthorityIds(authority.locationIds, relevant.locationIds)
+  const plotIds = selectAuthorityIds(authority.plotIds, relevant.plotIds)
+  const beatIds = selectAuthorityIds(authority.beatIds, relevant.beatIds)
+  const foreshadowIds = selectAuthorityIds(authority.foreshadowIds, relevant.foreshadowIds)
+  const taskIds = selectAuthorityIds(authority.taskIds, relevant.taskIds)
+
   return {
-    characterIds: sortedIds(authority.characterIds),
-    itemIds: sortedIds(authority.itemIds),
-    locationIds: sortedIds(authority.locationIds),
-    plotIds: sortedIds(authority.plotIds),
-    beatIds: sortedIds(authority.beatIds),
-    foreshadowIds: sortedIds(authority.foreshadowIds),
-    taskIds: sortedIds(authority.taskIds),
-    references: collectAuthorityReferences(state, authority),
+    characterIds: characterIds.rendered,
+    itemIds: itemIds.rendered,
+    locationIds: locationIds.rendered,
+    plotIds: plotIds.rendered,
+    beatIds: beatIds.rendered,
+    foreshadowIds: foreshadowIds.rendered,
+    taskIds: taskIds.rendered,
+    references: buildAuthorityReferences(state, [
+      { kind: 'character', ids: characterIds.selected },
+      { kind: 'item', ids: itemIds.selected },
+      { kind: 'location', ids: locationIds.selected },
+      { kind: 'plot', ids: plotIds.selected },
+      { kind: 'beat', ids: beatIds.selected },
+      { kind: 'foreshadow', ids: foreshadowIds.selected },
+      { kind: 'task', ids: taskIds.selected },
+    ]),
+    omittedCounts: {
+      characterIds: characterIds.omitted,
+      itemIds: itemIds.omitted,
+      locationIds: locationIds.omitted,
+      plotIds: plotIds.omitted,
+      beatIds: beatIds.omitted,
+      foreshadowIds: foreshadowIds.omitted,
+      taskIds: taskIds.omitted,
+    },
   }
 }
 

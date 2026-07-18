@@ -136,6 +136,11 @@ describe('planned story event authority', () => {
       name: 'Plot',
       introducedIn: 1,
     }
+    memory.entities.locations['location-z'] = {
+      id: 'location-z',
+      name: 'Location Z',
+      introducedIn: 1,
+    }
     memory.beats['beat-z'] = {
       id: 'beat-z',
       description: 'Beat',
@@ -165,6 +170,19 @@ describe('planned story event authority', () => {
 
     const registry = buildStoryEventAuthorityRegistry(
       state({
+        currentChapterIndex: 0,
+        outline: [
+          {
+            number: 1,
+            title: 'Current',
+            description: 'Current outline',
+            touchedItemIds: ['item-z'],
+            touchedLocationIds: ['location-z'],
+            claimedBeatIds: ['beat-z'],
+            fulfilledForeshadowIds: ['foreshadow-z'],
+            resolvedTaskIds: ['task-z'],
+          },
+        ],
         characters: [
           {
             id: 'character-z',
@@ -195,7 +213,7 @@ describe('planned story event authority', () => {
             'character-z': 'location-z',
             'character-a': 'location-a',
           },
-          activePlots: [],
+          activePlots: ['plot-z'],
           currentScene: 'prose-id-must-not-be-authority',
         },
       })
@@ -213,12 +231,135 @@ describe('planned story event authority', () => {
         { kind: 'character', id: 'character-a', label: 'Character A' },
         { kind: 'character', id: 'character-z', label: 'Character Z' },
         { kind: 'item', id: 'item-z', label: 'Item' },
+        { kind: 'location', id: 'location-z', label: 'Location Z' },
         { kind: 'plot', id: 'plot-z', label: 'Plot' },
         { kind: 'foreshadow', id: 'foreshadow-z', label: 'Foreshadow' },
         { kind: 'task', id: 'task-z', label: 'Task' },
       ],
+      omittedCounts: {
+        characterIds: 0,
+        itemIds: 0,
+        locationIds: 0,
+        plotIds: 0,
+        beatIds: 0,
+        foreshadowIds: 0,
+        taskIds: 0,
+      },
     })
     expect(JSON.stringify(registry)).not.toContain('prose-id-must-not-be-authority')
+  })
+
+  it('bounds the planner registry while full runtime authority remains valid', () => {
+    const memory = createEmptyStoryMemory()
+    for (let index = 0; index < 100; index++) {
+      const id = `task-${String(index).padStart(3, '0')}`
+      memory.tasks[id] = {
+        id,
+        description: `Task ${index} ${'x'.repeat(120)}`,
+        createdIn: 1,
+        resolvedIn: null,
+      }
+    }
+
+    const input = state({ storyMemory: memory })
+    const registry = buildStoryEventAuthorityRegistry(input)
+
+    expect(registry.taskIds).toHaveLength(64)
+    expect(registry.references.filter((reference) => reference.kind === 'task')).toHaveLength(24)
+    expect(registry.references.every((reference) => reference.label.length <= 80)).toBe(true)
+    expect(registry.omittedCounts.taskIds).toBe(36)
+    expect(registry.taskIds).not.toContain('task-099')
+    expect(
+      validatePlannedStoryEventAuthority(input, [
+        {
+          id: 'evt-resolve',
+          type: 'task-resolve',
+          taskId: 'task-099',
+          chapterIndex: 45,
+          source: 'chapter',
+        },
+      ])
+    ).toEqual([])
+  })
+
+  it('prefers official labels and excludes future-act beat labels from the planner view', () => {
+    const memory = createEmptyStoryMemory()
+    memory.entities.characters['character-main'] = {
+      id: 'character-main',
+      name: 'Fallback Name',
+      locationId: null,
+      status: {},
+      introducedIn: 1,
+    }
+    const registry = buildStoryEventAuthorityRegistry(
+      state({
+        currentChapterIndex: 0,
+        characters: [
+          {
+            id: 'character-main',
+            storyId: 'story-1',
+            name: 'Official Name',
+            aliases: [],
+            isProtagonist: true,
+            description: null,
+            dialogueStyle: null,
+            createdAt: 1,
+          },
+        ],
+        storyMemory: memory,
+        storyArc: {
+          totalChapters: 2,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 1,
+              title: 'Current Act',
+              theme: 'Current Theme',
+              function: 'Current Function',
+              mandatoryBeats: ['Current mandatory beat'],
+            },
+            {
+              index: 2,
+              startChapter: 2,
+              endChapter: 2,
+              title: 'Future Act',
+              theme: 'Future Theme',
+              function: 'Future Function',
+              mandatoryBeats: ['Future mandatory beat'],
+            },
+          ],
+          keyBeats: [
+            {
+              id: 'beat-current',
+              beat: 'Current key beat',
+              deadlineAct: 1,
+              required: true,
+            },
+            {
+              id: 'beat-future',
+              beat: 'Future key beat',
+              deadlineAct: 2,
+              required: true,
+            },
+          ],
+        },
+      })
+    )
+
+    expect(registry.references).toContainEqual({
+      kind: 'character',
+      id: 'character-main',
+      label: 'Official Name',
+    })
+    expect(registry.beatIds).toEqual(['A1-M1', 'beat-current'])
+    expect(JSON.stringify(registry.references)).toContain('Current mandatory beat')
+    expect(JSON.stringify(registry.references)).toContain('Current key beat')
+    expect(JSON.stringify(registry.references)).not.toContain('Fallback Name')
+    expect(JSON.stringify(registry.references)).not.toContain('Future mandatory beat')
+    expect(JSON.stringify(registry.references)).not.toContain('Future key beat')
+    expect(registry.beatIds).not.toContain('A2-M1')
+    expect(registry.beatIds).not.toContain('beat-future')
   })
 
   it('allows creation events to introduce new IDs', () => {

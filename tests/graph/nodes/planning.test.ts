@@ -331,6 +331,15 @@ describe('plan_chapter_with_override', () => {
             { kind: 'character', id: 'character-a', label: 'Character A' },
             { kind: 'character', id: 'character-z', label: 'Character Z' },
           ],
+          omittedCounts: {
+            characterIds: 0,
+            itemIds: 0,
+            locationIds: 0,
+            plotIds: 0,
+            beatIds: 0,
+            foreshadowIds: 0,
+            taskIds: 0,
+          },
         },
       })
     )

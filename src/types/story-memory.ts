@@ -23,6 +23,16 @@ export interface StoryEventAuthorityRegistry {
   taskIds: TaskId[]
   /** Prompt-only trusted labels; runtime validation uses the typed ID arrays above. */
   references: StoryEventAuthorityReference[]
+  /** Full runtime authority may contain additional historical IDs outside this bounded view. */
+  omittedCounts: {
+    characterIds: number
+    itemIds: number
+    locationIds: number
+    plotIds: number
+    beatIds: number
+    foreshadowIds: number
+    taskIds: number
+  }
 }
 
 export type ForeshadowKind =
