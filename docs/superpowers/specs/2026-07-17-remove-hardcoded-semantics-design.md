@@ -17,8 +17,9 @@ The change covers:
 - explicit character aliases and protagonist roles;
 - exact EntityId-based item and character identity;
 - state repair context built only from structured entity references;
+- mandatory-beat planning, proof, progress, and issue cleanup keyed by stable beat IDs;
 - shared configuration for outline shape, act count, word-count tolerance, closing phases, and
-  retry/convergence budgets;
+  retry/convergence and automatic act-boundary budgets;
 - prompt, validation, routing, finalization, and report consumers using that shared configuration;
 - repository guards that reject the removed heuristic patterns.
 
@@ -69,6 +70,8 @@ The character agent output uses the machine-readable keys `name`, `description`,
 
 The character registry maps exact `name` and exact explicit aliases to the character's EntityId. It
 does not derive aliases from string length, surname conventions, punctuation, or substrings.
+Official names take precedence over aliases. A reference declared by more than one character is
+ambiguous and is not resolved; the character agent rejects cross-character name/alias collisions.
 Sanitization writes the resolved EntityId into StoryState rather than retaining a display name.
 
 Chapter prompts render all characters whose `isProtagonist` is true. The prompt rules refer to a
@@ -92,6 +95,23 @@ reference based on whitespace or text shape.
 The displayed actual and expected values remain available to the model as evidence, but they have
 no effect on which canonical facts are selected.
 
+### Mandatory Beats
+
+Every mandatory beat is identified by `A{actIndex}-M{oneBasedBeatIndex}`. Beat prose is display
+content only and must not be used to infer, verify, remove, or restore progress.
+
+- Chapter-outline output claims mandatory beats through `claimedMandatoryBeatIds`.
+- StoryMemory registers mandatory IDs independently of whether the story declares any global key
+  beats.
+- Finalized proof is read from StoryMemory plot-advance events and
+  `verifiedMandatoryBeatIds`.
+- Rewrite recomputes progress from stable proof IDs and discards target/future proof.
+- Outline-coverage issues use a stable beat ID in `subject`.
+- Cleanup and CLI adjustment use `ruleId + subject`; occurrence `id` prefixes are never parsed.
+
+`claimedBeats`, `verifiedBeats`, and evidence quotes may still be rendered for authors, but they do
+not drive state or control flow. No compatibility mapping from those text fields is retained.
+
 ## Shared Policy Configuration
 
 `ChapterPlanningConfig` remains the single policy object and gains:
@@ -106,6 +126,9 @@ maxAutoFixAttempts: number
 maxStateRepairAttempts: number
 rewriteStallSimilarityThreshold: number
 rewriteStallMinRounds: number
+actBoundaryAutoAdjustmentMaxChapters: number
+actBoundaryAutoAdjustmentMaxCumulativeChapters: number
+actBoundaryAutoAdjustmentMaxGlobalRatio: number
 ```
 
 The existing `closingPhaseRatio` field is replaced by `bookClosingPhaseRatio`. No compatibility
@@ -129,6 +152,10 @@ Default values preserve the current intended policy where it is internally consi
 - state repairs: 2;
 - rewrite stall similarity: 70%;
 - rewrite stall rounds: 3.
+- automatic act-boundary adjustment per operation: 3 chapters;
+- automatic cumulative extension per act: 3 chapters;
+- automatic cumulative extension across the story: 15% of the original chapter count, with the
+  per-operation allowance as the minimum usable cap.
 
 Custom GenreSkill values override these defaults.
 
@@ -169,6 +196,10 @@ Routing reads automatic-fix, state-repair, stall, and error-rewrite limits from
 as routing. Comments and user-visible messages interpolate configured limits rather than naming
 fixed counts.
 
+Automatic act-boundary application receives its three limits from the same planning config. It
+fails closed when a proposal exceeds the available per-operation, per-act cumulative, or
+whole-story cumulative allowance; it never partially applies an oversized extension.
+
 ## Error Handling
 
 Because compatibility is explicitly out of scope:
@@ -203,6 +234,13 @@ Required coverage:
 11. Chapter reports use the same rewrite limit as routing.
 12. Smoke guards reject description hashing, derived-name aliases, text-shape entity inference,
     and runtime item-name canonicalization.
+13. Cross-character alias collisions are rejected and ambiguous aliases do not resolve.
+14. Mandatory beat claims and progress ignore text-only fields and use stable mandatory IDs.
+15. Rewrite keeps only stable proof before the rewrite target.
+16. Outline-coverage issue replacement and removal use `ruleId + subject`, not occurrence IDs.
+17. Custom automatic act-boundary limits control whether an extension is applied or requires
+    manual resolution.
+18. Mandatory beat registration and plot-event filtering remain active when `keyBeats` is empty.
 
 After targeted tests pass, verification runs typecheck, lint, format check, build, smoke tests, and
 the full Vitest suite.
@@ -211,6 +249,7 @@ the full Vitest suite.
 
 - Runtime semantic decisions do not hash or parse story/issue prose.
 - Character identity and protagonist status are explicit.
+- Mandatory beat state and issue lifecycle use stable IDs end to end.
 - Projected state and canonical facts use exact structured subjects without name normalization.
 - Every policy value named in this design has one source in `ChapterPlanningConfig`.
 - Prompts and validators use the same configured limits.

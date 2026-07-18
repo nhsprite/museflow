@@ -2,7 +2,7 @@ import type { ChapterOutline } from '../../types/outline.js'
 import type { ChapterReport } from '../../types/chapter-report.js'
 import type { ReducedGraphState } from '../../graph/state.js'
 import type { Issue } from '../../types/agent.js'
-import { buildArcStatus } from '../../utils/story-arc.js'
+import { buildArcStatus, getVerifiedBeatsFromMemory } from '../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../utils/chapter-planning.js'
 import {
   formatActiveForeshadowStatus,
@@ -38,7 +38,8 @@ export function printActProgress(
     state.storyArc,
     state.actProgress ?? {},
     chapterIndex,
-    getChapterPlanningConfig(state.genre).bookClosingPhaseRatio
+    getChapterPlanningConfig(state.genre).bookClosingPhaseRatio,
+    new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
   )
   const act = arcStatus.currentAct
   if (!act) return
@@ -137,7 +138,8 @@ export function printChapterReport(
       state.storyArc,
       state.actProgress ?? {},
       state.currentChapterIndex,
-      getChapterPlanningConfig(state.genre).bookClosingPhaseRatio
+      getChapterPlanningConfig(state.genre).bookClosingPhaseRatio,
+      new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
     )
     if (arcStatus.currentAct) {
       for (const line of formatActForeshadowBoundaryPressure(state, arcStatus.currentAct, '   ')) {

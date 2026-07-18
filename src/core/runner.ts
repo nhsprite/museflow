@@ -437,9 +437,12 @@ export async function runOneChapter(
 
   const pastActPendingIssue = findPastActPendingIssue(storyId, workingState, targetIndex)
   if (pastActPendingIssue) {
-    const issueIds = new Set([pastActPendingIssue.id])
     const pendingIssues = [
-      ...workingState.pendingIssues.filter((issue) => !issueIds.has(issue.id)),
+      ...workingState.pendingIssues.filter(
+        (issue) =>
+          issue.ruleId !== pastActPendingIssue.ruleId ||
+          issue.subject !== pastActPendingIssue.subject
+      ),
       pastActPendingIssue,
     ]
     const blockedState: ReducedGraphState = {

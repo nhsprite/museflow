@@ -94,9 +94,12 @@ ${wd.powerSystem ? `- 力量/规则体系：${wd.powerSystem}` : ''}
         return []
       }
 
+      const name = character.name.trim()
       parsed.push({
-        name: character.name.trim(),
-        aliases: Array.from(new Set(character.aliases.map((alias) => alias.trim()))),
+        name,
+        aliases: Array.from(new Set(character.aliases.map((alias) => alias.trim()))).filter(
+          (alias) => alias !== name
+        ),
         isProtagonist: character.isProtagonist,
         description:
           typeof character.description === 'string' ? character.description.trim() : null,
@@ -106,6 +109,14 @@ ${wd.powerSystem ? `- 力量/规则体系：${wd.powerSystem}` : ''}
     }
 
     if (!parsed.some((character) => character.isProtagonist)) return []
+
+    const claimedReferences = new Set<string>()
+    for (const character of parsed) {
+      for (const reference of [character.name, ...character.aliases]) {
+        if (claimedReferences.has(reference)) return []
+        claimedReferences.add(reference)
+      }
+    }
 
     const createdAt = Date.now()
     return parsed.map((character) => ({

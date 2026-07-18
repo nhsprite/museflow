@@ -60,6 +60,28 @@ describe('CharacterAgent.processOutput', () => {
     ])
   })
 
+  it('normalizes a character alias that repeats its own official name', () => {
+    const characters = createAgent().processOutput(
+      output([
+        {
+          name: '甲',
+          description: '核心人物',
+          dialogueStyle: '简短',
+          aliases: ['甲', '阿甲'],
+          isProtagonist: true,
+        },
+      ]),
+      'story-1'
+    )
+
+    expect(characters).toEqual([
+      expect.objectContaining({
+        name: '甲',
+        aliases: ['阿甲'],
+      }),
+    ])
+  })
+
   it.each([
     {
       name: 'missing aliases',
@@ -111,5 +133,43 @@ describe('CharacterAgent.processOutput', () => {
     }
 
     expect(createAgent().processOutput(output(wrapped), 'story-1')).toEqual([])
+  })
+
+  it('rejects character batches with colliding names or aliases', () => {
+    const collidingAlias = [
+      {
+        name: '甲',
+        description: null,
+        dialogueStyle: null,
+        aliases: ['同名'],
+        isProtagonist: true,
+      },
+      {
+        name: '乙',
+        description: null,
+        dialogueStyle: null,
+        aliases: ['同名'],
+        isProtagonist: false,
+      },
+    ]
+    const aliasShadowsName = [
+      {
+        name: '甲',
+        description: null,
+        dialogueStyle: null,
+        aliases: ['乙'],
+        isProtagonist: true,
+      },
+      {
+        name: '乙',
+        description: null,
+        dialogueStyle: null,
+        aliases: [],
+        isProtagonist: false,
+      },
+    ]
+
+    expect(createAgent().processOutput(output(collidingAlias), 'story-1')).toEqual([])
+    expect(createAgent().processOutput(output(aliasShadowsName), 'story-1')).toEqual([])
   })
 })

@@ -40,16 +40,15 @@ export function createEmptyStoryMemory(): StoryMemory {
 }
 
 /**
- * Pre-populate storyMemory beats from storyArc keyBeats so that each beat has
- * the correct actIndex. Without this, plot-advance events created by the writer
- * would produce BeatMemory entries with actIndex 0, which updateActProgress
- * ignores.
+ * Pre-populate storyMemory beats from stable mandatory and global key beat IDs
+ * so each beat has the correct actIndex. Without this, plot-advance events
+ * created by the writer would produce BeatMemory entries with actIndex 0.
  */
 export function ensureBeatsHaveActIndex(
   memory: StoryMemory,
   storyArc: StoryArc | null | undefined
 ): StoryMemory {
-  if (!storyArc || storyArc.keyBeats.length === 0) return memory
+  if (!storyArc) return memory
 
   const beats: Record<string, BeatMemory> = { ...memory.beats }
   for (const mandatoryBeat of getMandatoryBeatEntries(storyArc)) {

@@ -555,9 +555,24 @@ describe('rewrite command state consistency', () => {
         1: { consumed: ['beat-a', 'beat-b', 'beat-c'], pending: [] },
       },
       outline: [
-        { number: 1, title: 'Chapter 1', description: 'Description 1', verifiedBeats: ['beat-a'] },
-        { number: 2, title: 'Chapter 2', description: 'Description 2', verifiedBeats: ['beat-b'] },
-        { number: 3, title: 'Chapter 3', description: 'Description 3', verifiedBeats: ['beat-c'] },
+        {
+          number: 1,
+          title: 'Chapter 1',
+          description: 'Description 1',
+          verifiedMandatoryBeatIds: ['A1-M1'],
+        },
+        {
+          number: 2,
+          title: 'Chapter 2',
+          description: 'Description 2',
+          verifiedMandatoryBeatIds: ['A1-M2'],
+        },
+        {
+          number: 3,
+          title: 'Chapter 3',
+          description: 'Description 3',
+          verifiedMandatoryBeatIds: ['A1-M3'],
+        },
       ],
       chapters: Array(3).fill(null),
       currentChapterIndex: 2,

@@ -803,17 +803,27 @@ describe('runner revalidation', () => {
           ],
         },
         outline: [
-          { number: 1, title: 'Chapter 1', description: 'Desc 1', verifiedBeats: ['beat-a'] },
+          {
+            number: 1,
+            title: 'Chapter 1',
+            description: 'Desc 1',
+            verifiedMandatoryBeatIds: ['A1-M1'],
+          },
           {
             number: 2,
             title: 'Chapter 2',
             description: 'Desc 2',
-            verifiedBeats: ['beat-b'],
+            verifiedMandatoryBeatIds: ['A1-M2'],
             verifiedBeatEvidence: [
               { beat: 'beat-b', chapterIndex: 1, quote: 'evidence', confidence: 'high' },
             ],
           },
-          { number: 3, title: 'Chapter 3', description: 'Desc 3', verifiedBeats: ['beat-c'] },
+          {
+            number: 3,
+            title: 'Chapter 3',
+            description: 'Desc 3',
+            verifiedMandatoryBeatIds: ['A1-M3'],
+          },
         ],
         actProgress: {
           1: { consumed: ['beat-a', 'beat-b', 'beat-c'], pending: [] },
@@ -835,10 +845,10 @@ describe('runner revalidation', () => {
     const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
       typeof createBaseGraphState
     >
-    expect(invokedState.outline[0]?.verifiedBeats).toEqual(['beat-a'])
-    expect(invokedState.outline[1]?.verifiedBeats).toBeUndefined()
+    expect(invokedState.outline[0]?.verifiedMandatoryBeatIds).toEqual(['A1-M1'])
+    expect(invokedState.outline[1]?.verifiedMandatoryBeatIds).toBeUndefined()
     expect(invokedState.outline[1]?.verifiedBeatEvidence).toBeUndefined()
-    expect(invokedState.outline[2]?.verifiedBeats).toBeUndefined()
+    expect(invokedState.outline[2]?.verifiedMandatoryBeatIds).toBeUndefined()
     expect(invokedState.actProgress?.[1]).toEqual({
       consumed: ['beat-a'],
       pending: ['beat-b', 'beat-c'],

@@ -2590,6 +2590,7 @@ describe('expandOutlineForChapter', () => {
         description: '主角午后赴约，得知常规规矩，归处后等待同伴回报。',
         introducedCharacters: [],
         claimedBeats: ['外部势力干扰核心安排', '非当前幕节拍'],
+        claimedMandatoryBeatIds: ['A2-M1'],
       },
     })
 
@@ -2650,6 +2651,7 @@ describe('expandOutlineForChapter', () => {
         description: '主角同时遭遇外部压力、获得盟友、并发现真相。',
         introducedCharacters: [],
         claimedBeats: ['beat1', 'beat2', 'beat3'],
+        claimedMandatoryBeatIds: ['A2-M1', 'A2-M2', 'A2-M3'],
       },
     })
 
@@ -2714,6 +2716,7 @@ describe('expandOutlineForChapter', () => {
         introducedCharacters: [],
         claimedBeats: ['futureBeat', 'beat1', 'beat2'],
         claimedBeatIds: ['future-id', 'beat1-id', 'beat2-id'],
+        claimedMandatoryBeatIds: ['A2-M1', 'A2-M2'],
       },
     })
 

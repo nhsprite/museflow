@@ -73,6 +73,12 @@ export interface ChapterPlanningConfig {
   rewriteStallSimilarityThreshold: number
   /** 判断多轮重写停滞所需的最少连续轮数 */
   rewriteStallMinRounds: number
+  /** 单次自动调整幕边界的最大章节数 */
+  actBoundaryAutoAdjustmentMaxChapters: number
+  /** 单幕累计自动延长的最大章节数 */
+  actBoundaryAutoAdjustmentMaxCumulativeChapters: number
+  /** 全书累计自动延长占原始总章节数的最大比例 */
+  actBoundaryAutoAdjustmentMaxGlobalRatio: number
   /** 当只剩解释性错误时是否自动降级为 warning */
   downgradeInterpretiveErrors: boolean
 }

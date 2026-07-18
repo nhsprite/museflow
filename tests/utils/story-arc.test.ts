@@ -6,16 +6,30 @@ import {
   proposeActExtensionAfterForeshadowAdjudication,
   proposeActBoundaryAdjustments,
   validateActBoundaryAdjustment,
-  applyActBoundaryAdjustment,
-  judgeMandatoryBeatCoverage,
+  applyActBoundaryAdjustment as applyConfiguredActBoundaryAdjustment,
   calculateBeatBudget,
 } from '../../src/utils/story-arc.js'
+import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../src/utils/chapter-planning.js'
 import type { StoryArc } from '../../src/types/outline.js'
 import type { StoryMemory } from '../../src/types/story-memory.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 const completedActProgress = {
   1: { consumed: ['主角失去庇护', '反派首次施压'], pending: [] },
+}
+
+function applyActBoundaryAdjustment(
+  storyArc: Parameters<typeof applyConfiguredActBoundaryAdjustment>[0],
+  proposal: Parameters<typeof applyConfiguredActBoundaryAdjustment>[1],
+  currentChapterIndex: number,
+  policy?: Parameters<typeof applyConfiguredActBoundaryAdjustment>[3]
+): ReturnType<typeof applyConfiguredActBoundaryAdjustment> {
+  return applyConfiguredActBoundaryAdjustment(
+    storyArc,
+    proposal,
+    currentChapterIndex,
+    policy ?? DEFAULT_CHAPTER_PLANNING_CONFIG
+  )
 }
 
 function memoryWithForeshadow(overrides: Partial<StoryMemory['foreshadows'][string]>): StoryMemory {
@@ -130,7 +144,7 @@ describe('story-arc utilities', () => {
     const actProgress = {
       1: { consumed: ['主角失去庇护'], pending: ['反派首次施压'] },
     }
-    const status = buildArcStatus(storyArc, actProgress, 1, 0.15)
+    const status = buildArcStatus(storyArc, actProgress, 1, 0.15, new Set())
 
     expect(status.currentAct?.index).toBe(1)
     expect(status.beatsTotal).toBe(2)
@@ -144,7 +158,7 @@ describe('story-arc utilities', () => {
     const actProgress = {
       1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
     }
-    const status = buildArcStatus(storyArc, actProgress, 3, 0.15)
+    const status = buildArcStatus(storyArc, actProgress, 3, 0.15, new Set())
 
     expect(status.beatsPending).toHaveLength(2)
     expect(status.riskLevel).toBe('high')
@@ -157,7 +171,7 @@ describe('story-arc utilities', () => {
       2: { consumed: ['主角找到盟友'], pending: [] },
       3: { consumed: [], pending: ['核心秘密揭晓'] },
     }
-    const status = buildArcStatus(storyArc, actProgress, 10, 0.15)
+    const status = buildArcStatus(storyArc, actProgress, 10, 0.15, new Set())
 
     expect(status.overdueKeyBeats).toHaveLength(1)
     expect(status.overdueKeyBeats[0]?.beat).toBe('核心秘密被主角获悉')
@@ -461,7 +475,7 @@ describe('story-arc utilities', () => {
       3: { consumed: [], pending: ['核心秘密揭晓'] },
       4: { consumed: [], pending: ['最终对决'] },
     }
-    const constraint = buildClosingPhaseConstraint(storyArc, actProgress, 17, 0.15)
+    const constraint = buildClosingPhaseConstraint(storyArc, actProgress, 17, 0.15, new Set())
 
     expect(constraint).toContain('全书收尾阶段')
     expect(constraint).toContain('禁止引入新的主要支线')
@@ -470,50 +484,26 @@ describe('story-arc utilities', () => {
 
   it('returns undefined when not in closing phase', () => {
     const storyArc = makeStoryArc()
-    const constraint = buildClosingPhaseConstraint(storyArc, {}, 5, 0.15)
+    const constraint = buildClosingPhaseConstraint(storyArc, {}, 5, 0.15, new Set())
 
     expect(constraint).toBeUndefined()
   })
 
-  describe('judgeMandatoryBeatCoverage', () => {
-    it('returns matched beat strings from model response', async () => {
-      const provider = {
-        chat: async () => '',
-        chatStructured: async () => ({
-          coveredBeats: ['主角失去庇护', '反派首次施压', '不相关的描述'],
-        }),
-      }
-      const beats = ['主角失去庇护', '反派首次施压']
-      const covered = await judgeMandatoryBeatCoverage(
-        provider,
-        '主角被逐出家门，反派派人警告。',
-        beats
-      )
-      expect(covered).toEqual(['主角失去庇护', '反派首次施压'])
-    })
-
-    it('falls back to chat when chatStructured is unavailable', async () => {
-      const provider = {
-        chat: async () => '{"coveredBeats": ["主角失去庇护"]}',
-      }
-      const beats = ['主角失去庇护', '反派首次施压']
-      const covered = await judgeMandatoryBeatCoverage(provider, '主角被逐出家门。', beats)
-      expect(covered).toEqual(['主角失去庇护'])
-    })
-
-    it('ignores model-returned beat text that is not an exact candidate', async () => {
-      const provider = {
-        chatStructured: async () => ({
-          coveredBeats: ['沈砚秋改名换姓，以新身份回到京城并初步立足'],
-        }),
-      }
-      const beats = ['主角以新身份重返京城并初步立足']
-      const covered = await judgeMandatoryBeatCoverage(provider, '...', beats)
-      expect(covered).toEqual([])
-    })
-  })
-
   describe('applyActBoundaryAdjustment', () => {
+    it('uses the configured automatic extension limits', () => {
+      const storyArc = makeStoryArc()
+      const proposal = { actIndex: 1, proposedEndChapter: 7, reason: 'test' }
+      const result = applyActBoundaryAdjustment(storyArc, proposal, 3, {
+        ...DEFAULT_CHAPTER_PLANNING_CONFIG,
+        actBoundaryAutoAdjustmentMaxChapters: 1,
+        actBoundaryAutoAdjustmentMaxCumulativeChapters: 1,
+        actBoundaryAutoAdjustmentMaxGlobalRatio: 0.05,
+      })
+
+      expect(result.applied).toBe(false)
+      expect(result.availableExtensions).toBe(1)
+    })
+
     it('extends act end chapter and shifts next act start', () => {
       const storyArc = makeStoryArc()
       const proposal = { actIndex: 1, proposedEndChapter: 7, reason: 'test' }

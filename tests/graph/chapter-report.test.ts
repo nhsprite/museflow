@@ -29,7 +29,7 @@ function createBaseSummaryAgent() {
             id: 'evt-1',
             type: 'plot-advance',
             plotId: 'plot-1',
-            beatId: 'beat-1',
+            beatId: 'A1-M1',
             chapterIndex: 0,
             source: 'chapter',
             evidence: { paragraphIndex: 1 },
@@ -337,7 +337,13 @@ describe('chapter report generation', () => {
   it('updates actProgress with verified beats only', async () => {
     const state = buildState(tmpDir, {
       outline: [
-        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        {
+          number: 1,
+          title: '启程',
+          description: '主角离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
         { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
@@ -353,7 +359,13 @@ describe('chapter report generation', () => {
   it('returns finalized state without mutating the input graph state', async () => {
     const state = buildState(tmpDir, {
       outline: [
-        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        {
+          number: 1,
+          title: '启程',
+          description: '主角离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
         { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
@@ -373,7 +385,13 @@ describe('chapter report generation', () => {
   it('stores evidence for verified mandatory beats', async () => {
     const state = buildState(tmpDir, {
       outline: [
-        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        {
+          number: 1,
+          title: '启程',
+          description: '主角离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
         { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
@@ -388,7 +406,13 @@ describe('chapter report generation', () => {
   it('adds warning issue when claimed beat is not verified', async () => {
     const state = buildState(tmpDir, {
       outline: [
-        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        {
+          number: 1,
+          title: '启程',
+          description: '主角离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
         { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
@@ -417,14 +441,22 @@ describe('chapter report generation', () => {
       pendingIssues: [
         {
           id: 'unverified-beat-1-0',
+          ruleId: 'outline-coverage.unverified-mandatory-beat',
           type: 'outline_coverage',
           severity: 'warning',
+          subject: 'A1-M1',
           description:
             '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
         },
       ],
       outline: [
-        { number: 1, title: '启程', description: '主角离开家乡。', claimedBeats: ['主角离开家乡'] },
+        {
+          number: 1,
+          title: '启程',
+          description: '主角离开家乡。',
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
         { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
@@ -502,15 +534,23 @@ describe('chapter report generation', () => {
       pendingIssues: [
         {
           id: 'unverified-beat-1-0',
+          ruleId: 'outline-coverage.unverified-mandatory-beat',
           type: 'outline_coverage',
           severity: 'warning',
+          subject: 'A1-M1',
           description:
             '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
         },
       ],
       outline: [
         { number: 1, title: '启程', description: '主角离开家乡。' },
-        { number: 2, title: '遇敌', description: '反派首次施压。', claimedBeats: ['反派首次施压'] },
+        {
+          number: 2,
+          title: '遇敌',
+          description: '反派首次施压。',
+          claimedBeats: ['反派首次施压'],
+          claimedMandatoryBeatIds: ['A2-M1'],
+        },
         { number: 3, title: '脱困', description: '主角脱困。' },
       ],
     })
@@ -524,7 +564,7 @@ describe('chapter report generation', () => {
               id: 'evt-2',
               type: 'plot-advance',
               plotId: 'plot-1',
-              beatId: 'beat-2',
+              beatId: 'A2-M1',
               chapterIndex: 1,
               source: 'chapter',
               evidence: { paragraphIndex: 1 },
@@ -692,7 +732,12 @@ describe('chapter report generation', () => {
       ],
       outline: [
         { number: 1, title: '启程', description: '主角离开家乡。' },
-        { number: 2, title: '收束', description: '主角完成既定选择。' },
+        {
+          number: 2,
+          title: '收束',
+          description: '主角完成既定选择。',
+          verifiedMandatoryBeatIds: ['A1-M1'],
+        },
         { number: 3, title: '余韵', description: '' },
       ],
       storyArc: {

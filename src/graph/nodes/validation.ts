@@ -32,6 +32,7 @@ import { diffMemorySnapshots } from '../../story-memory/diff.js'
 import { applyEvents } from '../../story-memory/projector.js'
 import type { StoryMemory } from '../../types/story-memory.js'
 import { getActiveForeshadows } from '../../story-memory/queries.js'
+import { generateIssueFingerprint } from '../../utils/context-judge.js'
 
 const CONTINUITY_CHECK_SCHEMA: JsonSchema = {
   type: 'object',
@@ -514,11 +515,13 @@ export async function validate_chapter_comprehensive(
 
   function mergePendingIssues(updates: Partial<ReducedGraphState>): void {
     if (updates.pendingIssues) {
-      const seen = new Set(workingState.pendingIssues.map((i) => i.id))
+      const issueKey = (issue: Issue) => `${issue.severity}:${generateIssueFingerprint(issue)}`
+      const seen = new Set(workingState.pendingIssues.map(issueKey))
       const merged = [...workingState.pendingIssues]
       for (const issue of updates.pendingIssues) {
-        if (!seen.has(issue.id)) {
-          seen.add(issue.id)
+        const key = issueKey(issue)
+        if (!seen.has(key)) {
+          seen.add(key)
           merged.push(issue)
         }
       }

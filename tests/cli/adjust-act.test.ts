@@ -77,7 +77,7 @@ function makeState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphStat
           title: '第一幕',
           theme: 't',
           function: 'f',
-          mandatoryBeats: [],
+          mandatoryBeats: ['beat-1'],
         },
         {
           index: 2,
@@ -86,7 +86,7 @@ function makeState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphStat
           title: '第二幕',
           theme: 't',
           function: 'f',
-          mandatoryBeats: [],
+          mandatoryBeats: ['beat-2'],
         },
         {
           index: 3,
@@ -95,7 +95,7 @@ function makeState(overrides: Partial<ReducedGraphState> = {}): ReducedGraphStat
           title: '第三幕',
           theme: 't',
           function: 'f',
-          mandatoryBeats: [],
+          mandatoryBeats: ['beat-3'],
         },
       ],
       keyBeats: [],
@@ -212,30 +212,37 @@ describe('adjust-act command', () => {
     const issues: Issue[] = [
       {
         id: 'unverified-beat-1-0',
+        ruleId: 'outline-coverage.unverified-mandatory-beat',
         type: 'outline_coverage',
         severity: 'error',
+        subject: 'A1-M1',
         description: '第 1 幕自动延长已达到上限，仍有 mandatory beats 未消费。',
         source: 'outline_compliance',
         retryStrategy: 'manual',
       },
       {
         id: 'auto-extension-limit-1-generated-uuid-1234',
+        ruleId: 'outline-coverage.auto-extension-limit',
         type: 'outline_coverage',
         severity: 'error',
+        subject: 'act-1',
         description: '第 1 幕自动延长已达到上限，仍有 mandatory beats 未消费。',
         source: 'outline_compliance',
         retryStrategy: 'manual',
       },
       {
         id: 'unverified-beat-2-0',
+        ruleId: 'outline-coverage.unverified-mandatory-beat',
         type: 'outline_coverage',
         severity: 'error',
+        subject: 'A2-M1',
         description: '第 2 幕自动延长已达到上限，仍有 mandatory beats 未消费。',
         source: 'outline_compliance',
         retryStrategy: 'manual',
       },
       {
         id: 'consistency-info',
+        ruleId: 'test.consistency-info',
         type: 'consistency',
         severity: 'info',
         description: '可选的连续性提示。',
@@ -261,6 +268,7 @@ describe('adjust-act command', () => {
     const issues: Issue[] = [
       {
         id: 'act-1-pending-beats-at-boundary',
+        ruleId: 'outline-coverage.pending-beats-at-boundary',
         type: 'outline_coverage',
         severity: 'error',
         subject: 'act-1',
@@ -270,6 +278,7 @@ describe('adjust-act command', () => {
       },
       {
         id: 'act-2-pending-beats-at-boundary',
+        ruleId: 'outline-coverage.pending-beats-at-boundary',
         type: 'outline_coverage',
         severity: 'error',
         subject: 'act-2',
@@ -308,8 +317,10 @@ describe('adjust-act command', () => {
       pendingIssues: [
         {
           id: 'auto-extension-limit-1-generated-uuid-1234',
+          ruleId: 'outline-coverage.auto-extension-limit',
           type: 'outline_coverage',
           severity: 'error',
+          subject: 'act-1',
           source: 'outline_compliance',
           retryStrategy: 'manual',
           description: '第 1 幕自动延长已达到上限',

@@ -5,6 +5,7 @@ import { createEmptyStoryState } from '../../storage/meta/stores/story-state.js'
 import { classifyIssueByRule } from '../../core/chapter-generation/issue-classifier.js'
 import { repairCorruptedState } from '../services/state-repair/index.js'
 import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
+import { generateIssueFingerprint } from '../../utils/context-judge.js'
 
 /**
  * 自动状态修复节点：rewrite 循环中剩余 error 包含状态污染类问题且本章修复
@@ -62,14 +63,16 @@ export async function repair_state(
     return sessionUpdate
   }
 
-  // 已修复的状态污染类 issue 从 pendingIssues 移除，避免旧 issue 残留；
-  // 重校验后若问题仍在，检测器会以新 id 重新报告。
-  const repairedIssueIds = new Set(stateCorruptionIssues.map((issue) => issue.id))
+  // 已修复的状态污染类 issue 从 pendingIssues 移除；重校验后若问题仍在，
+  // 检测器会以同一结构化规则指纹重新报告。
+  const repairedIssueFingerprints = new Set(stateCorruptionIssues.map(generateIssueFingerprint))
 
   return {
     ...sessionUpdate,
     storyState: outcome.storyState,
     canonicalFactsDelta: [...(state.canonicalFactsDelta ?? []), ...outcome.acceptedFacts],
-    pendingIssues: state.pendingIssues.filter((issue) => !repairedIssueIds.has(issue.id)),
+    pendingIssues: state.pendingIssues.filter(
+      (issue) => !repairedIssueFingerprints.has(generateIssueFingerprint(issue))
+    ),
   }
 }

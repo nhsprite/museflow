@@ -4,7 +4,64 @@ import type { ReducedGraphState } from '../../src/graph/state.js'
 import type { StoryMemory } from '../../src/types/story-memory.js'
 
 describe('projectVerifiedClaimedBeatIdsIntoActProgress', () => {
-  it('adds verified claimedBeatIds to actProgress via paired claimedBeats without dropping existing progress', () => {
+  it('adds verified mandatory beat ids without mapping key-beat prose', () => {
+    const storyMemory: StoryMemory = {
+      version: '1',
+      lastChapterIndex: 0,
+      entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+      events: [],
+      foreshadows: {},
+      beats: {
+        'A1-M1': {
+          id: 'A1-M1',
+          description: '身份暴露',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 0,
+          provenByEventIds: ['evt-1'],
+        },
+      },
+      tasks: {},
+    }
+    const state = {
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 3,
+            title: 'Act',
+            theme: '',
+            function: '',
+            mandatoryBeats: ['身份暴露', '敌友洗牌'],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        {
+          number: 1,
+          title: 'Chapter 1',
+          description: 'Description 1',
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
+      ],
+      storyMemory,
+      actProgress: {
+        1: { consumed: ['敌友洗牌'], pending: ['身份暴露'] },
+      },
+    } as unknown as ReducedGraphState
+
+    const progress = projectVerifiedClaimedBeatIdsIntoActProgress(state)
+
+    expect(progress[1]?.consumed).toEqual(['身份暴露'])
+    expect(progress[1]?.pending).toEqual(['敌友洗牌'])
+  })
+
+  it('does not map a verified key beat to mandatory progress through paired prose', () => {
     const storyMemory: StoryMemory = {
       version: '1',
       lastChapterIndex: 0,
@@ -36,7 +93,7 @@ describe('projectVerifiedClaimedBeatIdsIntoActProgress', () => {
             title: 'Act',
             theme: '',
             function: '',
-            mandatoryBeats: ['身份暴露', '敌友洗牌'],
+            mandatoryBeats: ['身份暴露'],
           },
         ],
         keyBeats: [
@@ -59,13 +116,13 @@ describe('projectVerifiedClaimedBeatIdsIntoActProgress', () => {
       ],
       storyMemory,
       actProgress: {
-        1: { consumed: ['敌友洗牌'], pending: ['身份暴露'] },
+        1: { consumed: [], pending: ['身份暴露'] },
       },
     } as unknown as ReducedGraphState
 
     const progress = projectVerifiedClaimedBeatIdsIntoActProgress(state)
 
-    expect(progress[1]?.consumed).toEqual(['敌友洗牌', '身份暴露'])
-    expect(progress[1]?.pending).toEqual([])
+    expect(progress[1]?.consumed).toEqual([])
+    expect(progress[1]?.pending).toEqual(['身份暴露'])
   })
 })

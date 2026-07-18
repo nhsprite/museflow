@@ -181,9 +181,7 @@ function buildChapterContract(
       consumed: [],
       pending: [...currentAct.mandatoryBeats],
     }
-    const pendingBeats = currentAct.mandatoryBeats.filter(
-      (beat) => !progress.consumed.includes(beat)
-    )
+    const pendingBeats = progress.pending
     if (pendingBeats.length > 0) {
       lines.push('【本章可推进的 mandatory beats】')
       for (const beat of pendingBeats) {

@@ -11,7 +11,7 @@ import {
   buildChapterOutlineUserPrompt,
   type ChapterOutlinePromptSections,
 } from './prompts/chapter-outline-prompt.js'
-import { getMandatoryBeatIdByText } from '../utils/mandatory-beat-ids.js'
+import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
 
 export type ChapterOutlineResult = ChapterOutline
 
@@ -34,14 +34,12 @@ export class ChapterOutlineAgent extends BaseAgent<ChapterOutlineAgentInput> {
     const beatBudget = act ? calculateBeatBudget(act, chapterIndex, pendingBeats) : 0
 
     const formatMandatoryBeatList = (beats: string[]): string =>
-      beats.length > 0
-        ? beats
-            .map((beat) => {
-              const id = act ? getMandatoryBeatIdByText(storyArc, act.index, beat) : undefined
-              return id ? `- ${id}: ${beat}` : `- ${beat}`
-            })
-            .join('\n')
-        : '（无）'
+      beats.length > 0 ? beats.map((beat) => `- ${beat}`).join('\n') : '（无）'
+    const mandatoryBeatRegistry = act
+      ? getMandatoryBeatEntriesForAct(act)
+          .map((entry) => `- ${entry.id}: ${entry.beat}`)
+          .join('\n')
+      : '（无）'
 
     const actSection = act
       ? `<current_act>
@@ -56,6 +54,8 @@ ${formatMandatoryBeatList(pendingBeats)}
 已消费的 mandatory beats：
 ${formatMandatoryBeatList(consumedBeats)}
 本章节拍预算：${beatBudget > 0 ? `本章 description 最多承载 ${beatBudget} 个 mandatory beat` : '（暂无剩余节拍可领）'}
+本幕 mandatory beat ID 注册表：
+${mandatoryBeatRegistry}
 </current_act>`
       : '<current_act>（暂无幕信息）</current_act>'
 

@@ -75,7 +75,7 @@ describe('recomputeActProgressForRewrite', () => {
     expect(progress[1]?.pending).not.toContain('阵营洗牌')
   })
 
-  it('preserves existing completed past-act progress when legacy data lacks mandatory beat ids', () => {
+  it('does not preserve prose-only progress when mandatory beat ids are absent', () => {
     const state = {
       storyArc: {
         totalChapters: 5,
@@ -114,11 +114,11 @@ describe('recomputeActProgressForRewrite', () => {
 
     const progress = recomputeActProgressForRewrite(state, 3)
 
-    expect(progress[1]?.consumed).toContain('阵营洗牌')
-    expect(progress[1]?.pending).not.toContain('阵营洗牌')
+    expect(progress[1]?.consumed).toEqual([])
+    expect(progress[1]?.pending).toEqual(['身份暴露', '阵营洗牌'])
   })
 
-  it('maps verified claimedBeatIds back to mandatory beat text when keyBeat text differs', () => {
+  it('does not map verified key-beat ids back through claimed prose', () => {
     const storyMemory: StoryMemory = {
       version: '1',
       lastChapterIndex: 0,
@@ -176,8 +176,8 @@ describe('recomputeActProgressForRewrite', () => {
 
     const progress = recomputeActProgressForRewrite(state, 1)
 
-    expect(progress[1]?.consumed).toContain('身份暴露')
-    expect(progress[1]?.pending).not.toContain('身份暴露')
+    expect(progress[1]?.consumed).not.toContain('身份暴露')
+    expect(progress[1]?.pending).toContain('身份暴露')
   })
 
   it('does not let legacy outline verifiedBeats consume unclaimed act beats during rewrite', () => {
@@ -216,13 +216,13 @@ describe('recomputeActProgressForRewrite', () => {
 
     const progress = recomputeActProgressForRewrite(state, 6)
 
-    expect(progress[1]?.consumed).toEqual(['身份重构'])
-    expect(progress[1]?.pending).toEqual(['初次接触', '暴露危机'])
+    expect(progress[1]?.consumed).toEqual([])
+    expect(progress[1]?.pending).toEqual(['身份重构', '初次接触', '暴露危机'])
   })
 })
 
 describe('cleanOutlineForRewrite', () => {
-  it('prunes legacy verifiedBeats before the target chapter to beats claimed by that chapter', () => {
+  it('removes legacy prose verification fields without semantically matching them', () => {
     const storyArc = {
       totalChapters: 3,
       acts: [
@@ -268,17 +268,10 @@ describe('cleanOutlineForRewrite', () => {
       },
     ] as ReducedGraphState['outline']
 
-    const cleaned = cleanOutlineForRewrite(outline, 1, storyArc)
+    const cleaned = cleanOutlineForRewrite(outline, 1)
 
-    expect(cleaned[0]?.verifiedBeats).toEqual(['身份重构'])
-    expect(cleaned[0]?.verifiedBeatEvidence).toEqual([
-      {
-        beat: '身份重构',
-        chapterIndex: 0,
-        quote: 'evidence',
-        confidence: 'high',
-      },
-    ])
+    expect(cleaned[0]?.verifiedBeats).toBeUndefined()
+    expect(cleaned[0]?.verifiedBeatEvidence).toBeUndefined()
     expect(cleaned[1]?.verifiedBeats).toBeUndefined()
   })
 })

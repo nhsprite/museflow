@@ -1,7 +1,7 @@
 import { getForeshadowAlerts, formatForeshadowAlerts } from './foreshadow-alerts.js'
 import { formatActForeshadowBoundaryPressure } from './foreshadow-boundary-pressure.js'
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
-import { buildArcStatus } from '../../utils/story-arc.js'
+import { buildArcStatus, getVerifiedBeatsFromMemory } from '../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../utils/chapter-planning.js'
 import type { Story } from '../../types/story.js'
 import type { ReducedGraphState } from '../../graph/state.js'
@@ -92,7 +92,8 @@ export function printChapterProgress(state: ReducedGraphState): void {
       state.storyArc,
       state.actProgress,
       current,
-      getChapterPlanningConfig(state.genre).bookClosingPhaseRatio
+      getChapterPlanningConfig(state.genre).bookClosingPhaseRatio,
+      new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
     )
     console.log('')
     console.log('故事弧线')

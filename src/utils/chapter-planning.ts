@@ -48,6 +48,9 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   issueSetSimilarityThreshold: 0.5,
   rewriteStallSimilarityThreshold: 0.7,
   rewriteStallMinRounds: 3,
+  actBoundaryAutoAdjustmentMaxChapters: 3,
+  actBoundaryAutoAdjustmentMaxCumulativeChapters: 3,
+  actBoundaryAutoAdjustmentMaxGlobalRatio: 0.15,
   downgradeInterpretiveErrors: true,
 }
 

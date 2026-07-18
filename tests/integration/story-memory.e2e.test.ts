@@ -139,8 +139,8 @@ const chapter1Events: StoryEvent[] = [
   {
     id: 'evt-beat-1',
     type: 'plot-advance',
-    plotId: 'plot-main',
-    beatId: 'beat-1',
+    plotId: 'act-1',
+    beatId: 'A1-M1',
     chapterIndex: 0,
     source: 'chapter',
     evidence: { paragraphIndex: 1 },
@@ -159,8 +159,8 @@ const chapter2Events: StoryEvent[] = [
   {
     id: 'evt-beat-2',
     type: 'plot-advance',
-    plotId: 'plot-main',
-    beatId: 'beat-2',
+    plotId: 'act-1',
+    beatId: 'A1-M2',
     chapterIndex: 1,
     source: 'chapter',
     evidence: { paragraphIndex: 1 },
@@ -209,7 +209,7 @@ vi.mock('../../src/graph/agent-factory.js', () => ({
             title: '第一幕',
             theme: '测试主题',
             function: '测试功能',
-            mandatoryBeats: [],
+            mandatoryBeats: ['第一章推进', '第二章推进'],
           },
         ],
         keyBeats: [],
@@ -278,6 +278,8 @@ vi.mock('../../src/core/outline-expander.js', () => ({
         outlineCheck: [],
         expectedEvents:
           chapterIndex === 0 ? chapter1Events : chapterIndex === 1 ? chapter2Events : [],
+        claimedMandatoryBeatIds:
+          chapterIndex === 0 ? ['A1-M1'] : chapterIndex === 1 ? ['A1-M2'] : [],
         claimedBeatIds: [],
         fulfilledForeshadowIds: chapterIndex === 1 ? ['fs-locket'] : [],
         introducedForeshadowIds: chapterIndex === 0 ? ['fs-locket'] : [],
@@ -429,8 +431,8 @@ describe('StoryMemory end-to-end', () => {
       expect(chapter1Result.storyMemory!.foreshadows['fs-locket'].resolutionPolicy).toBe(
         'must_resolve'
       )
-      expect(chapter1Result.storyMemory!.beats['beat-1']).toBeDefined()
-      expect(chapter1Result.storyMemory!.beats['beat-1'].provenByEventIds).toContain('evt-beat-1')
+      expect(chapter1Result.storyMemory!.beats['A1-M1']).toBeDefined()
+      expect(chapter1Result.storyMemory!.beats['A1-M1'].provenByEventIds).toContain('evt-beat-1')
 
       const chapter2Result = await runOneChapter(
         storyId,
@@ -445,8 +447,8 @@ describe('StoryMemory end-to-end', () => {
         )
       ).toBe(true)
       expect(chapter2Result.storyMemory!.foreshadows['fs-locket'].fulfilledIn).toBe(1)
-      expect(chapter2Result.storyMemory!.beats['beat-2']).toBeDefined()
-      expect(chapter2Result.storyMemory!.beats['beat-2'].provenByEventIds).toContain('evt-beat-2')
+      expect(chapter2Result.storyMemory!.beats['A1-M2']).toBeDefined()
+      expect(chapter2Result.storyMemory!.beats['A1-M2'].provenByEventIds).toContain('evt-beat-2')
 
       const chapterFile = join(outputDir, 'chapters', 'chapter_1.md')
       expect(existsSync(chapterFile)).toBe(true)

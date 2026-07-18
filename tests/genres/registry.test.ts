@@ -62,6 +62,9 @@ describe('genre registry', () => {
       actClosingPhaseRatio: 0.2,
       maxAutoFixAttempts: 3,
       maxStateRepairAttempts: 2,
+      actBoundaryAutoAdjustmentMaxChapters: 3,
+      actBoundaryAutoAdjustmentMaxCumulativeChapters: 3,
+      actBoundaryAutoAdjustmentMaxGlobalRatio: 0.15,
     })
   })
 

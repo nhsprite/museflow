@@ -62,13 +62,14 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     'claimedBeatSupportedByDescription',
     'findUnsupportedClaimedBeats',
     'isRecoverableJitOutlineConflict',
+    'getMandatoryBeatIdByText',
   ],
   'src/core/runner.ts': [
     'isForeshadowLikelyPolluted',
     'sentenceDelimiters',
     'text.split(sentenceDelimiters)',
+    'issueIds.has(issue.id)',
   ],
-  'src/utils/story-arc.ts': ['matchMandatoryBeat', 'normalizeTextForMatch'],
   'src/agents/foreshadowing.ts': [
     'normalizedChapter.includes',
     'isSemanticallyRelated(item.text!, chapterContent',
@@ -145,7 +146,46 @@ const forbiddenRuntimeSnippets: Record<string, string[]> = {
     'text.includes(fact.subject)',
     'text.includes(old.oldValue)',
   ],
-  'src/cli/commands/adjust-act.ts': ['description.includes(`第', 'suggestion?.includes'],
+  'src/cli/commands/adjust-act.ts': [
+    'description.includes(`第',
+    'suggestion?.includes',
+    'issue.id.startsWith',
+    'issue.id === `act-',
+  ],
+  'src/graph/services/finalization/act-progress.ts': [
+    'normalizeVerifiedBeats',
+    'findIssueMandatoryBeat',
+    'getClaimedBeatTexts',
+    'updateActProgressFromOutline',
+    'verifiedBeats.includes',
+    'mandatoryBeats.includes',
+  ],
+  'src/graph/services/finalization/chapter.ts': [
+    'newIssueIds',
+    'actBoundaryIssueIds',
+    'newIssueIds.has(i.id)',
+    'storyArc.keyBeats.length === 0',
+  ],
+  'src/story-memory/projector.ts': ['storyArc.keyBeats.length === 0'],
+  'src/graph/nodes/validation.ts': ['pendingIssues.map((i) => i.id)'],
+  'src/graph/nodes/repair-state.ts': ['repairedIssueIds'],
+  'src/core/act-progress-projection.ts': ['findClaimedMandatoryBeatForId'],
+  'src/core/rewrite-state.ts': [
+    'getTrustedOutlineVerifiedBeatsForRewrite',
+    'findClaimedMandatoryBeatForId',
+    'mandatoryBeats.includes',
+  ],
+  'src/agents/chapter-outline.ts': ['getMandatoryBeatIdByText'],
+  'src/utils/mandatory-beat-ids.ts': ['getMandatoryBeatIdByText'],
+  'src/utils/story-arc.ts': [
+    'matchMandatoryBeat',
+    'normalizeTextForMatch',
+    'judgeMandatoryBeatCoverage',
+    'AUTO_ADJUST_MAX_EXTENSION',
+    'AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION',
+    'AUTO_ADJUST_MAX_GLOBAL_EXTENSION_RATIO',
+    'progress.consumed.includes(kb.beat)',
+  ],
 }
 
 describe('runtime semantic decisions avoid prose string matching', () => {

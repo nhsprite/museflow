@@ -39,11 +39,12 @@ import {
   calculateBeatBudget,
   formatActBoundaryAdjustmentCommand,
   getActForChapter,
+  getVerifiedBeatsFromMemory,
   proposeActExtensionAfterForeshadowAdjudication,
   proposeActBoundaryAdjustments,
   type ActBoundaryProposal,
 } from '../utils/story-arc.js'
-import { findMandatoryBeatById, getMandatoryBeatIdByText } from '../utils/mandatory-beat-ids.js'
+import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
 import {
   createGenericVerifiedConstraint,
@@ -753,8 +754,14 @@ function applyAutomaticActExtensions(
   }
 
   let updatedStoryArc = state.storyArc
+  const planningConfig = getChapterPlanningConfig(state.genre)
   for (const proposal of proposals) {
-    const result = applyActBoundaryAdjustment(updatedStoryArc, proposal, chapterIndex)
+    const result = applyActBoundaryAdjustment(
+      updatedStoryArc,
+      proposal,
+      chapterIndex,
+      planningConfig
+    )
     if (!result.applied) {
       if (logFailure) {
         logger.warn(`[MuseFlow] ${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
@@ -885,9 +892,16 @@ function buildArcStatusConstraint(
   storyArc: import('../types/outline.js').StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
   chapterIndex: number,
-  bookClosingPhaseRatio: number
+  bookClosingPhaseRatio: number,
+  verifiedBeatIds: ReadonlySet<string>
 ): string | undefined {
-  const arcStatus = buildArcStatus(storyArc, actProgress, chapterIndex, bookClosingPhaseRatio)
+  const arcStatus = buildArcStatus(
+    storyArc,
+    actProgress,
+    chapterIndex,
+    bookClosingPhaseRatio,
+    verifiedBeatIds
+  )
   const currentAct = arcStatus.currentAct
   if (!currentAct) return undefined
 
@@ -910,7 +924,6 @@ function finalizeChapterOutlineCandidate(
   beatBudget: number
 ): ChapterOutlineResult {
   const filteredClaimedBeatPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
-    candidate.claimedBeats,
     candidate.claimedMandatoryBeatIds,
     state,
     chapterIndex
@@ -938,15 +951,6 @@ function finalizeChapterOutlineCandidate(
   }
 }
 
-function getCurrentActMandatoryBeats(state: ReducedGraphState, chapterIndex: number): Set<string> {
-  if (!state.storyArc) return new Set()
-  const chapterNumber = chapterIndex + 1
-  const currentAct = state.storyArc.acts.find(
-    (act) => chapterNumber >= act.startChapter && chapterNumber <= act.endChapter
-  )
-  return new Set((currentAct?.mandatoryBeats ?? []).map((beat) => beat.trim()).filter(Boolean))
-}
-
 function isBeatAlreadyProven(state: ReducedGraphState, beatId: string): boolean {
   const beatMemory = state.storyMemory?.beats[beatId]
   if (!beatMemory) return false
@@ -954,14 +958,12 @@ function isBeatAlreadyProven(state: ReducedGraphState, beatId: string): boolean 
 }
 
 function filterClaimedMandatoryBeatPairsToCurrentAct(
-  claimedBeats: string[] | undefined,
   claimedMandatoryBeatIds: string[] | undefined,
   state: ReducedGraphState,
   chapterIndex: number
 ): Array<{ beat: string; id: string }> {
   const currentAct = getActForChapter(state.storyArc, chapterIndex)
-  const currentActMandatoryBeats = getCurrentActMandatoryBeats(state, chapterIndex)
-  if (currentActMandatoryBeats.size === 0) return []
+  if (!currentAct) return []
 
   const pairs: Array<{ beat: string; id: string }> = []
   const addPair = (beat: string, id: string) => {
@@ -983,23 +985,6 @@ function filterClaimedMandatoryBeatPairsToCurrentAct(
     addPair(lookup.beat, trimmed)
   }
 
-  if (pairs.length > 0) {
-    return pairs
-  }
-
-  for (const beat of claimedBeats ?? []) {
-    const trimmed = beat.trim()
-    if (!trimmed || !currentActMandatoryBeats.has(trimmed)) continue
-    const id = currentAct
-      ? getMandatoryBeatIdByText(state.storyArc, currentAct.index, trimmed)
-      : undefined
-    if (!id) continue
-    if (isBeatAlreadyProven(state, id)) {
-      logger.info(`[MuseFlow] 第 ${chapterIndex + 1} 章声称的节拍 ${id} 已在之前章节被证明，跳过`)
-      continue
-    }
-    addPair(trimmed, id)
-  }
   return pairs
 }
 
@@ -1819,7 +1804,8 @@ async function expandOutlineForChapterInternal(
         state.storyArc,
         state.actProgress ?? {},
         chapterIndex,
-        planningConfig.bookClosingPhaseRatio
+        planningConfig.bookClosingPhaseRatio,
+        new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
       )
     : undefined
   if (arcStatusConstraint) {

@@ -1,6 +1,6 @@
 import type { ActArc, KeyBeat, StoryArc } from '../types/outline.js'
-import type { ModelProvider, Message, JsonSchema } from '../model/provider.js'
 import type { StoryMemory } from '../types/story-memory.js'
+import type { ChapterPlanningConfig } from '../types/genre.js'
 import {
   getBoundaryBlockingForeshadows,
   getRequiredForeshadowsForScheduling,
@@ -78,7 +78,8 @@ export function buildArcStatus(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
   currentChapterIndex: number,
-  bookClosingPhaseRatio: number
+  bookClosingPhaseRatio: number,
+  verifiedBeatIds: ReadonlySet<string>
 ): ArcStatus {
   const currentAct = getActForChapter(storyArc, currentChapterIndex)
   const chaptersRemaining = storyArc.totalChapters - (currentChapterIndex + 1)
@@ -98,10 +99,10 @@ export function buildArcStatus(
 
   const currentActIndex = currentAct?.index ?? 0
   const overdueKeyBeats = storyArc.keyBeats.filter(
-    (kb) => kb.deadlineAct < currentActIndex && !progress.consumed.includes(kb.beat)
+    (kb) => kb.deadlineAct < currentActIndex && !verifiedBeatIds.has(kb.id)
   )
   const upcomingKeyBeats = storyArc.keyBeats.filter(
-    (kb) => kb.deadlineAct === currentActIndex && !progress.consumed.includes(kb.beat)
+    (kb) => kb.deadlineAct === currentActIndex && !verifiedBeatIds.has(kb.id)
   )
 
   let riskLevel: ArcStatus['riskLevel'] = 'low'
@@ -150,7 +151,8 @@ export function buildClosingPhaseConstraint(
   storyArc: StoryArc,
   actProgress: Record<number, { consumed: string[]; pending: string[] }>,
   currentChapterIndex: number,
-  bookClosingPhaseRatio: number
+  bookClosingPhaseRatio: number,
+  verifiedBeatIds: ReadonlySet<string>
 ): string | undefined {
   if (!isClosingPhase(storyArc.totalChapters, currentChapterIndex, bookClosingPhaseRatio)) {
     return undefined
@@ -165,12 +167,12 @@ export function buildClosingPhaseConstraint(
     if (act.index > currentActIndex) continue
     const progress = actProgress[act.index] ?? { consumed: [], pending: [...act.mandatoryBeats] }
     for (const beat of progress.pending) {
-      if (!pendingBeats.includes(beat)) pendingBeats.push(beat)
+      pendingBeats.push(beat)
     }
   }
 
   const pendingKeyBeats = storyArc.keyBeats.filter(
-    (kb) => !pendingBeats.includes(kb.beat) && kb.deadlineAct <= currentActIndex
+    (kb) => !verifiedBeatIds.has(kb.id) && kb.deadlineAct <= currentActIndex
   )
 
   const parts: string[] = [
@@ -444,13 +446,6 @@ export function validateActBoundaryAdjustment(
   return { valid: true }
 }
 
-/** 单次自动调整的安全上限（章）。 */
-const AUTO_ADJUST_MAX_EXTENSION = 3
-/** 单幕累计自动延长上限（章）。超过后必须人工处理或重写消费 pending beats。 */
-const AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION = 3
-/** 全书累计自动延长上限比例。防止多个幕分别延长导致整本书失控膨胀。 */
-const AUTO_ADJUST_MAX_GLOBAL_EXTENSION_RATIO = 0.15
-
 export interface ApplyActBoundaryAdjustmentResult {
   storyArc: StoryArc
   applied: boolean
@@ -519,14 +514,20 @@ export function applyActBoundaryShift(
 /**
  * 自动应用幕边界调整建议，并施加安全约束：
  * - 支持延长与缩短；
- * - 单次调整幅度不超过 AUTO_ADJUST_MAX_EXTENSION 章；
+ * - 单次、单幕累计和全书累计调整均受题材配置约束；
  * - 不侵入下一幕，也不能把边界调到已写章节之前；
  * - 使用 validateActBoundaryAdjustment 校验。
  */
 export function applyActBoundaryAdjustment(
   storyArc: StoryArc,
   proposal: ActBoundaryProposal,
-  currentChapterIndex: number
+  currentChapterIndex: number,
+  policy: Pick<
+    ChapterPlanningConfig,
+    | 'actBoundaryAutoAdjustmentMaxChapters'
+    | 'actBoundaryAutoAdjustmentMaxCumulativeChapters'
+    | 'actBoundaryAutoAdjustmentMaxGlobalRatio'
+  >
 ): ApplyActBoundaryAdjustmentResult {
   const currentAct = storyArc.acts.find((a) => a.index === proposal.actIndex)
   if (!currentAct) {
@@ -546,12 +547,13 @@ export function applyActBoundaryAdjustment(
     currentAct.autoBoundaryAdjustment ? currentAct.endChapter - originalEndChapter : 0,
     0
   )
-  const remainingCumulativeExtension = AUTO_ADJUST_MAX_CUMULATIVE_EXTENSION - alreadyExtendedBy
+  const remainingCumulativeExtension =
+    policy.actBoundaryAutoAdjustmentMaxCumulativeChapters - alreadyExtendedBy
   const originalTotalChapters =
     storyArc.autoBoundaryAdjustment?.originalTotalChapters ?? storyArc.totalChapters
   const globalExtensionCap = Math.max(
-    AUTO_ADJUST_MAX_EXTENSION,
-    Math.ceil(originalTotalChapters * AUTO_ADJUST_MAX_GLOBAL_EXTENSION_RATIO)
+    policy.actBoundaryAutoAdjustmentMaxChapters,
+    Math.ceil(originalTotalChapters * policy.actBoundaryAutoAdjustmentMaxGlobalRatio)
   )
   const alreadyGloballyExtendedBy = Math.max(
     storyArc.autoBoundaryAdjustment?.totalExtendedChapters ?? 0,
@@ -562,11 +564,17 @@ export function applyActBoundaryAdjustment(
 
   const availableAutomaticExtension = Math.max(
     0,
-    Math.min(AUTO_ADJUST_MAX_EXTENSION, remainingCumulativeExtension, remainingGlobalExtension)
+    Math.min(
+      policy.actBoundaryAutoAdjustmentMaxChapters,
+      remainingCumulativeExtension,
+      remainingGlobalExtension
+    )
   )
   if (isExtension && rawDelta > availableAutomaticExtension) {
     const bindingLimits: string[] = []
-    if (rawDelta > AUTO_ADJUST_MAX_EXTENSION) bindingLimits.push('单次自动延长上限')
+    if (rawDelta > policy.actBoundaryAutoAdjustmentMaxChapters) {
+      bindingLimits.push('单次自动延长上限')
+    }
     if (rawDelta > remainingCumulativeExtension) bindingLimits.push('单幕累计自动延长上限')
     if (rawDelta > remainingGlobalExtension) bindingLimits.push('全书累计自动延长上限')
     return {
@@ -579,7 +587,9 @@ export function applyActBoundaryAdjustment(
     }
   }
 
-  const appliedDelta = isExtension ? rawDelta : Math.min(rawDelta, AUTO_ADJUST_MAX_EXTENSION)
+  const appliedDelta = isExtension
+    ? rawDelta
+    : Math.min(rawDelta, policy.actBoundaryAutoAdjustmentMaxChapters)
   const adjustedEndChapter = isExtension
     ? currentAct.endChapter + appliedDelta
     : currentAct.endChapter - appliedDelta
@@ -635,74 +645,4 @@ export function applyActBoundaryAdjustment(
     applied: true,
     reason: `已自动将第 ${proposal.actIndex} 幕结束章节从 ${currentAct.endChapter} 调整到 ${adjustedEndChapter}`,
   }
-}
-
-async function requestCoveredBeats(
-  provider: ModelProvider,
-  contextText: string,
-  beats: string[],
-  contextLabel: string
-): Promise<string[]> {
-  const schema: JsonSchema = {
-    type: 'object',
-    properties: {
-      coveredBeats: {
-        type: 'array',
-        items: { type: 'string' },
-      },
-    },
-    required: ['coveredBeats'],
-  }
-
-  const messages: Message[] = [
-    {
-      role: 'system',
-      content:
-        '你是一位小说结构分析师。请严格根据提供的章节内容，判断给定的 mandatory beats 中哪些已经确实发生或确立。只返回确实发生的 beat 原文，不得改写、不得推断未发生的内容。',
-    },
-    {
-      role: 'user',
-      content: `【${contextLabel}】\n${contextText.slice(0, 12000)}\n\n【待判断的 beats】\n${beats.map((beat, i) => `${i + 1}. ${beat}`).join('\n')}\n\n请输出 JSON：{"coveredBeats": ["已发生的 beat 原文", ...]}。只包含上述列表中确实发生的项。`,
-    },
-  ]
-
-  try {
-    const response = provider.chatStructured
-      ? await provider.chatStructured<{ coveredBeats: unknown[] }>(messages, schema, 0.1)
-      : (JSON.parse(
-          (await provider.chat(messages, 0.1)).replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
-        ) as { coveredBeats: unknown[] })
-
-    const raw = Array.isArray(response.coveredBeats) ? response.coveredBeats : []
-    const matched: string[] = []
-    const allowed = new Set(beats)
-    for (const item of raw) {
-      if (typeof item !== 'string') continue
-      const candidate = item.trim()
-      if (allowed.has(candidate) && !matched.includes(candidate)) {
-        matched.push(candidate)
-      }
-    }
-    return matched
-  } catch (err) {
-    logger.debug(
-      `[MuseFlow] mandatory beat 覆盖判定失败: ${err instanceof Error ? err.message : String(err)}`
-    )
-    return []
-  }
-}
-
-/**
- * 使用模型根据单章正文判断哪些 mandatory beats 已被覆盖。
- * 用于补救 SummaryAgent 不返回 claimedBeats 原句的情况。
- */
-export async function judgeMandatoryBeatCoverage(
-  provider: ModelProvider,
-  chapterContent: string,
-  beats: string[]
-): Promise<string[]> {
-  if (beats.length === 0 || chapterContent.trim().length === 0) {
-    return []
-  }
-  return requestCoveredBeats(provider, chapterContent, beats, '章节正文')
 }

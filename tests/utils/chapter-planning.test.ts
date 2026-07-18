@@ -27,6 +27,9 @@ describe('chapter planning config', () => {
       maxStateRepairAttempts: 1,
       rewriteStallSimilarityThreshold: 0.8,
       rewriteStallMinRounds: 4,
+      actBoundaryAutoAdjustmentMaxChapters: 2,
+      actBoundaryAutoAdjustmentMaxCumulativeChapters: 4,
+      actBoundaryAutoAdjustmentMaxGlobalRatio: 0.08,
     })
     vi.doMock('../../src/genres/registry.js', () => ({
       getGenreSkill: () => skill,
@@ -44,6 +47,9 @@ describe('chapter planning config', () => {
       maxStateRepairAttempts: 1,
       rewriteStallSimilarityThreshold: 0.8,
       rewriteStallMinRounds: 4,
+      actBoundaryAutoAdjustmentMaxChapters: 2,
+      actBoundaryAutoAdjustmentMaxCumulativeChapters: 4,
+      actBoundaryAutoAdjustmentMaxGlobalRatio: 0.08,
     })
   })
 
@@ -65,6 +71,9 @@ describe('chapter planning config', () => {
       rewriteStallSimilarityThreshold: 0.7,
       rewriteStallMinRounds: 3,
       maxErrorRewriteAttempts: 3,
+      actBoundaryAutoAdjustmentMaxChapters: 3,
+      actBoundaryAutoAdjustmentMaxCumulativeChapters: 3,
+      actBoundaryAutoAdjustmentMaxGlobalRatio: 0.15,
     })
   })
 })

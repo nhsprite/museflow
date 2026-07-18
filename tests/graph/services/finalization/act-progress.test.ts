@@ -1,26 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  normalizeVerifiedBeats,
   getPendingMandatoryBeats,
   updateActProgress,
 } from '@/graph/services/finalization/act-progress.js'
 import type { ReducedGraphState } from '@/graph/state.js'
 import type { StoryArc } from '@/types/outline.js'
 import type { StoryMemory } from '@/types/story-memory.js'
-
-describe('normalizeVerifiedBeats', () => {
-  it('matches beats by exact string equality', () => {
-    const verified = ['主角觉醒', '反派登场']
-    const mandatory = ['主角觉醒', '揭示真相']
-    expect(normalizeVerifiedBeats(verified, mandatory)).toEqual(['主角觉醒'])
-  })
-
-  it('does not match paraphrased beats', () => {
-    const verified = ['主角终于觉醒']
-    const mandatory = ['主角觉醒']
-    expect(normalizeVerifiedBeats(verified, mandatory)).toEqual([])
-  })
-})
 
 describe('getPendingMandatoryBeats', () => {
   it('returns mandatory beats not yet consumed', () => {
@@ -114,7 +99,7 @@ describe('updateActProgress', () => {
     expect(wideClosingWindow.beatPressureConstraint).toBeDefined()
   })
 
-  it('preserves existing actProgress when memory beat text differs from mandatory beat text', async () => {
+  it('does not preserve prose-only progress when no mandatory beat id proves it', async () => {
     const storyArc = makeStoryArc()
     const state = {
       storyArc,
@@ -142,8 +127,8 @@ describe('updateActProgress', () => {
 
     const result = await updateActProgress(state, 1, 0.2)
 
-    expect(result.actProgress[1]?.consumed).toContain('敌友洗牌')
-    expect(result.actProgress[1]?.consumed.length).toBeGreaterThanOrEqual(1)
+    expect(result.actProgress[1]?.consumed).toEqual([])
+    expect(result.actProgress[1]?.pending).toEqual(['身份暴露', '敌友洗牌', '终局布局'])
   })
 
   it('does not consume legacy outline.verifiedBeats without mandatory beat IDs', async () => {
@@ -186,7 +171,7 @@ describe('updateActProgress', () => {
     expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
   })
 
-  it('uses paired claimedBeatIds and claimedBeats to consume mandatory beats when keyBeat text differs', async () => {
+  it('does not use paired key-beat prose to consume a mandatory beat', async () => {
     const storyArc = makeStoryArc()
     const state = {
       storyArc,
@@ -219,11 +204,11 @@ describe('updateActProgress', () => {
 
     const result = await updateActProgress(state, 0, 0.2)
 
-    expect(result.actProgress[1]?.consumed).toContain('身份暴露')
-    expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
+    expect(result.actProgress[1]?.consumed).not.toContain('身份暴露')
+    expect(result.actProgress[1]?.pending).toContain('身份暴露')
   })
 
-  it('uses paired claimedBeatIds and claimedBeats for unverified beat issues', async () => {
+  it('reports an unverified key beat by its stable subject id', async () => {
     const storyArc = makeStoryArc()
     const state = {
       storyArc,
@@ -265,10 +250,10 @@ describe('updateActProgress', () => {
     expect(result.beatVerificationIssues).toEqual([
       expect.objectContaining({
         id: 'unverified-beat-id-A1-B1',
-        ruleId: 'outline-coverage.unverified-mandatory-beat',
+        ruleId: 'outline-coverage.unverified-key-beat',
         severity: 'error',
         subject: 'A1-B1',
-        description: expect.stringContaining('身份暴露'),
+        description: expect.stringContaining('身份彻底暴露后的坠落'),
       }),
     ])
   })
@@ -283,9 +268,9 @@ describe('updateActProgress', () => {
       ],
       storyMemory: makeStoryMemory({
         beats: {
-          'A1-B1': {
-            id: 'A1-B1',
-            description: '身份彻底暴露后的坠落',
+          'A1-M1': {
+            id: 'A1-M1',
+            description: '身份暴露',
             actIndex: 1,
             deadlineAct: 1,
             required: true,
@@ -301,6 +286,6 @@ describe('updateActProgress', () => {
 
     const result = await updateActProgress(state, 1, 0.2)
 
-    expect(result.actProgress[1]?.consumed.filter((b) => b === '身份暴露').length).toBe(1)
+    expect(result.actProgress[1]?.consumed).toEqual(['身份暴露'])
   })
 })

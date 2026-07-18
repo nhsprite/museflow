@@ -61,13 +61,3 @@ export function getMandatoryBeatTextById(
 ): string | undefined {
   return findMandatoryBeatById(storyArc, beatId)?.beat
 }
-
-export function getMandatoryBeatIdByText(
-  storyArc: StoryArc | null | undefined,
-  actIndex: number,
-  beat: string
-): string | undefined {
-  const act = storyArc?.acts.find((candidate) => candidate.index === actIndex)
-  const beatIndex = act?.mandatoryBeats.indexOf(beat) ?? -1
-  return beatIndex >= 0 && act ? makeMandatoryBeatId(act.index, beatIndex) : undefined
-}

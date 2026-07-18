@@ -31,7 +31,7 @@ describe('buildCharacterWhitelist', () => {
     expect(whitelist.canonical('林姑娘')).toBeUndefined()
   })
 
-  it('keeps the first exact reference mapping when declarations collide', () => {
+  it('rejects an alias claimed by multiple characters as ambiguous', () => {
     const whitelist = buildCharacterWhitelist([
       makeCharacter(),
       makeCharacter({
@@ -41,6 +41,21 @@ describe('buildCharacterWhitelist', () => {
         isProtagonist: false,
       }),
     ])
-    expect(whitelist.canonical('黛玉')).toBe('char-1')
+    expect(whitelist.canonical('黛玉')).toBeUndefined()
+    expect(whitelist.isOfficial('黛玉')).toBe(false)
+  })
+
+  it('gives an unambiguous official name precedence over another character alias', () => {
+    const whitelist = buildCharacterWhitelist([
+      makeCharacter({ aliases: ['宝钗'] }),
+      makeCharacter({
+        id: 'char-2',
+        name: '宝钗',
+        aliases: [],
+        isProtagonist: false,
+      }),
+    ])
+
+    expect(whitelist.canonical('宝钗')).toBe('char-2')
   })
 })

@@ -63,7 +63,7 @@ function buildBlockingConflict(
   // 如果 issue 已经携带结构化冲突字段，优先直接使用。
   if (issue.actualValue !== undefined || issue.expectedValue !== undefined) {
     return {
-      subject: issue.subject ?? issue.id,
+      subject: issue.subject ?? issue.ruleId,
       attribute,
       oldValue: issue.actualValue ?? '',
       newValue: issue.expectedValue ?? '',
@@ -88,7 +88,7 @@ function buildBlockingConflict(
   }
 
   return {
-    subject: issue.subject ?? issue.id,
+    subject: issue.subject ?? issue.ruleId,
     attribute,
     oldValue: '',
     newValue: '',

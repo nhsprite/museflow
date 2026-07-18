@@ -155,6 +155,34 @@ describe('projectEntities', () => {
 })
 
 describe('ensureBeatsHaveActIndex', () => {
+  it('pre-populates mandatory beat ids when the story has no global key beats', () => {
+    const storyArc: StoryArc = {
+      totalChapters: 3,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: 'Act',
+          theme: '',
+          function: '',
+          mandatoryBeats: ['身份暴露'],
+        },
+      ],
+      keyBeats: [],
+    }
+
+    const memory = ensureBeatsHaveActIndex(createEmptyStoryMemory(), storyArc)
+
+    expect(memory.beats['A1-M1']).toEqual(
+      expect.objectContaining({
+        description: '身份暴露',
+        actIndex: 1,
+        deadlineAct: 1,
+      })
+    )
+  })
+
   it('pre-populates stable mandatory beat ids separately from global key beats', () => {
     const storyArc: StoryArc = {
       totalChapters: 3,

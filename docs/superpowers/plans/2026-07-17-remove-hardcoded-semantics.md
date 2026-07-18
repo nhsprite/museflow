@@ -202,6 +202,7 @@ git commit -m "[Core] Add structured issue rule identity"
 - Modify: `src/graph/nodes/validation.ts`
 - Modify: `src/graph/services/finalization/act-progress.ts`
 - Modify: `src/graph/services/finalization/chapter.ts`
+- Modify: `src/story-memory/projector.ts`
 - Modify: `src/graph/services/fix/execution.ts`
 - Modify: `tests/agents/chapter-planner.test.ts`
 - Modify: `tests/agents/chapter.test.ts`
@@ -1048,3 +1049,70 @@ Repeat Steps 2 and 3. Expected: every command exits 0.
 git add src tests
 git commit -m "[Core] Complete structured hardcoding removal"
 ```
+
+---
+
+### Task 11: Harden structured identity after review
+
+**Files:**
+- Modify: `src/agents/character.ts`
+- Modify: `src/utils/character-whitelist.ts`
+- Modify: `src/agents/chapter-outline.ts`
+- Modify: `src/core/outline-expander.ts`
+- Modify: `src/core/act-progress-projection.ts`
+- Modify: `src/core/rewrite-state.ts`
+- Modify: `src/graph/services/finalization/act-progress.ts`
+- Modify: `src/graph/services/finalization/chapter.ts`
+- Modify: `src/cli/commands/adjust-act.ts`
+- Modify: `src/utils/story-arc.ts`
+- Delete: `src/utils/mandatory-beat-mapping.ts`
+- Test: matching character, outline, rewrite, finalization, CLI, story-arc, and smoke tests
+
+- [ ] **Step 1: Add failing tests for ambiguous identity**
+
+Cover cross-character alias collisions, official-name precedence, text-only mandatory claims,
+stable-ID rewrite reset, structured issue replacement, empty-keyBeat mandatory registration, and
+configurable act-boundary limits.
+
+- [ ] **Step 2: Verify RED**
+
+Run:
+
+```bash
+npx vitest run tests/agents/character.test.ts tests/utils/character-whitelist.test.ts \
+  tests/core/outline-expander.test.ts tests/core/act-progress-projection.test.ts \
+  tests/core/rewrite-state.test.ts tests/graph/services/finalization/act-progress.test.ts \
+  tests/graph/services/finalization/chapter.test.ts tests/cli/adjust-act.test.ts \
+  tests/utils/story-arc.test.ts
+```
+
+Expected: the baseline accepts ambiguous aliases, maps mandatory prose back to IDs, parses issue
+occurrence IDs, preserves legacy text progress, and applies fixed automatic extension limits.
+
+- [ ] **Step 3: Remove mandatory-beat prose compatibility**
+
+Render the stable mandatory-beat registry to the outline agent and accept claims only through
+`claimedMandatoryBeatIds`. Recompute progress from StoryMemory proof IDs and
+`verifiedMandatoryBeatIds`. Remove text matching, legacy progress preservation, and
+`mandatory-beat-mapping.ts`.
+
+- [ ] **Step 4: Make issue lifecycle fully structured**
+
+Use `ruleId + subject` for outline-coverage replacement and CLI removal. Use the structured issue
+fingerprint for validation merge, repair-state cleanup, runner revalidation, and blocking conflict
+replacement. Do not parse occurrence `id` prefixes.
+
+- [ ] **Step 5: Reject ambiguous aliases**
+
+Reject cross-character name/alias collisions in character output. In the whitelist, give official
+names precedence and leave any multiply declared alias unresolved.
+
+- [ ] **Step 6: Configure automatic boundary safety limits**
+
+Add the per-operation, per-act cumulative, and whole-story cumulative extension values to
+`ChapterPlanningConfig`. Pass them to `applyActBoundaryAdjustment` and fail closed rather than
+partially applying an oversized request.
+
+- [ ] **Step 7: Verify GREEN and run the full suite**
+
+Run the Step 2 command, all static checks, the build, and `npm test`.

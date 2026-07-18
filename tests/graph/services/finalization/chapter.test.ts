@@ -33,7 +33,7 @@ function createBaseSummaryAgent() {
             id: 'evt-1',
             type: 'plot-advance',
             plotId: 'plot-1',
-            beatId: 'beat-1',
+            beatId: 'A1-M1',
             chapterIndex: 0,
             source: 'chapter',
             evidence: { paragraphIndex: 1 },
@@ -907,12 +907,16 @@ describe('finalizeChapter', () => {
 
   it('consumes mandatory beats from draftChapterEvents without prose-based judgment', async () => {
     const state = buildState(tmpDir, {
+      storyArc: {
+        ...buildState(tmpDir).storyArc!,
+        keyBeats: [],
+      },
       draftChapterEvents: [
         {
           id: 'evt-draft-1',
           type: 'plot-advance',
           plotId: 'act-1',
-          beatId: 'beat-1',
+          beatId: 'A1-M1',
           chapterIndex: 0,
           source: 'chapter',
           evidence: { paragraphIndex: 1 },
@@ -925,7 +929,7 @@ describe('finalizeChapter', () => {
 
     expect(result.rewriteRequested).toBeFalsy()
     expect(result.currentChapterIndex).toBe(1)
-    expect(result.storyMemory?.beats['beat-1']?.provenByEventIds).toContain('evt-draft-1')
+    expect(result.storyMemory?.beats['A1-M1']?.provenByEventIds).toContain('evt-draft-1')
     expect(result.outline?.[0]?.verifiedBeats).toContain('主角离开家乡')
     expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
     expect(result.actProgress?.[1]?.pending).not.toContain('主角离开家乡')
@@ -957,7 +961,12 @@ describe('finalizeChapter', () => {
         totalChapters: 6,
       },
       outline: [
-        { number: 1, title: '起', description: 'beat-a', verifiedBeats: ['beat-a'] },
+        {
+          number: 1,
+          title: '起',
+          description: 'beat-a',
+          verifiedMandatoryBeatIds: ['A1-M1'],
+        },
         { number: 2, title: '承', description: '过渡' },
         {
           number: 3,
@@ -1035,6 +1044,10 @@ describe('finalizeChapter', () => {
     } as unknown as ReturnType<typeof getSummaryAgent>)
 
     const state = buildState(tmpDir, {
+      storyArc: {
+        ...buildState(tmpDir).storyArc!,
+        keyBeats: [],
+      },
       draftChapterEvents: [
         {
           id: 'evt-invalid',
@@ -1074,6 +1087,7 @@ describe('finalizeChapter', () => {
           title: '启程',
           description: '主角离开家乡。',
           claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
         },
         { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
         { number: 3, title: '脱困', description: '主角脱困。' },
@@ -1081,8 +1095,10 @@ describe('finalizeChapter', () => {
       pendingIssues: [
         {
           id: 'unverified-beat-1-0',
+          ruleId: 'outline-coverage.unverified-mandatory-beat',
           type: 'outline_coverage',
           severity: 'warning',
+          subject: 'A1-M1',
           description:
             '本章大纲声称推进 mandatory beat「主角离开家乡」，但正文未验证到该 beat 的发生。',
           suggestion: '请在后续章节中确保该 beat 被明确确立。',
@@ -1094,7 +1110,8 @@ describe('finalizeChapter', () => {
     const result = await finalizeChapter(state, provider)
 
     const warnings = result.pendingIssues?.filter(
-      (i) => i.id === 'unverified-beat-1-0' && i.type === 'outline_coverage'
+      (issue) =>
+        issue.ruleId === 'outline-coverage.unverified-mandatory-beat' && issue.subject === 'A1-M1'
     )
     expect(warnings).toHaveLength(1)
   })
@@ -1125,7 +1142,7 @@ describe('finalizeChapter', () => {
           title: '脱困',
           description: '主角应当离开家乡。',
           claimedBeats: ['主角离开家乡'],
-          claimedBeatIds: ['beat-1'],
+          claimedMandatoryBeatIds: ['A1-M1'],
         },
       ],
       chapters: [
@@ -1155,17 +1172,17 @@ describe('finalizeChapter', () => {
     expect(result.pendingIssues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'unverified-beat-id-beat-1',
+          id: 'unverified-mandatory-beat-id-A1-M1',
           ruleId: 'outline-coverage.unverified-mandatory-beat',
           type: 'outline_coverage',
           severity: 'error',
-          subject: 'beat-1',
+          subject: 'A1-M1',
         }),
       ])
     )
   })
 
-  it('keeps text-only claimed beats as warnings before the act boundary', async () => {
+  it('ignores text-only claimed beats before the act boundary', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue({
       run: vi.fn().mockResolvedValue({
         success: true,
@@ -1217,16 +1234,7 @@ describe('finalizeChapter', () => {
 
     expect(result.rewriteRequested).toBeFalsy()
     expect(result.currentChapterIndex).toBe(2)
-    expect(result.pendingIssues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'unverified-beat-1-0',
-          ruleId: 'outline-coverage.unverified-mandatory-beat',
-          type: 'outline_coverage',
-          severity: 'warning',
-        }),
-      ])
-    )
+    expect(result.pendingIssues?.some((issue) => issue.type === 'outline_coverage')).toBe(false)
   })
 
   it('does not advance beyond an act boundary while mandatory beats are still pending', async () => {
@@ -2371,6 +2379,10 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
     outline[chapterIndex] = {
       ...outline[chapterIndex]!,
       ...(deferredForeshadowIds.length > 0 ? { deferredForeshadowIds } : {}),
+    }
+    outline[0] = {
+      ...outline[0]!,
+      verifiedMandatoryBeatIds: ['A1-M1'],
     }
     const chapters = Array.from({ length: totalChapters }, () => null)
     chapters[chapterIndex] = {

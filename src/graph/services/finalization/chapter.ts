@@ -35,6 +35,7 @@ import {
   proposeActBoundaryAdjustments,
   applyActBoundaryAdjustment,
   formatActBoundaryAdjustmentCommand,
+  getVerifiedBeatsFromMemory,
 } from '../../../utils/story-arc.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import {
@@ -127,7 +128,7 @@ function filterStoryEventsForStoryArc(
   events: StoryEvent[],
   storyArc: StoryArc | null | undefined
 ): StoryEvent[] {
-  if (!storyArc || storyArc.keyBeats.length === 0) return events
+  if (!storyArc) return events
   const validBeatIds = new Set([
     ...storyArc.keyBeats.map((beat) => beat.id),
     ...getMandatoryBeatEntries(storyArc).map((beat) => beat.id),
@@ -662,8 +663,7 @@ export async function finalizeChapter(
   } = await updateActProgress(
     stateForActProgress,
     chapterIndex,
-    planningConfig.actClosingPhaseRatio,
-    provider
+    planningConfig.actClosingPhaseRatio
   )
   if (beatPressureConstraint) {
     updatedVerifiedConstraints = [...updatedVerifiedConstraints, beatPressureConstraint]
@@ -674,7 +674,8 @@ export async function finalizeChapter(
         state.storyArc,
         updatedActProgress,
         chapterIndex,
-        planningConfig.bookClosingPhaseRatio
+        planningConfig.bookClosingPhaseRatio,
+        new Set(updatedStoryMemory ? getVerifiedBeatsFromMemory(updatedStoryMemory) : [])
       )
     : undefined
   if (closingPhaseConstraint) {
@@ -684,11 +685,13 @@ export async function finalizeChapter(
     ]
   }
 
-  // Avoid stacking duplicate unverified-beat warnings across chapters. The
-  // issue IDs are deterministic, so replace any previous warning for the same
-  // act/beat with the current chapter's assessment.
-  const newIssueIds = new Set(beatVerificationIssues?.map((i) => i.id) ?? [])
-  let updatedPendingIssues = state.pendingIssues.filter((i) => !newIssueIds.has(i.id))
+  // Replace previous verification results for the same structured rule/subject pair.
+  const newIssueKeys = new Set(
+    beatVerificationIssues?.map((issue) => `${issue.ruleId}\u0000${issue.subject ?? ''}`) ?? []
+  )
+  let updatedPendingIssues = state.pendingIssues.filter(
+    (issue) => !newIssueKeys.has(`${issue.ruleId}\u0000${issue.subject ?? ''}`)
+  )
   if (beatVerificationIssues && beatVerificationIssues.length > 0) {
     updatedPendingIssues = [...updatedPendingIssues, ...beatVerificationIssues]
   }
@@ -739,14 +742,16 @@ export async function finalizeChapter(
   updatedPendingIssues = pruneResolvedOutlineCoverageIssues(
     updatedPendingIssues,
     state.storyArc,
-    updatedActProgress,
     chapterIndex,
     updatedStoryMemory
   )
-  const actBoundaryIssueIds = new Set(
-    (state.storyArc?.acts ?? []).map((act) => `act-${act.index}-pending-beats-at-boundary`)
+  const actBoundarySubjects = new Set((state.storyArc?.acts ?? []).map((act) => `act-${act.index}`))
+  updatedPendingIssues = updatedPendingIssues.filter(
+    (issue) =>
+      issue.ruleId !== 'outline-coverage.pending-beats-at-boundary' ||
+      !issue.subject ||
+      !actBoundarySubjects.has(issue.subject)
   )
-  updatedPendingIssues = updatedPendingIssues.filter((issue) => !actBoundaryIssueIds.has(issue.id))
 
   const nextIndex = state.currentChapterIndex + 1
 
@@ -770,7 +775,8 @@ export async function finalizeChapter(
           const result = applyActBoundaryAdjustment(
             updatedStoryArc ?? state.storyArc,
             proposal,
-            chapterIndex
+            chapterIndex,
+            planningConfig
           )
           if (result.applied) {
             updatedStoryArc = result.storyArc
@@ -788,6 +794,7 @@ export async function finalizeChapter(
                   ruleId: 'outline-coverage.auto-extension-limit',
                   type: 'outline_coverage',
                   severity: 'error',
+                  subject: `act-${proposal.actIndex}`,
                   description: `第 ${proposal.actIndex} 幕自动延长已达到上限，仍有 mandatory beats 未消费。`,
                   suggestion:
                     result.reason ?? '请重写当前章节消费 pending beats，或人工调整大纲/幕边界。',
