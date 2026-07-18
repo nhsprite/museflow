@@ -6,6 +6,7 @@ import type { StoryArc } from '../types/outline.js'
 import type { ChapterPlan } from '../agents/types.js'
 import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
 import { generateId } from '../utils/id.js'
+import { GLOBAL_KEY_BEAT_PLOT_ID } from './protocol-ids.js'
 
 export interface EventCompletionResult {
   content: string
@@ -150,7 +151,7 @@ export function augmentExpectedEventsWithClaimedBeats(
       type: 'plot-advance',
       chapterIndex,
       source: 'outline',
-      plotId: 'plot-main',
+      plotId: GLOBAL_KEY_BEAT_PLOT_ID,
       beatId,
     })
     existingBeatIds.add(beatId)

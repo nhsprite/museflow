@@ -2,6 +2,7 @@ import type { ReducedGraphState } from '../graph/state.js'
 import type { StoryEvent } from '../types/story-memory.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import { isMachineReadableId } from './identifier.js'
+import { GLOBAL_KEY_BEAT_PLOT_ID } from './protocol-ids.js'
 
 export interface StoryEventAuthority {
   characterIds: Set<string>
@@ -119,6 +120,9 @@ export function collectStoryEventAuthority(state: ReducedGraphState): StoryEvent
     for (const act of state.storyArc.acts) addId(authority.plotIds, `act-${act.index}`)
     for (const beat of getMandatoryBeatEntries(state.storyArc)) addId(authority.beatIds, beat.id)
     for (const beat of state.storyArc.keyBeats) addId(authority.beatIds, beat.id)
+    if (state.storyArc.keyBeats.length > 0) {
+      addId(authority.plotIds, GLOBAL_KEY_BEAT_PLOT_ID)
+    }
   }
 
   for (const event of memory?.events ?? []) collectEventReferences(authority, event)

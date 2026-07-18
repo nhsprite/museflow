@@ -569,4 +569,148 @@ describe('planned story event authority', () => {
       },
     ])
   })
+
+  it('accepts the canonical main plot for the first global key-beat event', () => {
+    const input = state({
+      storyArc: {
+        totalChapters: 10,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 10,
+            title: 'Act',
+            theme: 'Theme',
+            function: 'Function',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [
+          {
+            id: 'beat-global',
+            beat: 'Global beat',
+            deadlineAct: 1,
+            required: true,
+          },
+        ],
+      },
+    })
+
+    expect(
+      validatePlannedStoryEventAuthority(input, [
+        {
+          id: 'evt-global-beat',
+          type: 'plot-advance',
+          plotId: 'plot-main',
+          beatId: 'beat-global',
+          chapterIndex: 1,
+          source: 'outline',
+        },
+      ])
+    ).toEqual([])
+  })
+
+  it.each([
+    {
+      reference: 'known character',
+      holderId: 'character-holder',
+      locationId: 'character-holder',
+    },
+    {
+      reference: 'known item',
+      holderId: 'item-container',
+      locationId: 'item-container',
+    },
+    {
+      reference: 'known location',
+      holderId: null,
+      locationId: 'location-known',
+    },
+    {
+      reference: 'nullable fields',
+      holderId: null,
+      locationId: null,
+    },
+  ])('accepts item-location $reference references', ({ holderId, locationId }) => {
+    const memory = createEmptyStoryMemory()
+    memory.entities.characters['character-holder'] = {
+      id: 'character-holder',
+      name: 'Holder',
+      locationId: null,
+      status: {},
+      introducedIn: 1,
+    }
+    memory.entities.items['item-known'] = {
+      id: 'item-known',
+      name: 'Item',
+      holderId: null,
+      locationId: null,
+      state: {},
+      introducedIn: 1,
+    }
+    memory.entities.items['item-container'] = {
+      id: 'item-container',
+      name: 'Container',
+      holderId: null,
+      locationId: null,
+      state: {},
+      introducedIn: 1,
+    }
+    memory.entities.locations['location-known'] = {
+      id: 'location-known',
+      name: 'Location',
+      introducedIn: 1,
+    }
+
+    expect(
+      validatePlannedStoryEventAuthority(state({ storyMemory: memory }), [
+        {
+          id: 'evt-item-location',
+          type: 'item-location',
+          itemId: 'item-known',
+          holderId,
+          locationId,
+          chapterIndex: 1,
+          source: 'outline',
+        },
+      ])
+    ).toEqual([])
+  })
+
+  it('validates item-location authority when story memory is null', () => {
+    const input = state({
+      characters: [
+        {
+          id: 'character-holder',
+          storyId: 'story-1',
+          name: 'Character',
+          aliases: [],
+          isProtagonist: true,
+          description: null,
+          dialogueStyle: null,
+          createdAt: 1,
+        },
+      ],
+      storyMemory: null,
+      storyState: {
+        ...state().storyState,
+        characterLocations: { 'character-holder': 'location-known' },
+        keyItemsState: { 'item-known': 'active' },
+      },
+    })
+
+    expect(
+      validatePlannedStoryEventAuthority(input, [
+        {
+          id: 'evt-item-location',
+          type: 'item-location',
+          itemId: 'item-known',
+          holderId: 'character-holder',
+          locationId: 'location-known',
+          chapterIndex: 1,
+          source: 'outline',
+        },
+      ])
+    ).toEqual([])
+  })
 })
