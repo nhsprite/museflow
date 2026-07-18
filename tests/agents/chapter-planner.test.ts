@@ -532,6 +532,34 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(prompt).toContain('"chapterIndex": 25')
   })
 
+  it('uses an empty expectedEvents output example and delegates event shape to the contract', () => {
+    const agent = new TestableChapterPlannerAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 50,
+      world: '',
+      characters: '',
+      outline: '第26章：底稿',
+      previousChapters: '',
+      chapterIndex: 25,
+      foreshadowStack: [],
+      chapterSummaries: [],
+    })
+
+    const prompt = messages[1]?.content ?? ''
+    const outputFormat = prompt.match(/<output_format>([\s\S]*?)<\/output_format>/)?.[1] ?? ''
+
+    expect(outputFormat).toContain(
+      'expectedEvents 按 <story_event_json_contract> 填充；无事件时输出空数组。'
+    )
+    expect(outputFormat).toContain('"expectedEvents": []')
+    expect(outputFormat).not.toMatch(/"expectedEvents":\s*\[\s*\{/)
+    expect(outputFormat).not.toContain('"id": "evt-1"')
+    expect(outputFormat).not.toContain('"characterId": "c-1"')
+    expect(outputFormat).not.toContain('"locationId": "l-1"')
+  })
+
   it('renders the unnamed-walk-on exclusion rule for expectedEvents', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
     const messages = agent.exposePrompt({

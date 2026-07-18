@@ -161,6 +161,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
 
 <output_format>
 请输出 JSON 格式：
+expectedEvents 按 <story_event_json_contract> 填充；无事件时输出空数组。
 {
   "sections": [
     {
@@ -197,16 +198,7 @@ ${FORESHADOW_DISCIPLINE_RULES}
     }
   ],
   "chapterTimeAnchor": "本章叙事起点时间",
-  "expectedEvents": [
-    {
-      "id": "evt-1",
-      "type": "character-location",
-      "characterId": "c-1",
-      "locationId": "l-1",
-      "chapterIndex": {chapterIndex},
-      "source": "chapter"
-    }
-  ],
+  "expectedEvents": [],
   "claimedMandatoryBeatIds": [],
   "claimedBeatIds": [],
   "fulfilledForeshadowIds": [],
