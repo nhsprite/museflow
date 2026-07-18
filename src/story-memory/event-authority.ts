@@ -315,10 +315,11 @@ function selectAuthorityIds(
 ): SelectedAuthorityIds {
   const selected = [...relevantIds]
     .filter((id) => authorityIds.has(id))
+    .sort(compareMachineStrings)
     .slice(0, MAX_PLANNER_AUTHORITY_IDS_PER_KIND)
   return {
     selected,
-    rendered: [...selected].sort(compareMachineStrings),
+    rendered: selected,
     omitted: Math.max(0, authorityIds.size - selected.length),
   }
 }
@@ -345,8 +346,14 @@ function getReferenceLabel(
   if (kind === 'item') return memory?.entities.items[id]?.name
   if (kind === 'location') return memory?.entities.locations[id]?.name
   if (kind === 'plot') {
-    const currentAct = state.storyArc?.acts.find((act) => `act-${act.index}` === id)
-    return memory?.entities.plots[id]?.name ?? currentAct?.title
+    const arcAct = state.storyArc?.acts.find((act) => `act-${act.index}` === id)
+    if (arcAct) {
+      const isCurrentAct =
+        state.currentChapterIndex + 1 >= arcAct.startChapter &&
+        state.currentChapterIndex + 1 <= arcAct.endChapter
+      return isCurrentAct ? arcAct.title : undefined
+    }
+    return memory?.entities.plots[id]?.name
   }
   if (kind === 'foreshadow') {
     return (
@@ -372,8 +379,7 @@ function getReferenceLabel(
   return (
     mandatoryBeat?.beat ??
     state.storyArc.keyBeats.find((beat) => beat.deadlineAct === currentAct.index && beat.id === id)
-      ?.beat ??
-    memory?.beats[id]?.description
+      ?.beat
   )
 }
 

@@ -263,12 +263,25 @@ describe('planned story event authority', () => {
 
     const input = state({ storyMemory: memory })
     const registry = buildStoryEventAuthorityRegistry(input)
+    const reverseMemory = createEmptyStoryMemory()
+    for (let index = 99; index >= 0; index--) {
+      const id = `task-${String(index).padStart(3, '0')}`
+      reverseMemory.tasks[id] = {
+        id,
+        description: `Task ${index} ${'x'.repeat(120)}`,
+        createdIn: 1,
+        resolvedIn: null,
+      }
+    }
+    const reverseRegistry = buildStoryEventAuthorityRegistry(state({ storyMemory: reverseMemory }))
 
     expect(registry.taskIds).toHaveLength(64)
     expect(registry.references.filter((reference) => reference.kind === 'task')).toHaveLength(24)
     expect(registry.references.every((reference) => reference.label.length <= 80)).toBe(true)
     expect(registry.omittedCounts.taskIds).toBe(36)
     expect(registry.taskIds).not.toContain('task-099')
+    expect(reverseRegistry.taskIds).toEqual(registry.taskIds)
+    expect(reverseRegistry.references).toEqual(registry.references)
     expect(
       validatePlannedStoryEventAuthority(input, [
         {
@@ -294,6 +307,15 @@ describe('planned story event authority', () => {
     const registry = buildStoryEventAuthorityRegistry(
       state({
         currentChapterIndex: 0,
+        outline: [
+          {
+            number: 1,
+            title: 'Current',
+            description: 'Current outline',
+            claimedMandatoryBeatIds: ['A2-M1'],
+            claimedBeatIds: ['beat-future'],
+          },
+        ],
         characters: [
           {
             id: 'character-main',
@@ -307,6 +329,10 @@ describe('planned story event authority', () => {
           },
         ],
         storyMemory: memory,
+        storyState: {
+          ...state().storyState,
+          activePlots: ['act-2'],
+        },
         storyArc: {
           totalChapters: 2,
           acts: [
@@ -352,14 +378,16 @@ describe('planned story event authority', () => {
       id: 'character-main',
       label: 'Official Name',
     })
-    expect(registry.beatIds).toEqual(['A1-M1', 'beat-current'])
+    expect(registry.beatIds).toEqual(['A1-M1', 'A2-M1', 'beat-current', 'beat-future'])
     expect(JSON.stringify(registry.references)).toContain('Current mandatory beat')
     expect(JSON.stringify(registry.references)).toContain('Current key beat')
     expect(JSON.stringify(registry.references)).not.toContain('Fallback Name')
     expect(JSON.stringify(registry.references)).not.toContain('Future mandatory beat')
     expect(JSON.stringify(registry.references)).not.toContain('Future key beat')
-    expect(registry.beatIds).not.toContain('A2-M1')
-    expect(registry.beatIds).not.toContain('beat-future')
+    expect(JSON.stringify(registry.references)).not.toContain('Future Act')
+    expect(registry.beatIds).toContain('A2-M1')
+    expect(registry.beatIds).toContain('beat-future')
+    expect(registry.plotIds).toContain('act-2')
   })
 
   it('allows creation events to introduce new IDs', () => {
