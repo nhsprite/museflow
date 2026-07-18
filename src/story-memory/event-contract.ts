@@ -1,4 +1,5 @@
 import type { ForeshadowKind, StoryEvent, StoryEventEvidence } from '../types/story-memory.js'
+import { isMachineReadableId } from './identifier.js'
 import {
   deriveLegacyRequired,
   isForeshadowResolutionPolicy,
@@ -38,12 +39,8 @@ function hasOwn(value: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key)
 }
 
-function isId(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z][A-Za-z0-9._:-]*$/.test(value)
-}
-
 function isNullableId(value: unknown): value is string | null {
-  return value === null || isId(value)
+  return value === null || isMachineReadableId(value)
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -66,7 +63,7 @@ function normalizeBase(
   record: Record<string, unknown>,
   options: StoryEventNormalizationOptions
 ): NormalizedBase | string {
-  if (!isId(record.id)) return 'event.id must be a machine-readable identifier'
+  if (!isMachineReadableId(record.id)) return 'event.id must be a machine-readable identifier'
   if (typeof record.chapterIndex !== 'number' || !Number.isInteger(record.chapterIndex)) {
     return 'event.chapterIndex must be an integer'
   }
@@ -125,7 +122,7 @@ export function normalizeStoryEvent(
 
   switch (value.type) {
     case 'character-location': {
-      if (!isId(value.characterId)) {
+      if (!isMachineReadableId(value.characterId)) {
         return invalid('character-location.characterId must be an identifier')
       }
       if (!hasOwn(value, 'locationId') || !isNullableId(value.locationId)) {
@@ -143,7 +140,7 @@ export function normalizeStoryEvent(
       }
     }
     case 'character-status': {
-      if (!isId(value.characterId)) {
+      if (!isMachineReadableId(value.characterId)) {
         return invalid('character-status.characterId must be an identifier')
       }
       if (!isNonEmptyString(value.attribute)) {
@@ -163,7 +160,9 @@ export function normalizeStoryEvent(
       }
     }
     case 'item-location': {
-      if (!isId(value.itemId)) return invalid('item-location.itemId must be an identifier')
+      if (!isMachineReadableId(value.itemId)) {
+        return invalid('item-location.itemId must be an identifier')
+      }
 
       const hasHolder = hasOwn(value, 'holderId')
       const hasLocation = hasOwn(value, 'locationId')
@@ -199,7 +198,9 @@ export function normalizeStoryEvent(
       }
     }
     case 'item-state': {
-      if (!isId(value.itemId)) return invalid('item-state.itemId must be an identifier')
+      if (!isMachineReadableId(value.itemId)) {
+        return invalid('item-state.itemId must be an identifier')
+      }
       if (!isNonEmptyString(value.attribute)) {
         return invalid('item-state.attribute must be a non-empty string')
       }
@@ -217,8 +218,12 @@ export function normalizeStoryEvent(
       }
     }
     case 'plot-advance': {
-      if (!isId(value.plotId)) return invalid('plot-advance.plotId must be an identifier')
-      if (!isId(value.beatId)) return invalid('plot-advance.beatId must be an identifier')
+      if (!isMachineReadableId(value.plotId)) {
+        return invalid('plot-advance.plotId must be an identifier')
+      }
+      if (!isMachineReadableId(value.beatId)) {
+        return invalid('plot-advance.beatId must be an identifier')
+      }
       return {
         ok: true,
         normalized: base.normalized,
@@ -231,7 +236,7 @@ export function normalizeStoryEvent(
       }
     }
     case 'foreshadow-introduce': {
-      if (!isId(value.foreshadowId)) {
+      if (!isMachineReadableId(value.foreshadowId)) {
         return invalid('foreshadow-introduce.foreshadowId must be an identifier')
       }
       if (
@@ -319,7 +324,7 @@ export function normalizeStoryEvent(
       }
     }
     case 'foreshadow-policy-set': {
-      if (!isId(value.foreshadowId)) {
+      if (!isMachineReadableId(value.foreshadowId)) {
         return invalid('foreshadow-policy-set.foreshadowId must be an identifier')
       }
       if (!isForeshadowResolutionPolicy(value.resolutionPolicy)) {
@@ -348,10 +353,10 @@ export function normalizeStoryEvent(
       if (base.source !== 'outline') {
         return invalid('foreshadow-merge.source must be outline')
       }
-      if (!isId(value.canonicalForeshadowId)) {
+      if (!isMachineReadableId(value.canonicalForeshadowId)) {
         return invalid('foreshadow-merge.canonicalForeshadowId must be an identifier')
       }
-      if (!isId(value.duplicateForeshadowId)) {
+      if (!isMachineReadableId(value.duplicateForeshadowId)) {
         return invalid('foreshadow-merge.duplicateForeshadowId must be an identifier')
       }
       if (value.canonicalForeshadowId === value.duplicateForeshadowId) {
@@ -374,7 +379,7 @@ export function normalizeStoryEvent(
       }
     }
     case 'foreshadow-fulfill': {
-      if (!isId(value.foreshadowId)) {
+      if (!isMachineReadableId(value.foreshadowId)) {
         return invalid('foreshadow-fulfill.foreshadowId must be an identifier')
       }
       return {
@@ -388,7 +393,9 @@ export function normalizeStoryEvent(
       }
     }
     case 'task-create': {
-      if (!isId(value.taskId)) return invalid('task-create.taskId must be an identifier')
+      if (!isMachineReadableId(value.taskId)) {
+        return invalid('task-create.taskId must be an identifier')
+      }
       if (!isNonEmptyString(value.description)) {
         return invalid('task-create.description must be a non-empty string')
       }
@@ -404,7 +411,9 @@ export function normalizeStoryEvent(
       }
     }
     case 'task-resolve': {
-      if (!isId(value.taskId)) return invalid('task-resolve.taskId must be an identifier')
+      if (!isMachineReadableId(value.taskId)) {
+        return invalid('task-resolve.taskId must be an identifier')
+      }
       return {
         ok: true,
         normalized: base.normalized,

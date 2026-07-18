@@ -187,22 +187,17 @@ describe('parseStoryEventsBlock', () => {
     expect(events).toHaveLength(1)
   })
 
-  it('drops events that copy placeholder example IDs from prompts', () => {
+  it('parses machine-readable IDs with numeric suffixes', () => {
     const text = `=== STORY_EVENTS ===
 - character-location: c-1 -> l-1
-- item-location: i-1 / holder=c-1 / location=l-1
-- foreshadow-introduce: fs-1 / expected=5
-- plot-advance: p-1 / beat-1
-- task-resolve: t-1
-- character-location: c-linxuan -> l-temple
 === CHAPTER_CONTENT ===
 正文`
     const events = parseStoryEventsBlock(text, 1)
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({
       type: 'character-location',
-      characterId: 'c-linxuan',
-      locationId: 'l-temple',
+      characterId: 'c-1',
+      locationId: 'l-1',
     })
   })
 
@@ -379,16 +374,13 @@ describe('parseStoryFinalStateBlock', () => {
     expect(declarations).toEqual([{ entityId: 'i-box', attribute: 'status', value: 'true' }])
   })
 
-  it('drops declarations that copy placeholder example IDs', () => {
+  it('parses final-state declarations with numeric ID suffixes', () => {
     const text = `=== STORY_FINAL_STATE ===
 [
-  {"entityId": "c-1", "attribute": "location", "value": "l-1"},
-  {"entityId": "c-linxuan", "attribute": "location", "value": "loc-temple"}
+  {"entityId": "c-1", "attribute": "location", "value": "l-1"}
 ]`
     const declarations = parseStoryFinalStateBlock(text)
-    expect(declarations).toEqual([
-      { entityId: 'c-linxuan', attribute: 'location', value: 'loc-temple' },
-    ])
+    expect(declarations).toEqual([{ entityId: 'c-1', attribute: 'location', value: 'l-1' }])
   })
 
   it('normalizes null/none tokens in location final-state declarations', () => {

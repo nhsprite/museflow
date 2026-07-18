@@ -8,55 +8,8 @@ import type {
   StoryEvent,
   StoryEventEvidence,
 } from '../types/story-memory.js'
+import { isMachineReadableId } from './identifier.js'
 import { isForeshadowResolutionPolicy } from './resolution-policy.js'
-
-/**
- * 占位示例 ID 防御：prompt 示例中使用 <前缀>-<数字> 形态的 ID（如 c-1、l-1、evt-1、fs-1），
- * 模型有时会照抄示例而非使用真实实体 ID。真实 ID 为 slug（c-protagonist）、
- * act-<n> 形式的 plot ID（见 chapter-prompt 的 plot-advance 约定）或 generateId 输出，
- * 因此按 ID 形态结构校验：纯小写前缀 + 数字后缀且非 act-<n> 的 ID 视为占位 ID，丢弃并告警。
- */
-const PLACEHOLDER_ID_PATTERN = /^[a-z]+-\d+$/
-const ACT_PLOT_ID_PATTERN = /^act-\d+$/
-
-function isPlaceholderExampleId(id: string): boolean {
-  return PLACEHOLDER_ID_PATTERN.test(id) && !ACT_PLOT_ID_PATTERN.test(id)
-}
-
-function collectEventEntityIds(event: StoryEvent): string[] {
-  switch (event.type) {
-    case 'character-location':
-      return [event.characterId, ...(event.locationId ? [event.locationId] : [])]
-    case 'character-status':
-      return [event.characterId]
-    case 'item-location':
-      return [
-        event.itemId,
-        ...(event.holderId ? [event.holderId] : []),
-        ...(event.locationId ? [event.locationId] : []),
-      ]
-    case 'item-state':
-      return [event.itemId]
-    case 'plot-advance':
-      return [event.plotId, event.beatId]
-    case 'foreshadow-introduce':
-      return [event.foreshadowId]
-    case 'foreshadow-fulfill':
-      return [event.foreshadowId]
-    case 'foreshadow-deadline-extend':
-      return [event.foreshadowId]
-    case 'foreshadow-policy-set':
-      return [event.foreshadowId]
-    case 'foreshadow-merge':
-      return [event.canonicalForeshadowId, event.duplicateForeshadowId]
-    case 'foreshadow-waive':
-      return [event.foreshadowId]
-    case 'task-create':
-      return [event.taskId]
-    case 'task-resolve':
-      return [event.taskId]
-  }
-}
 
 export function parseStoryEventsBlock(text: string, chapterIndex: number): StoryEvent[] {
   const match = text.match(/=== STORY_EVENTS ===\n([\s\S]*?)\n=== CHAPTER_CONTENT ===/)
@@ -69,10 +22,6 @@ export function parseStoryEventsBlock(text: string, chapterIndex: number): Story
     if (!trimmed || trimmed.startsWith('#')) continue
     const parsed = parseEventLine(trimmed, chapterIndex)
     if (!parsed) continue
-    if (collectEventEntityIds(parsed).some(isPlaceholderExampleId)) {
-      logger.warn(`[MuseFlow] 丢弃含占位示例 ID 的 STORY_EVENTS 行: ${trimmed}`)
-      continue
-    }
     events.push(parsed)
   }
 
@@ -99,12 +48,6 @@ export function parseStoryFinalStateBlock(text: string): ChapterFinalStateDeclar
   for (const entry of parsed.data) {
     const declaration = parseFinalStateDeclaration(entry)
     if (!declaration) continue
-    if (isPlaceholderExampleId(declaration.entityId)) {
-      logger.warn(
-        `[MuseFlow] 丢弃含占位示例 ID 的 STORY_FINAL_STATE 声明: ${JSON.stringify(entry)}`
-      )
-      continue
-    }
     declarations.push(declaration)
   }
   return declarations
@@ -117,8 +60,7 @@ function parseFinalStateDeclaration(entry: unknown): ChapterFinalStateDeclaratio
   }
   const { entityId, attribute, value } = entry as Record<string, unknown>
   if (
-    typeof entityId !== 'string' ||
-    !isMachineId(entityId) ||
+    !isMachineReadableId(entityId) ||
     typeof attribute !== 'string' ||
     !FINAL_STATE_ATTRIBUTES.includes(attribute as FinalStateAttribute)
   ) {
@@ -140,7 +82,11 @@ function parseFinalStateDeclaration(entry: unknown): ChapterFinalStateDeclaratio
 
   // location values must be structured ids or null; status values mirror the
   // corresponding event value verbatim, so only location is id-gated.
-  if (attribute === 'location' && normalizedValue !== null && !isMachineId(normalizedValue)) {
+  if (
+    attribute === 'location' &&
+    normalizedValue !== null &&
+    !isMachineReadableId(normalizedValue)
+  ) {
     logger.warn(
       `[MuseFlow] 丢弃非法 STORY_FINAL_STATE 条目（location 值必须为结构化 ID 或 null）: ${JSON.stringify(entry)}`
     )
@@ -161,13 +107,13 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const charLoc = eventLine.match(/^-\s*character-location:\s*(\S+)\s*->\s*(\S+)$/)
   if (charLoc) {
-    if (!isMachineId(charLoc[1])) {
+    if (!isMachineReadableId(charLoc[1])) {
       logger.warn(`[MuseFlow] 丢弃含非法 characterId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
     const locationId = parseNullableId(charLoc[2])
     if (locationId === undefined) return null
-    if (locationId !== null && !isMachineId(locationId)) {
+    if (locationId !== null && !isMachineReadableId(locationId)) {
       logger.warn(`[MuseFlow] 丢弃含非法 locationId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
@@ -186,7 +132,7 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const charStatus = eventLine.match(/^-\s*character-status:\s*(\S+)\s*\/\s*(\S+)\s*->\s*(.+)$/)
   if (charStatus) {
-    if (!isMachineId(charStatus[1])) {
+    if (!isMachineReadableId(charStatus[1])) {
       logger.warn(`[MuseFlow] 丢弃含非法 characterId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
@@ -205,15 +151,15 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
   }
 
   const itemLocCanonical = eventLine.match(/^-\s*item-location:\s*(\S+)\s*\/\s*(.+)$/)
-  if (itemLocCanonical?.[1] && itemLocCanonical[2] && isMachineId(itemLocCanonical[1])) {
+  if (itemLocCanonical?.[1] && itemLocCanonical[2] && isMachineReadableId(itemLocCanonical[1])) {
     const fields = parseMachineFields(itemLocCanonical[2])
     const holderId = parseNullableId(fields.holder)
     const locationId = parseNullableId(fields.location)
     if (
       holderId === undefined ||
       locationId === undefined ||
-      (holderId !== null && !isMachineId(holderId)) ||
-      (locationId !== null && !isMachineId(locationId))
+      (holderId !== null && !isMachineReadableId(holderId)) ||
+      (locationId !== null && !isMachineReadableId(locationId))
     ) {
       return null
     }
@@ -233,7 +179,7 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const itemLoc = eventLine.match(/^-\s*item-location:\s*(\S+)\s*->\s*(\S+)$/)
   if (itemLoc) {
-    if (!isMachineId(itemLoc[1]) || !isMachineId(itemLoc[2])) return null
+    if (!isMachineReadableId(itemLoc[1]) || !isMachineReadableId(itemLoc[2])) return null
     return withEvidence(
       {
         id: generateId('evt'),
@@ -250,7 +196,7 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const itemState = eventLine.match(/^-\s*item-state:\s*(\S+)\s*\/\s*(\S+)\s*->\s*(.+)$/)
   if (itemState) {
-    if (!isMachineId(itemState[1])) {
+    if (!isMachineReadableId(itemState[1])) {
       logger.warn(`[MuseFlow] 丢弃含非法 itemId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
@@ -275,7 +221,7 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const fsFulfill = eventLine.match(/^-\s*foreshadow-fulfill:\s*(\S+)$/)
   if (fsFulfill) {
-    if (!isMachineId(fsFulfill[1])) {
+    if (!isMachineReadableId(fsFulfill[1])) {
       logger.warn(`[MuseFlow] 丢弃含非法 foreshadowId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
@@ -293,7 +239,7 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const beatAdvance = eventLine.match(/^-\s*plot-advance:\s*(\S+)\s*\/\s*(\S+)$/)
   if (beatAdvance) {
-    if (!isMachineId(beatAdvance[1]) || !isMachineId(beatAdvance[2])) {
+    if (!isMachineReadableId(beatAdvance[1]) || !isMachineReadableId(beatAdvance[2])) {
       logger.warn(`[MuseFlow] 丢弃含非法 plotId/beatId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
@@ -312,7 +258,7 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const taskCreate = eventLine.match(/^-\s*task-create:\s*(\S+)\s*\/\s*(.+)$/)
   if (taskCreate) {
-    if (!isMachineId(taskCreate[1])) {
+    if (!isMachineReadableId(taskCreate[1])) {
       logger.warn(`[MuseFlow] 丢弃含非法 taskId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
@@ -331,7 +277,7 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
 
   const taskResolve = eventLine.match(/^-\s*task-resolve:\s*(\S+)$/)
   if (taskResolve) {
-    if (!isMachineId(taskResolve[1])) {
+    if (!isMachineReadableId(taskResolve[1])) {
       logger.warn(`[MuseFlow] 丢弃含非法 taskId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
@@ -348,10 +294,6 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
   }
 
   return null
-}
-
-function isMachineId(value: string | undefined): value is string {
-  return typeof value === 'string' && /^[A-Za-z][A-Za-z0-9._:-]*$/.test(value)
 }
 
 function extractEvidence(line: string): {
@@ -375,7 +317,7 @@ function parseForeshadowIntroduce(
 ): Extract<StoryEvent, { type: 'foreshadow-introduce' }> | null {
   const match = eventLine.match(/^-\s*foreshadow-introduce:\s*(\S+)\s*(?:\/\s*(.+))?$/)
   if (!match || !match[1]) return null
-  if (!isMachineId(match[1])) {
+  if (!isMachineReadableId(match[1])) {
     logger.warn(`[MuseFlow] 丢弃含非法 foreshadowId 的 STORY_EVENTS 行: ${eventLine}`)
     return null
   }
