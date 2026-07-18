@@ -172,16 +172,32 @@ function addRelevantId(
   if (isMachineReadableId(value) && knownIds.has(value)) relevantIds.add(value)
 }
 
+function addPreferredId(
+  preferredIds: Set<string>,
+  relevantIds: Set<string>,
+  knownIds: ReadonlySet<string>,
+  value: unknown
+): void {
+  addRelevantId(preferredIds, knownIds, value)
+  addRelevantId(relevantIds, knownIds, value)
+}
+
+interface PlannerRelevantAuthority {
+  preferred: StoryEventAuthority
+  relevant: StoryEventAuthority
+}
+
 function collectPlannerRelevantAuthority(
   state: ReducedGraphState,
   authority: StoryEventAuthority
-): StoryEventAuthority {
+): PlannerRelevantAuthority {
+  const preferred = createEmptyAuthority()
   const relevant = createEmptyAuthority()
   const outline = state.outline?.[state.currentChapterIndex]
   const memory = state.storyMemory
 
   for (const id of outline?.touchedCharacterIds ?? []) {
-    addRelevantId(relevant.characterIds, authority.characterIds, id)
+    addPreferredId(preferred.characterIds, relevant.characterIds, authority.characterIds, id)
   }
   for (const id of Object.keys(state.storyState?.characterLocations ?? {})) {
     addRelevantId(relevant.characterIds, authority.characterIds, id)
@@ -194,7 +210,7 @@ function collectPlannerRelevantAuthority(
   }
 
   for (const id of outline?.touchedItemIds ?? []) {
-    addRelevantId(relevant.itemIds, authority.itemIds, id)
+    addPreferredId(preferred.itemIds, relevant.itemIds, authority.itemIds, id)
   }
   for (const id of Object.keys(state.storyState?.keyItemsLocation ?? {})) {
     addRelevantId(relevant.itemIds, authority.itemIds, id)
@@ -204,7 +220,7 @@ function collectPlannerRelevantAuthority(
   }
 
   for (const id of outline?.touchedLocationIds ?? []) {
-    addRelevantId(relevant.locationIds, authority.locationIds, id)
+    addPreferredId(preferred.locationIds, relevant.locationIds, authority.locationIds, id)
   }
   for (const id of Object.values(state.storyState?.characterLocations ?? {})) {
     addRelevantId(relevant.locationIds, authority.locationIds, id)
@@ -212,36 +228,21 @@ function collectPlannerRelevantAuthority(
   for (const id of Object.values(state.storyState?.keyItemsLocation ?? {})) {
     addRelevantId(relevant.locationIds, authority.locationIds, id)
   }
-  for (const id of relevant.characterIds) {
-    addRelevantId(
-      relevant.locationIds,
-      authority.locationIds,
-      memory?.entities.characters[id]?.locationId
-    )
-  }
-  for (const id of relevant.itemIds) {
-    addRelevantId(
-      relevant.locationIds,
-      authority.locationIds,
-      memory?.entities.items[id]?.locationId
-    )
-  }
-
   for (const id of state.storyState?.activePlots ?? []) {
     addRelevantId(relevant.plotIds, authority.plotIds, id)
   }
   for (const id of outline?.claimedMandatoryBeatIds ?? []) {
-    addRelevantId(relevant.beatIds, authority.beatIds, id)
+    addPreferredId(preferred.beatIds, relevant.beatIds, authority.beatIds, id)
   }
   for (const id of outline?.claimedBeatIds ?? []) {
-    addRelevantId(relevant.beatIds, authority.beatIds, id)
+    addPreferredId(preferred.beatIds, relevant.beatIds, authority.beatIds, id)
   }
 
   for (const id of [
     ...(outline?.fulfilledForeshadowIds ?? []),
     ...(outline?.deferredForeshadowIds ?? []),
   ]) {
-    addRelevantId(relevant.foreshadowIds, authority.foreshadowIds, id)
+    addPreferredId(preferred.foreshadowIds, relevant.foreshadowIds, authority.foreshadowIds, id)
   }
   for (const foreshadow of state.foreshadowStack ?? []) {
     if (foreshadow.fulfilledChapter === undefined) {
@@ -259,7 +260,7 @@ function collectPlannerRelevantAuthority(
   }
 
   for (const id of outline?.resolvedTaskIds ?? []) {
-    addRelevantId(relevant.taskIds, authority.taskIds, id)
+    addPreferredId(preferred.taskIds, relevant.taskIds, authority.taskIds, id)
   }
   for (const task of state.storyState?.pendingTasks ?? []) {
     if (task.status === 'pending' || task.status === 'postponed') {
@@ -277,10 +278,23 @@ function collectPlannerRelevantAuthority(
   )
   if (state.storyArc && currentAct) {
     addRelevantId(relevant.plotIds, authority.plotIds, `act-${currentAct.index}`)
-    for (const beat of getMandatoryBeatEntries(state.storyArc)) {
-      if (beat.actIndex === currentAct.index) {
-        addRelevantId(relevant.beatIds, authority.beatIds, beat.id)
-      }
+    const currentMandatoryBeats = getMandatoryBeatEntries(state.storyArc).filter(
+      (beat) => beat.actIndex === currentAct.index
+    )
+    const claimedMandatoryBeatIds = new Set(outline?.claimedMandatoryBeatIds ?? [])
+    const claimsCurrentMandatoryBeat = currentMandatoryBeats.some((beat) =>
+      claimedMandatoryBeatIds.has(beat.id)
+    )
+    if (claimsCurrentMandatoryBeat) {
+      addPreferredId(
+        preferred.plotIds,
+        relevant.plotIds,
+        authority.plotIds,
+        `act-${currentAct.index}`
+      )
+    }
+    for (const beat of currentMandatoryBeats) {
+      addRelevantId(relevant.beatIds, authority.beatIds, beat.id)
     }
     const currentKeyBeats = state.storyArc.keyBeats.filter(
       (beat) => beat.deadlineAct === currentAct.index
@@ -290,17 +304,83 @@ function collectPlannerRelevantAuthority(
     }
     for (const beat of currentKeyBeats) {
       addRelevantId(relevant.beatIds, authority.beatIds, beat.id)
+      const isClaimedInCurrentOutline = (outline?.claimedBeatIds ?? []).includes(beat.id)
+      if (isClaimedInCurrentOutline) {
+        addPreferredId(
+          preferred.plotIds,
+          relevant.plotIds,
+          authority.plotIds,
+          GLOBAL_KEY_BEAT_PLOT_ID
+        )
+      }
       for (const id of beat.involvedCharacterIds ?? []) {
         addRelevantId(relevant.characterIds, authority.characterIds, id)
+        if (isClaimedInCurrentOutline) {
+          addPreferredId(preferred.characterIds, relevant.characterIds, authority.characterIds, id)
+        }
       }
       for (const id of beat.involvedItemIds ?? []) {
         addRelevantId(relevant.itemIds, authority.itemIds, id)
+        if (isClaimedInCurrentOutline) {
+          addPreferredId(preferred.itemIds, relevant.itemIds, authority.itemIds, id)
+        }
       }
       addRelevantId(relevant.foreshadowIds, authority.foreshadowIds, beat.foreshadowId)
+      if (isClaimedInCurrentOutline) {
+        addPreferredId(
+          preferred.foreshadowIds,
+          relevant.foreshadowIds,
+          authority.foreshadowIds,
+          beat.foreshadowId
+        )
+      }
     }
   }
 
-  return relevant
+  for (const id of preferred.characterIds) {
+    addPreferredId(
+      preferred.locationIds,
+      relevant.locationIds,
+      authority.locationIds,
+      state.storyState?.characterLocations[id]
+    )
+    addPreferredId(
+      preferred.locationIds,
+      relevant.locationIds,
+      authority.locationIds,
+      memory?.entities.characters[id]?.locationId
+    )
+  }
+  for (const id of preferred.itemIds) {
+    addPreferredId(
+      preferred.locationIds,
+      relevant.locationIds,
+      authority.locationIds,
+      state.storyState?.keyItemsLocation[id]
+    )
+    addPreferredId(
+      preferred.locationIds,
+      relevant.locationIds,
+      authority.locationIds,
+      memory?.entities.items[id]?.locationId
+    )
+  }
+  for (const id of relevant.characterIds) {
+    addRelevantId(
+      relevant.locationIds,
+      authority.locationIds,
+      memory?.entities.characters[id]?.locationId
+    )
+  }
+  for (const id of relevant.itemIds) {
+    addRelevantId(
+      relevant.locationIds,
+      authority.locationIds,
+      memory?.entities.items[id]?.locationId
+    )
+  }
+
+  return { preferred, relevant }
 }
 
 interface SelectedAuthorityIds {
@@ -311,15 +391,20 @@ interface SelectedAuthorityIds {
 
 function selectAuthorityIds(
   authorityIds: ReadonlySet<string>,
+  preferredIds: ReadonlySet<string>,
   relevantIds: ReadonlySet<string>
 ): SelectedAuthorityIds {
-  const selected = [...relevantIds]
+  const preferred = [...preferredIds]
     .filter((id) => authorityIds.has(id))
     .sort(compareMachineStrings)
-    .slice(0, MAX_PLANNER_AUTHORITY_IDS_PER_KIND)
+  const selectedIds = new Set(preferred)
+  const fallback = [...relevantIds]
+    .filter((id) => authorityIds.has(id) && !selectedIds.has(id))
+    .sort(compareMachineStrings)
+  const selected = [...preferred, ...fallback].slice(0, MAX_PLANNER_AUTHORITY_IDS_PER_KIND)
   return {
     selected,
-    rendered: selected,
+    rendered: [...selected].sort(compareMachineStrings),
     omitted: Math.max(0, authorityIds.size - selected.length),
   }
 }
@@ -412,14 +497,26 @@ export function buildStoryEventAuthorityRegistry(
   state: ReducedGraphState
 ): StoryEventAuthorityRegistry {
   const authority = collectStoryEventAuthority(state)
-  const relevant = collectPlannerRelevantAuthority(state, authority)
-  const characterIds = selectAuthorityIds(authority.characterIds, relevant.characterIds)
-  const itemIds = selectAuthorityIds(authority.itemIds, relevant.itemIds)
-  const locationIds = selectAuthorityIds(authority.locationIds, relevant.locationIds)
-  const plotIds = selectAuthorityIds(authority.plotIds, relevant.plotIds)
-  const beatIds = selectAuthorityIds(authority.beatIds, relevant.beatIds)
-  const foreshadowIds = selectAuthorityIds(authority.foreshadowIds, relevant.foreshadowIds)
-  const taskIds = selectAuthorityIds(authority.taskIds, relevant.taskIds)
+  const { preferred, relevant } = collectPlannerRelevantAuthority(state, authority)
+  const characterIds = selectAuthorityIds(
+    authority.characterIds,
+    preferred.characterIds,
+    relevant.characterIds
+  )
+  const itemIds = selectAuthorityIds(authority.itemIds, preferred.itemIds, relevant.itemIds)
+  const locationIds = selectAuthorityIds(
+    authority.locationIds,
+    preferred.locationIds,
+    relevant.locationIds
+  )
+  const plotIds = selectAuthorityIds(authority.plotIds, preferred.plotIds, relevant.plotIds)
+  const beatIds = selectAuthorityIds(authority.beatIds, preferred.beatIds, relevant.beatIds)
+  const foreshadowIds = selectAuthorityIds(
+    authority.foreshadowIds,
+    preferred.foreshadowIds,
+    relevant.foreshadowIds
+  )
+  const taskIds = selectAuthorityIds(authority.taskIds, preferred.taskIds, relevant.taskIds)
 
   return {
     characterIds: characterIds.rendered,

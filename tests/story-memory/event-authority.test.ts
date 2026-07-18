@@ -295,6 +295,57 @@ describe('planned story event authority', () => {
     ).toEqual([])
   })
 
+  it('keeps a current-outline task and its label ahead of bounded fallback tasks', () => {
+    const memory = createEmptyStoryMemory()
+    for (let index = 0; index < 70; index++) {
+      const id = `task-${String(index).padStart(3, '0')}`
+      memory.tasks[id] = {
+        id,
+        description: index === 69 ? `Explicit task ${'x'.repeat(120)}` : `Fallback task ${index}`,
+        createdIn: 1,
+        resolvedIn: null,
+      }
+    }
+
+    const input = state({
+      currentChapterIndex: 0,
+      outline: [
+        {
+          number: 1,
+          title: 'Current',
+          description: 'Current outline',
+          resolvedTaskIds: ['task-069'],
+        },
+      ],
+      storyMemory: memory,
+    })
+
+    const registry = buildStoryEventAuthorityRegistry(input)
+    const taskReferences = registry.references.filter((reference) => reference.kind === 'task')
+
+    expect(registry.taskIds).toHaveLength(64)
+    expect(registry.taskIds).toContain('task-069')
+    expect(registry.taskIds).not.toContain('task-063')
+    expect(taskReferences).toHaveLength(24)
+    expect(taskReferences).toContainEqual({
+      kind: 'task',
+      id: 'task-069',
+      label: `Explicit task ${'x'.repeat(65)}…`,
+    })
+    expect(taskReferences.every((reference) => reference.label.length <= 80)).toBe(true)
+    expect(
+      validatePlannedStoryEventAuthority(input, [
+        {
+          id: 'evt-resolve-omitted',
+          type: 'task-resolve',
+          taskId: 'task-063',
+          chapterIndex: 45,
+          source: 'chapter',
+        },
+      ])
+    ).toEqual([])
+  })
+
   it('prefers official labels and excludes future-act beat labels from the planner view', () => {
     const memory = createEmptyStoryMemory()
     memory.entities.characters['character-main'] = {

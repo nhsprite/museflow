@@ -624,6 +624,8 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(authoritySection).toContain('foreshadow-introduce.foreshadowId')
     expect(authoritySection).toContain('task-create.taskId')
     expect(authoritySection).toContain('只有创建事件')
+    expect(authoritySection).toContain('未展示的 runtime authority ID')
+    expect(authoritySection).not.toContain('未展示的历史 ID')
   })
 
   it('renders the complete strict StoryEvent JSON contract', () => {

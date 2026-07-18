@@ -23,7 +23,7 @@ export interface StoryEventAuthorityRegistry {
   taskIds: TaskId[]
   /** Prompt-only trusted labels; runtime validation uses the typed ID arrays above. */
   references: StoryEventAuthorityReference[]
-  /** Full runtime authority may contain additional historical IDs outside this bounded view. */
+  /** Full runtime authority may contain additional IDs outside this bounded planner view. */
   omittedCounts: {
     characterIds: number
     itemIds: number
