@@ -58,10 +58,24 @@ describe('plan_chapter_with_override', () => {
         foreshadowFulfillmentConflictIds: ['fs-model-supplied'],
       },
     })
+    const memory = createEmptyStoryMemory()
+    memory.foreshadows = {
+      'fs-due': {
+        id: 'fs-due',
+        text: 'due',
+        kind: 'plot',
+        introducedIn: 1,
+        expectedFulfillChapter: 26,
+        fulfilledIn: null,
+        resolutionPolicy: 'must_resolve',
+        required: true,
+        beatId: null,
+      },
+    }
 
     const result = await plan_chapter_with_override(
       createMockProvider(),
-      buildState(),
+      buildState({ storyMemory: memory }),
       '第26章：底稿'
     )
 
@@ -195,6 +209,141 @@ describe('plan_chapter_with_override', () => {
     ).rejects.toThrow(
       '第 26 章规划失败：expectedEvents[0] 格式错误：item-location.holderId is required'
     )
+    expect(plannerRun).toHaveBeenCalledTimes(2)
+  })
+
+  it('accepts an authoritative short location ID', async () => {
+    plannerRun.mockResolvedValue({
+      success: true,
+      data: {
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-location',
+            type: 'character-location',
+            characterId: 'character-main',
+            locationId: 'l-1',
+            chapterIndex: 25,
+            source: 'chapter',
+          },
+        ],
+      },
+    })
+    const input = buildState({
+      characters: [
+        {
+          id: 'character-main',
+          storyId: 'story-1',
+          name: 'Character',
+          aliases: [],
+          isProtagonist: true,
+          description: null,
+          dialogueStyle: null,
+          createdAt: 1,
+        },
+      ],
+      storyState: {
+        characterLocations: { 'character-main': 'l-1' },
+        characterStatus: {},
+        keyItemsLocation: {},
+        keyItemsState: {},
+        activePlots: [],
+        revealedSecrets: [],
+        pendingTasks: [],
+        currentScene: '',
+        storyTime: '',
+      },
+    })
+
+    const result = await plan_chapter_with_override(createMockProvider(), input, 'outline')
+
+    expect(result.chapterPlan?.expectedEvents[0]).toMatchObject({ locationId: 'l-1' })
+    expect(plannerRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries an unauthorized planned reference before drafting', async () => {
+    plannerRun
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          sections: [],
+          timeline: [],
+          outlineCheck: [],
+          expectedEvents: [
+            {
+              id: 'evt-invalid',
+              type: 'character-location',
+              characterId: 'character-main',
+              locationId: 'location-unknown',
+              chapterIndex: 25,
+              source: 'chapter',
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { sections: [], timeline: [], outlineCheck: [], expectedEvents: [] },
+      })
+
+    const result = await plan_chapter_with_override(
+      createMockProvider(),
+      buildState({
+        characters: [
+          {
+            id: 'character-main',
+            storyId: 'story-1',
+            name: 'Character',
+            aliases: [],
+            isProtagonist: true,
+            description: null,
+            dialogueStyle: null,
+            createdAt: 1,
+          },
+        ],
+      }),
+      'outline'
+    )
+
+    expect(plannerRun).toHaveBeenCalledTimes(2)
+    expect(result.chapterPlan?.expectedEvents).toEqual([])
+    expect(plannerRun.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        issues: [
+          expect.objectContaining({
+            ruleId: 'planning.event-authority',
+            description: expect.stringContaining('expectedEvents[0].locationId'),
+          }),
+        ],
+      })
+    )
+  })
+
+  it('aborts after two unauthorized planned references', async () => {
+    plannerRun.mockResolvedValue({
+      success: true,
+      data: {
+        sections: [],
+        timeline: [],
+        outlineCheck: [],
+        expectedEvents: [
+          {
+            id: 'evt-invalid',
+            type: 'character-location',
+            characterId: 'character-unknown',
+            locationId: null,
+            chapterIndex: 25,
+            source: 'chapter',
+          },
+        ],
+      },
+    })
+
+    await expect(
+      plan_chapter_with_override(createMockProvider(), buildState(), 'outline')
+    ).rejects.toThrow('expectedEvents[0].characterId 引用了未授权 ID character-unknown')
     expect(plannerRun).toHaveBeenCalledTimes(2)
   })
 })

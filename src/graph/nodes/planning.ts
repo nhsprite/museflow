@@ -13,6 +13,14 @@ import { selectChapterSummaries } from '../../utils/chapter-summaries.js'
 import type { ModelProvider } from '../../model/provider.js'
 import { renderVerifiedConstraints } from '../../utils/verified-constraints.js'
 import { findForeshadowFulfillmentConflictIds } from '../../story-memory/foreshadow-alias.js'
+import {
+  validatePlannedStoryEventAuthority,
+  type PlannedStoryEventAuthorityIssue,
+} from '../../story-memory/event-authority.js'
+
+function formatAuthorityIssue(issue: PlannedStoryEventAuthorityIssue): string {
+  return `expectedEvents[${issue.index}].${issue.field} 引用了未授权 ID ${issue.id}（事件类型：${issue.eventType}）`
+}
 
 async function runPlanChapter(
   provider: ModelProvider,
@@ -46,6 +54,7 @@ async function runPlanChapter(
 
   let output: Awaited<ReturnType<typeof agent.run>> | undefined
   let lastError = '无法生成章节规划。请检查模型输出或重试。'
+  let lastErrorRuleId = 'planning.event-contract'
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const retryState: ChapterPlannerAgentInput =
@@ -57,7 +66,7 @@ async function runPlanChapter(
               ...(agentState.issues ?? []),
               {
                 id: `planner-event-contract-${chapterIndex}`,
-                ruleId: 'planning.event-contract',
+                ruleId: lastErrorRuleId,
                 type: 'outline_invalid',
                 severity: 'error',
                 description: `${lastError}（修复提示：expectedEvents 中所有 ID 字段必须使用上下文已提供的权威机器可读 ID；没有权威 ID 的无名临时角色禁止出现在 expectedEvents 中，禁止用中文名或自造 ID 充当 ID 字段，其动作只写入 sections/timeline 文本。）`,
@@ -65,8 +74,24 @@ async function runPlanChapter(
             ],
           }
     output = await agent.run(retryState)
-    if (output.success && output.data) break
-    lastError = output.error ?? lastError
+    if (!output.success || !output.data) {
+      lastError = output.error ?? lastError
+      lastErrorRuleId = 'planning.event-contract'
+      continue
+    }
+
+    const candidate = output.data as Partial<ChapterPlan>
+    const authorityIssues = validatePlannedStoryEventAuthority(
+      state,
+      Array.isArray(candidate.expectedEvents) ? candidate.expectedEvents : []
+    )
+    if (authorityIssues.length > 0) {
+      lastError = formatAuthorityIssue(authorityIssues[0]!)
+      lastErrorRuleId = 'planning.event-authority'
+      output = { success: false, error: lastError }
+      continue
+    }
+    break
   }
 
   if (!output?.success || !output.data) {
