@@ -7,6 +7,7 @@ import {
 } from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
 import type {
+  BeatClaimPlanningRejection,
   ChapterPlan,
   ChapterOutlineAgentInput,
   ForeshadowPlanningObligation,
@@ -61,6 +62,10 @@ import {
 } from '../story-memory/foreshadow-policy.js'
 import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 import { verifyForeshadowPlan } from '../graph/services/foreshadow-fulfillment/planning-verifier.js'
+import {
+  verifyBeatClaims,
+  type BeatClaimRejection,
+} from '../graph/services/plot-advance/beat-claim-verifier.js'
 import {
   areForeshadowFulfillmentEventsStructurallyCompatible,
   findForeshadowFulfillmentConflictIds,
@@ -1025,6 +1030,60 @@ function filterClaimedKeyBeatIdsToStoryArc(
   return result
 }
 
+/**
+ * 收集 finalize 实际会保留的节拍认领（mandatory 按预算截断 + key beats），
+ * 供写作前的「认领 vs description」语义校验使用。beat 文本一律取自注册表。
+ */
+function collectClaimsForBeatVerification(
+  candidate: ChapterOutlineResult,
+  state: ReducedGraphState,
+  chapterIndex: number,
+  beatBudget: number
+): Array<{ beatId: string; beat: string }> {
+  const mandatoryPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
+    candidate.claimedMandatoryBeatIds,
+    state,
+    chapterIndex
+  )
+  const cappedMandatoryPairs = beatBudget > 0 ? mandatoryPairs.slice(0, beatBudget) : mandatoryPairs
+  const keyBeatIds = filterClaimedKeyBeatIdsToStoryArc(
+    candidate.claimedBeatIds,
+    state,
+    chapterIndex
+  )
+  const keyBeatClaims = keyBeatIds.flatMap((id) => {
+    const beat = state.storyArc?.keyBeats.find((keyBeat) => keyBeat.id === id)?.beat
+    return beat ? [{ beatId: id, beat }] : []
+  })
+  return [
+    ...cappedMandatoryPairs.map((pair) => ({ beatId: pair.id, beat: pair.beat })),
+    ...keyBeatClaims,
+  ]
+}
+
+/** 从候选大纲中剔除被拒绝的节拍认领 ID；claimedBeats 文本由 finalize 按剩余 ID 重建。 */
+function stripRejectedBeatClaims(
+  candidate: ChapterOutlineResult,
+  rejectedBeatClaimIds: readonly string[]
+): ChapterOutlineResult {
+  if (rejectedBeatClaimIds.length === 0) return candidate
+  const rejected = new Set(rejectedBeatClaimIds)
+  return {
+    ...candidate,
+    claimedMandatoryBeatIds: (candidate.claimedMandatoryBeatIds ?? []).filter(
+      (id) => !rejected.has(id)
+    ),
+    claimedBeatIds: (candidate.claimedBeatIds ?? []).filter((id) => !rejected.has(id)),
+  }
+}
+
+function candidateHasBeatClaim(candidate: ChapterOutlineResult, beatId: string): boolean {
+  return (
+    (candidate.claimedMandatoryBeatIds ?? []).includes(beatId) ||
+    (candidate.claimedBeatIds ?? []).includes(beatId)
+  )
+}
+
 async function judgeCoreSectionsWithModel(
   provider: ModelProvider,
   outlineDescription: string | undefined,
@@ -1222,6 +1281,9 @@ async function generateChapterOutlineIfNeeded(
   let lastCandidate: ChapterOutlineResult | null = null
   let lastMissingScheduledForeshadowIds: string[] = []
   let lastConflictingDecisionIds: string[] = []
+  let beatClaimRejection: BeatClaimPlanningRejection | undefined
+  let lastBeatClaimRejections: BeatClaimRejection[] = []
+  let strippedBeatClaimRejections: BeatClaimRejection[] = []
   const requiredFulfillmentIds = [...mustFulfillForeshadowIds]
   let preservedFulfillmentIds = new Set(foreshadowPlanningRejection?.preservedFulfillmentIds ?? [])
   const regressedFulfillmentIds = new Set(
@@ -1261,6 +1323,7 @@ async function generateChapterOutlineIfNeeded(
       ...(verifiedConstraints.length > 0 ? { verifiedConstraints } : {}),
       ...(foreshadowObligations.length > 0 ? { foreshadowObligations } : {}),
       ...(foreshadowPlanningRejection ? { foreshadowPlanningRejection } : {}),
+      ...(beatClaimRejection ? { beatClaimRejection } : {}),
       currentStateSnapshot: buildCurrentStateSnapshot(state),
     }
 
@@ -1353,6 +1416,35 @@ async function generateChapterOutlineIfNeeded(
       continue
     }
 
+    const claimsToVerify = collectClaimsForBeatVerification(
+      normalizedCandidate,
+      state,
+      chapterIndex,
+      beatBudget
+    )
+    const beatClaimRejections =
+      claimsToVerify.length > 0
+        ? await verifyBeatClaims({
+            provider,
+            claims: claimsToVerify,
+            outlineDescription: normalizedCandidate.description,
+          })
+        : []
+    if (beatClaimRejections.length > 0) {
+      lastBeatClaimRejections = beatClaimRejections
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次的节拍认领未在 description 中呈现：${beatClaimRejections.map((rejection) => rejection.beatId).join(', ')}`
+      )
+      beatClaimRejection = {
+        rejectedClaims: beatClaimRejections,
+        currentOutline: {
+          title: normalizedCandidate.title,
+          description: normalizedCandidate.description,
+        },
+      }
+      continue
+    }
+
     result = finalizeChapterOutlineCandidate(normalizedCandidate, state, chapterIndex, beatBudget)
     break
   }
@@ -1388,8 +1480,36 @@ async function generateChapterOutlineIfNeeded(
           ...autoDeferredForeshadowIds,
         ],
       }
+      // 同一次生成若还曾认领未通过语义校验的节拍，落地前一并剥离，避免把不可兑现的认领带入正文。
+      strippedBeatClaimRejections = lastBeatClaimRejections.filter((rejection) =>
+        candidateHasBeatClaim(candidateWithDeferred, rejection.beatId)
+      )
+      if (strippedBeatClaimRejections.length > 0) {
+        logger.warn(
+          `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲的节拍认领未在 description 中呈现，已自动剥离认领：${strippedBeatClaimRejections.map((rejection) => rejection.beatId).join(', ')}`
+        )
+      }
       result = finalizeChapterOutlineCandidate(
-        candidateWithDeferred,
+        stripRejectedBeatClaims(
+          candidateWithDeferred,
+          strippedBeatClaimRejections.map((rejection) => rejection.beatId)
+        ),
+        state,
+        chapterIndex,
+        beatBudget
+      )
+    } else if (lastCandidate && lastBeatClaimRejections.length > 0) {
+      strippedBeatClaimRejections = lastBeatClaimRejections.filter((rejection) =>
+        candidateHasBeatClaim(lastCandidate, rejection.beatId)
+      )
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次认领未在 description 中呈现的节拍，已自动剥离认领：${strippedBeatClaimRejections.map((rejection) => rejection.beatId).join(', ')}`
+      )
+      result = finalizeChapterOutlineCandidate(
+        stripRejectedBeatClaims(
+          lastCandidate,
+          strippedBeatClaimRejections.map((rejection) => rejection.beatId)
+        ),
         state,
         chapterIndex,
         beatBudget
@@ -1427,6 +1547,16 @@ async function generateChapterOutlineIfNeeded(
       type: 'outline_foreshadow',
       severity: 'warning',
       description: `即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未对候选伏笔 ${autoDeferredForeshadowIds.join(', ')} 作出裁决，已自动顺延至 deferredForeshadowIds。`,
+      source: 'outline_compliance',
+    })
+  }
+  if (strippedBeatClaimRejections.length > 0) {
+    pendingIssues.push({
+      id: `outline-beat-claim-stripped-${chapterIndex}`,
+      ruleId: 'outline.beat-claim-stripped',
+      type: 'outline_beat_claim',
+      severity: 'warning',
+      description: `即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次认领未在 description 中呈现的节拍，已自动剥离认领：${strippedBeatClaimRejections.map((rejection) => `${rejection.beatId}（${rejection.reason}）`).join('；')}。相关节拍保持未消费状态，由后续章节重新规划。`,
       source: 'outline_compliance',
     })
   }

@@ -305,14 +305,15 @@ describe('finalizeChapter', () => {
     vi.restoreAllMocks()
   })
 
-  it('applies summary story events to StoryMemory and returns updated state', async () => {
+  it('applies allowed summary fallback events without accepting plot advancement', async () => {
     const state = buildState(tmpDir)
     const provider = createMockProvider()
 
     const result = await finalizeChapter(state, provider)
 
     expect(result.storyMemory).not.toBeNull()
-    expect(result.storyMemory?.events).toHaveLength(2)
+    expect(result.storyMemory?.events).toHaveLength(1)
+    expect(result.storyMemory?.events.some((event) => event.type === 'plot-advance')).toBe(false)
     expect(result.storyState?.pendingTasks[0]).toMatchObject({
       id: 'task-1',
       description: '主角需要找到失散的同伴。',
@@ -1132,8 +1133,8 @@ describe('finalizeChapter', () => {
 
     expect(provider.chatStructured).not.toHaveBeenCalled()
     expect(result.outline?.[2]?.verifiedBeats).toBeUndefined()
-    expect(result.actProgress?.[1]?.consumed).toEqual(['beat-a'])
-    expect(result.actProgress?.[1]?.pending).toEqual(['beat-b', 'beat-c', 'beat-d', 'beat-e'])
+    expect(result.actProgress?.[1]?.consumed).toEqual([])
+    expect(result.actProgress?.[1]?.pending).toEqual(mandatoryBeats)
   })
 
   it('ignores plot-advance events with beat IDs outside the story arc', async () => {
@@ -1426,6 +1427,47 @@ describe('finalizeChapter', () => {
     )
   })
 
+  it('blocks an unproven required key beat at its deadline act boundary', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '幕末正文。')
+    const base = boundaryState(tmpDir, {
+      foreshadows: {},
+      beats: {
+        'A1-B1': testMemoryBeat('A1-B1', 1),
+      },
+    })
+    const state = buildState(tmpDir, {
+      ...base,
+      storyArc: base.storyArc
+        ? {
+            ...base.storyArc,
+            keyBeats: [
+              {
+                id: 'A1-B1',
+                beat: '第一幕必需转折',
+                deadlineAct: 1,
+                required: true,
+              },
+            ],
+          }
+        : null,
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: 'story-completion.required-beat-unproven',
+          type: 'outline_coverage',
+          severity: 'error',
+          subject: 'A1-B1',
+        }),
+      ])
+    )
+  })
+
   it('does not infer an act deadline from beat association', async () => {
     vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
     await writeChapter(tmpDir, 3, '幕末正文。')
@@ -1471,6 +1513,79 @@ describe('finalizeChapter', () => {
     )
     expect(result.rewriteRequested).toBe(true)
     expect(boundaryIssues.map((issue) => issue.subject)).toEqual(['fs-hard'])
+  })
+
+  it('blocks story completion when a required key beat was never proven', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '全书结尾正文。')
+    const base = buildState(tmpDir)
+    const memory = createEmptyStoryMemory()
+    memory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '主角离开家乡',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 0,
+      provenByEventIds: ['evt-mandatory-proof'],
+    }
+    memory.beats['beat-1'] = {
+      id: 'beat-1',
+      description: '主角离开家乡',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 2,
+      totalChapters: 3,
+      story: { ...base.story, totalChapters: 3 },
+      storyMemory: memory,
+      actProgress: { 1: { consumed: ['主角离开家乡'], pending: [] } },
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: 'story-completion.required-beat-unproven',
+          type: 'outline_coverage',
+          severity: 'error',
+          subject: 'beat-1',
+        }),
+      ])
+    )
+  })
+
+  it('blocks story completion when the structural story arc is unavailable', async () => {
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    await writeChapter(tmpDir, 3, '全书结尾正文。')
+    const base = boundaryState(tmpDir, { foreshadows: {}, beats: {} })
+    const state = buildState(tmpDir, {
+      ...base,
+      totalChapters: 3,
+      story: { ...base.story, totalChapters: 3 },
+      storyArc: null,
+      storyMemory: createEmptyStoryMemory(),
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: 'story-completion.structural-blocker',
+          type: 'state_corruption',
+          severity: 'error',
+          subject: 'story_arc_missing',
+        }),
+      ])
+    )
   })
 
   it('counts planted, fulfilled, and overdue canonical obligations once in a blocking report', async () => {
@@ -1601,6 +1716,14 @@ describe('finalizeChapter', () => {
     expect(result.rewriteRequested).toBe(true)
     expect(result.chapterReport).toMatchObject({
       foreshadowsPlanted: 1,
+      foreshadowsPlantedDetails: [
+        {
+          id: 'fs-planted-early',
+          text: 'planted canonical fixture',
+          expectedFulfillChapter: 6,
+          resolutionPolicy: 'must_resolve',
+        },
+      ],
       foreshadowsFulfilled: 1,
       foreshadowsOverdue: 1,
     })
@@ -2475,6 +2598,51 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
     chapterIndex = DEFAULT_CHAPTER_INDEX,
     totalChapters = 20
   ): ReducedGraphState {
+    const completedStoryMemory: StoryMemory = {
+      ...storyMemory,
+      events: [
+        ...storyMemory.events,
+        {
+          id: 'evt-late-mandatory-proof',
+          type: 'plot-advance',
+          plotId: 'act-1',
+          beatId: 'A1-M1',
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        },
+        {
+          id: 'evt-late-key-proof',
+          type: 'plot-advance',
+          plotId: 'plot-main',
+          beatId: 'beat-1',
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        },
+      ],
+      beats: {
+        ...storyMemory.beats,
+        'A1-M1': {
+          id: 'A1-M1',
+          description: '主角离开家乡',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 0,
+          provenByEventIds: ['evt-late-mandatory-proof'],
+        },
+        'beat-1': {
+          id: 'beat-1',
+          description: '主角离开家乡',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 0,
+          provenByEventIds: ['evt-late-key-proof'],
+        },
+      },
+    }
     const outline = Array.from({ length: totalChapters }, (_, i) => ({
       number: i + 1,
       title: `第${i + 1}章`,
@@ -2534,7 +2702,7 @@ describe('finalizeChapter — deferred foreshadow deadline extension', () => {
         createdAt: 0,
         updatedAt: 0,
       },
-      storyMemory,
+      storyMemory: completedStoryMemory,
       session: buildSession({ chapterIndex }),
     })
   }

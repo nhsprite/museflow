@@ -1,9 +1,10 @@
 import type { ReducedGraphState } from '../state.js'
 import type { RuntimeContext } from '../../core/context.js'
 import { validateChapterEvents } from '../../story-memory/validator.js'
-import { createEmptyStoryMemory } from '../../story-memory/projector.js'
+import { createEmptyStoryMemory, ensureBeatsHaveActIndex } from '../../story-memory/projector.js'
 import { readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { verifyForeshadowFulfillments } from '../services/foreshadow-fulfillment/semantic-verifier.js'
+import { verifyPlotAdvances } from '../services/plot-advance/semantic-verifier.js'
 
 export async function validateChapterStructured(
   context: RuntimeContext,
@@ -12,7 +13,10 @@ export async function validateChapterStructured(
   const chapterIndex = state.currentChapterIndex ?? 0
   const plan = state.chapterPlan
   const actualEvents = state.draftChapterEvents ?? []
-  const memory = state.storyMemory ?? createEmptyStoryMemory()
+  const memory = ensureBeatsHaveActIndex(
+    state.storyMemory ?? createEmptyStoryMemory(),
+    state.storyArc
+  )
 
   if (!plan) {
     return {
@@ -28,6 +32,7 @@ export async function validateChapterStructured(
         overdueForeshadows: [],
         falseFulfillments: [],
         foreshadowFulfillmentRejections: [],
+        plotAdvanceRejections: [],
         unclaimedMandatoryBeats: [],
         claimedButUnprovenBeats: [],
         stateConflicts: [],
@@ -70,12 +75,35 @@ export async function validateChapterStructured(
       ...semanticRejections.map((rejection) => rejection.foreshadowId),
     ]),
   ]
+  const plotAdvanceCandidates = result.actualEvents.filter(
+    (event): event is Extract<typeof event, { type: 'plot-advance' }> =>
+      event.type === 'plot-advance' && !structurallyRejectedEventIds.has(event.id)
+  )
+  const plotAdvanceRejections = await verifyPlotAdvances({
+    provider: context.provider,
+    memory,
+    chapterContent: chapterContent ?? '',
+    candidates: plotAdvanceCandidates,
+  })
+  const rejectedBeatIds = new Set(plotAdvanceRejections.map((rejection) => rejection.beatId))
+  const claimedBeatIds = [...(plan.claimedMandatoryBeatIds ?? []), ...(plan.claimedBeatIds ?? [])]
+  const claimedButUnprovenBeats = [
+    ...new Set([
+      ...result.claimedButUnprovenBeats,
+      ...claimedBeatIds.filter(
+        (beatId) =>
+          rejectedBeatIds.has(beatId) && (memory.beats[beatId]?.provenByEventIds.length ?? 0) === 0
+      ),
+    ]),
+  ]
 
   return {
     structuredValidationResult: {
       ...result,
       falseFulfillments,
       foreshadowFulfillmentRejections: semanticRejections,
+      claimedButUnprovenBeats,
+      plotAdvanceRejections,
     },
   }
 }

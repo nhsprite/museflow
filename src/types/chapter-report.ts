@@ -1,4 +1,5 @@
 import type { Issue, IssueType } from './agent.js'
+import type { ForeshadowResolutionPolicy } from './story-memory.js'
 
 export type DraftStrategy = 'draft' | 'fix' | 'replan' | 'finalize-only'
 
@@ -24,6 +25,13 @@ export interface ChapterIssueSummary {
   byType: Record<IssueType, number>
 }
 
+export interface ChapterForeshadowDetail {
+  id: string
+  text: string
+  expectedFulfillChapter: number | null
+  resolutionPolicy: ForeshadowResolutionPolicy
+}
+
 export interface ChapterReport {
   storyId: string
   chapterIndex: number
@@ -43,6 +51,7 @@ export interface ChapterReport {
   stateCorrections: StateCorrection[]
 
   foreshadowsPlanted: number
+  foreshadowsPlantedDetails: ChapterForeshadowDetail[]
   foreshadowsFulfilled: number
   foreshadowsOverdue: number
   foreshadowsNeedingAttention?: string[]
@@ -83,6 +92,7 @@ export function createEmptyChapterReport(storyId: string, chapterIndex: number):
     issuesDowngraded: [],
     stateCorrections: [],
     foreshadowsPlanted: 0,
+    foreshadowsPlantedDetails: [],
     foreshadowsFulfilled: 0,
     foreshadowsOverdue: 0,
     wordCount: 0,
@@ -124,6 +134,7 @@ export function createEmptyIssueSummary(): ChapterIssueSummary {
       event_unexpected: 0,
       event_evidence_missing: 0,
       event_evidence_invalid: 0,
+      outline_beat_claim: 0,
     },
   }
 }

@@ -179,14 +179,37 @@ describe('status command chapter display', () => {
     expect(logSpy).toHaveBeenCalledWith('下一步: 撰写第 1 章')
   })
 
-  it('clamps the display chapter when the story is complete', async () => {
-    getStateMock.mockResolvedValue(createState(3, 3))
+  it('clamps the display chapter when the completion gate passes', async () => {
+    const state = createState(3, 3)
+    const memory = createEmptyStoryMemory()
+    memory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '主角出发',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 0,
+      provenByEventIds: ['evt-proof'],
+    }
+    state.storyMemory = memory
+    state.actProgress = { 1: { consumed: ['主角出发'], pending: [] } }
+    getStateMock.mockResolvedValue(state)
     const { status } = await import('../../src/cli/commands/status.ts')
 
     await status({ storyId: 'story-1' })
 
     expect(logSpy).toHaveBeenCalledWith('章节进度: 3/3 (100%)')
     expect(logSpy).toHaveBeenCalledWith('✓ 故事已完成')
+  })
+
+  it('does not report completion from chapter count alone', async () => {
+    getStateMock.mockResolvedValue(createState(3, 3))
+    const { status } = await import('../../src/cli/commands/status.ts')
+
+    await status({ storyId: 'story-1' })
+
+    expect(logSpy).not.toHaveBeenCalledWith('✓ 故事已完成')
+    expect(logSpy).toHaveBeenCalledWith('⚠️  已到规划章节边界，但故事未通过完结门禁')
   })
 
   it('shows arc progress in status output', async () => {

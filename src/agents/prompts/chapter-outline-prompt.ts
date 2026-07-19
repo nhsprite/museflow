@@ -1,7 +1,10 @@
 import { toDisplayChapterNumber } from '../../utils/chapter-display.js'
 import { renderTemplate } from '../../utils/template.js'
 import type { ChapterPlanningConfig } from '../../types/genre.js'
-import { buildForeshadowPlanningSection } from './fragments/index.js'
+import {
+  buildBeatClaimRejectionSection,
+  buildForeshadowPlanningSection,
+} from './fragments/index.js'
 
 const CHAPTER_OUTLINE_SYSTEM_PROMPT =
   '你是一位严谨的小说章节策划。你的任务是在每章动笔前，根据当前幕结构、权威事实和叙事进度，即时生成该章的具体大纲。你绝不提前执行后续幕的内容，也绝不与已确立的权威事实冲突。'
@@ -35,6 +38,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 {VERIFIED_CONSTRAINTS_SECTION}
 
 {FORESHADOW_PLANNING_SECTION}
+
+{BEAT_CLAIM_REJECTION_SECTION}
 </context>
 
 <instruction>
@@ -137,5 +142,6 @@ export function buildChapterOutlineUserPrompt(
         ? `<verified_constraints>\n${state.verifiedConstraints.join('\n')}\n</verified_constraints>`
         : '',
     FORESHADOW_PLANNING_SECTION: buildForeshadowPlanningSection(state),
+    BEAT_CLAIM_REJECTION_SECTION: buildBeatClaimRejectionSection(state),
   })
 }

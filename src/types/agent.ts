@@ -27,6 +27,7 @@ export type IssueType =
   | 'event_unexpected'
   | 'event_evidence_missing'
   | 'event_evidence_invalid'
+  | 'outline_beat_claim'
 
 export type IssueSource =
   | 'word_count'

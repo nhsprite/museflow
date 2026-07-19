@@ -10,6 +10,7 @@ import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state
 import type { ModelProvider } from '../../src/model/provider.js'
 import type { RuntimeContext } from '../../src/core/context.js'
 import { createEmptyIssueSummary, summarizeIssues } from '../../src/types/chapter-report.js'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -24,19 +25,21 @@ function createBaseSummaryAgent() {
       success: true,
       data: {
         chapterSummary: '主角离开家乡，踏上旅途。',
-        storyEvents: [
-          {
-            id: 'evt-1',
-            type: 'plot-advance',
-            plotId: 'act-1',
-            beatId: 'A1-M1',
-            chapterIndex: 0,
-            source: 'chapter',
-            evidence: { paragraphIndex: 1 },
-          },
-        ],
+        storyEvents: [],
       },
     }),
+  }
+}
+
+function verifiedMandatoryDraftEvent() {
+  return {
+    id: 'evt-draft-mandatory',
+    type: 'plot-advance' as const,
+    plotId: 'plot-1',
+    beatId: 'A1-M1',
+    chapterIndex: 0,
+    source: 'chapter' as const,
+    evidence: { paragraphIndex: 1 },
   }
 }
 
@@ -309,6 +312,20 @@ describe('chapter report generation', () => {
 
     const result = await finalize_chapter(createMockContext(), state)
 
+    expect(result.chapterReport!.foreshadowsPlantedDetails).toEqual([
+      {
+        id: 'fs-1',
+        text: '护身符发热',
+        expectedFulfillChapter: 3,
+        resolutionPolicy: 'must_resolve',
+      },
+      {
+        id: 'fs-2',
+        text: '远处的马蹄声',
+        expectedFulfillChapter: 1,
+        resolutionPolicy: 'must_resolve',
+      },
+    ])
     expect(result.chapterReport!.foreshadowsPlanted).toBe(2)
     expect(result.chapterReport!.foreshadowsFulfilled).toBe(1)
   })
@@ -336,6 +353,7 @@ describe('chapter report generation', () => {
 
   it('updates actProgress with verified beats only', async () => {
     const state = buildState(tmpDir, {
+      draftChapterEvents: [verifiedMandatoryDraftEvent()],
       outline: [
         {
           number: 1,
@@ -358,6 +376,7 @@ describe('chapter report generation', () => {
 
   it('returns finalized state without mutating the input graph state', async () => {
     const state = buildState(tmpDir, {
+      draftChapterEvents: [verifiedMandatoryDraftEvent()],
       outline: [
         {
           number: 1,
@@ -384,6 +403,7 @@ describe('chapter report generation', () => {
 
   it('stores evidence for verified mandatory beats', async () => {
     const state = buildState(tmpDir, {
+      draftChapterEvents: [verifiedMandatoryDraftEvent()],
       outline: [
         {
           number: 1,
@@ -438,6 +458,7 @@ describe('chapter report generation', () => {
 
   it('clears stale outline coverage warning when its beat becomes verified', async () => {
     const state = buildState(tmpDir, {
+      draftChapterEvents: [verifiedMandatoryDraftEvent()],
       pendingIssues: [
         {
           id: 'unverified-beat-1-0',
@@ -757,6 +778,20 @@ describe('chapter report generation', () => {
       },
       actProgress: {
         1: { consumed: ['主角完成既定选择'], pending: [] },
+      },
+      storyMemory: {
+        ...createEmptyStoryMemory(),
+        beats: {
+          'A1-M1': {
+            id: 'A1-M1',
+            description: '主角完成既定选择',
+            actIndex: 1,
+            deadlineAct: 1,
+            required: true,
+            claimedIn: 1,
+            provenByEventIds: ['evt-existing-proof'],
+          },
+        },
       },
     })
     vi.mocked(getSummaryAgent).mockReturnValue({

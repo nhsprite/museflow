@@ -22,6 +22,26 @@ const mockChat = vi.fn(async (_messages: Message[], _temperature?: number): Prom
 const mockChatStructured = vi.fn(
   async <T>(_messages: Message[], _schema: JsonSchema, _temperature?: number): Promise<T> => {
     if (Object.hasOwn(_schema.properties, 'judgments')) {
+      const judgmentSchema = _schema.properties['judgments'] as {
+        items?: { properties?: Record<string, unknown> }
+      }
+      if (
+        judgmentSchema.items?.properties &&
+        Object.hasOwn(judgmentSchema.items.properties, 'eventId')
+      ) {
+        const prompt = _messages.map((message) => message.content).join('\n')
+        const secondChapter = prompt.includes('evt-beat-2')
+        return {
+          judgments: [
+            {
+              eventId: secondChapter ? 'evt-beat-2' : 'evt-beat-1',
+              beatId: secondChapter ? 'A1-M2' : 'A1-M1',
+              verdict: 'proven',
+              reason: '测试正文明确完成了对应结构化节拍。',
+            },
+          ],
+        } as T
+      }
       return {
         judgments: [
           {

@@ -10,7 +10,6 @@ import { getChapterFilePath } from '../../utils/paths.js'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { requireStoryState } from '../utils/story-loader.js'
-import { guardStoryWritable } from '../utils/story-guard.js'
 import { runOneChapterWithConflictResolution } from '../utils/chapter-runner.js'
 import { handleCommandError } from '../utils/command-error.js'
 import {
@@ -18,6 +17,8 @@ import {
   type WriteBatchStopReason,
   type WriteIterationOutcome,
 } from '../utils/write-batch.js'
+import { evaluateStoryCompletion } from '../../core/story-completion.js'
+import { getReachedStoryBoundary, printReachedStoryBoundary } from '../utils/story-boundary.js'
 
 interface WriteOptions {
   storyId: string
@@ -75,14 +76,16 @@ async function writeOne(storyId: string, batchMode: boolean): Promise<WriteItera
     }
   }
 
-  const isResume = state.currentChapterIndex > 0 || hasChaptersOnDisk
-
-  if (await guardStoryWritable(storyId, story, state, startChapterIndex)) {
+  const boundary = getReachedStoryBoundary(state)
+  if (boundary) {
+    printReachedStoryBoundary(boundary, storyId)
     return {
       completed: false,
-      stopReason: startChapterIndex >= state.totalChapters ? 'story-complete' : 'not-writable',
+      stopReason: boundary.status === 'complete' ? 'story-complete' : 'blocking-issues',
     }
   }
+
+  const isResume = state.currentChapterIndex > 0 || hasChaptersOnDisk
 
   if (!isResume) {
     console.log(`[MuseFlow] 开始撰写: ${story.title}`)
@@ -114,7 +117,10 @@ async function handleWrite(
   const hasOnlyDraftFailures =
     unresolvedErrors.length > 0 && unresolvedErrors.every((i) => i.type === 'draft_failure')
 
-  if (nonDraftErrors.length > 0 && !hasOnlyDraftFailures) {
+  // 仅当上一轮运行明确请求人工重写（rewriteRequested，干净的阻塞停止）时才拒绝续写。
+  // 若上一轮在重写循环中途被中断（崩溃/Ctrl+C），遗留 error 不代表路由已放弃，
+  // 应继续本章循环，由 runOneChapter 携带遗留问题反馈重跑。
+  if (nonDraftErrors.length > 0 && !hasOnlyDraftFailures && state.rewriteRequested) {
     console.error('[MuseFlow] 当前章节存在问题，需要先修复')
     printIssues(state.pendingIssues, { log: console.error })
     console.error(`\n当前章节存在严重问题，需要重写：`)
@@ -127,6 +133,12 @@ async function handleWrite(
 
   if (hasOnlyDraftFailures) {
     console.log('[MuseFlow] 检测到之前的生成失败，将重新尝试...')
+    console.log('')
+  }
+
+  if (nonDraftErrors.length > 0 && !hasOnlyDraftFailures) {
+    console.log('[MuseFlow] 检测到上次撰写在修复循环中被中断，将携带遗留问题继续本章...')
+    printIssues(state.pendingIssues)
     console.log('')
   }
 
@@ -194,15 +206,20 @@ async function executeWrite(
   const chapterPath = getChapterFilePath(state.story.outputDir, writtenIndex + 1)
   console.log(`\n📁 文件：${chapterPath}`)
 
-  if (result.currentChapterIndex >= result.totalChapters) {
-    await updateStatus('freeze')
+  const completionAudit = evaluateStoryCompletion(result)
+  await updateStatus('writing')
+
+  if (completionAudit.status === 'complete') {
     if (errors.length === 0) {
-      console.log('✨ 质量检查通过，故事已完成并冻结\n')
+      console.log('✨ 质量检查通过，故事已完成\n')
     }
     return { completed: true, stopReason: 'story-complete' }
   }
 
-  await updateStatus('writing')
+  if (completionAudit.chapterLimitReached) {
+    console.log('\n[MuseFlow] 已到规划章节边界，但故事未通过完结门禁。')
+    return { completed: true, stopReason: 'blocking-issues' }
+  }
 
   if (errors.length > 0) {
     console.log(`\n请运行以下命令重写本章：`)

@@ -193,4 +193,24 @@ describe('CLI chapter display', () => {
 
     expect(logSpy).toHaveBeenCalledWith('⚠️  需人工关注的伏笔（deadline 顺延已达上限）：fs-x')
   })
+
+  it('prints the structured details of foreshadows planted in the completed chapter', () => {
+    const report = createEmptyChapterReport('story-1', 5)
+    report.foreshadowsPlanted = 1
+    report.foreshadowsPlantedDetails = [
+      {
+        id: 'fs-new',
+        text: '驿卒交接文书上的陌生朱印',
+        expectedFulfillChapter: 9,
+        resolutionPolicy: 'must_resolve',
+      },
+    ]
+
+    printChapterReport(report)
+
+    expect(logSpy).toHaveBeenCalledWith('   本章新埋伏笔：')
+    expect(logSpy).toHaveBeenCalledWith(
+      '     1. [fs-new] "驿卒交接文书上的陌生朱印"（必须回收，预计第 9 章回收）'
+    )
+  })
 })

@@ -20,6 +20,7 @@ import {
   type RoutingDeps,
 } from '../../../core/chapter-generation/routing/index.js'
 import { calculateIssueSetSimilarity } from '../../../core/chapter-generation/routing/issue-policy.js'
+import { dropBeatClaimsFromOutline } from '../../../core/chapter-generation/routing/beat-claim-revocation.js'
 import type { RoutingDecision } from '../../../core/chapter-generation/routing/types.js'
 import type { RuntimeContext } from '../../../core/context.js'
 import { createChapterSession } from '../../../core/chapter-generation/routing/session.js'
@@ -281,6 +282,20 @@ export async function convergeAndDecide(
   }
 
   update.chapterPlan = chapterPlan
+
+  // 连续多轮未被正文证实的节拍认领：从大纲摘除（随 checkpoint 持久化），
+  // plan 已在上方弃置，下一轮将基于缩减后的认领集重建。
+  if (step.kind === 'draft_chapter' && step.revokedBeatClaimIds?.length) {
+    update.outline = dropBeatClaimsFromOutline(
+      state.outline,
+      state.currentChapterIndex,
+      step.revokedBeatClaimIds,
+      state.storyArc
+    )
+    logger.info(
+      `[MuseFlow] 节拍连续多轮未被正文证实，已撤销第 ${chapterNumber} 章大纲的节拍认领：${step.revokedBeatClaimIds.join(', ')}；相关节拍保持未消费，由后续章节重新规划`
+    )
+  }
 
   // Clean inferred facts when forcing structural rewrite
   if (update.session?.forceStructuralRewrite && routingDecision === 'draft_chapter') {

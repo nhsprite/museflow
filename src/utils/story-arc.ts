@@ -7,6 +7,7 @@ import {
   normalizeForeshadowCapacity,
 } from '../story-memory/foreshadow-policy.js'
 import { logger } from './logger.js'
+import { getUnprovenRequiredKeyBeatIdsThroughAct } from '../core/story-completion.js'
 
 export function getActForChapter(
   storyArc: StoryArc | null | undefined,
@@ -389,7 +390,14 @@ export function proposeActBoundaryAdjustments(
     const blockingForeshadows = storyMemory
       ? getBoundaryBlockingForeshadows(storyMemory, proposedEnd, isFinalAct)
       : []
-    if (blockingForeshadows.length > 0) {
+    const unprovenRequiredKeyBeats = storyMemory
+      ? getUnprovenRequiredKeyBeatIdsThroughAct(storyArc, storyMemory, currentAct.index)
+      : []
+    if (unprovenRequiredKeyBeats.length > 0) {
+      logger.warn(
+        `[MuseFlow] 第 ${currentAct.index} 幕虽已消费全部 mandatory beats，但仍有 ${unprovenRequiredKeyBeats.length} 个 required key beats 未获 StoryMemory 证据，禁止自动缩短幕边界。`
+      )
+    } else if (blockingForeshadows.length > 0) {
       logger.warn(
         `[MuseFlow] 第 ${currentAct.index} 幕虽已消费全部 mandatory beats，但仍有 ${blockingForeshadows.length} 个 required 伏笔需在候选边界前回收，禁止自动缩短幕边界。`
       )

@@ -1,6 +1,3 @@
-import { diffEvents } from './diff.js'
-import { renderStoryEventLine } from './event-format.js'
-import { countEvidenceParagraphs } from './validator.js'
 import type { StoryEvent, PlotAdvanceEvent, StoryMemory } from '../types/story-memory.js'
 import type { StoryArc } from '../types/outline.js'
 import type { ChapterPlan } from '../agents/types.js'
@@ -8,10 +5,9 @@ import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
 import { generateId } from '../utils/id.js'
 import { GLOBAL_KEY_BEAT_PLOT_ID } from './protocol-ids.js'
 
-export interface EventCompletionResult {
+export interface EmittedEventAcceptanceResult {
   content: string
   events: StoryEvent[]
-  completedCount: number
 }
 
 type ChapterEmittableStoryEvent = Exclude<StoryEvent, { type: 'foreshadow-merge' }>
@@ -20,72 +16,14 @@ function isChapterEmittableStoryEvent(event: StoryEvent): event is ChapterEmitta
   return event.type !== 'foreshadow-merge'
 }
 
-function injectEventsIntoStoryEventsBlock(content: string, events: StoryEvent[]): string {
-  if (events.length === 0) return content
-
-  const lines = events.map(
-    (event) => `- ${renderStoryEventLine(event)} @p${event.evidence?.paragraphIndex ?? 1}`
-  )
-  const blockContent = lines.join('\n')
-
-  const storyEventsMarker = /===\s*STORY_EVENTS\s*===/i
-  const chapterContentMarker = /===\s*CHAPTER_CONTENT\s*===/i
-
-  const hasStoryEvents = storyEventsMarker.test(content)
-  const hasChapterContent = chapterContentMarker.test(content)
-
-  if (hasStoryEvents && hasChapterContent) {
-    return content.replace(
-      /(===\s*STORY_EVENTS\s*===\n)([\s\S]*?)(\n===\s*CHAPTER_CONTENT\s*===)/i,
-      (_match, prefix: string, existing: string, suffix: string) => {
-        const trimmed = (existing as string).trim()
-        const newBlock = trimmed ? `${trimmed}\n${blockContent}` : blockContent
-        return `${prefix}${newBlock}${suffix}`
-      }
-    )
-  }
-
-  if (hasChapterContent) {
-    return content.replace(
-      /(===\s*CHAPTER_CONTENT\s*===)/i,
-      `=== STORY_EVENTS ===\n${blockContent}\n$1`
-    )
-  }
-
-  return `=== STORY_EVENTS ===\n${blockContent}\n=== CHAPTER_CONTENT ===\n${content}`
-}
-
-export function completeMissingExpectedEvents(
+export function acceptEmittedChapterEvents(
   content: string,
-  expectedEvents: StoryEvent[],
-  actualEvents: StoryEvent[],
-  chapterIndex: number
-): EventCompletionResult {
+  actualEvents: StoryEvent[]
+): EmittedEventAcceptanceResult {
   const chapterActualEvents = actualEvents.filter(isChapterEmittableStoryEvent)
-  const { missing } = diffEvents(expectedEvents, chapterActualEvents)
-  const completableMissing = missing.filter(isChapterEmittableStoryEvent)
-  if (completableMissing.length === 0) {
-    return { content, events: chapterActualEvents, completedCount: 0 }
-  }
-
-  const paragraphCount = Math.max(countEvidenceParagraphs(content), 1)
-
-  const completedEvents: StoryEvent[] = completableMissing.map((event, index) => ({
-    ...event,
-    chapterIndex,
-    source: 'chapter',
-    evidence: {
-      paragraphIndex: Math.min(index + 1, paragraphCount),
-    },
-  }))
-
-  const allEvents = [...chapterActualEvents, ...completedEvents]
-  const updatedContent = injectEventsIntoStoryEventsBlock(content, completedEvents)
-
   return {
-    content: updatedContent,
-    events: allEvents,
-    completedCount: completedEvents.length,
+    content,
+    events: chapterActualEvents,
   }
 }
 
@@ -94,7 +32,8 @@ export function completeMissingExpectedEvents(
  *
  * 章节规划（chapterPlan.expectedEvents）可能遗漏这些事件，导致 finalization 阶段报
  * beat_unproven。本函数根据 claimedMandatoryBeatIds 和 claimedBeatIds 自动为当前幕
- * 的每个未覆盖 beat 生成一条 plot-advance 期望事件，供 prompt 展示和后续自动补全使用。
+ * 的每个未覆盖 beat 生成一条 plot-advance 期望事件，仅供 prompt 展示和缺失事件校验使用。
+ * 期望事件绝不能直接提升为正文事实。
  */
 export function augmentExpectedEventsWithClaimedBeats(
   chapterPlan: ChapterPlan | undefined,

@@ -9,6 +9,8 @@ import {
   formatActForeshadowBoundaryPressure,
 } from '../formatters/foreshadow-boundary-pressure.js'
 
+const MAX_FORESHADOW_TEXT_LENGTH = 60
+
 function toDisplayChapterNumber(chapterIndex: number): number {
   return chapterIndex + 1
 }
@@ -125,6 +127,19 @@ export function printChapterReport(
   }
 
   console.log(`\n🎣 伏笔：埋下 ${report.foreshadowsPlanted} / 回收 ${report.foreshadowsFulfilled}`)
+  if (report.foreshadowsPlantedDetails?.length > 0) {
+    console.log('   本章新埋伏笔：')
+    for (let i = 0; i < report.foreshadowsPlantedDetails.length; i++) {
+      const foreshadow = report.foreshadowsPlantedDetails[i]!
+      const deadline =
+        foreshadow.expectedFulfillChapter === null
+          ? '未设预计章节'
+          : `预计第 ${foreshadow.expectedFulfillChapter} 章回收`
+      console.log(
+        `     ${i + 1}. [${foreshadow.id}] "${formatForeshadowText(foreshadow.text)}"（${foreshadowResolutionPolicyLabel(foreshadow.resolutionPolicy)}，${deadline}）`
+      )
+    }
+  }
   if (report.foreshadowsOverdue > 0) {
     console.log(`⚠️  逾期伏笔：${report.foreshadowsOverdue} 个`)
   }
@@ -154,6 +169,28 @@ export function printChapterReport(
 
   if (report.convergence !== 'success') {
     console.log(`\n⛔ 收敛结果：${convergenceLabel(report.convergence)}`)
+  }
+}
+
+function formatForeshadowText(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  const characters = Array.from(normalized)
+
+  if (characters.length <= MAX_FORESHADOW_TEXT_LENGTH) return normalized
+
+  return `${characters.slice(0, MAX_FORESHADOW_TEXT_LENGTH).join('')}…`
+}
+
+function foreshadowResolutionPolicyLabel(
+  policy: ChapterReport['foreshadowsPlantedDetails'][number]['resolutionPolicy']
+): string {
+  switch (policy) {
+    case 'must_resolve':
+      return '必须回收'
+    case 'should_resolve':
+      return '建议回收'
+    case 'may_remain_open':
+      return '可保持开放'
   }
 }
 

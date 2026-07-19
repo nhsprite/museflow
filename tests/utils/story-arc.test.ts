@@ -404,6 +404,29 @@ describe('story-arc utilities', () => {
     expect(proposals[0]?.proposedEndChapter).toBeLessThan(5)
   })
 
+  it('does not reduce the final act while a required key beat lacks StoryMemory proof', () => {
+    const storyArc = makeStoryArc()
+    const memory = createEmptyStoryMemory()
+    memory.beats['A4-B1'] = {
+      id: 'A4-B1',
+      description: '最终对决',
+      actIndex: 4,
+      deadlineAct: 4,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+
+    const proposals = proposeActBoundaryAdjustments(
+      storyArc,
+      { 4: { consumed: ['最终对决'], pending: [] } },
+      18,
+      memory
+    )
+
+    expect(proposals).toEqual([])
+  })
+
   it('does not reduce past a required deadline due by the candidate end', () => {
     const proposals = proposeActBoundaryAdjustments(
       makeStoryArc(),

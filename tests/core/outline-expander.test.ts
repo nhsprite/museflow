@@ -23,10 +23,13 @@ import type { ForeshadowMemory, StoryEvent } from '../../src/types/story-memory.
 
 const testTempDir = join(tmpdir(), `museflow-outline-expander-${randomUUID().slice(0, 8)}`)
 
-const { planChapterWithOverrideMock, verifyForeshadowPlanMock } = vi.hoisted(() => ({
-  planChapterWithOverrideMock: vi.fn(),
-  verifyForeshadowPlanMock: vi.fn(),
-}))
+const { planChapterWithOverrideMock, verifyForeshadowPlanMock, verifyBeatClaimsMock } = vi.hoisted(
+  () => ({
+    planChapterWithOverrideMock: vi.fn(),
+    verifyForeshadowPlanMock: vi.fn(),
+    verifyBeatClaimsMock: vi.fn(),
+  })
+)
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 const mockChatStructured = vi.fn()
@@ -45,6 +48,10 @@ vi.mock('../../src/graph/nodes/planning.js', () => ({
 
 vi.mock('../../src/graph/services/foreshadow-fulfillment/planning-verifier.js', () => ({
   verifyForeshadowPlan: verifyForeshadowPlanMock,
+}))
+
+vi.mock('../../src/graph/services/plot-advance/beat-claim-verifier.js', () => ({
+  verifyBeatClaims: verifyBeatClaimsMock,
 }))
 
 vi.mock('../../src/graph/agent-factory.js', () => ({
@@ -213,6 +220,7 @@ describe('expandOutlineForChapter', () => {
     vi.clearAllMocks()
     planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
     verifyForeshadowPlanMock.mockResolvedValue([])
+    verifyBeatClaimsMock.mockResolvedValue([])
     mockChatStructured.mockResolvedValue({ results: [true, true] })
     mockChat.mockResolvedValue(JSON.stringify({ results: [true, true] }))
     chapterOutlineRunMock.mockResolvedValue({
@@ -303,6 +311,120 @@ describe('expandOutlineForChapter', () => {
     expect(agentInput.currentStateSnapshot).toContain('清晨')
     expect(agentInput.currentStateSnapshot).toContain('c-hero')
     expect(agentInput.currentStateSnapshot).toContain('旧宅')
+  })
+
+  it('retries JIT outline with beat claim rejection feedback when a claim is not realized', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '静守',
+          description: '二人在屋内静守至天明。',
+          introducedCharacters: [],
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '离乡',
+          description: '主角收拾行囊，拜别乡亲离开家乡。',
+          introducedCharacters: [],
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
+      })
+    verifyBeatClaimsMock.mockResolvedValueOnce([
+      { beatId: 'A1-M1', beat: '主角离开家乡', reason: 'description 只有静守，没有离乡事件' },
+    ])
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(verifyBeatClaimsMock).toHaveBeenCalledTimes(2)
+    expect(verifyBeatClaimsMock.mock.calls[0]![0]).toMatchObject({
+      claims: [{ beatId: 'A1-M1', beat: '主角离开家乡' }],
+      outlineDescription: '二人在屋内静守至天明。',
+    })
+    // 第二轮候选再次认领同一节拍，必须用修订后的 description 重新校验
+    expect(verifyBeatClaimsMock.mock.calls[1]![0]).toMatchObject({
+      claims: [{ beatId: 'A1-M1', beat: '主角离开家乡' }],
+      outlineDescription: '主角收拾行囊，拜别乡亲离开家乡。',
+    })
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    const retryInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      beatClaimRejection?: {
+        rejectedClaims: Array<{ beatId: string; beat: string; reason: string }>
+        currentOutline?: { title: string; description: string }
+      }
+    }
+    expect(retryInput.beatClaimRejection?.rejectedClaims).toEqual([
+      { beatId: 'A1-M1', beat: '主角离开家乡', reason: 'description 只有静守，没有离乡事件' },
+    ])
+    expect(retryInput.beatClaimRejection?.currentOutline).toEqual({
+      title: '静守',
+      description: '二人在屋内静守至天明。',
+    })
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual(['A1-M1'])
+  })
+
+  it('strips unrealized beat claims after JIT retry exhaustion and emits a warning issue', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明。',
+        introducedCharacters: [],
+        claimedBeats: ['主角离开家乡'],
+        claimedMandatoryBeatIds: ['A1-M1'],
+      },
+    })
+    verifyBeatClaimsMock.mockResolvedValue([
+      { beatId: 'A1-M1', beat: '主角离开家乡', reason: 'description 只有静守，没有离乡事件' },
+    ])
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
+    expect(result.outline?.[1]?.claimedBeats).toEqual([])
+    expect(
+      result.pendingIssues?.some(
+        (issue) => issue.type === 'outline_beat_claim' && issue.severity === 'warning'
+      )
+    ).toBe(true)
+  })
+
+  it('skips beat claim verification when the candidate has no claims', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+
+    await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(verifyBeatClaimsMock).not.toHaveBeenCalled()
   })
 
   it('keeps planner fulfillment evidence when it covers the outline claim', async () => {

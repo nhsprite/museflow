@@ -16,6 +16,7 @@ import {
   replaceStructuredIssues,
   STRUCTURED_ISSUE_TYPES,
 } from './structured-issues.js'
+import { findPersistentBeatUnprovenBeatIds } from './beat-claim-revocation.js'
 import { calculateFingerprintSetSimilarity, isFingerprintSubset } from './fingerprint.js'
 
 export * from './types.js'
@@ -292,15 +293,42 @@ export async function decideNextStep(
   }
 
   if (remainingErrors.some((issue) => STRUCTURED_ISSUE_TYPES.has(issue.type))) {
-    const discardPlan = requiresForeshadowReplan(remainingErrors)
+    // 同一节拍连续两轮未被正文证实，判定为大纲层虚假认领：撤销认领并弃置 plan 重建，
+    // 而不是继续用同一份带毒认领重起草正文。
+    const revokedBeatClaimIds = findPersistentBeatUnprovenBeatIds(
+      session.previousIssues,
+      remainingErrors
+    )
+    const discardPlan = requiresForeshadowReplan(remainingErrors) || revokedBeatClaimIds.length > 0
+    // 被撤销认领的节拍必须把「认领已撤销、不得再声明」的反馈持久化进 processedIssues
+    // （会写回 pendingIssues），否则下一轮起草仍收到「请证明该节拍」的旧反馈，
+    // 与已摘除认领的大纲相互矛盾，可能诱使正文声明未授权事件。
+    const issuesWithFeedback =
+      revokedBeatClaimIds.length > 0
+        ? policyResult.issues.map((issue) =>
+            issue.type === 'beat_unproven' &&
+            issue.subject !== undefined &&
+            revokedBeatClaimIds.includes(issue.subject)
+              ? {
+                  ...issue,
+                  description: `节拍 ${issue.subject} 的大纲认领已撤销：连续多轮未被正文证实，判定为大纲层错误认领。本章正文与 STORY_EVENTS 均不得再声明推进该节拍。`,
+                }
+              : issue
+          )
+        : policyResult.issues
     return {
-      step: { kind: 'draft_chapter', discardPlan, feedbackIssues: remainingErrors },
+      step: {
+        kind: 'draft_chapter',
+        discardPlan,
+        feedbackIssues: issuesWithFeedback.filter((issue) => issue.severity === 'error'),
+        ...(revokedBeatClaimIds.length > 0 ? { revokedBeatClaimIds } : {}),
+      },
       sessionUpdate: {
         errorRewriteAttempts: session.errorRewriteAttempts + 1,
         forceStructuralRewrite: policyResult.forceStructuralRewrite || discardPlan,
         issueFingerprintHistory: nextFingerprintHistory,
       },
-      processedIssues: policyResult.issues,
+      processedIssues: issuesWithFeedback,
       newConstraints: policyResult.newConstraints,
     }
   }

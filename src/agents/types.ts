@@ -49,6 +49,18 @@ export interface ForeshadowSemanticPlanningRejection {
   reason: string
 }
 
+/**
+ * 大纲节拍认领被语义校验驳回后的反馈，随下一轮大纲生成注入 prompt。
+ * 要求大纲 agent 二选一：在 description 中实质呈现该节拍，或移除认领。
+ */
+export interface BeatClaimPlanningRejection {
+  rejectedClaims: Array<{ beatId: BeatId; beat: string; reason: string }>
+  currentOutline?: {
+    title: string
+    description: string
+  }
+}
+
 export interface ParagraphFix {
   index: number
   content: string
@@ -137,6 +149,7 @@ export interface AgentInput {
   verifiedConstraints?: string[]
   foreshadowObligations?: ForeshadowPlanningObligation[]
   foreshadowPlanningRejection?: ForeshadowPlanningRejection
+  beatClaimRejection?: BeatClaimPlanningRejection
   charactersList?: Character[]
   outlineCharacters?: Character[]
   establishedCharacters?: Character[]

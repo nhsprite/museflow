@@ -9,6 +9,7 @@ import {
   foreshadowMemoryToItem,
   groupActiveForeshadowsByPolicy,
 } from '../../story-memory/foreshadow-policy.js'
+import { evaluateStoryCompletion } from '../../core/story-completion.js'
 import { getCanonicalForeshadows } from '../../story-memory/foreshadow-alias.js'
 
 export interface ChapterIssue {
@@ -257,16 +258,28 @@ export function printForeshadowStatus(state: ReducedGraphState): void {
 
 export function printNextStep(state: ReducedGraphState): void {
   console.log('')
+  const completionAudit = evaluateStoryCompletion(state)
 
   if (state.rewriteRequested) {
     console.log('⚠️  等待重写确认')
     console.log('  使用 museflow continue 命令处理')
+  } else if (completionAudit.status === 'complete') {
+    console.log('✓ 故事已完成')
+    console.log('  使用 museflow export 命令导出')
   } else if (state.currentChapterIndex < state.totalChapters) {
     console.log(`下一步: 撰写第 ${state.currentChapterIndex + 1} 章`)
     console.log('  使用 museflow continue 命令继续')
   } else {
-    console.log('✓ 故事已完成')
-    console.log('  使用 museflow export 命令导出')
+    console.log('⚠️  已到规划章节边界，但故事未通过完结门禁')
+    if (completionAudit.unprovenBeatIds.length > 0) {
+      console.log(`  未证明 required beats: ${completionAudit.unprovenBeatIds.join('、')}`)
+    }
+    if (completionAudit.unresolvedMustForeshadowIds.length > 0) {
+      console.log(
+        `  未回收 must_resolve 伏笔: ${completionAudit.unresolvedMustForeshadowIds.join('、')}`
+      )
+    }
+    console.log('  使用 museflow rewrite 命令修复终章')
   }
 }
 

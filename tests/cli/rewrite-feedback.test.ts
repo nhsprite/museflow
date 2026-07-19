@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 const runOneChapterMock = vi.fn()
 const updateStoryRuntimeStatusMock = vi.fn().mockResolvedValue(undefined)
@@ -44,6 +45,22 @@ const initialState = {
   chapterPlan: null,
   storyState: null,
   autoFixAttempts: 0,
+  storyArc: {
+    totalChapters: 10,
+    acts: [
+      {
+        index: 1,
+        startChapter: 1,
+        endChapter: 10,
+        title: 'Story',
+        theme: '',
+        function: '',
+        mandatoryBeats: [],
+      },
+    ],
+    keyBeats: [],
+  },
+  storyMemory: createEmptyStoryMemory(),
 }
 const getStateMock = vi.fn().mockResolvedValue(initialState)
 
@@ -164,7 +181,7 @@ describe('rewrite command retry feedback', () => {
     )
   })
 
-  it('prints the full chapter report before freezing after a final-chapter rewrite', async () => {
+  it('keeps the mutable writing status after a final-chapter rewrite', async () => {
     const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
     const { printChapterReport } = await import('../../src/cli/utils/chapter-display.js')
     const finalState = {
@@ -176,9 +193,10 @@ describe('rewrite command retry feedback', () => {
     }
     runOneChapterMock.mockResolvedValueOnce(finalState)
 
-    await rewrite('story-1', { storyId: 'story-1', chapter: '6' })
+    await rewrite('story-1', { storyId: 'story-1', chapter: '10' })
 
     expect(printChapterReport).toHaveBeenCalledWith(finalState.chapterReport, finalState)
-    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledWith('story-1', 'freeze')
+    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledTimes(1)
+    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledWith('story-1', 'writing')
   })
 })

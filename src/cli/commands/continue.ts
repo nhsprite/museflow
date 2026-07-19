@@ -2,10 +2,11 @@ import { updateStoryRuntimeStatus } from '../../core/runner.js'
 import type { StoryStatus } from '../../types/story.js'
 import { requireStoryState } from '../utils/story-loader.js'
 import { printActProgress, printIssues } from '../utils/chapter-display.js'
-import { guardStoryWritable } from '../utils/story-guard.js'
 import { runOneChapterWithConflictResolution } from '../utils/chapter-runner.js'
 import { handleCommandError } from '../utils/command-error.js'
 import { question } from '../utils/prompt.js'
+import { evaluateStoryCompletion } from '../../core/story-completion.js'
+import { getReachedStoryBoundary, printReachedStoryBoundary } from '../utils/story-boundary.js'
 
 interface ContinueOptions {
   storyId: string
@@ -18,7 +19,9 @@ export async function cont(storyId: string, options: ContinueOptions): Promise<v
 
   const { story, state } = await requireStoryState(storyId)
 
-  if (await guardStoryWritable(storyId, story, state)) {
+  const boundary = getReachedStoryBoundary(state)
+  if (boundary) {
+    printReachedStoryBoundary(boundary, storyId)
     return
   }
 
@@ -86,9 +89,13 @@ async function handleContinue(storyId: string, userResponse?: boolean): Promise<
       }
     }
 
-    if (currentChapter >= totalChapters) {
-      await updateStatus('freeze')
-      console.log('\n[MuseFlow] 全部章节撰写完成！')
+    const completionAudit = evaluateStoryCompletion(result)
+    if (completionAudit.status === 'complete') {
+      await updateStatus('writing')
+      console.log('\n[MuseFlow] 故事已完成')
+    } else if (completionAudit.chapterLimitReached) {
+      await updateStatus('writing')
+      console.log('\n[MuseFlow] 已到规划章节边界，但故事未通过完结门禁。')
     } else if (!result.rewriteRequested) {
       await updateStatus('writing')
     }

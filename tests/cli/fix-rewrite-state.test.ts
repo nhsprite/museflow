@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 const testTempDir = join(tmpdir(), `museflow-fix-rewrite-${randomUUID().slice(0, 8)}`)
 const testOutputsDir = join(tmpdir(), `museflow-fix-rewrite-outputs-${randomUUID().slice(0, 8)}`)
@@ -23,6 +24,7 @@ const getStoryMock = vi.fn().mockReturnValue({
 })
 const updateStoryStatusMock = vi.fn()
 const updateStoryRuntimeStatusMock = vi.fn().mockResolvedValue(undefined)
+const questionMock = vi.fn().mockResolvedValue('y')
 
 vi.mock('../../src/storage/checkpoint-service.js', () => ({
   createCheckpointService: () => ({
@@ -176,6 +178,10 @@ vi.mock('../../src/cli/utils/spinner.js', () => ({
   withSpinner: vi.fn().mockImplementation(async (_msg, fn) => fn()),
 }))
 
+vi.mock('../../src/cli/utils/prompt.js', () => ({
+  question: questionMock,
+}))
+
 describe('rewrite command state consistency', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -194,20 +200,30 @@ describe('rewrite command state consistency', () => {
     })
   })
 
-  it('does not rewrite when the story is frozen', async () => {
+  it('targets the last existing chapter when rewriting at the completed boundary', async () => {
     const { rewrite } = await import('../../src/cli/commands/rewrite.ts')
 
-    getStoryMock.mockReturnValue({
-      id: 'story-1',
-      title: 'Test Story',
-      outputDir: testTempDir,
-      status: 'freeze',
-    })
     getStateMock.mockResolvedValue({
       story: { id: 'story-1', outputDir: testTempDir },
       idea: 'test',
       genre: 'default',
       totalChapters: 10,
+      storyArc: {
+        totalChapters: 10,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 10,
+            title: 'Story',
+            theme: '',
+            function: '',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [],
+      },
+      storyMemory: createEmptyStoryMemory(),
       world: null,
       characters: [],
       outline: Array.from({ length: 10 }, (_, i) => ({
@@ -228,11 +244,15 @@ describe('rewrite command state consistency', () => {
       lastTimelineSnapshot: null,
     })
 
-    await rewrite('story-1', { storyId: 'story-1', chapter: '7' })
+    await rewrite('story-1', { storyId: 'story-1' })
 
-    expect(runOneChapterMock).not.toHaveBeenCalled()
-    expect(clearPendingWritesMock).not.toHaveBeenCalled()
-    expect(updateStoryRuntimeStatusMock).not.toHaveBeenCalledWith('story-1', 'writing')
+    expect(runOneChapterMock).toHaveBeenCalledWith(
+      'story-1',
+      expect.objectContaining({
+        mode: 'rewrite',
+        targetChapterIndex: 9,
+      })
+    )
   })
 
   it('should invoke chapter graph when rewrite fails with errors', async () => {

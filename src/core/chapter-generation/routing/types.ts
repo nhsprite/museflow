@@ -4,7 +4,13 @@ import type { ChapterPlanningConfig } from '../../../types/genre.js'
 import type { StructuredValidationResult } from '../../../story-memory/validator.js'
 
 export type ChapterStep =
-  | { kind: 'draft_chapter'; discardPlan: boolean; feedbackIssues: Issue[] }
+  | {
+      kind: 'draft_chapter'
+      discardPlan: boolean
+      feedbackIssues: Issue[]
+      /** 连续多轮未被正文证实、本轮应从大纲撤销的节拍认领 ID。 */
+      revokedBeatClaimIds?: string[]
+    }
   | { kind: 'fix_chapter'; patchableIssues: Issue[] }
   | { kind: 'finalize_chapter' }
   | { kind: 'repair_state' }

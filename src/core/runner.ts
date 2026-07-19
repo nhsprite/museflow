@@ -17,6 +17,7 @@ import { migrateLegacyCheckpoints } from '../storage/migration.js'
 import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 import { updateStoryStatus } from '../storage/meta/stores/story.js'
 import type { Issue } from '../types/agent.js'
+import type { Character } from '../types/character.js'
 import type { StoryStatus } from '../types/story.js'
 import type { StateOverride } from '../types/story-state.js'
 import { createRuntimeContext, type RuntimeContext } from './context.js'
@@ -42,6 +43,35 @@ import {
   buildForeshadowDeadlineBoundaryCorrectionEvents,
   resolveStoryBoundaryChapter,
 } from '../story-memory/foreshadow-deadline-boundary.js'
+
+type RuntimeCharacter = Omit<Character, 'aliases' | 'isProtagonist'> & {
+  aliases?: unknown
+  isProtagonist?: unknown
+}
+
+export function normalizeRuntimeCharacters(state: ReducedGraphState): ReducedGraphState {
+  let changed = false
+  const characters = state.characters.map((character) => {
+    const runtimeCharacter = character as RuntimeCharacter
+    const rawAliases = runtimeCharacter.aliases
+    const aliasesAreValid =
+      Array.isArray(rawAliases) && rawAliases.every((alias) => typeof alias === 'string')
+    const protagonistIsValid = typeof runtimeCharacter.isProtagonist === 'boolean'
+
+    if (aliasesAreValid && protagonistIsValid) {
+      return character
+    }
+
+    changed = true
+    return {
+      ...character,
+      aliases: aliasesAreValid ? (rawAliases as string[]) : [],
+      isProtagonist: protagonistIsValid ? (runtimeCharacter.isProtagonist as boolean) : false,
+    }
+  })
+
+  return changed ? { ...state, characters } : state
+}
 
 export function normalizeRuntimeStoryMemory(state: ReducedGraphState): ReducedGraphState {
   if (!state.storyMemory) return state
@@ -74,6 +104,10 @@ export function normalizeRuntimeStoryMemory(state: ReducedGraphState): ReducedGr
     storyMemory: normalizedMemory,
     foreshadowStack: projectForeshadowStack(normalizedMemory),
   }
+}
+
+export function normalizeRuntimeState(state: ReducedGraphState): ReducedGraphState {
+  return normalizeRuntimeStoryMemory(normalizeRuntimeCharacters(state))
 }
 
 export function getOutputDirFromStoryId(storyId: string): string | undefined {
@@ -363,8 +397,8 @@ export async function runOneChapter(
         configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
       })
     : latestSnapshot
-  const latestState = normalizeRuntimeStoryMemory(latestSnapshot.values as ReducedGraphState)
-  const checkpointState = normalizeRuntimeStoryMemory(snapshot.values as ReducedGraphState)
+  const latestState = normalizeRuntimeState(latestSnapshot.values as ReducedGraphState)
+  const checkpointState = normalizeRuntimeState(snapshot.values as ReducedGraphState)
 
   const targetIndex = options.targetChapterIndex ?? checkpointState.currentChapterIndex
 
@@ -593,7 +627,7 @@ export async function getState(
   }
   try {
     const state = await graph.getState(config)
-    const graphState = normalizeRuntimeStoryMemory(state.values as unknown as ReducedGraphState)
+    const graphState = normalizeRuntimeState(state.values as unknown as ReducedGraphState)
 
     // Checkpoint 是运行时唯一真相源。不再从 meta.json 覆盖任何字段。
     // 清除过时的 draft_failure 问题，避免阻断后续生成。

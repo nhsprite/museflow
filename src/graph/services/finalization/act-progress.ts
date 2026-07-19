@@ -84,12 +84,6 @@ function updateActProgressFromStructuredIds(
   const verifiedBeatIds = new Set(
     state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
   )
-  for (let idx = 0; idx <= chapterIndex; idx++) {
-    const outlineItem = state.outline[idx]
-    for (const beatId of outlineItem?.verifiedMandatoryBeatIds ?? []) {
-      verifiedBeatIds.add(beatId)
-    }
-  }
 
   const actProgress: ReducedGraphState['actProgress'] = {}
   for (const act of storyArc?.acts ?? []) {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
 const testTempDir = join(tmpdir(), `museflow-write-${randomUUID().slice(0, 8)}`)
 
@@ -19,11 +20,28 @@ const runOneChapterMock = vi.fn().mockResolvedValue({
 })
 
 function createState(overrides: Record<string, unknown> = {}) {
+  const totalChapters = typeof overrides.totalChapters === 'number' ? overrides.totalChapters : 3
   return {
     story: { id: 'story-1', outputDir: testTempDir },
     idea: 'test',
     genre: 'default',
     totalChapters: 3,
+    storyArc: {
+      totalChapters,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: totalChapters,
+          title: 'Story',
+          theme: '',
+          function: '',
+          mandatoryBeats: [],
+        },
+      ],
+      keyBeats: [],
+    },
+    storyMemory: createEmptyStoryMemory(),
     world: null,
     characters: [],
     outline: [
@@ -214,6 +232,7 @@ describe('write command', () => {
 
     getStateMock.mockResolvedValue(
       createState({
+        rewriteRequested: true,
         pendingIssues: [{ type: 'continuity', severity: 'error', description: 'blocked' }],
       })
     )
@@ -224,6 +243,27 @@ describe('write command', () => {
     expect(logSpy).toHaveBeenCalledWith('  停止原因：当前章节存在严重问题')
     logSpy.mockRestore()
     errorSpy.mockRestore()
+  })
+
+  it('resumes the chapter loop when an interrupted run left error issues without a rewrite request', async () => {
+    const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    getStateMock.mockResolvedValue(
+      createState({
+        rewriteRequested: false,
+        pendingIssues: [{ type: 'consistency', severity: 'error', description: 'leftover' }],
+      })
+    )
+
+    await write('story-1', { storyId: 'story-1' })
+
+    expect(runOneChapterMock).toHaveBeenCalledTimes(1)
+    expect(runOneChapterMock).toHaveBeenCalledWith('story-1', {
+      mode: 'draft',
+      targetChapterIndex: 0,
+    })
+    logSpy.mockRestore()
   })
 
   it('counts a committed chapter and then stops when validation leaves blocking issues', async () => {
@@ -276,45 +316,35 @@ describe('write command', () => {
     logSpy.mockRestore()
   })
 
-  it('sets story status to freeze after writing the final chapter', async () => {
+  it('keeps the mutable writing status after writing the final chapter', async () => {
     const { write } = await import('../../src/cli/commands/write.ts')
     const { printChapterReport } = await import('../../src/cli/utils/chapter-display.js')
 
     getStateMock.mockResolvedValue(createState({ currentChapterIndex: 2 }))
     const finalState = {
-      story: { id: 'story-1', outputDir: testTempDir },
-      currentChapterIndex: 3,
-      totalChapters: 3,
-      pendingIssues: [],
-      rewriteRequested: false,
+      ...createState({ currentChapterIndex: 3 }),
       chapterReport: { chapterIndex: 2 },
-      outline: [
-        { number: 1, title: 'Chapter 1', description: 'Desc 1' },
-        { number: 2, title: 'Chapter 2', description: 'Desc 2' },
-        { number: 3, title: 'Chapter 3', description: 'Desc 3' },
-      ],
     }
     runOneChapterMock.mockResolvedValue(finalState)
 
     await write('story-1', { storyId: 'story-1' })
 
-    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledWith('story-1', 'freeze')
+    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledTimes(1)
+    expect(updateStoryRuntimeStatusMock).toHaveBeenCalledWith('story-1', 'writing')
     expect(printChapterReport).toHaveBeenCalledWith(finalState.chapterReport, finalState)
   })
 
-  it('does not write when the story is frozen', async () => {
+  it('does not invoke the chapter graph when the completed story is already at its boundary', async () => {
     const { write } = await import('../../src/cli/commands/write.ts')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
-    getStoryMock.mockReturnValue({
-      id: 'story-1',
-      title: 'Test Story',
-      outputDir: testTempDir,
-      status: 'freeze',
-    })
-    getStateMock.mockResolvedValue(createState({ currentChapterIndex: 1 }))
+    getStateMock.mockResolvedValue(createState({ currentChapterIndex: 3 }))
 
     await write('story-1', { storyId: 'story-1' })
 
     expect(runOneChapterMock).not.toHaveBeenCalled()
+    expect(updateStoryRuntimeStatusMock).not.toHaveBeenCalled()
+    expect(logSpy).toHaveBeenCalledWith('[MuseFlow] 故事已完成')
+    logSpy.mockRestore()
   })
 })

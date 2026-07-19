@@ -151,7 +151,7 @@ describe('updateActProgress', () => {
     expect(result.actProgress[1]?.pending).toContain('身份暴露')
   })
 
-  it('consumes explicit verifiedMandatoryBeatIds even when keyBeat text differs', async () => {
+  it('does not consume outline verifiedMandatoryBeatIds without StoryMemory proof', async () => {
     const storyArc = makeStoryArc()
     const state = {
       storyArc,
@@ -167,8 +167,8 @@ describe('updateActProgress', () => {
 
     const result = await updateActProgress(state, 1, 0.2)
 
-    expect(result.actProgress[1]?.consumed).toContain('身份暴露')
-    expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
+    expect(result.actProgress[1]?.consumed).not.toContain('身份暴露')
+    expect(result.actProgress[1]?.pending).toContain('身份暴露')
   })
 
   it('does not use paired key-beat prose to consume a mandatory beat', async () => {

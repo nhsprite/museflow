@@ -65,6 +65,11 @@ import {
 import { reconcileForeshadowEquivalence } from '../foreshadow-equivalence/reconcile.js'
 import { ForeshadowEquivalenceError } from '../foreshadow-equivalence/detector.js'
 import { validatePlannedStoryEventAuthority } from '../../../story-memory/event-authority.js'
+import { policyFromLegacyStackFields } from '../../../story-memory/resolution-policy.js'
+import {
+  evaluateStoryCompletion,
+  getUnprovenRequiredKeyBeatIdsThroughAct,
+} from '../../../core/story-completion.js'
 
 function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
@@ -161,6 +166,8 @@ const FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES: ReadonlySet<StoryEvent['type']> = 
   'foreshadow-waive',
   // 等价合并是定稿门禁的审计决策，SummaryAgent 不得产生。
   'foreshadow-merge',
+  // 情节推进必须由 writer 声明并通过语义证据门禁，SummaryAgent 不得旁路补提。
+  'plot-advance',
 ])
 
 function filterSummaryFallbackEvents(
@@ -172,8 +179,7 @@ function filterSummaryFallbackEvents(
   return events.filter((event) => {
     if (event.source !== 'chapter' || event.chapterIndex !== chapterIndex) return false
     if (seenEventIds.has(event.id)) return false
-    // SummaryAgent 作为事件补提 fallback，禁止脑补新伏笔或调度决策类事件；
-    // plot-advance 已通过 filterStoryEventsForStoryArc 校验为已知 beat，允许补提。
+    // SummaryAgent 作为事件补提 fallback，禁止脑补需要独立语义证明或调度授权的事件。
     if (FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES.has(event.type)) return false
     seenEventIds.add(event.id)
     return true
@@ -237,6 +243,31 @@ function buildActBoundaryPendingIssue(storyId: string, act: ActArc, pendingBeats
     source: 'outline_compliance',
     retryStrategy: 'manual',
   }
+}
+
+function buildRequiredBeatCompletionIssues(
+  beatIds: readonly string[],
+  chapterIndex: number,
+  existingIssues: readonly Issue[]
+): Issue[] {
+  const existingBeatIds = new Set(
+    existingIssues
+      .filter((issue) => issue.ruleId === 'story-completion.required-beat-unproven')
+      .flatMap((issue) => (issue.subject ? [issue.subject] : []))
+  )
+  return beatIds
+    .filter((beatId) => !existingBeatIds.has(beatId))
+    .map((beatId) => ({
+      id: `story-completion-unproven-${beatId}-${chapterIndex}`,
+      ruleId: 'story-completion.required-beat-unproven',
+      type: 'outline_coverage' as const,
+      severity: 'error' as const,
+      description: `required beat ${beatId} 已到结构边界，但尚无通过验证的 StoryMemory 事件证据，不能完成当前叙事阶段。`,
+      subject: beatId,
+      location: `第 ${chapterIndex + 1} 章`,
+      source: 'outline_compliance' as const,
+      retryStrategy: 'draft' as const,
+    }))
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -878,6 +909,20 @@ export async function finalizeChapter(
         buildActBoundaryPendingIssue(state.story.id, finalizedAct, finalizedProgress.pending),
       ]
     }
+    if (updatedStoryArc && updatedStoryMemory) {
+      const unprovenKeyBeatIssues = buildRequiredBeatCompletionIssues(
+        getUnprovenRequiredKeyBeatIdsThroughAct(
+          updatedStoryArc,
+          updatedStoryMemory,
+          finalizedAct.index
+        ),
+        chapterIndex,
+        updatedPendingIssues
+      )
+      if (unprovenKeyBeatIssues.length > 0) {
+        updatedPendingIssues = [...updatedPendingIssues, ...unprovenKeyBeatIssues]
+      }
+    }
   }
 
   const isStoryEnd = chapterIndex + 1 >= updatedTotalChapters
@@ -907,6 +952,45 @@ export async function finalizeChapter(
           retryStrategy: 'draft' as const,
         })),
       ]
+    }
+  }
+
+  if (isStoryEnd) {
+    const completionAudit = evaluateStoryCompletion({
+      currentChapterIndex: nextIndex,
+      totalChapters: updatedTotalChapters,
+      storyArc: updatedStoryArc,
+      storyMemory: updatedStoryMemory,
+      pendingIssues: updatedPendingIssues,
+    })
+    const unprovenBeatIssues = buildRequiredBeatCompletionIssues(
+      completionAudit.unprovenBeatIds,
+      chapterIndex,
+      updatedPendingIssues
+    )
+    if (unprovenBeatIssues.length > 0) {
+      updatedPendingIssues = [...updatedPendingIssues, ...unprovenBeatIssues]
+    }
+    const existingStructuralBlockers = new Set(
+      updatedPendingIssues
+        .filter((issue) => issue.ruleId === 'story-completion.structural-blocker')
+        .flatMap((issue) => (issue.subject ? [issue.subject] : []))
+    )
+    const structuralIssues = completionAudit.structuralBlockerCodes
+      .filter((code) => !existingStructuralBlockers.has(code))
+      .map((code) => ({
+        id: `story-completion-structural-${code}-${chapterIndex}`,
+        ruleId: 'story-completion.structural-blocker',
+        type: 'state_corruption' as const,
+        severity: 'error' as const,
+        description: `全书已到规划边界，但完结审计缺少结构化权威数据：${code}。`,
+        subject: code,
+        location: `第 ${chapterIndex + 1} 章`,
+        source: 'state_reconciliation' as const,
+        retryStrategy: 'manual' as const,
+      }))
+    if (structuralIssues.length > 0) {
+      updatedPendingIssues = [...updatedPendingIssues, ...structuralIssues]
     }
   }
 
@@ -1032,9 +1116,27 @@ function buildChapterReport(
 
   report.stateCorrections = buildStateCorrections(updatedStoryState)
 
-  report.foreshadowsPlanted = state.foreshadowStack.filter(
-    (f) => f.createdAtChapter === chapterIndex + 1
-  ).length
+  const plantedForeshadows = state.foreshadowStack.filter(
+    (foreshadow) => foreshadow.createdAtChapter === chapterIndex + 1
+  )
+  report.foreshadowsPlantedDetails = plantedForeshadows.map((foreshadow) => {
+    const memory = state.storyMemory?.foreshadows[foreshadow.id]
+    return {
+      id: foreshadow.id,
+      text: foreshadow.text,
+      expectedFulfillChapter:
+        memory !== undefined
+          ? memory.expectedFulfillChapter
+          : foreshadow.expectedFulfillChapter >= Number.MAX_SAFE_INTEGER
+            ? null
+            : foreshadow.expectedFulfillChapter,
+      resolutionPolicy:
+        memory?.resolutionPolicy ??
+        foreshadow.resolutionPolicy ??
+        policyFromLegacyStackFields(foreshadow.required, foreshadow.expectedFulfillChapter),
+    }
+  })
+  report.foreshadowsPlanted = plantedForeshadows.length
   report.foreshadowsFulfilled = state.foreshadowStack.filter(
     (f) => f.fulfilledChapter === chapterIndex + 1
   ).length

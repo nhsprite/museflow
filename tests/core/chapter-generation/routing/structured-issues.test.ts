@@ -20,6 +20,7 @@ function makeResult(
     overdueForeshadows: [],
     falseFulfillments: [],
     foreshadowFulfillmentRejections: [],
+    plotAdvanceRejections: [],
     unclaimedMandatoryBeats: [],
     claimedButUnprovenBeats: [],
     stateConflicts: [],
@@ -109,5 +110,52 @@ describe('buildStructuredIssues foreshadow semantic rejections', () => {
     expect(issues[0]?.description).toContain('fs-a')
     expect(issues[0]?.description).toContain('uncertain')
     expect(issues[0]?.description).toContain('证据不足以确定是否完成回收。')
+  })
+})
+
+describe('buildStructuredIssues plot semantic rejections', () => {
+  it('turns a rejected plot event into one blocking beat issue with the verifier reason', () => {
+    const issues = buildStructuredIssues(
+      makeResult({
+        claimedButUnprovenBeats: ['beat-a'],
+        plotAdvanceRejections: [
+          {
+            eventId: 'evt-a',
+            beatId: 'beat-a',
+            evidenceParagraphIndex: 1,
+            verdict: 'not_proven',
+            reason: '证据没有呈现要求的不可逆变化。',
+          },
+        ],
+      }),
+      2
+    )
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      ruleId: 'structured.beat-unproven',
+      type: 'beat_unproven',
+      severity: 'error',
+      subject: 'beat-a',
+    })
+    expect(issues[0]?.description).toContain('evt-a')
+    expect(issues[0]?.description).toContain('not_proven')
+    expect(issues[0]?.description).toContain('证据没有呈现要求的不可逆变化。')
+    expect(issues[0]?.suggestion).toContain('可观察的事件场景')
+    expect(issues[0]?.suggestion).toContain('@pN')
+  })
+
+  it('attaches an actionable suggestion when a claimed beat has no matching event', () => {
+    const issues = buildStructuredIssues(makeResult({ claimedButUnprovenBeats: ['beat-b'] }), 2)
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      ruleId: 'structured.beat-unproven',
+      type: 'beat_unproven',
+      severity: 'error',
+      subject: 'beat-b',
+    })
+    expect(issues[0]?.suggestion).toContain('可观察事件场景')
+    expect(issues[0]?.suggestion).toContain('plot-advance')
   })
 })

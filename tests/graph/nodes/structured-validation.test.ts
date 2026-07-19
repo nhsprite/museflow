@@ -136,12 +136,22 @@ describe('validateChapterStructured', () => {
   })
 
   it('treats current chapter plot-advance events as proof for claimed beats', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('角色完成了不可逆的关键选择。')
     const plan: ChapterPlan = {
       chapterIndex: 3,
       sections: [],
       timeline: [],
       outlineCheck: [],
-      expectedEvents: [],
+      expectedEvents: [
+        {
+          id: 'evt-expected',
+          type: 'plot-advance',
+          plotId: 'plot-1',
+          beatId: 'beat-1',
+          chapterIndex: 3,
+          source: 'outline',
+        },
+      ],
       claimedBeatIds: ['beat-1'],
       fulfilledForeshadowIds: [],
       introducedForeshadowIds: [],
@@ -174,13 +184,99 @@ describe('validateChapterStructured', () => {
           beatId: 'beat-1',
           chapterIndex: 3,
           source: 'chapter',
+          evidence: { paragraphIndex: 1 },
         },
       ],
+      story: { outputDir: '/tmp/semantic-plot-test' },
+    } as ReducedGraphState
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValueOnce({
+      judgments: [
+        {
+          eventId: 'evt-1',
+          beatId: 'beat-1',
+          verdict: 'proven',
+          reason: '证据完整实现了节拍。',
+        },
+      ],
+    })
+
+    const result = await validateChapterStructured(context, state)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual([])
+    expect(result.structuredValidationResult?.plotAdvanceRejections).toEqual([])
+  })
+
+  it('does not accept an in-range paragraph index as semantic proof of a beat', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('角色仍维持原状，没有作出选择。')
+    const event: StoryEvent = {
+      id: 'evt-false-proof',
+      type: 'plot-advance',
+      plotId: 'plot-1',
+      beatId: 'beat-1',
+      chapterIndex: 3,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [{ ...event, id: 'evt-expected', source: 'outline' }],
+      claimedBeatIds: ['beat-1'],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      beats: {
+        'beat-1': {
+          id: 'beat-1',
+          description: '角色作出不可逆的关键选择',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 3,
+          provenByEventIds: [],
+        },
+      },
+    }
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValueOnce({
+      judgments: [
+        {
+          eventId: 'evt-false-proof',
+          beatId: 'beat-1',
+          verdict: 'not_proven',
+          reason: '证据没有发生要求的选择。',
+        },
+      ],
+    })
+    const state = {
+      currentChapterIndex: 3,
+      story: { outputDir: '/tmp/semantic-plot-test' },
+      storyMemory: memory,
+      chapterPlan: plan,
+      draftChapterEvents: [event],
     } as ReducedGraphState
 
-    const result = await validateChapterStructured(createMockContext(), state)
+    const result = await validateChapterStructured(context, state)
 
-    expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual([])
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual(['beat-1'])
+    expect(result.structuredValidationResult?.plotAdvanceRejections).toEqual([
+      {
+        eventId: 'evt-false-proof',
+        beatId: 'beat-1',
+        evidenceParagraphIndex: 1,
+        verdict: 'not_proven',
+        reason: '证据没有发生要求的选择。',
+      },
+    ])
   })
 
   it('validates chapter final-state declarations against draft events', async () => {

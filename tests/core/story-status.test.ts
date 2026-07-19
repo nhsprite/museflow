@@ -7,6 +7,7 @@ import { JsonCheckpointer } from '../../src/graph/checkpointer.js'
 import { updateStoryStatusInCheckpoint } from '../../src/core/runner.js'
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+import { STORY_STATUSES } from '../../src/types/story.js'
 
 function makeState(outputDir: string): ReducedGraphState {
   return {
@@ -76,6 +77,10 @@ describe('updateStoryStatusInCheckpoint', () => {
     outputDir = undefined
   })
 
+  it('does not expose a freeze story status', () => {
+    expect(STORY_STATUSES).not.toContain('freeze')
+  })
+
   it('updates story status in the latest checkpoint before exporting meta projection', async () => {
     outputDir = mkdtempSync(join(tmpdir(), 'museflow-status-'))
     const checkpointer = new JsonCheckpointer()
@@ -91,15 +96,15 @@ describe('updateStoryStatusInCheckpoint', () => {
       {}
     )
 
-    await updateStoryStatusInCheckpoint('story_status_test', outputDir, 'freeze', checkpointer)
+    await updateStoryStatusInCheckpoint('story_status_test', outputDir, 'done', checkpointer)
 
     const tuple = await checkpointer.getTuple({
       configurable: { thread_id: 'story_status_test', outputDir },
     })
     const state = tuple?.checkpoint.channel_values as ReducedGraphState
-    expect(state.story.status).toBe('freeze')
+    expect(state.story.status).toBe('done')
 
     const meta = JSON.parse(readFileSync(join(outputDir, 'meta.json'), 'utf-8'))
-    expect(meta.story.status).toBe('freeze')
+    expect(meta.story.status).toBe('done')
   })
 })

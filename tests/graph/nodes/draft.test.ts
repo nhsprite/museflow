@@ -276,7 +276,7 @@ describe('draft_chapter output validation', () => {
     expect(written.startsWith('# 第16章 第十七页的空白')).toBe(true)
   })
 
-  it('auto-completes missing expected events in the STORY_EVENTS block', async () => {
+  it('leaves missing expected events absent for structured validation', async () => {
     const state = {
       story: { id: 'test', title: 'Test', outputDir: tmpDir },
       idea: 'test',
@@ -336,18 +336,13 @@ check
 
     const result = await draft_chapter(createMockContext(), state)
 
-    expect(result.draftChapterEvents).toHaveLength(1)
-    expect(result.draftChapterEvents?.[0]).toMatchObject({
-      type: 'character-location',
-      characterId: 'c-hero',
-      locationId: 'loc-home',
-    })
+    expect(result.draftChapterEvents).toEqual([])
 
     const written = await fs.readFile(
       path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
       'utf8'
     )
-    expect(written).toContain('character-location: c-hero -> loc-home')
+    expect(written).not.toContain('character-location: c-hero -> loc-home')
   })
 
   it('returns canonical/superseded facts deltas from the reconciled state', async () => {

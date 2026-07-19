@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  completeMissingExpectedEvents,
+  acceptEmittedChapterEvents,
   augmentExpectedEventsWithClaimedBeats,
 } from '../../src/story-memory/event-completion.js'
 import type { StoryEvent } from '../../src/types/story-memory.js'
@@ -8,7 +8,7 @@ import type { ChapterPlan } from '../../src/agents/types.js'
 import type { StoryArc } from '../../src/types/outline.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 
-describe('completeMissingExpectedEvents', () => {
+describe('acceptEmittedChapterEvents', () => {
   const content = `=== PRE_WRITE_CHECK ===
 check
 
@@ -28,17 +28,7 @@ check
 === STORY_FINAL_STATE ===
 []`
 
-  it('returns unchanged when no events are missing', () => {
-    const expected: StoryEvent[] = [
-      {
-        id: 'evt-1',
-        type: 'character-location',
-        characterId: 'c-1',
-        locationId: 'loc-2',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-    ]
+  it('preserves writer-emitted chapter events and content', () => {
     const actual: StoryEvent[] = [
       {
         id: 'evt-actual',
@@ -50,42 +40,12 @@ check
         evidence: { paragraphIndex: 1 },
       },
     ]
-    const result = completeMissingExpectedEvents(content, expected, actual, 0)
-    expect(result.completedCount).toBe(0)
+    const result = acceptEmittedChapterEvents(content, actual)
     expect(result.events).toEqual(actual)
     expect(result.content).toBe(content)
   })
 
-  it('completes missing events with valid paragraph evidence', () => {
-    const expected: StoryEvent[] = [
-      {
-        id: 'evt-1',
-        type: 'character-location',
-        characterId: 'c-1',
-        locationId: 'loc-2',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-      {
-        id: 'evt-2',
-        type: 'item-location',
-        itemId: 'item-1',
-        holderId: null,
-        locationId: 'loc-2',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-      {
-        id: 'evt-3',
-        type: 'foreshadow-introduce',
-        foreshadowId: 'fs-1',
-        expectedFulfillChapter: 5,
-        kind: 'plot',
-        required: true,
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-    ]
+  it('returns only events actually emitted by the writer', () => {
     const actual: StoryEvent[] = [
       {
         id: 'evt-actual',
@@ -97,105 +57,37 @@ check
         evidence: { paragraphIndex: 1 },
       },
     ]
-    const result = completeMissingExpectedEvents(content, expected, actual, 0)
-    expect(result.completedCount).toBe(2)
-    expect(result.events).toHaveLength(3)
-
-    const completedItem = result.events.find((e) => e.type === 'item-location')
-    expect(completedItem).toBeDefined()
-    expect(completedItem!.evidence).toEqual({ paragraphIndex: 1 })
-
-    const completedFs = result.events.find((e) => e.type === 'foreshadow-introduce')
-    expect(completedFs).toBeDefined()
-    expect(completedFs!.evidence).toEqual({ paragraphIndex: 2 })
+    const result = acceptEmittedChapterEvents(content, actual)
+    expect(result.events).toEqual(actual)
+    expect(result.content).toBe(content)
   })
 
-  it('injects completed events into the STORY_EVENTS block', () => {
-    const expected: StoryEvent[] = [
-      {
-        id: 'evt-1',
-        type: 'item-location',
-        itemId: 'item-1',
-        holderId: null,
-        locationId: 'loc-2',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-    ]
+  it('does not inject events into the STORY_EVENTS block', () => {
     const actual: StoryEvent[] = []
-    const result = completeMissingExpectedEvents(content, expected, actual, 0)
-    expect(result.completedCount).toBe(1)
+    const result = acceptEmittedChapterEvents(content, actual)
+    expect(result.events).toEqual([])
     expect(result.content).toContain('- character-location: c-1 -> loc-2 @p1')
-    expect(result.content).toContain('- item-location: item-1 / holder=none / location=loc-2 @p1')
+    expect(result.content).not.toContain('- item-location: item-1 / holder=none / location=loc-2')
   })
 
-  it('creates a STORY_EVENTS block if none exists', () => {
+  it('does not create a STORY_EVENTS block when the writer omitted it', () => {
     const contentWithoutBlock = `=== CHAPTER_CONTENT ===\n# 第1章\n\n第一段。`
-    const expected: StoryEvent[] = [
-      {
-        id: 'evt-1',
-        type: 'character-location',
-        characterId: 'c-1',
-        locationId: 'loc-1',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-    ]
-    const result = completeMissingExpectedEvents(contentWithoutBlock, expected, [], 0)
-    expect(result.completedCount).toBe(1)
-    expect(result.content).toContain('=== STORY_EVENTS ===')
-    expect(result.content).toContain('- character-location: c-1 -> loc-1 @p1')
+    const result = acceptEmittedChapterEvents(contentWithoutBlock, [])
+    expect(result.events).toEqual([])
+    expect(result.content).not.toContain('=== STORY_EVENTS ===')
     expect(result.content).toContain('=== CHAPTER_CONTENT ===')
   })
 
-  it('caps paragraph index at the total paragraph count', () => {
+  it('does not assign arbitrary evidence paragraphs to omitted events', () => {
     const shortContent = `=== CHAPTER_CONTENT ===\n\n# 第1章\n\n只有一段。`
-    const expected: StoryEvent[] = [
-      {
-        id: 'evt-1',
-        type: 'character-location',
-        characterId: 'c-1',
-        locationId: 'loc-1',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-      {
-        id: 'evt-2',
-        type: 'character-location',
-        characterId: 'c-2',
-        locationId: 'loc-2',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-      {
-        id: 'evt-3',
-        type: 'character-location',
-        characterId: 'c-3',
-        locationId: 'loc-3',
-        chapterIndex: 0,
-        source: 'chapter',
-      },
-    ]
-    const result = completeMissingExpectedEvents(shortContent, expected, [], 0)
-    expect(result.completedCount).toBe(3)
+    const result = acceptEmittedChapterEvents(shortContent, [])
     const paragraphIndices = result.events.map((e) => e.evidence?.paragraphIndex)
-    expect(paragraphIndices).toEqual([1, 2, 2])
+    expect(paragraphIndices).toEqual([])
   })
 
   it('does not synthesize outline-only foreshadow-merge events into chapter text', () => {
-    const merge: StoryEvent = {
-      id: 'evt-merge-1',
-      type: 'foreshadow-merge',
-      canonicalForeshadowId: 'fs-early',
-      duplicateForeshadowId: 'fs-late',
-      reason: 'Same unresolved obligation.',
-      chapterIndex: 0,
-      source: 'outline',
-    }
+    const result = acceptEmittedChapterEvents(content, [])
 
-    const result = completeMissingExpectedEvents(content, [merge], [], 0)
-
-    expect(result.completedCount).toBe(0)
     expect(result.events).toEqual([])
     expect(result.content).toBe(content)
   })
@@ -211,9 +103,8 @@ check
       source: 'outline',
     }
 
-    const result = completeMissingExpectedEvents(content, [], [merge], 0)
+    const result = acceptEmittedChapterEvents(content, [merge])
 
-    expect(result.completedCount).toBe(0)
     expect(result.events).toEqual([])
     expect(result.content).toBe(content)
   })
@@ -238,9 +129,8 @@ check
       source: 'outline',
     }
 
-    const result = completeMissingExpectedEvents(content, [], [ordinary, merge], 0)
+    const result = acceptEmittedChapterEvents(content, [ordinary, merge])
 
-    expect(result.completedCount).toBe(0)
     expect(result.events).toEqual([ordinary])
     expect(result.content).toBe(content)
   })

@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { createMockContext } from '../utils/mock-context.ts'
 import { applyEvents, createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 import type { StoryEvent } from '../../src/types/story-memory.js'
+import { buildCharacterWhitelist } from '../../src/utils/character-whitelist.js'
 
 const testTempDir = join(tmpdir(), `museflow-runner-revalidation-${randomUUID().slice(0, 8)}`)
 const testOutputsDir = join(
@@ -413,6 +414,139 @@ describe('runner revalidation', () => {
     expect(normalizedAgain.storyMemory?.events).toHaveLength(
       normalized.storyMemory?.events.length ?? 0
     )
+  })
+
+  it('preserves valid runtime character values and object identity', async () => {
+    const character = {
+      id: 'character-current',
+      storyId: 'story-1',
+      name: 'Current Character',
+      aliases: ['Current Alias'],
+      isProtagonist: true,
+      description: null,
+      dialogueStyle: null,
+      createdAt: 1,
+    }
+    const checkpointState = createBaseGraphState({ characters: [character] })
+    const { normalizeRuntimeCharacters } = await import('../../src/core/runner.js')
+
+    const normalized = normalizeRuntimeCharacters(
+      checkpointState as Parameters<typeof normalizeRuntimeCharacters>[0]
+    )
+
+    expect(normalized).toBe(checkpointState)
+    expect(normalized.characters[0]).toBe(character)
+    expect(normalized.characters[0]).toMatchObject({
+      aliases: ['Current Alias'],
+      isProtagonist: true,
+    })
+  })
+
+  it('normalizes legacy checkpoint characters when loading runtime state without mutating them', async () => {
+    const legacyCharacter = {
+      id: 'character-legacy',
+      storyId: 'story-1',
+      name: 'Legacy Character',
+      description: null,
+      dialogueStyle: null,
+      createdAt: 1,
+    }
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({ characters: [legacyCharacter] }),
+      config: { configurable: { checkpoint_id: 'checkpoint-legacy' } },
+    })
+    const { getState } = await import('../../src/core/runner.js')
+
+    const state = await getState('story-1', createMockContext())
+
+    expect(state?.characters[0]).toMatchObject({
+      aliases: [],
+      isProtagonist: false,
+    })
+    expect(legacyCharacter).not.toHaveProperty('aliases')
+    expect(legacyCharacter).not.toHaveProperty('isProtagonist')
+    expect(() => buildCharacterWhitelist(state?.characters ?? [])).not.toThrow()
+  })
+
+  it('replaces malformed runtime character compatibility fields with neutral defaults', async () => {
+    const malformedCharacter = {
+      id: 'character-malformed',
+      storyId: 'story-1',
+      name: 'Malformed Character',
+      aliases: ['Valid Alias', 42],
+      isProtagonist: 'yes',
+      description: null,
+      dialogueStyle: null,
+      createdAt: 1,
+    }
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({ characters: [malformedCharacter] }),
+      config: { configurable: { checkpoint_id: 'checkpoint-malformed' } },
+    })
+    const { getState } = await import('../../src/core/runner.js')
+
+    const state = await getState('story-1', createMockContext())
+
+    expect(state?.characters[0]).toMatchObject({
+      aliases: [],
+      isProtagonist: false,
+    })
+    expect(malformedCharacter.aliases).toEqual(['Valid Alias', 42])
+    expect(malformedCharacter.isProtagonist).toBe('yes')
+  })
+
+  it('normalizes legacy character records from the selected rewrite checkpoint', async () => {
+    const latestCharacter = {
+      id: 'character-latest',
+      storyId: 'story-1',
+      name: 'Latest Character',
+      description: null,
+      dialogueStyle: null,
+      createdAt: 2,
+    }
+    const markerCharacter = {
+      id: 'character-marker',
+      storyId: 'story-1',
+      name: 'Marker Character',
+      description: null,
+      dialogueStyle: null,
+      createdAt: 1,
+    }
+    const latestState = createBaseGraphState({
+      currentChapterIndex: 2,
+      characters: [latestCharacter],
+    })
+    const markerState = createBaseGraphState({
+      currentChapterIndex: 1,
+      characters: [markerCharacter],
+    })
+    getChapterMarker.mockResolvedValue('checkpoint-before-target')
+    mockGraph.getState.mockImplementation(async (config: Record<string, any>) => ({
+      values: config.configurable.checkpoint_id ? markerState : latestState,
+      config: {
+        configurable: {
+          checkpoint_id: config.configurable.checkpoint_id ?? 'checkpoint-latest',
+        },
+      },
+    }))
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    await runOneChapter(
+      'story-1',
+      { mode: 'rewrite', targetChapterIndex: 1, userResponse: true },
+      createMockContext()
+    )
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, any>
+    expect(invokedState.characters).toEqual([
+      expect.objectContaining({
+        id: 'character-marker',
+        aliases: [],
+        isProtagonist: false,
+      }),
+    ])
+    expect(markerCharacter).not.toHaveProperty('aliases')
+    expect(markerCharacter).not.toHaveProperty('isProtagonist')
   })
 
   it('propagates rewriteRequested when the graph returns broken state', async () => {

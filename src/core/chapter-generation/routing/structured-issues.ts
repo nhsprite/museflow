@@ -46,13 +46,31 @@ export function buildStructuredIssues(
       })
     )
   }
+  const rejectedBeatIds = new Set<string>()
+  for (const rejection of result.plotAdvanceRejections ?? []) {
+    rejectedBeatIds.add(rejection.beatId)
+    issues.push(
+      structuredError(chapterIndex, {
+        ruleId: 'structured.beat-unproven',
+        type: 'beat_unproven',
+        subject: rejection.beatId,
+        description: `节拍 ${rejection.beatId} 的推进事件 ${rejection.eventId} 未通过语义验证（${rejection.verdict}）：${rejection.reason}`,
+        suggestion:
+          '在正文中把该节拍落实为可观察的事件场景（行动、揭示、决定或后果，而不是保持原状、氛围铺垫或口头声称"已完成"），并将 plot-advance 事件的 @pN 证据指向写出该场景的段落。',
+        source: 'outline_compliance',
+      })
+    )
+  }
   for (const beatId of result.claimedButUnprovenBeats) {
+    if (rejectedBeatIds.has(beatId)) continue
     issues.push(
       structuredError(chapterIndex, {
         ruleId: 'structured.beat-unproven',
         type: 'beat_unproven',
         subject: beatId,
         description: `认领的节拍 ${beatId} 未在正文中找到对应事件`,
+        suggestion:
+          '正文未实质推进该节拍：需在正文中写出该节拍的可观察事件场景，并在 STORY_EVENTS 中声明对应 plot-advance 事件，@pN 证据指向该场景所在段落。',
         source: 'outline_compliance',
       })
     )

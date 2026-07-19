@@ -10,10 +10,10 @@ import {
 import { createCheckpointService } from '../../storage/checkpoint-service.js'
 import type { Issue } from '../../types/agent.js'
 import { requireStoryState } from '../utils/story-loader.js'
-import { guardStoryWritable } from '../utils/story-guard.js'
 import { runOneChapterWithConflictResolution } from '../utils/chapter-runner.js'
 import { handleCommandError } from '../utils/command-error.js'
 import { question } from '../utils/prompt.js'
+import { evaluateStoryCompletion } from '../../core/story-completion.js'
 
 interface RewriteOptions {
   storyId: string
@@ -24,10 +24,7 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
   const targetChapter = options.chapter ? parseInt(options.chapter, 10) : null
 
   const { story, state } = await requireStoryState(storyId)
-
-  if (await guardStoryWritable(storyId, story, state)) {
-    return
-  }
+  const atPlannedBoundary = evaluateStoryCompletion(state).chapterLimitReached
 
   if (targetChapter !== null) {
     if (targetChapter < 1 || targetChapter > state.totalChapters) {
@@ -69,7 +66,9 @@ export async function rewrite(storyId: string, options: RewriteOptions): Promise
     printIssues(state.pendingIssues)
     console.log()
   } else {
-    targetChapterIndex = state.currentChapterIndex
+    targetChapterIndex = atPlannedBoundary
+      ? Math.max(0, state.currentChapterIndex - 1)
+      : state.currentChapterIndex
     const chapterNum = targetChapterIndex + 1
     const previewState = prepareRewritePreviewState(state, targetChapterIndex)
     console.log(`[MuseFlow] 重写章节: ${story.title}`)
@@ -135,15 +134,20 @@ async function handleRewrite(
 
     printChapterReport(result.chapterReport, result)
 
-    if (result.currentChapterIndex >= result.totalChapters) {
-      await updateStatus('freeze')
+    const completionAudit = evaluateStoryCompletion(result)
+    await updateStatus('writing')
+
+    if (completionAudit.status === 'complete') {
       if (errors.length === 0) {
-        console.log('\n✨ 质量检查通过，故事已完成并冻结\n')
+        console.log('\n✨ 质量检查通过，故事已完成\n')
       }
       return
     }
 
-    await updateStatus('writing')
+    if (completionAudit.chapterLimitReached) {
+      console.log('\n[MuseFlow] 已到规划章节边界，但故事未通过完结门禁。')
+      return
+    }
 
     if (errors.length > 0) {
       console.log(`\n状态: 仍有 ${errors.length} 个严重问题`)
