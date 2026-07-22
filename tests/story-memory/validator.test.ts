@@ -489,4 +489,254 @@ describe('validateChapterEvents', () => {
       expect(result.finalStateMismatches).toEqual([])
     })
   })
+
+  describe('final-state return-to-origin completion', () => {
+    const chapterContent = '二人离开东厢。\n\n散堂后退回东厢。'
+
+    const characterLocationEvent = (
+      id: string,
+      locationId: string,
+      chapterIndex = 1,
+      source: 'chapter' | 'final-state-completion' = 'chapter'
+    ) => ({
+      id,
+      type: 'character-location' as const,
+      characterId: 'c-1',
+      locationId,
+      chapterIndex,
+      source,
+      evidence: { paragraphIndex: 1 },
+    })
+
+    function memoryWithCharacterLocation(locationId: string) {
+      return applyEvents(createEmptyStoryMemory(), [
+        {
+          id: 'prior-1',
+          type: 'character-location' as const,
+          characterId: 'c-1',
+          locationId,
+          chapterIndex: 0,
+          source: 'chapter' as const,
+        },
+      ])
+    }
+
+    it('completes the event stream when the entity returns to its pre-chapter value', () => {
+      const memory = memoryWithCharacterLocation('l-1')
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        characterLocationEvent('e1', 'l-1'),
+        characterLocationEvent('e2', 'loc-hall'),
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        chapterContent,
+        requireEvidence: true,
+        finalStateDeclarations: [{ entityId: 'c-1', attribute: 'location', value: 'l-1' }],
+      })
+
+      expect(result.finalStateMismatches).toEqual([])
+      expect(result.autoCompletedEvents).toHaveLength(1)
+      const completion = result.autoCompletedEvents[0]!
+      expect(completion).toMatchObject({
+        type: 'character-location',
+        characterId: 'c-1',
+        locationId: 'l-1',
+        chapterIndex: 1,
+        source: 'final-state-completion',
+        evidence: { paragraphIndex: 2 },
+      })
+      // 补全事件排在末尾，使该实体最后一条位置事件与声明一致
+      expect(result.actualEvents[result.actualEvents.length - 1]?.id).toBe(completion.id)
+    })
+
+    it('keeps the mismatch when the declared value never appears in chapter events', () => {
+      const memory = memoryWithCharacterLocation('l-1')
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [characterLocationEvent('e1', 'loc-hall')]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        chapterContent,
+        requireEvidence: true,
+        finalStateDeclarations: [{ entityId: 'c-1', attribute: 'location', value: 'l-1' }],
+      })
+
+      expect(result.autoCompletedEvents).toEqual([])
+      expect(result.finalStateMismatches).toEqual([
+        {
+          entityId: 'c-1',
+          attribute: 'location',
+          declaredValue: 'l-1',
+          actualValue: 'loc-hall',
+        },
+      ])
+    })
+
+    it('keeps the mismatch when the declared value differs from the pre-chapter projection', () => {
+      const memory = memoryWithCharacterLocation('l-0')
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        characterLocationEvent('e1', 'l-1'),
+        characterLocationEvent('e2', 'loc-hall'),
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        chapterContent,
+        requireEvidence: true,
+        finalStateDeclarations: [{ entityId: 'c-1', attribute: 'location', value: 'l-1' }],
+      })
+
+      expect(result.autoCompletedEvents).toEqual([])
+      expect(result.finalStateMismatches).toHaveLength(1)
+    })
+
+    it('recomputes completions idempotently and never diffs them as unexpected', () => {
+      const memory = memoryWithCharacterLocation('l-1')
+      const plan = createEmptyChapterPlan(1, {
+        expectedEvents: [
+          { ...characterLocationEvent('e1', 'l-1'), source: 'chapter' as const },
+          { ...characterLocationEvent('e2', 'loc-hall'), source: 'chapter' as const },
+        ],
+      })
+      const staleCompletion = {
+        ...characterLocationEvent('stale-1', 'l-1', 1, 'final-state-completion'),
+        evidence: { paragraphIndex: 2 },
+      }
+      const actualEvents = [
+        characterLocationEvent('e1', 'l-1'),
+        characterLocationEvent('e2', 'loc-hall'),
+        staleCompletion,
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        chapterContent,
+        requireEvidence: true,
+        finalStateDeclarations: [{ entityId: 'c-1', attribute: 'location', value: 'l-1' }],
+      })
+
+      expect(result.unexpectedEvents).toEqual([])
+      expect(result.missingEvents).toEqual([])
+      expect(result.finalStateMismatches).toEqual([])
+      expect(result.autoCompletedEvents).toHaveLength(1)
+      expect(result.autoCompletedEvents[0]?.id).not.toBe('stale-1')
+      expect(result.actualEvents.some((event) => event.id === 'stale-1')).toBe(false)
+    })
+
+    it('completes status declarations by copying the last status event shape', () => {
+      const memory = applyEvents(createEmptyStoryMemory(), [
+        {
+          id: 'prior-1',
+          type: 'character-status' as const,
+          characterId: 'c-1',
+          attribute: 'condition',
+          value: 'active',
+          chapterIndex: 0,
+          source: 'chapter' as const,
+        },
+      ])
+      const plan = createEmptyChapterPlan(1)
+      const statusEvent = (id: string, value: string) => ({
+        id,
+        type: 'character-status' as const,
+        characterId: 'c-1',
+        attribute: 'condition',
+        value,
+        chapterIndex: 1,
+        source: 'chapter' as const,
+        evidence: { paragraphIndex: 1 },
+      })
+      const result = validateChapterEvents(
+        memory,
+        1,
+        plan,
+        [statusEvent('e1', 'active'), statusEvent('e2', 'disguised')],
+        {
+          chapterContent,
+          requireEvidence: true,
+          finalStateDeclarations: [{ entityId: 'c-1', attribute: 'status', value: 'active' }],
+        }
+      )
+
+      expect(result.finalStateMismatches).toEqual([])
+      expect(result.autoCompletedEvents).toHaveLength(1)
+      expect(result.autoCompletedEvents[0]).toMatchObject({
+        type: 'character-status',
+        characterId: 'c-1',
+        attribute: 'condition',
+        value: 'active',
+        source: 'final-state-completion',
+      })
+    })
+
+    it('completes item-location with carried semantics when the declared value is a character id', () => {
+      const memory = applyEvents(createEmptyStoryMemory(), [
+        {
+          id: 'prior-0',
+          type: 'character-location' as const,
+          characterId: 'c-1',
+          locationId: 'l-1',
+          chapterIndex: 0,
+          source: 'chapter' as const,
+        },
+        {
+          id: 'prior-1',
+          type: 'item-location' as const,
+          itemId: 'i-box',
+          holderId: 'c-1',
+          locationId: 'c-1',
+          chapterIndex: 0,
+          source: 'chapter' as const,
+        },
+      ])
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        {
+          id: 'e1',
+          type: 'item-location' as const,
+          itemId: 'i-box',
+          holderId: 'c-1',
+          locationId: 'c-1',
+          chapterIndex: 1,
+          source: 'chapter' as const,
+          evidence: { paragraphIndex: 1 },
+        },
+        {
+          id: 'e2',
+          type: 'item-location' as const,
+          itemId: 'i-box',
+          holderId: null,
+          locationId: 'loc-table',
+          chapterIndex: 1,
+          source: 'chapter' as const,
+          evidence: { paragraphIndex: 1 },
+        },
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        chapterContent,
+        requireEvidence: true,
+        finalStateDeclarations: [{ entityId: 'i-box', attribute: 'location', value: 'c-1' }],
+      })
+
+      expect(result.finalStateMismatches).toEqual([])
+      expect(result.autoCompletedEvents).toHaveLength(1)
+      expect(result.autoCompletedEvents[0]).toMatchObject({
+        type: 'item-location',
+        itemId: 'i-box',
+        holderId: 'c-1',
+        locationId: 'c-1',
+        source: 'final-state-completion',
+      })
+    })
+
+    it('does not complete when chapter content is unavailable', () => {
+      const memory = memoryWithCharacterLocation('l-1')
+      const plan = createEmptyChapterPlan(1)
+      const actualEvents = [
+        characterLocationEvent('e1', 'l-1'),
+        characterLocationEvent('e2', 'loc-hall'),
+      ]
+      const result = validateChapterEvents(memory, 1, plan, actualEvents, {
+        finalStateDeclarations: [{ entityId: 'c-1', attribute: 'location', value: 'l-1' }],
+      })
+
+      expect(result.autoCompletedEvents).toEqual([])
+      expect(result.finalStateMismatches).toHaveLength(1)
+    })
+  })
 })

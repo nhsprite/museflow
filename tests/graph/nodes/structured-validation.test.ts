@@ -468,4 +468,176 @@ describe('validateChapterStructured', () => {
     expect(context.provider.chatStructured).not.toHaveBeenCalled()
     expect(result.structuredValidationResult?.unexpectedEvents).toEqual([event])
   })
+
+  it('accepts an unauthorized plot-advance event when semantic verification proves it', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('角色完成了不可逆的关键选择。')
+    const event: StoryEvent = {
+      id: 'evt-unauthorized',
+      type: 'plot-advance',
+      plotId: 'plot-1',
+      beatId: 'beat-1',
+      chapterIndex: 3,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      beats: {
+        'beat-1': {
+          id: 'beat-1',
+          description: '关键转折',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: null,
+          provenByEventIds: [],
+        },
+      },
+    }
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValueOnce({
+      judgments: [
+        {
+          eventId: 'evt-unauthorized',
+          beatId: 'beat-1',
+          verdict: 'proven',
+          reason: '证据实现了节拍。',
+        },
+      ],
+    })
+    const state = {
+      currentChapterIndex: 3,
+      story: { outputDir: '/tmp/unauthorized-plot-test' },
+      storyMemory: memory,
+      chapterPlan: plan,
+      draftChapterEvents: [event],
+    } as ReducedGraphState
+
+    const result = await validateChapterStructured(context, state)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    // 通过语义验证：不再是未授权错误，不进丢弃列表，事件保留进 draftChapterEvents
+    expect(result.structuredValidationResult?.unexpectedEvents).toEqual([])
+    expect(result.structuredValidationResult?.droppedUnauthorizedPlotAdvanceEvents).toEqual([])
+    expect(result.structuredValidationResult?.plotAdvanceRejections).toEqual([])
+    expect(result.draftChapterEvents).toEqual([event])
+  })
+
+  it('drops an unauthorized plot-advance event that fails semantic verification without blocking', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('角色仍维持原状，没有作出选择。')
+    const event: StoryEvent = {
+      id: 'evt-unauthorized',
+      type: 'plot-advance',
+      plotId: 'plot-1',
+      beatId: 'beat-1',
+      chapterIndex: 3,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      beats: {
+        'beat-1': {
+          id: 'beat-1',
+          description: '角色作出不可逆的关键选择',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: null,
+          provenByEventIds: [],
+        },
+      },
+    }
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockResolvedValueOnce({
+      judgments: [
+        {
+          eventId: 'evt-unauthorized',
+          beatId: 'beat-1',
+          verdict: 'not_proven',
+          reason: '证据没有发生要求的选择。',
+        },
+      ],
+    })
+    const state = {
+      currentChapterIndex: 3,
+      story: { outputDir: '/tmp/unauthorized-plot-test' },
+      storyMemory: memory,
+      chapterPlan: plan,
+      draftChapterEvents: [event],
+    } as ReducedGraphState
+
+    const result = await validateChapterStructured(context, state)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    // 验证不过：不进未授权错误通道（不阻塞），进丢弃列表并从 draftChapterEvents 剔除
+    expect(result.structuredValidationResult?.unexpectedEvents).toEqual([])
+    expect(result.structuredValidationResult?.droppedUnauthorizedPlotAdvanceEvents).toEqual([event])
+    expect(result.structuredValidationResult?.plotAdvanceRejections).toEqual([])
+    expect(result.draftChapterEvents).toEqual([])
+  })
+
+  it('keeps hard rejection for unauthorized non-plot-advance events', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce('正文。')
+    const event: StoryEvent = {
+      id: 'evt-unauthorized-location',
+      type: 'character-location',
+      characterId: 'c-1',
+      locationId: 'l-1',
+      chapterIndex: 3,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [],
+      claimedBeatIds: [],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const context = createMockContext()
+    const state = {
+      currentChapterIndex: 3,
+      story: { outputDir: '/tmp/unauthorized-plot-test' },
+      storyMemory: createEmptyStoryMemory(),
+      chapterPlan: plan,
+      draftChapterEvents: [event],
+    } as ReducedGraphState
+
+    const result = await validateChapterStructured(context, state)
+
+    // 无 plot-advance 候选，不调用语义验证；非 plot-advance 未授权事件维持硬拒
+    expect(context.provider.chatStructured).not.toHaveBeenCalled()
+    expect(result.structuredValidationResult?.unexpectedEvents).toEqual([event])
+    expect(result.structuredValidationResult?.droppedUnauthorizedPlotAdvanceEvents).toEqual([])
+  })
 })

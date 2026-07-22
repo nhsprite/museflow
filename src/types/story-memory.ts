@@ -84,7 +84,12 @@ export interface StoryMemory {
 interface BaseEvent {
   id: EventId
   chapterIndex: number
-  source: 'outline' | 'chapter'
+  /**
+   * outline: 大纲/计划侧产生；chapter: 写作 agent 正文声明；
+   * final-state-completion: 系统依据章末终态声明补全的归位/状态事件（非 agent 输出，
+   * 每轮结构化校验都会剔除并按最新声明重算）。
+   */
+  source: 'outline' | 'chapter' | 'final-state-completion'
   evidence?: StoryEventEvidence
 }
 

@@ -92,6 +92,7 @@ export function projectEntities(events: StoryEvent[]): StoryMemory['entities'] {
       case 'character-location':
         ensureCharacter(characters, event.characterId)
         characters[event.characterId]!.locationId = event.locationId
+        ensureLocation(locations, event.locationId, event.chapterIndex)
         break
       case 'character-status':
         ensureCharacter(characters, event.characterId)
@@ -107,6 +108,14 @@ export function projectEntities(events: StoryEvent[]): StoryMemory['entities'] {
         items[event.itemId]!.state[event.attribute] = event.value
         break
     }
+  }
+
+  // item-location 的 locationId 可能是角色 id（随身携带语义），只把真正的地点登记进注册表。
+  // 在事件全部处理完后判断，此时角色/物品集合已完整。
+  for (const event of events) {
+    if (event.type !== 'item-location' || !event.locationId) continue
+    if (characters[event.locationId] || items[event.locationId]) continue
+    ensureLocation(locations, event.locationId, event.chapterIndex)
   }
 
   return { characters, items, locations, factions, plots: {} }
@@ -567,5 +576,17 @@ function ensureItem(items: Record<string, ItemMemory>, id: string) {
       state: {},
       introducedIn: 0,
     }
+  }
+}
+
+function ensureLocation(
+  locations: Record<string, LocationMemory>,
+  id: string | null,
+  chapterIndex: number
+) {
+  if (!id) return
+  if (!locations[id]) {
+    // name 直接沿用机器 id：不做任何自然语言推断，可读名由后续人工/迁移工具补充。
+    locations[id] = { id, name: id, introducedIn: chapterIndex }
   }
 }

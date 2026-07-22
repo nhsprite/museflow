@@ -152,6 +152,69 @@ describe('projectEntities', () => {
     const entities = projectEntities(events)
     expect(entities.items['i-1']?.state['condition']).toBe('repaired')
   })
+
+  it('registers locations from character-location events with first-seen chapter', () => {
+    const events = [
+      {
+        id: 'e1',
+        type: 'character-location' as const,
+        characterId: 'c-1',
+        locationId: 'l-1',
+        chapterIndex: 3,
+        source: 'chapter' as const,
+      },
+      {
+        id: 'e2',
+        type: 'character-location' as const,
+        characterId: 'c-2',
+        locationId: 'l-1',
+        chapterIndex: 5,
+        source: 'chapter' as const,
+      },
+    ]
+    const entities = projectEntities(events)
+    expect(entities.locations['l-1']).toEqual({ id: 'l-1', name: 'l-1', introducedIn: 3 })
+  })
+
+  it('registers item-location place ids but not character/item ids used as locations', () => {
+    const events = [
+      {
+        id: 'e1',
+        type: 'character-location' as const,
+        characterId: 'c-1',
+        locationId: 'l-1',
+        chapterIndex: 1,
+        source: 'chapter' as const,
+      },
+      {
+        id: 'e2',
+        type: 'item-location' as const,
+        itemId: 'i-1',
+        holderId: 'c-1',
+        locationId: 'c-1',
+        chapterIndex: 1,
+        source: 'chapter' as const,
+      },
+      {
+        id: 'e3',
+        type: 'item-location' as const,
+        itemId: 'i-1',
+        holderId: null,
+        locationId: 'loc-drawer',
+        chapterIndex: 2,
+        source: 'chapter' as const,
+      },
+    ]
+    const entities = projectEntities(events)
+    // 随身携带语义下 locationId 是角色 id，不得登记为地点
+    expect(entities.locations['c-1']).toBeUndefined()
+    expect(entities.locations['i-1']).toBeUndefined()
+    expect(entities.locations['loc-drawer']).toEqual({
+      id: 'loc-drawer',
+      name: 'loc-drawer',
+      introducedIn: 2,
+    })
+  })
 })
 
 describe('ensureBeatsHaveActIndex', () => {

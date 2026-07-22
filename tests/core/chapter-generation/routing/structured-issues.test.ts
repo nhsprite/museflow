@@ -26,6 +26,8 @@ function makeResult(
     stateConflicts: [],
     finalStateMismatches: [],
     finalStateUncorroborated: [],
+    autoCompletedEvents: [],
+    droppedUnauthorizedPlotAdvanceEvents: [],
     ...overrides,
   }
 }
@@ -157,5 +159,63 @@ describe('buildStructuredIssues plot semantic rejections', () => {
     })
     expect(issues[0]?.suggestion).toContain('可观察事件场景')
     expect(issues[0]?.suggestion).toContain('plot-advance')
+  })
+})
+
+describe('buildStructuredIssues unauthorized plot-advance drops', () => {
+  it('turns a dropped unauthorized plot-advance event into a non-blocking warning issue', () => {
+    const issues = buildStructuredIssues(
+      makeResult({
+        droppedUnauthorizedPlotAdvanceEvents: [
+          {
+            id: 'evt-x',
+            type: 'plot-advance',
+            plotId: 'act-5',
+            beatId: 'A5-M2',
+            chapterIndex: 51,
+            source: 'chapter',
+            evidence: { paragraphIndex: 4 },
+          },
+        ],
+      }),
+      51
+    )
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      ruleId: 'structured.plot-advance-unauthorized-dropped',
+      type: 'event_unexpected',
+      severity: 'warning',
+      subject: 'A5-M2',
+    })
+    expect(issues[0]?.description).toContain('evt-x')
+    expect(issues[0]?.description).toContain('A5-M2')
+    expect(issues[0]?.description).toContain('丢弃')
+    expect(STRUCTURED_ISSUE_TYPES.has(issues[0]!.type)).toBe(true)
+  })
+
+  it('still converts unauthorized non-plot-advance events into blocking errors', () => {
+    const issues = buildStructuredIssues(
+      makeResult({
+        unexpectedEvents: [
+          {
+            id: 'evt-loc',
+            type: 'character-location',
+            characterId: 'c-1',
+            locationId: 'l-1',
+            chapterIndex: 51,
+            source: 'chapter',
+          },
+        ],
+      }),
+      51
+    )
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      ruleId: 'structured.event-unexpected',
+      type: 'event_unexpected',
+      severity: 'error',
+    })
   })
 })

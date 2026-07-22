@@ -54,7 +54,7 @@ function invalid(reason: string): StoryEventNormalizationResult {
 interface NormalizedBase {
   id: string
   chapterIndex: number
-  source: 'outline' | 'chapter'
+  source: 'outline' | 'chapter' | 'final-state-completion'
   evidence?: StoryEventEvidence
   normalized: boolean
 }
@@ -68,15 +68,19 @@ function normalizeBase(
     return 'event.chapterIndex must be an integer'
   }
 
-  let source: 'outline' | 'chapter'
+  let source: 'outline' | 'chapter' | 'final-state-completion'
   let normalized = record.chapterIndex !== options.chapterIndex
-  if (record.source === 'outline' || record.source === 'chapter') {
+  if (
+    record.source === 'outline' ||
+    record.source === 'chapter' ||
+    record.source === 'final-state-completion'
+  ) {
     source = record.source
   } else if (options.mode === 'legacy' && record.source === undefined) {
     source = 'chapter'
     normalized = true
   } else {
-    return 'event.source must be outline or chapter'
+    return 'event.source must be outline, chapter or final-state-completion'
   }
 
   let evidence: StoryEventEvidence | undefined

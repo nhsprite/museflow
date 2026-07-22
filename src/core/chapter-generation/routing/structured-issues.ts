@@ -124,6 +124,19 @@ export function buildStructuredIssues(
       })
     )
   }
+  // 未授权 plot-advance 的丢弃项：正文级语义验证未通过，降级为 warning，不阻塞章节。
+  for (const event of result.droppedUnauthorizedPlotAdvanceEvents ?? []) {
+    issues.push({
+      id: generateId(),
+      ruleId: 'structured.plot-advance-unauthorized-dropped',
+      type: 'event_unexpected',
+      subject: event.beatId,
+      severity: 'warning',
+      description: `正文声明了未由章节规划授权的节拍推进事件 ${event.id}（beatId=${event.beatId}），未通过语义验证，已从事件流丢弃；该节拍保持未消费状态`,
+      source: 'outline_compliance',
+      location: `第 ${chapterIndex + 1} 章`,
+    })
+  }
   for (const event of result.eventsMissingEvidence) {
     issues.push(
       structuredError(chapterIndex, {
@@ -159,6 +172,13 @@ export function buildStructuredIssues(
           ? `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）未被事件流支撑：本章 STORY_EVENTS 中没有该实体的${attributeLabel}事件`
           : `章末终态声明 ${mismatch.entityId}（${attributeLabel}=${mismatch.declaredValue}）与事件流不符：该实体最后一条${attributeLabel}事件的值为 ${mismatch.actualValue}`,
       source: 'outline_compliance',
+      ...(mismatch.actualValue !== null
+        ? {
+            suggestion:
+              `二选一修复：1) 若章末该实体确实处于声明值「${mismatch.declaredValue}」，在 STORY_EVENTS 末尾补一条该实体的${attributeLabel}事件（值=声明值，@pN 指向归位/状态回写段落），补后最后一条${attributeLabel}事件必须与声明值一致；` +
+              `2) 若章末该实体实际处于「${mismatch.actualValue}」，将 STORY_FINAL_STATE 的声明值改为 ${mismatch.actualValue}。`,
+          }
+        : {}),
     }
     if (mismatch.actualValue !== null) {
       baseIssue.actualValue = mismatch.actualValue

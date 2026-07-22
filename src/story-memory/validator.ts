@@ -12,6 +12,7 @@ import { applyEvents } from './projector.js'
 import { partitionInvalidForeshadowIntroductions } from './foreshadow-policy.js'
 import { splitContentParagraphs } from '../utils/text.js'
 import { getCanonicalForeshadows, resolveCanonicalForeshadowId } from './foreshadow-alias.js'
+import { generateId } from '../utils/id.js'
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -34,6 +35,17 @@ export interface StructuredValidationResult {
   stateConflicts: StateConflict[]
   finalStateMismatches: FinalStateMismatch[]
   finalStateUncorroborated: FinalStateMismatch[]
+  /**
+   * 系统依据章末终态声明补发的「返回原点」事件（source 为 final-state-completion）。
+   * 每轮校验都会先剔除旧补全事件再按最新声明重算，因此该列表始终只含本轮新补事件。
+   */
+  autoCompletedEvents: StoryEvent[]
+  /**
+   * 未由章节规划授权、且未通过正文语义验证而被丢弃的 plot-advance 事件（warning 级，不阻塞）。
+   * 通过语义验证的未授权 plot-advance 保留在 actualEvents 中，作为真实进展被定稿消费。
+   * 由 structured-validation 节点在语义验证后填充；纯 diff 校验阶段恒为空。
+   */
+  droppedUnauthorizedPlotAdvanceEvents: Array<Extract<StoryEvent, { type: 'plot-advance' }>>
 }
 
 export interface ForeshadowFulfillmentRejection {
@@ -79,7 +91,11 @@ export function validateChapterEvents(
   actualEvents: StoryEvent[],
   options: ChapterEventValidationOptions = {}
 ): StructuredValidationResult {
-  const chapterActual = actualEvents.filter((e) => e.chapterIndex === chapterIndex)
+  // 补全事件由系统按声明机械生成，每轮校验先剔除再重算，保证幂等：
+  // 既不污染 missing/unexpected 对比，也不与后续轮次变更的声明相互打架。
+  const chapterActual = actualEvents.filter(
+    (e) => e.chapterIndex === chapterIndex && e.source !== FINAL_STATE_COMPLETION_SOURCE
+  )
   const chapterExpected = (plan.expectedEvents ?? []).filter((e) => e.chapterIndex === chapterIndex)
   const { validEvents, missingEvidence, invalidEvidence } = filterEventsByEvidence(
     chapterActual,
@@ -87,7 +103,12 @@ export function validateChapterEvents(
   )
   const { valid: acceptedEvents, invalid: invalidDeadlineEvents } =
     partitionInvalidForeshadowIntroductions(validEvents)
-  const effectiveMemory = applyNewChapterEvents(memory, acceptedEvents)
+  const finalState = reconcileFinalStateDeclarations(memory, chapterIndex, acceptedEvents, options)
+  const completedActualEvents = [...chapterActual, ...finalState.autoCompletedEvents]
+  const effectiveMemory = applyNewChapterEvents(memory, [
+    ...acceptedEvents,
+    ...finalState.autoCompletedEvents,
+  ])
   const canonicalExpected = canonicalizeForeshadowFulfillmentEvents(memory, chapterExpected)
   const canonicalAccepted = canonicalizeForeshadowFulfillmentEvents(memory, acceptedEvents)
 
@@ -151,7 +172,7 @@ export function validateChapterEvents(
 
   return {
     expectedEvents: chapterExpected,
-    actualEvents: chapterActual,
+    actualEvents: completedActualEvents,
     missingEvents: missing,
     unexpectedEvents: unexpected,
     eventsMissingEvidence: missingEvidence,
@@ -165,7 +186,10 @@ export function validateChapterEvents(
     unclaimedMandatoryBeats,
     claimedButUnprovenBeats,
     stateConflicts: detectStateConflicts(acceptedEvents),
-    ...validateFinalStateDeclarations(acceptedEvents, options.finalStateDeclarations ?? []),
+    finalStateMismatches: finalState.finalStateMismatches,
+    finalStateUncorroborated: finalState.finalStateUncorroborated,
+    autoCompletedEvents: finalState.autoCompletedEvents,
+    droppedUnauthorizedPlotAdvanceEvents: [],
   }
 }
 
@@ -267,16 +291,45 @@ const FINAL_STATE_EVENT_TYPES: Record<FinalStateAttribute, readonly StoryEvent['
   status: ['character-status', 'item-state'],
 }
 
-function validateFinalStateDeclarations(
-  events: StoryEvent[],
-  declarations: ChapterFinalStateDeclaration[]
-): { finalStateMismatches: FinalStateMismatch[]; finalStateUncorroborated: FinalStateMismatch[] } {
+/** 系统补全事件的事件源标记；每轮校验都会先剔除旧补全事件再按最新声明重算。 */
+const FINAL_STATE_COMPLETION_SOURCE = 'final-state-completion' as const
+
+interface FinalStateReconciliation {
+  finalStateMismatches: FinalStateMismatch[]
+  finalStateUncorroborated: FinalStateMismatch[]
+  autoCompletedEvents: StoryEvent[]
+}
+
+/**
+ * 校验章末终态声明，并对「返回原点」型不一致做确定性补全：
+ * 当声明值等于章前投影值、且 writer 本章自己的事件流中出现过该值时，
+ * 说明章末实体回到了出发状态而事件流漏发最后的归位事件——此时依据
+ * writer 自己的结构化声明补发一条补全事件，而不是把叙事正确的声明
+ * 当成错误阻塞章节（否则重写循环没有确定性出路）。
+ * 只做 id/枚举级结构化比较，不触碰任何正文文本语义。
+ */
+function reconcileFinalStateDeclarations(
+  memory: StoryMemory,
+  chapterIndex: number,
+  acceptedEvents: StoryEvent[],
+  options: ChapterEventValidationOptions
+): FinalStateReconciliation {
   const finalStateMismatches: FinalStateMismatch[] = []
   const finalStateUncorroborated: FinalStateMismatch[] = []
+  const autoCompletedEvents: StoryEvent[] = []
 
-  for (const declaration of declarations) {
+  // 同一实体同一属性重复声明时以最后一条为准
+  const declarations = new Map<string, ChapterFinalStateDeclaration>()
+  for (const declaration of options.finalStateDeclarations ?? []) {
+    declarations.set(`${declaration.entityId} ${declaration.attribute}`, declaration)
+  }
+
+  const paragraphCount =
+    options.chapterContent !== undefined ? countEvidenceParagraphs(options.chapterContent) : null
+
+  for (const declaration of declarations.values()) {
     const supportedTypes = FINAL_STATE_EVENT_TYPES[declaration.attribute]
-    const candidates = events.filter(
+    const candidates = acceptedEvents.filter(
       (event) =>
         (supportedTypes as readonly string[]).includes(event.type) &&
         entityIdFromEvent(event) === declaration.entityId
@@ -295,17 +348,110 @@ function validateFinalStateDeclarations(
       continue
     }
     const actualValue = finalStateEventValue(lastEvent)
-    if (actualValue !== declaration.value) {
-      finalStateMismatches.push({
-        entityId: declaration.entityId,
-        attribute: declaration.attribute,
-        declaredValue: declaration.value,
-        actualValue,
-      })
+    if (actualValue === declaration.value) continue
+
+    // 返回原点检测（全部满足才补全，任一不满足则保持 mismatch 报错）：
+    // 1) 有正文可定位补全事件的证据段落；
+    // 2) 声明值等于章前投影值（确实回到了出发状态，而非编造新状态）；
+    // 3) 声明值在 writer 本章自己的该实体支撑事件里出现过（事件流自己佐证）。
+    if (
+      paragraphCount !== null &&
+      matchesPreChapterProjection(memory, declaration) &&
+      candidates.some((event) => finalStateEventValue(event) === declaration.value)
+    ) {
+      autoCompletedEvents.push(
+        buildFinalStateCompletionEvent(lastEvent, declaration, memory, chapterIndex, paragraphCount)
+      )
+      continue
     }
+
+    finalStateMismatches.push({
+      entityId: declaration.entityId,
+      attribute: declaration.attribute,
+      declaredValue: declaration.value,
+      actualValue,
+    })
   }
 
-  return { finalStateMismatches, finalStateUncorroborated }
+  return { finalStateMismatches, finalStateUncorroborated, autoCompletedEvents }
+}
+
+function matchesPreChapterProjection(
+  memory: StoryMemory,
+  declaration: ChapterFinalStateDeclaration
+): boolean {
+  const character = memory.entities.characters[declaration.entityId]
+  const item = memory.entities.items[declaration.entityId]
+  if (declaration.attribute === 'location') {
+    const projected = character
+      ? character.locationId
+      : item
+        ? (item.locationId ?? item.holderId)
+        : null
+    return projected !== null && projected === declaration.value
+  }
+  const record: Record<string, unknown> = character?.status ?? item?.state ?? {}
+  return Object.values(record).some((value) => value === declaration.value)
+}
+
+/**
+ * 复制该实体本章最后一条支撑事件，把值字段替换为声明值，生成一条补全事件。
+ * 证据指向正文末段（归位/状态回写发生在章末）；source 标记为系统补全。
+ */
+function buildFinalStateCompletionEvent(
+  lastEvent: StoryEvent,
+  declaration: ChapterFinalStateDeclaration,
+  memory: StoryMemory,
+  chapterIndex: number,
+  paragraphIndex: number
+): StoryEvent {
+  const base = {
+    id: generateId('evt_'),
+    chapterIndex,
+    source: FINAL_STATE_COMPLETION_SOURCE,
+    evidence: { paragraphIndex },
+  }
+  switch (lastEvent.type) {
+    case 'character-location':
+      return {
+        ...base,
+        type: 'character-location',
+        characterId: lastEvent.characterId,
+        locationId: declaration.value,
+      }
+    case 'character-status':
+      return {
+        ...base,
+        type: 'character-status',
+        characterId: lastEvent.characterId,
+        attribute: lastEvent.attribute,
+        value: declaration.value,
+      }
+    case 'item-location': {
+      // 与写作约定一致：物品被角色随身携带时 locationId 与 holderId 同为该角色 id；
+      // 停留在固定地点时 holderId 为 null。
+      const carriedByCharacter =
+        declaration.value !== null && Boolean(memory.entities.characters[declaration.value])
+      return {
+        ...base,
+        type: 'item-location',
+        itemId: lastEvent.itemId,
+        holderId: carriedByCharacter ? declaration.value : null,
+        locationId: declaration.value,
+      }
+    }
+    case 'item-state':
+      return {
+        ...base,
+        type: 'item-state',
+        itemId: lastEvent.itemId,
+        attribute: lastEvent.attribute,
+        value: declaration.value,
+      }
+    default:
+      // 支撑类型表只含上述四类事件，此处不可达
+      throw new Error(`unsupported final-state completion event type: ${lastEvent.type}`)
+  }
 }
 
 function finalStateEventValue(event: StoryEvent): string | null {
