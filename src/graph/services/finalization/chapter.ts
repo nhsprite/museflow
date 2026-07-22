@@ -712,6 +712,7 @@ export async function finalizeChapter(
     // Only checkpoints with no StoryMemory retain legacy stack boundaries.
     foreshadowStackSource: hasInputStoryMemory ? 'canonical_memory' : 'legacy_compatibility',
     currentChapter: currentDisplayChapter,
+    storyArc: state.storyArc,
   })
 
   const stateForActProgress: ReducedGraphState = {
@@ -742,7 +743,9 @@ export async function finalizeChapter(
         updatedActProgress,
         chapterIndex,
         planningConfig.bookClosingPhaseRatio,
-        new Set(updatedStoryMemory ? getVerifiedBeatsFromMemory(updatedStoryMemory) : [])
+        new Set(
+          updatedStoryMemory ? getVerifiedBeatsFromMemory(updatedStoryMemory, state.storyArc) : []
+        )
       )
     : undefined
   if (closingPhaseConstraint) {

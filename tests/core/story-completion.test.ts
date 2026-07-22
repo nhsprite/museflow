@@ -81,6 +81,22 @@ describe('evaluateStoryCompletion', () => {
     expect(audit.unprovenBeatIds).toEqual(['A1-M1', 'A1-B1'])
   })
 
+  it('treats a covered key beat as the same obligation instead of a second completion gate', () => {
+    const arc = storyArc()
+    arc.keyBeats[0]!.coveredByMandatoryBeatId = 'A1-M1'
+    const memory = memoryWithProofs()
+    delete memory.beats['A1-B1']
+
+    const audit = evaluate({ storyArc: arc, storyMemory: memory })
+
+    expect(audit.status).toBe('complete')
+    expect(audit.unprovenBeatIds).toEqual([])
+
+    memory.beats['A1-M1']!.provenByEventIds = []
+    const blocked = evaluate({ storyArc: arc, storyMemory: memory })
+    expect(blocked.unprovenBeatIds).toEqual(['A1-M1'])
+  })
+
   it('blocks unresolved must-resolve foreshadows', () => {
     const memory = memoryWithProofs()
     memory.foreshadows['fs-required'] = {

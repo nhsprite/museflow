@@ -7,6 +7,7 @@ import { readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { verifyForeshadowFulfillments } from '../services/foreshadow-fulfillment/semantic-verifier.js'
 import { verifyPlotAdvances } from '../services/plot-advance/semantic-verifier.js'
 import { logger } from '../../utils/logger.js'
+import { isBeatProven } from '../../utils/beat-coverage.js'
 
 export async function validateChapterStructured(
   context: RuntimeContext,
@@ -54,6 +55,7 @@ export async function validateChapterStructured(
       ? { chapterContent, requireEvidence: true }
       : { requireEvidence: false }),
     finalStateDeclarations: state.chapterFinalStateDeclarations ?? [],
+    storyArc: state.storyArc,
   })
 
   // 未授权 plot-advance 分流：正文级语义验证代替 plan 授权硬拒。
@@ -131,8 +133,7 @@ export async function validateChapterStructured(
     ...new Set([
       ...result.claimedButUnprovenBeats,
       ...claimedBeatIds.filter(
-        (beatId) =>
-          rejectedBeatIds.has(beatId) && (memory.beats[beatId]?.provenByEventIds.length ?? 0) === 0
+        (beatId) => rejectedBeatIds.has(beatId) && !isBeatProven(state.storyArc, memory, beatId)
       ),
     ]),
   ]

@@ -43,6 +43,10 @@ import {
   buildForeshadowDeadlineBoundaryCorrectionEvents,
   resolveStoryBoundaryChapter,
 } from '../story-memory/foreshadow-deadline-boundary.js'
+import { getUnprovenRequiredKeyBeatIdsThroughAct } from './story-completion.js'
+import { auditKeyBeatCoverage } from './beat-coverage.js'
+import { isBeatProven, mergeKeyBeatCoverageMetadata } from '../utils/beat-coverage.js'
+import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
 
 type RuntimeCharacter = Omit<Character, 'aliases' | 'isProtagonist'> & {
   aliases?: unknown
@@ -285,26 +289,77 @@ function buildPastActPendingIssue(
   }
 }
 
-function findPastActPendingIssue(
+function buildPastActRequiredKeyBeatIssue(
+  storyId: string,
+  state: ReducedGraphState,
+  beatId: string
+): Issue | undefined {
+  const keyBeat = state.storyArc?.keyBeats.find((beat) => beat.id === beatId)
+  const deadlineAct = state.storyArc?.acts.find((act) => act.index === keyBeat?.deadlineAct)
+  if (!keyBeat || !deadlineAct) return undefined
+
+  const rewriteCommand = `museflow rewrite ${storyId} -c ${deadlineAct.endChapter}`
+  return {
+    id: `past-act-${deadlineAct.index}-required-beat-${beatId}`,
+    ruleId: 'story-completion.required-beat-unproven',
+    type: 'outline_coverage',
+    severity: 'error',
+    subject: beatId,
+    location: `第 ${deadlineAct.endChapter} 章`,
+    description: `第 ${deadlineAct.index} 幕已在第 ${deadlineAct.endChapter} 章结束，但 required key beat ${beatId} 尚无通过验证的 StoryMemory 事件证据：${keyBeat.beat}。当前不能继续后续章节。`,
+    suggestion: `运行 ${rewriteCommand}，让该节拍在截止幕内形成可验证的事件证据。`,
+    source: 'outline_compliance',
+    retryStrategy: 'manual',
+  }
+}
+
+function findPastActCoverageIssues(
   storyId: string,
   state: ReducedGraphState,
   targetChapterIndex: number
-): Issue | undefined {
-  if (!state.storyArc) return undefined
+): Issue[] {
+  if (!state.storyArc) return []
 
-  for (const act of state.storyArc.acts) {
-    if (act.endChapter > targetChapterIndex) continue
+  const pastActs = state.storyArc.acts.filter((act) => act.endChapter <= targetChapterIndex)
+  const issues: Issue[] = []
 
-    const progress = state.actProgress?.[act.index] ?? {
-      consumed: [],
-      pending: [...act.mandatoryBeats],
+  for (const act of pastActs) {
+    const pendingBeats = state.storyMemory
+      ? getMandatoryBeatEntriesForAct(act)
+          .filter((entry) => !isBeatProven(state.storyArc, state.storyMemory, entry.id))
+          .map((entry) => entry.beat)
+      : (state.actProgress?.[act.index]?.pending ?? [...act.mandatoryBeats])
+    if (pendingBeats.length > 0) {
+      issues.push(buildPastActPendingIssue(storyId, act, pendingBeats, targetChapterIndex))
     }
-    if (progress.pending.length === 0) continue
-
-    return buildPastActPendingIssue(storyId, act, progress.pending, targetChapterIndex)
   }
 
-  return undefined
+  const latestPastAct = pastActs.at(-1)
+  if (!latestPastAct || !state.storyMemory) return issues
+
+  const unprovenRequiredKeyBeatIds = getUnprovenRequiredKeyBeatIdsThroughAct(
+    state.storyArc,
+    state.storyMemory,
+    latestPastAct.index
+  )
+  for (const beatId of unprovenRequiredKeyBeatIds) {
+    const issue = buildPastActRequiredKeyBeatIssue(storyId, state, beatId)
+    if (issue) issues.push(issue)
+  }
+
+  return issues
+}
+
+function pruneResolvedRequiredBeatIssues(
+  issues: Issue[],
+  state: Pick<ReducedGraphState, 'storyArc' | 'storyMemory'>
+): Issue[] {
+  return issues.filter(
+    (issue) =>
+      issue.ruleId !== 'story-completion.required-beat-unproven' ||
+      !issue.subject ||
+      !isBeatProven(state.storyArc, state.storyMemory, issue.subject)
+  )
 }
 
 export function normalizePendingIssuesForChapter(
@@ -397,10 +452,51 @@ export async function runOneChapter(
         configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
       })
     : latestSnapshot
-  const latestState = normalizeRuntimeState(latestSnapshot.values as ReducedGraphState)
-  const checkpointState = normalizeRuntimeState(snapshot.values as ReducedGraphState)
+  let latestState = normalizeRuntimeState(latestSnapshot.values as ReducedGraphState)
+  let checkpointState = normalizeRuntimeState(snapshot.values as ReducedGraphState)
 
   const targetIndex = options.targetChapterIndex ?? checkpointState.currentChapterIndex
+
+  const latestStoryArc = latestState.storyArc
+  const hasPastAct = latestStoryArc?.acts.some((act) => act.endChapter <= targetIndex) ?? false
+  if (
+    hasPastAct &&
+    latestStoryArc &&
+    latestStoryArc.keyBeats.some((keyBeat) => keyBeat.coveredByMandatoryBeatId === undefined)
+  ) {
+    const audit = await auditKeyBeatCoverage(latestStoryArc, context.provider)
+    const auditedStoryArc = audit.storyArc
+    if (audit.changed) {
+      latestState = { ...latestState, storyArc: auditedStoryArc }
+      await checkpointService.updateLatestState({ storyArc: auditedStoryArc })
+      logger.info(
+        `[MuseFlow] 旧故事节拍覆盖审计完成：${audit.linkedKeyBeatIds.length} 个 key beats 复用 mandatory beat 证明，${audit.independentKeyBeatIds.length} 个保持独立证明`
+      )
+    }
+    const latestPastActIndex = Math.max(
+      0,
+      ...auditedStoryArc.acts.filter((act) => act.endChapter <= targetIndex).map((act) => act.index)
+    )
+    if (
+      auditedStoryArc.keyBeats.some(
+        (keyBeat) =>
+          keyBeat.deadlineAct <= latestPastActIndex &&
+          keyBeat.coveredByMandatoryBeatId === undefined
+      )
+    ) {
+      throw new Error(
+        '旧故事的 key beat 覆盖关系连续两次审计失败，无法可靠区分独立义务与 mandatory beat 别名。本次未改写章节；请重新运行当前命令。'
+      )
+    }
+  }
+
+  const mergedCheckpointArc = mergeKeyBeatCoverageMetadata(
+    checkpointState.storyArc,
+    latestState.storyArc
+  )
+  if (mergedCheckpointArc && mergedCheckpointArc !== checkpointState.storyArc) {
+    checkpointState = { ...checkpointState, storyArc: mergedCheckpointArc }
+  }
 
   const rewrittenChapters = new Array(checkpointState.totalChapters).fill(
     null
@@ -425,7 +521,10 @@ export async function runOneChapter(
     storyId
   )
   const cleanedPendingIssues = [
-    ...normalizePendingIssuesForChapter(basePendingIssues, targetChapterFileExists),
+    ...pruneResolvedRequiredBeatIssues(
+      normalizePendingIssuesForChapter(basePendingIssues, targetChapterFileExists),
+      checkpointState
+    ),
     ...reconciliationIssues,
   ]
 
@@ -488,15 +587,16 @@ export async function runOneChapter(
     }
   }
 
-  const pastActPendingIssue = findPastActPendingIssue(storyId, workingState, targetIndex)
-  if (pastActPendingIssue) {
+  const pastActCoverageIssues = findPastActCoverageIssues(storyId, workingState, targetIndex)
+  if (pastActCoverageIssues.length > 0) {
+    const replacementKeys = new Set(
+      pastActCoverageIssues.map((issue) => `${issue.ruleId}\u0000${issue.subject ?? ''}`)
+    )
     const pendingIssues = [
       ...workingState.pendingIssues.filter(
-        (issue) =>
-          issue.ruleId !== pastActPendingIssue.ruleId ||
-          issue.subject !== pastActPendingIssue.subject
+        (issue) => !replacementKeys.has(`${issue.ruleId}\u0000${issue.subject ?? ''}`)
       ),
-      pastActPendingIssue,
+      ...pastActCoverageIssues,
     ]
     const blockedState: ReducedGraphState = {
       ...workingState,

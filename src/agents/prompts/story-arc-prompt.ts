@@ -27,6 +27,7 @@ const STORY_ARC_USER_PROMPT_TEMPLATE = `请为一部 {TOTAL_CHAPTERS} 章的长�
 - 每幕只描述叙事功能和主题张力，不要描述具体动作、地点、对话、物品转移、秘密内容或人物命运。
 - mandatoryBeats 只列该幕必须完成的事件类型或状态转移类型，不要绑定具体人物动作或具体章节。
 - keyBeats 只列全书级别的关键情节点类型，并标注必须在第几幕之前/之内完成（deadlineAct）。
+- mandatoryBeats 的稳定 ID 按数组顺序确定为 A{actIndex}-M{从1开始的序号}。如果一个 keyBeat 的全部叙事义务已被某个 mandatory beat 完整覆盖，coveredByMandatoryBeatId 必须填写该稳定 ID；如果只是相关、部分重叠或独立义务，必须填写 null。不得为同一义务建立两个互不关联的完成门禁。
 - 输出 JSON 格式：
   {
     "totalChapters": {TOTAL_CHAPTERS},
@@ -42,7 +43,7 @@ const STORY_ARC_USER_PROMPT_TEMPLATE = `请为一部 {TOTAL_CHAPTERS} 章的长�
       }
     ],
     "keyBeats": [
-      { "id": "A{actIndex}-B{beatIndex}", "beat": "关键情节点类型", "deadlineAct": "<截止幕序号，number>", "required": true }
+      { "id": "A{actIndex}-B{beatIndex}", "beat": "关键情节点类型", "deadlineAct": "<截止幕序号，number>", "required": true, "coveredByMandatoryBeatId": "<完整覆盖该义务的 mandatory beat ID；无则 null>" }
     ]
   }
 
@@ -51,6 +52,7 @@ const STORY_ARC_USER_PROMPT_TEMPLATE = `请为一部 {TOTAL_CHAPTERS} 章的长�
   - beat: 关键情节点类型描述
   - deadlineAct: number，必须在第几幕之前/之内完成
   - required: boolean，默认 true
+  - coveredByMandatoryBeatId: string | null；只能引用 deadlineAct 之前或当幕已有的 mandatory beat 精确 ID
 </requirements>`
 
 export function buildStoryArcSystemPrompt(): string {

@@ -19,6 +19,8 @@ export interface KeyBeat {
   beat: string // 事件类型/主题
   deadlineAct: number // 必须在该幕结束前完成
   required: boolean
+  // undefined = 旧数据尚未审计；null = 独立义务；BeatId = 由该 mandatory beat 完整覆盖
+  coveredByMandatoryBeatId?: BeatId | null
   involvedCharacterIds?: EntityId[]
   involvedItemIds?: EntityId[]
   foreshadowId?: ForeshadowId

@@ -4,6 +4,7 @@ import type { ChapterPlan } from '../agents/types.js'
 import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
 import { generateId } from '../utils/id.js'
 import { GLOBAL_KEY_BEAT_PLOT_ID } from './protocol-ids.js'
+import { isBeatProven } from '../utils/beat-coverage.js'
 
 export interface EmittedEventAcceptanceResult {
   content: string
@@ -64,7 +65,7 @@ export function augmentExpectedEventsWithClaimedBeats(
   const additionalEvents: PlotAdvanceEvent[] = []
   for (const beatId of claimedMandatoryBeatIds) {
     if (existingBeatIds.has(beatId)) continue
-    if ((memory?.beats[beatId]?.provenByEventIds.length ?? 0) > 0) continue
+    if (isBeatProven(storyArc, memory, beatId)) continue
     const lookup = findMandatoryBeatById(storyArc, beatId)
     if (!lookup || lookup.act.index !== currentAct.index) continue
     additionalEvents.push({
@@ -80,7 +81,7 @@ export function augmentExpectedEventsWithClaimedBeats(
 
   for (const beatId of claimedKeyBeatIds) {
     if (existingBeatIds.has(beatId)) continue
-    if ((memory?.beats[beatId]?.provenByEventIds.length ?? 0) > 0) continue
+    if (isBeatProven(storyArc, memory, beatId)) continue
     const keyBeat = storyArc.keyBeats.find(
       (candidate) => candidate.id === beatId && candidate.deadlineAct === currentAct.index
     )

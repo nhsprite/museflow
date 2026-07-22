@@ -10,6 +10,7 @@ import {
   getMandatoryBeatEntriesForAct,
 } from '../../../utils/mandatory-beat-ids.js'
 import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
+import { isBeatProven } from '../../../utils/beat-coverage.js'
 
 export interface ActProgressUpdate {
   actProgress: ReducedGraphState['actProgress']
@@ -49,8 +50,7 @@ export function pruneResolvedOutlineCoverageIssues(
     }
 
     if (issue.subject) {
-      const beat = storyMemory?.beats[issue.subject]
-      if (beat && beat.provenByEventIds.length > 0) {
+      if (isBeatProven(storyArc, storyMemory, issue.subject)) {
         return false
       }
     }
@@ -82,7 +82,7 @@ function updateActProgressFromStructuredIds(
 ): ActProgressUpdate {
   const storyArc = state.storyArc
   const verifiedBeatIds = new Set(
-    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
+    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
   )
 
   const actProgress: ReducedGraphState['actProgress'] = {}

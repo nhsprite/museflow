@@ -7,12 +7,14 @@ import type {
 } from '../../agents/types.js'
 import { getWorldbuilderAgent, getCharacterAgent, getStoryArcAgent } from '../agent-factory.js'
 import { generateId } from '../../utils/id.js'
+import { findMandatoryBeatById } from '../../utils/mandatory-beat-ids.js'
 import { writeOutlineContent, writeStoryBible } from '../../storage/filesystem/writer.js'
 import { updateStoryTitle, renameStoryOutputDir } from '../../storage/meta/stores/story.js'
 import { getStoryOutputDirWithTitle } from '../../utils/paths.js'
 import { charactersToString } from '../utils/characters.js'
 import { createEmptyStoryMemory } from '../../story-memory/projector.js'
 import type { RuntimeContext } from '../../core/context.js'
+import { auditKeyBeatCoverage } from '../../core/beat-coverage.js'
 
 export async function build_world(
   context: RuntimeContext,
@@ -169,10 +171,10 @@ export async function create_outline(
 }
 
 export async function validate_outline(
-  _context: RuntimeContext,
+  context: RuntimeContext,
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
-  const storyArc = state.storyArc
+  let storyArc = state.storyArc
   const issues: Array<import('../../types/agent.js').Issue> = []
 
   if (!storyArc) {
@@ -185,6 +187,11 @@ export async function validate_outline(
       location: 'create_outline',
     })
     return { pendingIssues: [...state.pendingIssues, ...issues] }
+  }
+
+  if (storyArc.keyBeats.some((keyBeat) => keyBeat.coveredByMandatoryBeatId === undefined)) {
+    const audit = await auditKeyBeatCoverage(storyArc, context.provider)
+    storyArc = audit.storyArc
   }
 
   // 验证幕结构是否覆盖全部章节
@@ -251,6 +258,30 @@ export async function validate_outline(
         location: 'keyBeats',
       })
     }
+    if (keyBeat.coveredByMandatoryBeatId === undefined) {
+      issues.push({
+        id: generateId(),
+        ruleId: 'story-arc.beat-coverage-missing',
+        type: 'outline_invalid',
+        severity: 'error',
+        description: `关键情节点 ${keyBeat.id} 尚未声明是否由 mandatory beat 覆盖`,
+        subject: keyBeat.id,
+        location: 'keyBeats',
+      })
+    } else if (keyBeat.coveredByMandatoryBeatId !== null) {
+      const coveredBy = findMandatoryBeatById(storyArc, keyBeat.coveredByMandatoryBeatId)
+      if (!coveredBy || coveredBy.act.index > keyBeat.deadlineAct) {
+        issues.push({
+          id: generateId(),
+          ruleId: 'story-arc.beat-coverage-invalid',
+          type: 'outline_invalid',
+          severity: 'error',
+          description: `关键情节点 ${keyBeat.id} 的 coveredByMandatoryBeatId 无效：${keyBeat.coveredByMandatoryBeatId}`,
+          subject: keyBeat.id,
+          location: 'keyBeats',
+        })
+      }
+    }
   }
 
   if (issues.length > 0) {
@@ -262,5 +293,5 @@ export async function validate_outline(
     logger.warn('')
   }
 
-  return { pendingIssues: [...state.pendingIssues, ...issues] }
+  return { storyArc, pendingIssues: [...state.pendingIssues, ...issues] }
 }

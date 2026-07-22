@@ -121,6 +121,47 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).not.toContain('如果本章不适合推进任何 beat，请说明原因')
   })
 
+  it('does not present a mandatory-covered key beat as a second claimable obligation', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(JSON.stringify({ title: 't', description: 'd' }))
+    const arcWithCoverage = {
+      ...storyArc,
+      keyBeats: [
+        {
+          id: 'A1-B1',
+          beat: '主角失去庇护',
+          deadlineAct: 1,
+          required: true,
+          coveredByMandatoryBeatId: 'A1-M1',
+        },
+        {
+          id: 'A1-B2',
+          beat: '主角改变立场',
+          deadlineAct: 1,
+          required: true,
+          coveredByMandatoryBeatId: null,
+        },
+      ],
+    }
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 1,
+      storyArc: arcWithCoverage,
+      actProgress: { 1: { consumed: [], pending: ['主角失去庇护'] } },
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).not.toContain('主角失去庇护 [ID:A1-B1]')
+    expect(prompt).toContain('主角改变立场 [ID:A1-B2]')
+    expect(prompt).toContain(
+      '已由 coveredByMandatoryBeatId 覆盖的 keyBeat 是 mandatory beat 的别名'
+    )
+  })
+
   it('parses chapter outline with claimed beats', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(

@@ -1,6 +1,7 @@
 import { getCanonicalForeshadows } from '../story-memory/foreshadow-alias.js'
 import { getOpenTasks, getUnprovenMandatoryBeats } from '../story-memory/queries.js'
 import type { ForeshadowItem } from '../types/foreshadow.js'
+import type { StoryArc } from '../types/outline.js'
 import type { StoryMemory } from '../types/story-memory.js'
 import type { VerifiedConstraint, VerifiedConstraintLike } from '../types/verified-constraint.js'
 import { generateForeshadowConstraints } from './foreshadow-constraints.js'
@@ -17,6 +18,7 @@ export function rebuildStoryMemoryVerifiedConstraints(input: {
   foreshadowStack: readonly ForeshadowItem[]
   foreshadowStackSource: 'canonical_memory' | 'legacy_compatibility'
   currentChapter: number
+  storyArc?: StoryArc | null
 }): VerifiedConstraint[] {
   const carriedConstraints = normalizeVerifiedConstraints(input.existingConstraints).filter(
     (constraint) =>
@@ -56,7 +58,7 @@ export function rebuildStoryMemoryVerifiedConstraints(input: {
       )
     }
   }
-  for (const id of getUnprovenMandatoryBeats(input.memory)) {
+  for (const id of getUnprovenMandatoryBeats(input.memory, input.storyArc)) {
     const beat = input.memory.beats[id]
     if (beat) {
       memoryConstraints.push(

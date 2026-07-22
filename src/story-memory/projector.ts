@@ -13,6 +13,7 @@ import type {
 import type { StoryArc } from '../types/outline.js'
 import type { StoryState, PendingTask } from '../types/story-state.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
+import { getCoveredMandatoryBeatId } from '../utils/beat-coverage.js'
 import { isProjectableForeshadowIntroduction } from './foreshadow-introduction.js'
 import {
   compareCanonicalOrder,
@@ -65,6 +66,7 @@ export function ensureBeatsHaveActIndex(
   }
 
   for (const keyBeat of storyArc.keyBeats) {
+    if (getCoveredMandatoryBeatId(storyArc, keyBeat.id) !== undefined) continue
     const existing = beats[keyBeat.id]
     beats[keyBeat.id] = {
       id: keyBeat.id,

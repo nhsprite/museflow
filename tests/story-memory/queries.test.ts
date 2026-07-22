@@ -15,6 +15,7 @@ import {
   selectOpportunityForeshadowsForChapter,
 } from '../../src/story-memory/foreshadow-policy.js'
 import type { StoryEvent } from '../../src/types/story-memory.js'
+import type { StoryArc } from '../../src/types/outline.js'
 
 function mergedForeshadowMemory(
   resolutionPolicy: 'must_resolve' | 'should_resolve' = 'must_resolve'
@@ -55,6 +56,53 @@ function mergedForeshadowMemory(
 }
 
 describe('queries', () => {
+  it('returns one canonical pending obligation for a mandatory-covered key beat', () => {
+    const memory = createEmptyStoryMemory()
+    memory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '完成转折',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+    memory.beats['A1-B1'] = {
+      id: 'A1-B1',
+      description: '完成转折',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+    const storyArc: StoryArc = {
+      totalChapters: 2,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 2,
+          title: '第一幕',
+          theme: '',
+          function: '',
+          mandatoryBeats: ['完成转折'],
+        },
+      ],
+      keyBeats: [
+        {
+          id: 'A1-B1',
+          beat: '完成转折',
+          deadlineAct: 1,
+          required: true,
+          coveredByMandatoryBeatId: 'A1-M1',
+        },
+      ],
+    }
+
+    expect(getUnprovenMandatoryBeats(memory, storyArc)).toEqual(['A1-M1'])
+  })
+
   it('returns active foreshadows', () => {
     const memory = applyEvents(createEmptyStoryMemory(), [
       {

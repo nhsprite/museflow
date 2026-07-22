@@ -94,7 +94,9 @@ export function printChapterProgress(state: ReducedGraphState): void {
       state.actProgress,
       current,
       getChapterPlanningConfig(state.genre).bookClosingPhaseRatio,
-      new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
+      new Set(
+        state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
+      )
     )
     console.log('')
     console.log('故事弧线')

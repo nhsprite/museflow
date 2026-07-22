@@ -290,6 +290,37 @@ describe('ensureBeatsHaveActIndex', () => {
       })
     )
   })
+
+  it('does not register a covered key beat as a second memory obligation', () => {
+    const storyArc: StoryArc = {
+      totalChapters: 3,
+      acts: [
+        {
+          index: 1,
+          startChapter: 1,
+          endChapter: 3,
+          title: 'Act',
+          theme: '',
+          function: '',
+          mandatoryBeats: ['身份暴露'],
+        },
+      ],
+      keyBeats: [
+        {
+          id: 'A1-B1',
+          beat: '身份暴露',
+          deadlineAct: 1,
+          required: true,
+          coveredByMandatoryBeatId: 'A1-M1',
+        },
+      ],
+    }
+
+    const memory = ensureBeatsHaveActIndex(createEmptyStoryMemory(), storyArc)
+
+    expect(memory.beats['A1-M1']).toBeDefined()
+    expect(memory.beats['A1-B1']).toBeUndefined()
+  })
 })
 
 describe('applyEvents', () => {

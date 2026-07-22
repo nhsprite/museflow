@@ -50,6 +50,7 @@ export async function prepareChapter(
     foreshadowStack: reconciledStack,
     foreshadowStackSource: 'canonical_memory',
     currentChapter: state.currentChapterIndex + 1,
+    storyArc: state.storyArc,
   })
   const reconciliationUpdate: Partial<ReducedGraphState> = {
     storyMemory: reconciled.memory,

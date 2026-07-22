@@ -78,8 +78,12 @@ describe('StoryArcAgent', () => {
           },
         ],
         keyBeats: [
-          { beat: '核心秘密被主角获悉', deadlineAct: 1 },
-          { beat: '最终对决', deadlineAct: 2 },
+          {
+            beat: '核心秘密被主角获悉',
+            deadlineAct: 1,
+            coveredByMandatoryBeatId: null,
+          },
+          { beat: '最终对决', deadlineAct: 2, coveredByMandatoryBeatId: 'A2-M2' },
         ],
       })
     )
@@ -97,6 +101,7 @@ describe('StoryArcAgent', () => {
     expect(storyArc.keyBeats).toHaveLength(2)
     expect(storyArc.keyBeats[0]?.id).toBeDefined()
     expect(storyArc.keyBeats[0]?.required).toBe(true)
+    expect(storyArc.keyBeats[1]?.coveredByMandatoryBeatId).toBe('A2-M2')
   })
 
   it('returns empty acts when parse fails', async () => {

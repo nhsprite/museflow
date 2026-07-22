@@ -30,6 +30,7 @@ import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/re
 import { prepareStoryStateForChapterCached } from '../graph/utils/chapter-context.js'
 import { buildPreviousChapterEndingContext } from '../graph/utils/chapter-window.js'
 import type { RuntimeContext } from './context.js'
+import { getCoveredMandatoryBeatId, isBeatProven } from '../utils/beat-coverage.js'
 import { charactersToString } from '../graph/utils/characters.js'
 import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.js'
 import type { OutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
@@ -506,6 +507,62 @@ function canonicalizeStateForeshadowClaims(
   return { ...state, outline }
 }
 
+function canonicalizeStateCoveredBeatClaims(
+  state: ReducedGraphState,
+  chapterIndex: number
+): ReducedGraphState {
+  const storyArc = state.storyArc
+  const outlineItem = state.outline[chapterIndex]
+  if (!storyArc || !outlineItem || (outlineItem.claimedBeatIds?.length ?? 0) === 0) return state
+
+  const currentAct = getActForChapter(storyArc, chapterIndex)
+  const retainedKeyBeatIds: string[] = []
+  const canonicalMandatoryBeatIds = [...(outlineItem.claimedMandatoryBeatIds ?? [])]
+  const replacedKeyBeatIds: string[] = []
+
+  for (const beatId of outlineItem.claimedBeatIds ?? []) {
+    const coveredBy = getCoveredMandatoryBeatId(storyArc, beatId)
+    if (!coveredBy) {
+      retainedKeyBeatIds.push(beatId)
+      continue
+    }
+
+    replacedKeyBeatIds.push(beatId)
+    const mandatoryBeat = findMandatoryBeatById(storyArc, coveredBy)
+    if (
+      mandatoryBeat &&
+      mandatoryBeat.act.index === currentAct?.index &&
+      !isBeatAlreadyProven(state, coveredBy)
+    ) {
+      if (!canonicalMandatoryBeatIds.includes(coveredBy)) {
+        canonicalMandatoryBeatIds.push(coveredBy)
+      }
+    }
+  }
+
+  if (replacedKeyBeatIds.length === 0) return state
+
+  const canonicalMandatoryBeats = canonicalMandatoryBeatIds.flatMap((beatId) => {
+    const mandatoryBeat = findMandatoryBeatById(storyArc, beatId)
+    return mandatoryBeat ? [mandatoryBeat.beat] : []
+  })
+  const outline = [...state.outline]
+  outline[chapterIndex] = {
+    ...outlineItem,
+    claimedBeatIds: retainedKeyBeatIds,
+    claimedMandatoryBeatIds: canonicalMandatoryBeatIds,
+    claimedBeats: canonicalMandatoryBeats,
+  }
+  logger.info(
+    `[MuseFlow] 第 ${chapterIndex + 1} 章将 mandatory beat 别名认领归一到规范 ID：${replacedKeyBeatIds.join(', ')}`
+  )
+  return {
+    ...state,
+    outline,
+    chapterPlan: state.chapterPlan?.chapterIndex === chapterIndex ? null : state.chapterPlan,
+  }
+}
+
 function deferForeshadowClaims(
   state: ReducedGraphState,
   chapterIndex: number,
@@ -928,10 +985,10 @@ function buildArcStatusConstraint(
   const chaptersRemaining = currentAct.endChapter - (chapterIndex + 1)
   const pendingCount = arcStatus.beatsPending.length
 
-  if (arcStatus.riskLevel === 'high') {
+  if (arcStatus.mandatoryBeatPressure === 'high') {
     return `【幕边界压力 - 高】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费：${arcStatus.beatsPending.join('、')}。本章规划必须优先推进这些节拍中的至少 1 个，且严禁引入无关过渡场景。`
   }
-  if (arcStatus.riskLevel === 'medium') {
+  if (arcStatus.mandatoryBeatPressure === 'medium') {
     return `【幕边界压力 - 中】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费。本章规划应视情节自然性推进其中 1 个，避免把全部压力留到幕末。`
   }
   return undefined
@@ -972,9 +1029,7 @@ function finalizeChapterOutlineCandidate(
 }
 
 function isBeatAlreadyProven(state: ReducedGraphState, beatId: string): boolean {
-  const beatMemory = state.storyMemory?.beats[beatId]
-  if (!beatMemory) return false
-  return beatMemory.provenByEventIds.length > 0
+  return isBeatProven(state.storyArc, state.storyMemory, beatId)
 }
 
 function filterClaimedMandatoryBeatPairsToCurrentAct(
@@ -1017,7 +1072,11 @@ function filterClaimedKeyBeatIdsToStoryArc(
   const currentAct = getActForChapter(state.storyArc, chapterIndex)
   const allowed = new Set(
     state.storyArc.keyBeats
-      .filter((beat) => !currentAct || beat.deadlineAct === currentAct.index)
+      .filter(
+        (beat) =>
+          getCoveredMandatoryBeatId(state.storyArc, beat.id) === undefined &&
+          (!currentAct || beat.deadlineAct === currentAct.index)
+      )
       .map((beat) => beat.id)
   )
   const result: string[] = []
@@ -1280,7 +1339,7 @@ async function generateChapterOutlineIfNeeded(
   // 这里同步注入大纲 agent，并在高压时对「零认领」做打回重试。
   const planningConfig = getChapterPlanningConfig(state.genre)
   const verifiedBeatIdSet = new Set(
-    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
+    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
   )
   const arcStatus = state.storyArc
     ? buildArcStatus(
@@ -1304,7 +1363,7 @@ async function generateChapterOutlineIfNeeded(
   // 高压 = 未消费 mandatory beats 多于幕内剩余章节；此时本章再不认领，幕末必然阻塞。
   // 中低压保持建议性（仅注入压力文本），不打回。
   const mustClaimMandatoryBeat =
-    arcStatus?.riskLevel === 'high' && arcStatus.beatsPending.length > 0
+    arcStatus?.mandatoryBeatPressure === 'high' && arcStatus.beatsPending.length > 0
   const pendingMandatoryBeatPairs = mustClaimMandatoryBeat
     ? getMandatoryBeatEntries(state.storyArc)
         .filter((entry) => entry.actIndex === currentAct?.index)
@@ -1777,6 +1836,7 @@ async function expandOutlineForChapterInternal(
   const provider = getProvider(source)
   let pendingIssues: Issue[] = []
   state = canonicalizeStateForeshadowClaims(state, chapterIndex)
+  state = canonicalizeStateCoveredBeatClaims(state, chapterIndex)
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
   const jitBaseState = state
   const generatedSemanticRetry = semanticRetry.outlineOrigin === 'jit-generated'
@@ -2030,7 +2090,9 @@ async function expandOutlineForChapterInternal(
         state.actProgress ?? {},
         chapterIndex,
         planningConfig.bookClosingPhaseRatio,
-        new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
+        new Set(
+          state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
+        )
       )
     : undefined
   if (arcStatusConstraint) {

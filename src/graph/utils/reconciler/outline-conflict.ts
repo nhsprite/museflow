@@ -11,6 +11,7 @@ import type { ModelProvider, Message, JsonSchema } from '../../../model/provider
 import type { StoryMemory } from '../../../types/story-memory.js'
 import type { StoryArc } from '../../../types/outline.js'
 import { generateId } from '../../../utils/id.js'
+import { getCoveredMandatoryBeatId, isBeatProven } from '../../../utils/beat-coverage.js'
 import {
   getTransitionFallbackSeverity,
   normalizeTransitionConflictSeverity,
@@ -321,8 +322,12 @@ function detectUnprovenBeatConflicts(
 
   const conflicts: Conflict[] = []
   for (const beat of outline.keyBeats) {
-    const proven = memory.beats[beat.id]?.provenByEventIds.length ?? 0
-    if (beat.required && beat.deadlineAct <= currentAct && proven === 0) {
+    if (
+      beat.required &&
+      getCoveredMandatoryBeatId(outline, beat.id) === undefined &&
+      beat.deadlineAct <= currentAct &&
+      !isBeatProven(outline, memory, beat.id)
+    ) {
       conflicts.push({
         id: generateId(),
         type: 'incomplete',

@@ -8,7 +8,7 @@ export function projectVerifiedClaimedBeatIdsIntoActProgress(
   if (!state.storyArc) return {}
 
   const verifiedBeatIds = new Set(
-    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
+    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
   )
   const projected: ReducedGraphState['actProgress'] = {}
   for (const act of state.storyArc.acts) {

@@ -244,6 +244,36 @@ describe('expandOutlineForChapter', () => {
     expect(formattedOutline).toContain('主角遭遇敌人并暂时被困')
   })
 
+  it('canonicalizes a persisted covered-key claim to its mandatory beat id', async () => {
+    const aliasState: ReducedGraphState = {
+      ...baseState,
+      storyArc: {
+        ...storyArc,
+        keyBeats: [
+          {
+            id: 'A1-B1',
+            beat: '主角离开家乡',
+            deadlineAct: 1,
+            required: true,
+            coveredByMandatoryBeatId: 'A1-M1',
+          },
+        ],
+      },
+      outline: baseState.outline.map((item, index) =>
+        index === 1 ? { ...item, claimedBeatIds: ['A1-B1'] } : item
+      ),
+    }
+
+    const result = await expandOutlineForChapter(aliasState, 1, createMockProvider())
+
+    expect(result.outline?.[1]?.claimedBeatIds).toEqual([])
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual(['A1-M1'])
+    expect(result.outline?.[1]?.claimedBeats).toEqual(['主角离开家乡'])
+    const formattedOutline = planChapterWithOverrideMock.mock.calls[0]![2] as string
+    expect(formattedOutline).toContain('【本章认领 mandatory beats】A1-M1')
+    expect(formattedOutline).not.toContain('【本章认领 key beats】A1-B1')
+  })
+
   it('generates JIT outline when description is empty', async () => {
     const jitState: ReducedGraphState = {
       ...baseState,
@@ -545,6 +575,66 @@ describe('expandOutlineForChapter', () => {
     const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
 
     expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
+  })
+
+  it('does not treat an overdue key beat as mandatory beat high pressure', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 6,
+      story: { ...baseState.story, totalChapters: 6 },
+      currentChapterIndex: 1,
+      storyArc: {
+        totalChapters: 6,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '上一幕',
+            theme: '建立',
+            function: '开端',
+            mandatoryBeats: [],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 6,
+            title: '当前幕',
+            theme: '发展',
+            function: '推进',
+            mandatoryBeats: ['当前幕节拍'],
+          },
+        ],
+        keyBeats: [{ id: 'A1-B1', beat: '上一幕关键节拍', deadlineAct: 1, required: true }],
+      },
+      outline: [
+        { number: 1, title: '上一幕', description: '上一幕结束。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '', description: '' },
+        { number: 4, title: '', description: '' },
+        { number: 5, title: '', description: '' },
+        { number: 6, title: '', description: '' },
+      ],
+      actProgress: {
+        1: { consumed: [], pending: [] },
+        2: { consumed: [], pending: ['当前幕节拍'] },
+      },
+      chapters: [null, null, null, null, null, null],
+      storyMemory: createEmptyStoryMemory(),
+    }
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      verifiedConstraints?: string[]
+      mandatoryBeatClaimRequired?: boolean
+    }
+    expect(agentInput.mandatoryBeatClaimRequired).toBeUndefined()
+    expect(
+      agentInput.verifiedConstraints?.some((text) => text.includes('【幕边界压力 - 高】')) ?? false
+    ).toBe(false)
     expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
   })
 

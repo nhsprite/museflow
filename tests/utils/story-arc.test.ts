@@ -150,6 +150,7 @@ describe('story-arc utilities', () => {
     expect(status.beatsTotal).toBe(2)
     expect(status.beatsConsumed).toBe(1)
     expect(status.beatsPending).toEqual(['反派首次施压'])
+    expect(status.mandatoryBeatPressure).toBe('low')
     expect(status.riskLevel).toBe('low')
   })
 
@@ -161,6 +162,7 @@ describe('story-arc utilities', () => {
     const status = buildArcStatus(storyArc, actProgress, 3, 0.15, new Set())
 
     expect(status.beatsPending).toHaveLength(2)
+    expect(status.mandatoryBeatPressure).toBe('high')
     expect(status.riskLevel).toBe('high')
   })
 
@@ -175,7 +177,23 @@ describe('story-arc utilities', () => {
 
     expect(status.overdueKeyBeats).toHaveLength(1)
     expect(status.overdueKeyBeats[0]?.beat).toBe('核心秘密被主角获悉')
+    expect(status.mandatoryBeatPressure).toBe('low')
     expect(status.riskLevel).toBe('high')
+  })
+
+  it('does not schedule a key beat separately when a mandatory beat owns its proof', () => {
+    const storyArc = makeStoryArc()
+    storyArc.keyBeats[0]!.coveredByMandatoryBeatId = 'A2-M1'
+    const actProgress = {
+      1: { consumed: ['主角失去庇护', '反派首次施压'], pending: [] },
+      2: { consumed: ['主角找到盟友'], pending: [] },
+      3: { consumed: [], pending: ['核心秘密揭晓'] },
+    }
+
+    const status = buildArcStatus(storyArc, actProgress, 10, 0.15, new Set())
+
+    expect(status.overdueKeyBeats).toEqual([])
+    expect(status.riskLevel).toBe('low')
   })
 
   it('does not propose extension when pending beats fit current and remaining chapter capacity', () => {

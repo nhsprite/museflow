@@ -2,6 +2,7 @@ import type { Issue } from '../types/agent.js'
 import type { StoryArc } from '../types/outline.js'
 import type { StoryMemory } from '../types/story-memory.js'
 import { getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
+import { getCoveredMandatoryBeatId, isBeatProven } from '../utils/beat-coverage.js'
 
 export type StoryCompletionStatus = 'in_progress' | 'blocked' | 'complete'
 
@@ -70,15 +71,11 @@ export function getUnprovenRequiredBeatIds(
 
   const requiredBeatIds = [
     ...getMandatoryBeatEntries(storyArc).map((entry) => entry.id),
-    ...storyArc.keyBeats.filter((beat) => beat.required).map((beat) => beat.id),
+    ...storyArc.keyBeats
+      .filter((beat) => beat.required && getCoveredMandatoryBeatId(storyArc, beat.id) === undefined)
+      .map((beat) => beat.id),
   ]
-  return [
-    ...new Set(
-      requiredBeatIds.filter(
-        (beatId) => (memory?.beats[beatId]?.provenByEventIds.length ?? 0) === 0
-      )
-    ),
-  ]
+  return [...new Set(requiredBeatIds.filter((beatId) => !isBeatProven(storyArc, memory, beatId)))]
 }
 
 export function getUnprovenRequiredKeyBeatIdsThroughAct(
@@ -87,7 +84,12 @@ export function getUnprovenRequiredKeyBeatIdsThroughAct(
   actIndex: number
 ): string[] {
   return storyArc.keyBeats
-    .filter((beat) => beat.required && beat.deadlineAct <= actIndex)
-    .filter((beat) => (memory.beats[beat.id]?.provenByEventIds.length ?? 0) === 0)
+    .filter(
+      (beat) =>
+        beat.required &&
+        beat.deadlineAct <= actIndex &&
+        getCoveredMandatoryBeatId(storyArc, beat.id) === undefined
+    )
+    .filter((beat) => !isBeatProven(storyArc, memory, beat.id))
     .map((beat) => beat.id)
 }

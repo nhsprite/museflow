@@ -1,4 +1,6 @@
 import type { StoryMemory, ForeshadowId, BeatId, TaskId, EntityId } from '../types/story-memory.js'
+import type { StoryArc } from '../types/outline.js'
+import { getCoveredMandatoryBeatId, isBeatProven } from '../utils/beat-coverage.js'
 import { getCanonicalForeshadows } from './foreshadow-alias.js'
 
 export function getActiveForeshadows(memory: StoryMemory): ForeshadowId[] {
@@ -20,10 +22,18 @@ export function getOverdueForeshadows(memory: StoryMemory, currentChapter: numbe
     .map((f) => f.id)
 }
 
-export function getUnprovenMandatoryBeats(memory: StoryMemory): BeatId[] {
+export function getUnprovenMandatoryBeats(
+  memory: StoryMemory,
+  storyArc?: StoryArc | null
+): BeatId[] {
   return Object.values(memory.beats)
-    .filter((b) => b.required && b.provenByEventIds.length === 0)
-    .map((b) => b.id)
+    .filter(
+      (beat) =>
+        beat.required &&
+        getCoveredMandatoryBeatId(storyArc, beat.id) === undefined &&
+        !isBeatProven(storyArc, memory, beat.id)
+    )
+    .map((beat) => beat.id)
 }
 
 export function getOpenTasks(memory: StoryMemory): TaskId[] {

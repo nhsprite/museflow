@@ -8,6 +8,7 @@ import {
 } from '../story-memory/foreshadow-policy.js'
 import { logger } from './logger.js'
 import { getUnprovenRequiredKeyBeatIdsThroughAct } from '../core/story-completion.js'
+import { getCoveredMandatoryBeatId, getVerifiedBeatIdsWithCoverage } from './beat-coverage.js'
 
 export function getActForChapter(
   storyArc: StoryArc | null | undefined,
@@ -56,10 +57,11 @@ export function calculateBeatBudget(
   return Math.min(pendingBeats.length, Math.max(1, cap))
 }
 
-export function getVerifiedBeatsFromMemory(memory: StoryMemory): string[] {
-  return Object.values(memory.beats)
-    .filter((b) => b.provenByEventIds.length > 0)
-    .map((b) => b.id)
+export function getVerifiedBeatsFromMemory(
+  memory: StoryMemory,
+  storyArc?: StoryArc | null
+): string[] {
+  return getVerifiedBeatIdsWithCoverage(memory, storyArc)
 }
 
 export interface ArcStatus {
@@ -72,6 +74,7 @@ export interface ArcStatus {
   beatsPending: string[]
   overdueKeyBeats: KeyBeat[]
   upcomingKeyBeats: KeyBeat[]
+  mandatoryBeatPressure: 'low' | 'medium' | 'high'
   riskLevel: 'low' | 'medium' | 'high'
 }
 
@@ -100,24 +103,30 @@ export function buildArcStatus(
 
   const currentActIndex = currentAct?.index ?? 0
   const overdueKeyBeats = storyArc.keyBeats.filter(
-    (kb) => kb.deadlineAct < currentActIndex && !verifiedBeatIds.has(kb.id)
+    (kb) =>
+      getCoveredMandatoryBeatId(storyArc, kb.id) === undefined &&
+      kb.deadlineAct < currentActIndex &&
+      !verifiedBeatIds.has(kb.id)
   )
   const upcomingKeyBeats = storyArc.keyBeats.filter(
-    (kb) => kb.deadlineAct === currentActIndex && !verifiedBeatIds.has(kb.id)
+    (kb) =>
+      getCoveredMandatoryBeatId(storyArc, kb.id) === undefined &&
+      kb.deadlineAct === currentActIndex &&
+      !verifiedBeatIds.has(kb.id)
   )
 
-  let riskLevel: ArcStatus['riskLevel'] = 'low'
-  if (
-    overdueKeyBeats.length > 0 ||
-    (currentAct && beatsPending.length > currentAct.endChapter - (currentChapterIndex + 1))
-  ) {
+  const chaptersRemainingInAct = currentAct ? currentAct.endChapter - (currentChapterIndex + 1) : 0
+  let mandatoryBeatPressure: ArcStatus['mandatoryBeatPressure'] = 'low'
+  if (currentAct && beatsPending.length > chaptersRemainingInAct) {
+    mandatoryBeatPressure = 'high'
+  } else if (currentAct && beatsPending.length > 0 && chaptersRemainingInAct <= 2) {
+    mandatoryBeatPressure = 'medium'
+  }
+
+  let riskLevel: ArcStatus['riskLevel'] = mandatoryBeatPressure
+  if (overdueKeyBeats.length > 0) {
     riskLevel = 'high'
-  } else if (
-    upcomingKeyBeats.length > 0 ||
-    (currentAct &&
-      beatsPending.length > 0 &&
-      currentAct.endChapter - (currentChapterIndex + 1) <= 2)
-  ) {
+  } else if (upcomingKeyBeats.length > 0 && riskLevel === 'low') {
     riskLevel = 'medium'
   }
 
@@ -131,6 +140,7 @@ export function buildArcStatus(
     beatsPending,
     overdueKeyBeats,
     upcomingKeyBeats,
+    mandatoryBeatPressure,
     riskLevel,
   }
 }
@@ -173,7 +183,10 @@ export function buildClosingPhaseConstraint(
   }
 
   const pendingKeyBeats = storyArc.keyBeats.filter(
-    (kb) => !verifiedBeatIds.has(kb.id) && kb.deadlineAct <= currentActIndex
+    (kb) =>
+      getCoveredMandatoryBeatId(storyArc, kb.id) === undefined &&
+      !verifiedBeatIds.has(kb.id) &&
+      kb.deadlineAct <= currentActIndex
   )
 
   const parts: string[] = [

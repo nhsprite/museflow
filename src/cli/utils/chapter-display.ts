@@ -41,7 +41,7 @@ export function printActProgress(
     state.actProgress ?? {},
     chapterIndex,
     getChapterPlanningConfig(state.genre).bookClosingPhaseRatio,
-    new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
+    new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : [])
   )
   const act = arcStatus.currentAct
   if (!act) return
@@ -154,7 +154,9 @@ export function printChapterReport(
       state.actProgress ?? {},
       state.currentChapterIndex,
       getChapterPlanningConfig(state.genre).bookClosingPhaseRatio,
-      new Set(state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : [])
+      new Set(
+        state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
+      )
     )
     if (arcStatus.currentAct) {
       for (const line of formatActForeshadowBoundaryPressure(state, arcStatus.currentAct, '   ')) {
@@ -245,6 +247,9 @@ export function printIssues(issues: Issue[], options: PrintIssuesOptions = {}): 
     log(`  ${icon} [${issue.type}] ${issue.description}`)
     if (issue.location) {
       log(`     位置: ${issue.location}`)
+    }
+    if (issue.suggestion) {
+      log(`     建议: ${issue.suggestion}`)
     }
   }
 

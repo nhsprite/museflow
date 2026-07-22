@@ -13,6 +13,8 @@ import { partitionInvalidForeshadowIntroductions } from './foreshadow-policy.js'
 import { splitContentParagraphs } from '../utils/text.js'
 import { getCanonicalForeshadows, resolveCanonicalForeshadowId } from './foreshadow-alias.js'
 import { generateId } from '../utils/id.js'
+import type { StoryArc } from '../types/outline.js'
+import { getCoveredMandatoryBeatId, isBeatProven } from '../utils/beat-coverage.js'
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -82,6 +84,7 @@ export interface ChapterEventValidationOptions {
   chapterContent?: string
   requireEvidence?: boolean
   finalStateDeclarations?: ChapterFinalStateDeclaration[]
+  storyArc?: StoryArc | null
 }
 
 export function validateChapterEvents(
@@ -157,15 +160,18 @@ export function validateChapterEvents(
   const claimedButUnprovenBeats: BeatId[] = []
 
   for (const beat of Object.values(effectiveMemory.beats)) {
-    if (beat.required && beat.provenByEventIds.length === 0) {
+    if (
+      beat.required &&
+      getCoveredMandatoryBeatId(options.storyArc, beat.id) === undefined &&
+      !isBeatProven(options.storyArc, effectiveMemory, beat.id)
+    ) {
       unclaimedMandatoryBeats.push(beat.id)
     }
   }
 
   const claimedBeatIds = [...(plan.claimedMandatoryBeatIds ?? []), ...(plan.claimedBeatIds ?? [])]
   for (const id of claimedBeatIds) {
-    const proven = (effectiveMemory.beats[id]?.provenByEventIds.length ?? 0) > 0
-    if (!proven) {
+    if (!isBeatProven(options.storyArc, effectiveMemory, id)) {
       claimedButUnprovenBeats.push(id)
     }
   }

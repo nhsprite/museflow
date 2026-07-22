@@ -135,7 +135,7 @@ export function recomputeActProgressForRewrite(
   if (!storyArc) return {}
 
   const verifiedBeatIds = new Set<string>(
-    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
+    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
   )
   for (let index = 0; index < targetChapterIndex; index++) {
     for (const beatId of state.outline[index]?.verifiedMandatoryBeatIds ?? []) {

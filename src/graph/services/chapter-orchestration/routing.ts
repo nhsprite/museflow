@@ -227,7 +227,7 @@ function buildMandatoryBeatPressureContext(
   }
 
   const verifiedBeatIds = new Set(
-    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
+    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory, state.storyArc) : []
   )
   const arcStatus = buildArcStatus(
     state.storyArc,
@@ -237,7 +237,7 @@ function buildMandatoryBeatPressureContext(
     verifiedBeatIds
   )
   const mandatoryBeatHighPressure =
-    arcStatus.riskLevel === 'high' && arcStatus.beatsPending.length > 0
+    arcStatus.mandatoryBeatPressure === 'high' && arcStatus.beatsPending.length > 0
   if (!mandatoryBeatHighPressure) {
     return { mandatoryBeatHighPressure: false, unprovenMandatoryBeatIds: [] }
   }

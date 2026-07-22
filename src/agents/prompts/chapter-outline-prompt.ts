@@ -56,7 +56,7 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
    - touchedItemIds: 本章出现的物品 EntityId 列表
    - touchedLocationIds: 本章出现的地点 EntityId 列表
    - claimedMandatoryBeatIds: 本章推进的 mandatory beat ID 列表，必须严格引用 <current_act> 中给出的精确 ID（如 A2-M3），不得使用描述文本或自造 ID
-   - claimedBeatIds: 本章推进的全局 keyBeat ID 列表，只能引用上方 <story_arc> 中 keyBeats 给出的精确 ID（如 A2-B3）；没有推进全局 keyBeat 时输出空数组
+   - claimedBeatIds: 本章推进的独立全局 keyBeat ID 列表，只能引用上方 <story_arc> 中 keyBeats 给出的精确 ID（如 A2-B3）；已由 coveredByMandatoryBeatId 覆盖的 keyBeat 是 mandatory beat 的别名，不得再次认领，改为只在 claimedMandatoryBeatIds 中认领对应 mandatory beat ID；没有推进独立 keyBeat 时输出空数组
    - fulfilledForeshadowIds: 本章兑现的 ForeshadowId 列表；只收录本章有真实、可验证回收事件的 ID
    - deferredForeshadowIds: 本章顺延的候选伏笔 ForeshadowId 列表；收录允许顺延且与本章核心事件不相容的候选 ID
    - introducedForeshadowIds: 本章埋下的 ForeshadowId 列表
@@ -127,6 +127,7 @@ export function buildChapterOutlineUserPrompt(
     TOTAL_CHAPTERS: state.totalChapters,
     KEY_BEATS:
       storyArc?.keyBeats
+        .filter((k) => !k.coveredByMandatoryBeatId)
         .map((k) => `${k.beat} [ID:${k.id}]（截止第${k.deadlineAct}幕）`)
         .join('、') || '（无）',
     WORLD_SECTION: state.world ? `<world>\n${state.world}\n</world>` : '',

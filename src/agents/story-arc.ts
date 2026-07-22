@@ -26,6 +26,10 @@ export class StoryArcAgent extends BaseAgent<StoryArcAgentInput> {
       beat.beat = beat.beat || ''
       beat.id = beat.id || `A${deadlineAct}-B${index + 1}`
       beat.required = beat.required ?? true
+      const coveredBy = beat.coveredByMandatoryBeatId
+      if (coveredBy !== undefined && coveredBy !== null && typeof coveredBy !== 'string') {
+        delete beat.coveredByMandatoryBeatId
+      }
     })
   }
 

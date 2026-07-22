@@ -125,8 +125,7 @@ async function handleRewrite(
       const errors = result.pendingIssues.filter((i) => i.severity === 'error')
       console.log(`\n[MuseFlow] 检测到 ${errors.length} 个严重问题，重写已中断：`)
       printIssues(errors)
-      console.log(`\n请再次运行以下命令重写本章：`)
-      console.log(`   museflow rewrite ${storyId}  # 彻底重写\n`)
+      console.log('\n请按上述建议处理后重试。\n')
       return
     }
 
