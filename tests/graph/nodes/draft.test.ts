@@ -63,6 +63,20 @@ describe('draft_chapter output validation', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    // clearAllMocks 不会清除 mock 实现，跨测试重新建立默认实现，避免单个测试的
+    // mockReturnValue 泄漏到后续测试。
+    vi.mocked(getGenreSkill).mockImplementation((genreName: string) =>
+      genreName === 'custom-genre'
+        ? ({
+            chapterWordCountMin: 100,
+            chapterWordCountMax: 1000,
+            chapterPlanning: { chapterWordCountToleranceRatio: 0.05 },
+          } as ReturnType<typeof getGenreSkill>)
+        : ({
+            chapterWordCountMin: 10,
+            chapterWordCountMax: 100000,
+          } as ReturnType<typeof getGenreSkill>)
+    )
     chapterAgentRunMock.mockResolvedValue({
       success: true,
       content: '缺少章节标题的正文内容，只有几句话。',
@@ -102,7 +116,7 @@ describe('draft_chapter output validation', () => {
     expect(written.startsWith('# 第1章 开篇')).toBe(true)
   })
 
-  it('rejects overlong generated content at draft stage', async () => {
+  it('rejects overlong generated content at draft stage after retries', async () => {
     const state = {
       story: { id: 'test', title: 'Test', outputDir: tmpDir },
       idea: 'test',
@@ -125,16 +139,86 @@ describe('draft_chapter output validation', () => {
       lastTimelineSnapshot: null,
       chapterPlan: null,
     } as unknown as ReducedGraphState
-    chapterAgentRunMock.mockResolvedValueOnce({
+    chapterAgentRunMock.mockResolvedValue({
       success: true,
       content: `# 第1章 开篇\n\n${'超长正文'.repeat(3000)}`,
     })
-    vi.mocked(getGenreSkill).mockReturnValueOnce({
+    vi.mocked(getGenreSkill).mockReturnValue({
       chapterWordCountMin: 10,
       chapterWordCountMax: 5000,
     } as ReturnType<typeof getGenreSkill>)
 
     await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/超过上限/)
+    expect(chapterAgentRunMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('retries drafting with validation feedback when word count is below minimum', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValueOnce({
+      success: true,
+      content: '太短了。',
+    })
+
+    const result = await draft_chapter(createMockContext(), state)
+
+    expect(result).toBeDefined()
+    expect(chapterAgentRunMock).toHaveBeenCalledTimes(2)
+    const secondInput = chapterAgentRunMock.mock.calls[1]?.[0] as {
+      issues?: Array<{ ruleId?: string; description?: string }>
+    }
+    const feedback = secondInput.issues?.find((i) => i.ruleId === 'draft.output-validation')
+    expect(feedback).toBeDefined()
+    expect(feedback?.description).toContain('低于最低要求')
+
+    const written = await fs.readFile(
+      path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
+      'utf8'
+    )
+    expect(written).toContain('缺少章节标题的正文内容')
+  })
+
+  it('throws after exhausting draft validation retries', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValue({
+      success: true,
+      content: '太短了。',
+    })
+
+    await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/低于最低要求/)
+    expect(chapterAgentRunMock).toHaveBeenCalledTimes(3)
+    await expect(
+      fs.readFile(path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'), 'utf8')
+    ).rejects.toThrow()
   })
 
   it.each([
@@ -159,7 +243,7 @@ describe('draft_chapter output validation', () => {
         pendingIssues: [],
         rewriteApproved: false,
       } as unknown as ReducedGraphState
-      chapterAgentRunMock.mockResolvedValueOnce({
+      chapterAgentRunMock.mockResolvedValue({
         success: true,
         content: chapterContentWithWords(wordCount),
       })

@@ -1,9 +1,10 @@
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { ChapterAgentInput } from '../../agents/types.js'
+import type { Issue } from '../../types/agent.js'
 import { getChapterAgent } from '../agent-factory.js'
 import { writeStagedChapterContent, readChapterContent } from '../../storage/filesystem/writer.js'
-import { createChapterMeta } from '../../utils/agent-output.js'
+import { createChapterMeta, createIssue } from '../../utils/agent-output.js'
 import { expandOutlineForChapter } from '../../core/outline-expander.js'
 import { formatChapterOutlineForAgent } from './planning.js'
 import { buildChapterAgentContext, mergeAgentState } from '../utils/chapter-context.js'
@@ -18,6 +19,14 @@ import {
   acceptEmittedChapterEvents,
   augmentExpectedEventsWithClaimedBeats,
 } from '../../story-memory/event-completion.js'
+
+/**
+ * 起草产出校验（字数等）未通过时的最大起草次数（首次 + 携带反馈的重试）。
+ * 与 outline-expander 的打回重试同一模式：校验失败原因作为结构化 issue 注入
+ * 下一轮起草，让模型看到具体差距后重新分配篇幅；耗尽后才抛出人工处理错误，
+ * 避免一次字数不达标就直接卡死整章流程。
+ */
+const MAX_DRAFT_VALIDATION_ATTEMPTS = 3
 
 export async function draft_chapter(
   context: RuntimeContext,
@@ -71,53 +80,88 @@ export async function draft_chapter(
 
   const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
-  const agentState: ChapterAgentInput = mergeAgentState(baseContext, {
-    outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
-    ...(outlineItem?.title ? { chapterTitle: outlineItem.title } : {}),
-    ...(outlineItem?.description ? { chapterSummary: outlineItem.description } : {}),
-    ...(mergedIssues.length > 0 ? { issues: mergedIssues } : {}),
-    ...(existingContent ? { chapterContent: existingContent } : {}),
-    ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
-  }) as ChapterAgentInput
-
-  const output = await agent.run(agentState)
-
-  if (!output.success && output.error) {
-    throw new Error(`第 ${chapterIndex + 1} 章 AI 生成失败：${output.error}`)
-  }
-
-  const storyEvents = isStoryEventsData(output.data) ? (output.data.storyEvents ?? []) : []
-  const finalStateDeclarations = isFinalStateData(output.data)
-    ? (output.data.finalStateDeclarations ?? [])
-    : []
-
-  let content = output.content ?? ''
-  if (!content || content.trim().length === 0) {
-    throw new Error(`第 ${chapterIndex + 1} 章内容为空，AI 未返回有效内容。请检查模型配置或重试。`)
-  }
-
-  const preWriteCheck = (output.data as { preWriteCheck?: string } | undefined)?.preWriteCheck
-  if (!preWriteCheck) {
-    logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
-  }
-
-  content = normalizeChapterHeading(content, {
-    chapterIndex,
-    title: outlineItem?.title ?? null,
-  })
-
-  const acceptedEvents = acceptEmittedChapterEvents(content, storyEvents)
-  content = acceptedEvents.content
-
   const wordCountPolicy = getChapterWordCountPolicy(state.genre)
-  const validation = await validateFixedChapterContent(content, {
-    chapterIndex,
-    wordCountPolicy,
-    enforceWordCount: true,
-  })
+  const validationFeedback: Issue[] = []
+  let content = ''
+  let acceptedEvents: ReturnType<typeof acceptEmittedChapterEvents> = { content: '', events: [] }
+  let finalStateDeclarations: ChapterFinalStateDeclaration[] = []
+  let lastValidationError: string | null = null
 
-  if (!validation.valid) {
-    throw new Error(`第 ${chapterIndex + 1} 章起草后校验失败：${validation.error}`)
+  for (let attempt = 0; attempt < MAX_DRAFT_VALIDATION_ATTEMPTS; attempt++) {
+    const attemptIssues = [...mergedIssues, ...validationFeedback]
+    const agentState: ChapterAgentInput = mergeAgentState(baseContext, {
+      outline: formatChapterOutlineForAgent(state, chapterIndex, boundaryHints),
+      ...(outlineItem?.title ? { chapterTitle: outlineItem.title } : {}),
+      ...(outlineItem?.description ? { chapterSummary: outlineItem.description } : {}),
+      ...(attemptIssues.length > 0 ? { issues: attemptIssues } : {}),
+      ...(existingContent ? { chapterContent: existingContent } : {}),
+      ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
+    }) as ChapterAgentInput
+
+    const output = await agent.run(agentState)
+
+    if (!output.success && output.error) {
+      throw new Error(`第 ${chapterIndex + 1} 章 AI 生成失败：${output.error}`)
+    }
+
+    const storyEvents = isStoryEventsData(output.data) ? (output.data.storyEvents ?? []) : []
+    finalStateDeclarations = isFinalStateData(output.data)
+      ? (output.data.finalStateDeclarations ?? [])
+      : []
+
+    content = output.content ?? ''
+    if (!content || content.trim().length === 0) {
+      throw new Error(
+        `第 ${chapterIndex + 1} 章内容为空，AI 未返回有效内容。请检查模型配置或重试。`
+      )
+    }
+
+    const preWriteCheck = (output.data as { preWriteCheck?: string } | undefined)?.preWriteCheck
+    if (!preWriteCheck) {
+      logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章未输出预写检查表，可能遗漏大纲要求`)
+    }
+
+    content = normalizeChapterHeading(content, {
+      chapterIndex,
+      title: outlineItem?.title ?? null,
+    })
+
+    acceptedEvents = acceptEmittedChapterEvents(content, storyEvents)
+    content = acceptedEvents.content
+
+    const validation = await validateFixedChapterContent(content, {
+      chapterIndex,
+      wordCountPolicy,
+      enforceWordCount: true,
+    })
+
+    if (validation.valid) {
+      lastValidationError = null
+      break
+    }
+
+    lastValidationError = validation.error ?? '未知错误'
+    if (attempt + 1 >= MAX_DRAFT_VALIDATION_ATTEMPTS) break
+
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章起草产出第 ${attempt + 1}/${MAX_DRAFT_VALIDATION_ATTEMPTS} 次校验未通过：${lastValidationError}，将携带反馈重新起草`
+    )
+    validationFeedback.push(
+      createIssue(
+        {
+          ruleId: 'draft.output-validation',
+          type: 'draft_failure',
+          severity: 'error',
+          description: `第 ${chapterIndex + 1} 章上一稿未通过产出校验：${lastValidationError}。请按章节规划的各节字数预算重新分配篇幅，确保全章总字数落在要求区间内。`,
+        },
+        'quality',
+        'draft'
+      )
+    )
+  }
+
+  if (lastValidationError !== null) {
+    throw new Error(`第 ${chapterIndex + 1} 章起草后校验失败：${lastValidationError}`)
   }
 
   await writeStagedChapterContent(state.story.outputDir, chapterIndex + 1, content)
