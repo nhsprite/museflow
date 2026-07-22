@@ -52,9 +52,16 @@ export interface ForeshadowSemanticPlanningRejection {
 /**
  * 大纲节拍认领被语义校验驳回后的反馈，随下一轮大纲生成注入 prompt。
  * 要求大纲 agent 二选一：在 description 中实质呈现该节拍，或移除认领。
+ * 幕边界高压（未消费 mandatory beats 多于幕内剩余章节）下大纲零认领时，
+ * 改用 requiredClaims 传达强制认领要求：本轮必须至少认领其中一个节拍。
  */
 export interface BeatClaimPlanningRejection {
   rejectedClaims: Array<{ beatId: BeatId; beat: string; reason: string }>
+  /** 高压零认领打回时的强制认领要求；rejectedClaims 为空而本字段存在时生效。 */
+  requiredClaims?: {
+    pendingMandatoryBeats: Array<{ beatId: BeatId; beat: string }>
+    chaptersRemainingInAct: number
+  }
   currentOutline?: {
     title: string
     description: string
@@ -196,6 +203,11 @@ export type ChapterOutlineAgentInput = AgentInput &
     verifiedConstraints?: string[]
     /** 上一章结束时的状态快照，用于让大纲生成时即感知当前角色/物品位置和时间锚点 */
     currentStateSnapshot?: string
+    /**
+     * 幕边界高压标记（未消费 mandatory beats 多于幕内剩余章节）：
+     * 由 outline-expander 依据结构化进度数据计算，prompt 据此关闭"本章可不推进"的逃逸口。
+     */
+    mandatoryBeatClaimRequired?: boolean
   }
 
 export type ChapterAgentInput = AgentInput &

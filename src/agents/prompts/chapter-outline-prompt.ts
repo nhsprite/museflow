@@ -46,7 +46,7 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 1. 生成本章标题和 {OUTLINE_DESCRIPTION_SENTENCE_COUNT_MIN}–{OUTLINE_DESCRIPTION_SENTENCE_COUNT_MAX} 句描述（{OUTLINE_DESCRIPTION_LENGTH_MIN}–{OUTLINE_DESCRIPTION_LENGTH_MAX} 字）。
 2. 标题和描述必须与当前幕的叙事功能和主题一致。
 3. 必须尊重 <story_state>、<canonical_facts> 和 <current_state_snapshot> 中的权威事实，不得与之矛盾。本章 description 中的角色位置、物品位置和时间起点必须与 <current_state_snapshot> 保持一致；如需改变这些状态，必须通过清晰的角色动作完成转移，不得让角色或物品瞬间跳转。
-4. 优先推进当前幕尚未消费的 mandatory beats；如果本章不适合推进任何 beat，请说明原因。
+{BEAT_PROGRESS_INSTRUCTION}
 5. 不得提前执行下一幕的叙事功能，不得提前完成后续幕的 mandatory beats。
 6. 如果当前幕进度偏慢（剩余章节少、pending beats 多），请在本章安排推进至少一个 pending beat。
 7. 【节拍预算】本章 claimedBeats 数量不得超过 <current_act> 中“本章节拍预算”给出的上限。description 中若涉及多个节拍事件，请只选择本章真正核心推进的若干项纳入 claimedBeats，其余可作为铺垫、悬念或后续伏笔处理，避免把整幕节拍集中在本章一次性消费完。
@@ -108,12 +108,19 @@ export function buildChapterOutlineUserPrompt(
   const storyArc = state.storyArc
   const displayChapterNumber = toDisplayChapterNumber(state.chapterIndex ?? 0)
 
+  // 幕边界高压（由 outline-expander 依据结构化进度数据计算后标记）时关闭逃逸口：
+  // 常态下允许"本章不适合推进"的说明，高压下必须认领并在本章实质完成至少 1 个 mandatory beat。
+  const beatProgressInstruction = state.mandatoryBeatClaimRequired
+    ? '4. 【强制】当前幕未消费的 mandatory beats 已多于幕内剩余章节，本章必须推进：在 claimedMandatoryBeatIds 中认领其中至少 1 个 ID，并在 description 中写出该节拍所述事件本身——可观察的行动、揭示、决定或后果在本章实际发生。认领即承诺本章写完该节拍：仅写出开端、铺垫、阶段性进展或对进展的口头确认，视为未兑现认领，将被驳回。本章不允许整章不推进任何 mandatory beat——仅描写角色维持原状、等待时间流逝或重复既有状态，不视为推进。'
+    : '4. 优先推进当前幕尚未消费的 mandatory beats；如果本章不适合推进任何 beat，请说明原因。'
+
   return renderTemplate(CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE, {
     DISPLAY_CHAPTER_NUMBER: displayChapterNumber,
     OUTLINE_DESCRIPTION_LENGTH_MIN: planningConfig.outlineDescriptionLengthMin,
     OUTLINE_DESCRIPTION_LENGTH_MAX: planningConfig.outlineDescriptionLengthMax,
     OUTLINE_DESCRIPTION_SENTENCE_COUNT_MIN: planningConfig.outlineDescriptionSentenceCountMin,
     OUTLINE_DESCRIPTION_SENTENCE_COUNT_MAX: planningConfig.outlineDescriptionSentenceCountMax,
+    BEAT_PROGRESS_INSTRUCTION: beatProgressInstruction,
     ACT_SECTION: sections.actSection,
     NEXT_ACT_SECTION: sections.nextActSection,
     CLOSING_PHASE_SECTION: sections.closingPhaseSection,

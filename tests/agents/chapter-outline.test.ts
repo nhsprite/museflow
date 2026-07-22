@@ -79,6 +79,48 @@ describe('ChapterOutlineAgent', () => {
     expect(prompt).not.toContain('1–2 句描述（30–60 字）')
   })
 
+  it('keeps the zero-progress escape hatch in the beat instruction by default', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(JSON.stringify({ title: 't', description: 'd' }))
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 1,
+      storyArc,
+      actProgress: { 1: { consumed: [], pending: ['主角失去庇护'] } },
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('如果本章不适合推进任何 beat，请说明原因')
+    expect(prompt).not.toContain('本章必须推进')
+  })
+
+  it('closes the escape hatch when mandatoryBeatClaimRequired is set under high pressure', async () => {
+    const agent = new ChapterOutlineAgent(createMockProvider())
+    mockChat.mockResolvedValueOnce(JSON.stringify({ title: 't', description: 'd' }))
+
+    await agent.run({
+      idea: 'a hero journey',
+      genre: 'default',
+      totalChapters: 6,
+      chapterIndex: 2,
+      storyArc,
+      actProgress: { 1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] } },
+      mandatoryBeatClaimRequired: true,
+    } as ChapterOutlineAgentInput)
+
+    const messages = mockChat.mock.calls.at(-1)![0] as Array<{ content: string }>
+    const prompt = messages.map((message) => message.content).join('\n')
+    expect(prompt).toContain('【强制】当前幕未消费的 mandatory beats 已多于幕内剩余章节')
+    expect(prompt).toContain('本章必须推进')
+    // 认领即承诺本章写完节拍：阶段性进展与口头确认不算兑现，防止假认领进入正文阶段
+    expect(prompt).toContain('认领即承诺本章写完该节拍')
+    expect(prompt).not.toContain('如果本章不适合推进任何 beat，请说明原因')
+  })
+
   it('parses chapter outline with claimed beats', async () => {
     const agent = new ChapterOutlineAgent(createMockProvider())
     mockChat.mockResolvedValueOnce(

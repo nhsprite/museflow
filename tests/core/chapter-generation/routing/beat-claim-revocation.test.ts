@@ -287,4 +287,75 @@ describe('decideNextStep beat claim revocation', () => {
     )
     expect(stillPending?.description).toContain('evt-2')
   })
+
+  it('blocks with request_rewrite instead of revoking mandatory beats under high act-boundary pressure', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({ previousIssues: [beatUnprovenIssue('A5-M2')] }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        plotAdvanceRejections: [
+          {
+            eventId: 'evt-1',
+            beatId: 'A5-M2',
+            evidenceParagraphIndex: 3,
+            verdict: 'not_proven',
+            reason: '证据段落只描写了静守，没有真相揭开',
+          },
+        ],
+      }),
+      mandatoryBeatHighPressure: true,
+      unprovenMandatoryBeatIds: ['A5-M2', 'A5-M3'],
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('request_rewrite')
+    if (result.step.kind !== 'request_rewrite') throw new Error('expected request_rewrite')
+    expect(result.step.reason).toBe('mandatory_beat_unproven')
+    const blocking = result.step.blockingIssues.find(
+      (issue) => issue.ruleId === 'outline.mandatory-beat-unproven-high-pressure'
+    )
+    expect(blocking?.description).toContain('A5-M2')
+    expect(blocking?.description).toContain('不允许撤销认领')
+    // 高压阻塞说明必须进入 processedIssues（写回 pendingIssues），让续跑时能展示失败原因
+    expect(
+      result.processedIssues.some(
+        (issue) => issue.ruleId === 'outline.mandatory-beat-unproven-high-pressure'
+      )
+    ).toBe(true)
+  })
+
+  it('still revokes non-mandatory beat claims under high act-boundary pressure', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({ previousIssues: [beatUnprovenIssue('A5-B1')] }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        plotAdvanceRejections: [
+          {
+            eventId: 'evt-1',
+            beatId: 'A5-B1',
+            evidenceParagraphIndex: 3,
+            verdict: 'not_proven',
+            reason: '证据不足',
+          },
+        ],
+      }),
+      mandatoryBeatHighPressure: true,
+      unprovenMandatoryBeatIds: ['A5-M2', 'A5-M3'],
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    // A5-B1 不在未消费 mandatory 名单内：高压只拦截 mandatory beat 撤销，
+    // key beat 仍按原有机制撤销并重建 plan。
+    expect(result.step).toMatchObject({
+      kind: 'draft_chapter',
+      discardPlan: true,
+      revokedBeatClaimIds: ['A5-B1'],
+    })
+  })
 })

@@ -42,6 +42,10 @@ export interface RoutingContext {
   genre: string
   chapterFileExists: boolean
   structuredValidationResult: StructuredValidationResult | undefined
+  /** 幕边界高压（未消费 mandatory beats 多于幕内剩余章节）。高压下不允许以撤销认领方式跳过节拍。 */
+  mandatoryBeatHighPressure?: boolean
+  /** 当前幕尚未被正文证实的 mandatory beat ID；撤销名单与之相交即触发高压阻塞。 */
+  unprovenMandatoryBeatIds?: readonly string[]
 }
 
 export interface IssuePolicyDeps {

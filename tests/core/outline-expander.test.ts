@@ -411,6 +411,143 @@ describe('expandOutlineForChapter', () => {
     ).toBe(true)
   })
 
+  it('retries JIT outline when zero mandatory beats are claimed under high act-boundary pressure', async () => {
+    // 第 3 章（幕末）：pending 1 个 beat、剩余 0 章 → pending > 剩余章数，高压
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人并暂时被困。' },
+        { number: 3, title: '', description: '' },
+      ],
+    }
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '静守',
+          description: '二人在屋内静守至天明，没有任何事件发生。',
+          introducedCharacters: [],
+          claimedBeats: [],
+          claimedMandatoryBeatIds: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '离乡',
+          description: '主角收拾行囊，拜别乡亲离开家乡。',
+          introducedCharacters: [],
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
+      })
+
+    const result = await expandOutlineForChapter(jitState, 2, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    // 幕边界压力文本注入大纲阶段（此前只注入规划阶段）
+    const firstInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      verifiedConstraints?: string[]
+      mandatoryBeatClaimRequired?: boolean
+    }
+    expect(
+      firstInput.verifiedConstraints?.some((text) => text.includes('【幕边界压力 - 高】'))
+    ).toBe(true)
+    // 高压标记传给 prompt，用于关闭"本章可不推进"的逃逸口
+    expect(firstInput.mandatoryBeatClaimRequired).toBe(true)
+    // 打回反馈：必须至少认领 1 个 pending mandatory beat
+    const retryInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      beatClaimRejection?: {
+        rejectedClaims: unknown[]
+        requiredClaims?: {
+          pendingMandatoryBeats: Array<{ beatId: string; beat: string }>
+          chaptersRemainingInAct: number
+        }
+      }
+    }
+    expect(retryInput.beatClaimRejection?.rejectedClaims).toEqual([])
+    expect(retryInput.beatClaimRejection?.requiredClaims).toEqual({
+      pendingMandatoryBeats: [{ beatId: 'A1-M1', beat: '主角离开家乡' }],
+      chaptersRemainingInAct: 0,
+    })
+    expect(result.outline?.[2]?.claimedMandatoryBeatIds).toEqual(['A1-M1'])
+  })
+
+  it('aborts the chapter when zero-claim retries are exhausted under high pressure', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人并暂时被困。' },
+        { number: 3, title: '', description: '' },
+      ],
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明，没有任何事件发生。',
+        introducedCharacters: [],
+        claimedBeats: [],
+        claimedMandatoryBeatIds: [],
+      },
+    })
+
+    await expect(expandOutlineForChapter(jitState, 2, createMockProvider())).rejects.toThrow(
+      /连续 2 次未认领任何 mandatory beat/
+    )
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('aborts the chapter when claim stripping leaves zero mandatory claims under high pressure', async () => {
+    // 第 3 章（幕末）：pending 1 个 beat、剩余 0 章 → 高压。
+    // 认领未通过 description 呈现校验而被剥离后同样不得放行零认领大纲。
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人并暂时被困。' },
+        { number: 3, title: '', description: '' },
+      ],
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明。',
+        introducedCharacters: [],
+        claimedBeats: ['主角离开家乡'],
+        claimedMandatoryBeatIds: ['A1-M1'],
+      },
+    })
+    verifyBeatClaimsMock.mockResolvedValue([
+      { beatId: 'A1-M1', beat: '主角离开家乡', reason: 'description 只有静守，没有离乡事件' },
+    ])
+
+    await expect(expandOutlineForChapter(jitState, 2, createMockProvider())).rejects.toThrow(
+      /未能形成有效 mandatory beat 认领/
+    )
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry zero-claim outlines when act-boundary pressure is below high', async () => {
+    // 第 2 章：pending 1 个 beat、剩余 1 章 → 中压，保持建议性，不打回
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
+  })
+
   it('skips beat claim verification when the candidate has no claims', async () => {
     const jitState: ReducedGraphState = {
       ...baseState,
@@ -2837,6 +2974,8 @@ describe('expandOutlineForChapter', () => {
       durableConstraint.text,
       currentActPressure.text,
       '【节拍预算】本章属于第 2 幕，剩余 1 个 mandatory beats、1 章未写。本章 description 与 claimedBeats 最多承载 1 个 mandatory beat，严禁在本章内一次性推进本幕其余所有节拍。',
+      // 幕边界压力自此同步注入大纲阶段（此前仅规划阶段可见）
+      '【幕边界压力 - 中】第 2 幕还剩 1 章结束，仍有 1 个 mandatory beats 未消费。本章规划应视情节自然性推进其中 1 个，避免把全部压力留到幕末。',
     ])
   })
 
@@ -3200,12 +3339,24 @@ describe('expandOutlineForChapter', () => {
       },
       chapters: [null, null, null, null, null, null],
     }
+    // 延幕后仍是高压（4 beats / 3 章），大纲必须认领至少 1 个 mandatory beat
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '推进',
+        description: '本章实质推进 beat1，并铺垫后续对抗。',
+        introducedCharacters: [],
+        claimedBeats: ['beat1'],
+        claimedMandatoryBeatIds: ['A2-M1'],
+      },
+    })
 
     const result = await expandOutlineForChapter(overloadedState, 1, createMockProvider())
 
     const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as {
       storyArc: typeof overloadedState.storyArc
       totalChapters: number
+      mandatoryBeatClaimRequired?: boolean
     }
     expect(agentInput.storyArc.acts.map((act) => [act.startChapter, act.endChapter])).toEqual([
       [1, 1],
@@ -3213,8 +3364,10 @@ describe('expandOutlineForChapter', () => {
       [5, 8],
     ])
     expect(agentInput.totalChapters).toBe(8)
+    expect(agentInput.mandatoryBeatClaimRequired).toBe(true)
     expect(result.storyArc?.totalChapters).toBe(8)
     expect(result.outline).toHaveLength(8)
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual(['A2-M1'])
   })
 
   it('stops before outline generation when pre-outline act extension needs manual adjustment', async () => {

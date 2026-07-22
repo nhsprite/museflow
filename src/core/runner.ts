@@ -466,6 +466,25 @@ export async function runOneChapter(
         description: '',
       }
       workingState.outline = clearedOutline
+    } else if (
+      !options.preserveTargetOutline &&
+      workingState.pendingIssues.some(
+        (issue) => issue.ruleId === 'outline.mandatory-beat-unproven-high-pressure'
+      )
+    ) {
+      // 高压下节拍最终未消费被阻塞后的重写：旧大纲中的认领已被多轮正文验证证明
+      // 不可兑现（准备行动/进展宣称），原样重放只会让正文再次无法证实。清空目标章
+      // 大纲，让即时大纲在当前认领标准（本章实质完成节拍）下重新生成。
+      const clearedOutline = [...workingState.outline]
+      clearedOutline[targetIndex] = {
+        number: targetIndex + 1,
+        title: '',
+        description: '',
+      }
+      workingState.outline = clearedOutline
+      logger.info(
+        `[MuseFlow] 第 ${targetIndex + 1} 章因高压节拍阻塞进入重写，已清空旧大纲，将按当前认领标准重新生成`
+      )
     }
   }
 

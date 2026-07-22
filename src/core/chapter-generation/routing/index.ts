@@ -299,6 +299,39 @@ export async function decideNextStep(
       session.previousIssues,
       remainingErrors
     )
+
+    // 幕边界高压下不允许撤销 mandatory beat 认领：撤销只是换了一条「本章零消费」的
+    // 放行路径，幕末必然以更高代价阻塞。节拍最终未消费即判本章写作失败，转人工处置
+    // （重试本章、adjust-act 延长本幕，或人工修订大纲）。
+    const revokedMandatoryBeatIds = ctx.mandatoryBeatHighPressure
+      ? revokedBeatClaimIds.filter((id) => ctx.unprovenMandatoryBeatIds?.includes(id))
+      : []
+    if (revokedMandatoryBeatIds.length > 0) {
+      const highPressureIssue: Issue = {
+        id: `mandatory-beat-unproven-high-pressure-${session.chapterIndex}`,
+        ruleId: 'outline.mandatory-beat-unproven-high-pressure',
+        type: 'beat_unproven',
+        severity: 'error',
+        subject: revokedMandatoryBeatIds.join(', '),
+        description: `幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下，mandatory beat ${revokedMandatoryBeatIds.join('、')} 连续多轮未被正文证实，不允许撤销认领跳过：本章写作失败。请重新运行本章生成，或运行 adjust-act 延长本幕，或人工修订大纲后再继续。`,
+        source: 'outline_compliance',
+        retryStrategy: 'draft',
+      }
+      return {
+        step: {
+          kind: 'request_rewrite',
+          reason: 'mandatory_beat_unproven' as const,
+          blockingIssues: [highPressureIssue, ...remainingErrors],
+        },
+        sessionUpdate: {
+          rewriteApproved: false,
+          issueFingerprintHistory: nextFingerprintHistory,
+        },
+        processedIssues: [...policyResult.issues, highPressureIssue],
+        newConstraints: policyResult.newConstraints,
+      }
+    }
+
     const discardPlan = requiresForeshadowReplan(remainingErrors) || revokedBeatClaimIds.length > 0
     // 被撤销认领的节拍必须把「认领已撤销、不得再声明」的反馈持久化进 processedIssues
     // （会写回 pendingIssues），否则下一轮起草仍收到「请证明该节拍」的旧反馈，

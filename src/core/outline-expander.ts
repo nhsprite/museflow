@@ -45,7 +45,7 @@ import {
   proposeActBoundaryAdjustments,
   type ActBoundaryProposal,
 } from '../utils/story-arc.js'
-import { findMandatoryBeatById } from '../utils/mandatory-beat-ids.js'
+import { findMandatoryBeatById, getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
 import {
   createGenericVerifiedConstraint,
@@ -1276,6 +1276,42 @@ async function generateChapterOutlineIfNeeded(
       ? `【节拍预算】本章属于第 ${currentAct?.index ?? '?'} 幕，剩余 ${pendingBeats.length} 个 mandatory beats、${currentAct ? currentAct.endChapter - (chapterIndex + 1) : 0} 章未写。本章 description 与 claimedBeats 最多承载 ${beatBudget} 个 mandatory beat，严禁在本章内一次性推进本幕其余所有节拍。`
       : ''
 
+  // 幕边界压力（高/中）此前只注入规划阶段，大纲阶段完全看不到；
+  // 这里同步注入大纲 agent，并在高压时对「零认领」做打回重试。
+  const planningConfig = getChapterPlanningConfig(state.genre)
+  const verifiedBeatIdSet = new Set(
+    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
+  )
+  const arcStatus = state.storyArc
+    ? buildArcStatus(
+        state.storyArc,
+        state.actProgress ?? {},
+        chapterIndex,
+        planningConfig.bookClosingPhaseRatio,
+        verifiedBeatIdSet
+      )
+    : undefined
+  const arcStatusConstraint = state.storyArc
+    ? buildArcStatusConstraint(
+        state.storyArc,
+        state.actProgress ?? {},
+        chapterIndex,
+        planningConfig.bookClosingPhaseRatio,
+        verifiedBeatIdSet
+      )
+    : undefined
+  const chaptersRemainingInAct = currentAct ? currentAct.endChapter - (chapterIndex + 1) : 0
+  // 高压 = 未消费 mandatory beats 多于幕内剩余章节；此时本章再不认领，幕末必然阻塞。
+  // 中低压保持建议性（仅注入压力文本），不打回。
+  const mustClaimMandatoryBeat =
+    arcStatus?.riskLevel === 'high' && arcStatus.beatsPending.length > 0
+  const pendingMandatoryBeatPairs = mustClaimMandatoryBeat
+    ? getMandatoryBeatEntries(state.storyArc)
+        .filter((entry) => entry.actIndex === currentAct?.index)
+        .filter((entry) => !isBeatAlreadyProven(state, entry.id))
+        .map((entry) => ({ beatId: entry.id, beat: entry.beat }))
+    : []
+
   let foreshadowPlanningRejection = options.foreshadowPlanningRejection
   let result: ChapterOutlineResult | null = null
   let lastCandidate: ChapterOutlineResult | null = null
@@ -1284,6 +1320,7 @@ async function generateChapterOutlineIfNeeded(
   let beatClaimRejection: BeatClaimPlanningRejection | undefined
   let lastBeatClaimRejections: BeatClaimRejection[] = []
   let strippedBeatClaimRejections: BeatClaimRejection[] = []
+  let zeroClaimRejected = false
   const requiredFulfillmentIds = [...mustFulfillForeshadowIds]
   let preservedFulfillmentIds = new Set(foreshadowPlanningRejection?.preservedFulfillmentIds ?? [])
   const regressedFulfillmentIds = new Set(
@@ -1295,6 +1332,7 @@ async function generateChapterOutlineIfNeeded(
     const verifiedConstraints = [
       ...renderVerifiedConstraints(baseVerifiedConstraints),
       ...(beatBudgetConstraint ? [beatBudgetConstraint] : []),
+      ...(arcStatusConstraint ? [arcStatusConstraint] : []),
     ]
     const previousChapters = [
       buildLayeredSummaries(selectChapterSummaries(state.chapters, chapterIndex), chapterIndex),
@@ -1324,6 +1362,7 @@ async function generateChapterOutlineIfNeeded(
       ...(foreshadowObligations.length > 0 ? { foreshadowObligations } : {}),
       ...(foreshadowPlanningRejection ? { foreshadowPlanningRejection } : {}),
       ...(beatClaimRejection ? { beatClaimRejection } : {}),
+      ...(mustClaimMandatoryBeat ? { mandatoryBeatClaimRequired: true } : {}),
       currentStateSnapshot: buildCurrentStateSnapshot(state),
     }
 
@@ -1445,7 +1484,33 @@ async function generateChapterOutlineIfNeeded(
       continue
     }
 
-    result = finalizeChapterOutlineCandidate(normalizedCandidate, state, chapterIndex, beatBudget)
+    const finalizedCandidate = finalizeChapterOutlineCandidate(
+      normalizedCandidate,
+      state,
+      chapterIndex,
+      beatBudget
+    )
+    // 高压下零认领打回：过滤后仍一个 mandatory beat 都没认领时，
+    // 本章必将在幕末留下比剩余章数更多的未消费节拍，直接打回比放行更省代价。
+    if (mustClaimMandatoryBeat && (finalizedCandidate.claimedMandatoryBeatIds ?? []).length === 0) {
+      zeroClaimRejected = true
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次在幕边界高压下未认领任何 mandatory beat，打回重试`
+      )
+      beatClaimRejection = {
+        rejectedClaims: [],
+        requiredClaims: {
+          pendingMandatoryBeats: pendingMandatoryBeatPairs,
+          chaptersRemainingInAct,
+        },
+        currentOutline: {
+          title: normalizedCandidate.title,
+          description: normalizedCandidate.description,
+        },
+      }
+      continue
+    }
+    result = finalizedCandidate
     break
   }
 
@@ -1514,9 +1579,24 @@ async function generateChapterOutlineIfNeeded(
         chapterIndex,
         beatBudget
       )
+    } else if (lastCandidate && zeroClaimRejected) {
+      // 高压下重试仍零认领：中止本章转人工。再放行只会让幕末 pending-beats-at-boundary
+      // 以更高代价爆发（与伏笔严格模式同一处置哲学）。
+      throw new Error(
+        `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领任何 mandatory beat，已中止本章。请重新运行本章生成；若模型持续不认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+      )
     } else {
       throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：未返回可执行大纲`)
     }
+  }
+
+  // 高压下「认领被拒→剥离」与「零认领」同等处置：剥离只是换了一条到达零认领的路径，
+  // 放行同样会在幕末留下比剩余章数更多的未消费节拍。循环内的零认领打回覆盖常规路径，
+  // 这里兜住剥离兜底分支，保证高压模式下大纲必须持有有效 mandatory beat 认领。
+  if (mustClaimMandatoryBeat && (result.claimedMandatoryBeatIds ?? []).length === 0) {
+    throw new Error(
+      `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下未能形成有效 mandatory beat 认领（认领未通过 description 呈现校验或始终未认领），已中止本章。请重新运行本章生成；若模型持续无法认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+    )
   }
 
   const newOutline = [...state.outline]

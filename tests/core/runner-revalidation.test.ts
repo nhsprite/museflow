@@ -699,6 +699,83 @@ describe('runner revalidation', () => {
     })
   })
 
+  it('clears the target chapter outline when rewriting after a high-pressure mandatory-beat block', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        pendingIssues: [
+          {
+            id: 'hp-1',
+            ruleId: 'outline.mandatory-beat-unproven-high-pressure',
+            type: 'beat_unproven',
+            severity: 'error',
+            description: '高压阻塞',
+            source: 'outline_compliance',
+            retryStrategy: 'draft',
+          },
+        ],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter(
+      'story-1',
+      {
+        mode: 'rewrite',
+        targetChapterIndex: 1,
+        userResponse: true,
+      },
+      createMockContext()
+    )
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    expect(invokedState.outline[1]).toEqual({ number: 2, title: '', description: '' })
+  })
+
+  it('keeps the target chapter outline after a high-pressure block when preserveTargetOutline is set', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        pendingIssues: [
+          {
+            id: 'hp-1',
+            ruleId: 'outline.mandatory-beat-unproven-high-pressure',
+            type: 'beat_unproven',
+            severity: 'error',
+            description: '高压阻塞',
+            source: 'outline_compliance',
+            retryStrategy: 'draft',
+          },
+        ],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+
+    await runOneChapter(
+      'story-1',
+      {
+        mode: 'rewrite',
+        targetChapterIndex: 1,
+        userResponse: true,
+        preserveTargetOutline: true,
+      },
+      createMockContext()
+    )
+
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    expect(invokedState.outline[1]).toEqual({
+      number: 2,
+      title: 'Chapter 2',
+      description: 'Desc 2',
+    })
+  })
+
   it('cleans target and future chapter facts from rewrite base state', async () => {
     const { runOneChapter } = await import('../../src/core/runner.js')
 

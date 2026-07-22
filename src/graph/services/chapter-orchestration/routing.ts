@@ -7,6 +7,7 @@ import { generateId } from '../../../utils/id.js'
 import { createCheckpointService } from '../../../storage/checkpoint-service.js'
 import { shouldForceTemporaryReplan } from '../../../utils/outline-boundary.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
+import type { ChapterPlanningConfig } from '../../../types/genre.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import {
   isStateCorruptionIssue,
@@ -22,6 +23,8 @@ import {
 import { calculateIssueSetSimilarity } from '../../../core/chapter-generation/routing/issue-policy.js'
 import { dropBeatClaimsFromOutline } from '../../../core/chapter-generation/routing/beat-claim-revocation.js'
 import type { RoutingDecision } from '../../../core/chapter-generation/routing/types.js'
+import { buildArcStatus, getVerifiedBeatsFromMemory } from '../../../utils/story-arc.js'
+import { getMandatoryBeatEntries } from '../../../utils/mandatory-beat-ids.js'
 import type { RuntimeContext } from '../../../core/context.js'
 import { createChapterSession } from '../../../core/chapter-generation/routing/session.js'
 import {
@@ -153,6 +156,14 @@ function buildBlockingReport(
     })
   }
 
+  if (reason === 'mandatory_beat_unproven') {
+    suggestedActions.push({
+      type: 'manual_rewrite',
+      description:
+        '幕边界高压下 mandatory beat 连续未被正文证实：请运行 museflow rewrite <story-id> 重试本章，或运行 adjust-act 延长本幕，或人工修订本章大纲后再继续',
+    })
+  }
+
   return {
     id: generateId('block'),
     storyId,
@@ -203,6 +214,41 @@ export function cleanCurrentChapterInferredFacts(state: ReducedGraphState): Stor
   }
 }
 
+/**
+ * 与 outline-expander 的高压判定同源：未消费 mandatory beats 多于幕内剩余章节时，
+ * 路由层同步收紧处置（不允许以撤销认领方式跳过 mandatory beat）。
+ */
+function buildMandatoryBeatPressureContext(
+  state: ReducedGraphState,
+  planningConfig: ChapterPlanningConfig
+): Pick<RoutingContext, 'mandatoryBeatHighPressure' | 'unprovenMandatoryBeatIds'> {
+  if (!state.storyArc) {
+    return { mandatoryBeatHighPressure: false, unprovenMandatoryBeatIds: [] }
+  }
+
+  const verifiedBeatIds = new Set(
+    state.storyMemory ? getVerifiedBeatsFromMemory(state.storyMemory) : []
+  )
+  const arcStatus = buildArcStatus(
+    state.storyArc,
+    state.actProgress ?? {},
+    state.currentChapterIndex,
+    planningConfig.bookClosingPhaseRatio,
+    verifiedBeatIds
+  )
+  const mandatoryBeatHighPressure =
+    arcStatus.riskLevel === 'high' && arcStatus.beatsPending.length > 0
+  if (!mandatoryBeatHighPressure) {
+    return { mandatoryBeatHighPressure: false, unprovenMandatoryBeatIds: [] }
+  }
+
+  const unprovenMandatoryBeatIds = getMandatoryBeatEntries(state.storyArc)
+    .filter((entry) => entry.actIndex === arcStatus.currentAct?.index)
+    .filter((entry) => !verifiedBeatIds.has(entry.id))
+    .map((entry) => entry.id)
+  return { mandatoryBeatHighPressure: true, unprovenMandatoryBeatIds }
+}
+
 export async function convergeAndDecide(
   state: ReducedGraphState,
   _context: RuntimeContext
@@ -239,6 +285,7 @@ export async function convergeAndDecide(
     genre: state.genre,
     chapterFileExists,
     structuredValidationResult: state.structuredValidationResult,
+    ...buildMandatoryBeatPressureContext(state, planningConfig),
   }
 
   const { step, sessionUpdate, processedIssues, newConstraints } = await decideNextStep(

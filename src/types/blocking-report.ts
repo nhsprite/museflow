@@ -1,7 +1,11 @@
 import type { Issue } from './agent.js'
 
 export type BlockingReason =
-  'max_rewrite_attempts' | 'state_corruption' | 'rewrite_loop_stalled' | 'blocking_outline_conflict'
+  | 'max_rewrite_attempts'
+  | 'state_corruption'
+  | 'rewrite_loop_stalled'
+  | 'blocking_outline_conflict'
+  | 'mandatory_beat_unproven'
 
 export interface BlockingConflict {
   subject: string
