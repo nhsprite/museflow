@@ -1230,6 +1230,293 @@ describe('runner revalidation', () => {
     )
   })
 
+  it('re-adjudicates a blocking key beat against proven mandatory beats before blocking', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    const storyMemory = createEmptyStoryMemory()
+    storyMemory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '第一幕关键转折',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['event-proof'],
+    }
+    storyMemory.beats['A1-B1'] = {
+      id: 'A1-B1',
+      description: '第一幕关键转折',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        totalChapters: 5,
+        currentChapterIndex: 3,
+        storyArc: {
+          totalChapters: 5,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 3,
+              title: 'Act 1',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-a'],
+            },
+            {
+              index: 2,
+              startChapter: 4,
+              endChapter: 5,
+              title: 'Act 2',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-b'],
+            },
+          ],
+          keyBeats: [
+            {
+              id: 'A1-B1',
+              beat: '第一幕关键转折',
+              deadlineAct: 1,
+              required: true,
+              coveredByMandatoryBeatId: null,
+            },
+          ],
+        },
+        storyMemory,
+        actProgress: {
+          1: { consumed: ['beat-a'], pending: [] },
+          2: { consumed: [], pending: ['beat-b'] },
+        },
+        outline: [
+          { number: 1, title: 'Chapter 1', description: 'Desc 1' },
+          { number: 2, title: 'Chapter 2', description: 'Desc 2' },
+          { number: 3, title: 'Chapter 3', description: 'Desc 3' },
+          { number: 4, title: 'Chapter 4', description: 'Desc 4' },
+          { number: 5, title: 'Chapter 5', description: 'Desc 5' },
+        ],
+        chapters: [{}, {}, {}, null, null],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+    const context = createMockContext()
+    context.provider.chatStructured = vi.fn().mockResolvedValue({ covered: true })
+
+    await runOneChapter('story-1', { mode: 'draft' }, context)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    expect(updateLatestState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storyArc: expect.objectContaining({
+          keyBeats: [expect.objectContaining({ id: 'A1-B1', coveredByMandatoryBeatId: 'A1-M1' })],
+        }),
+        pendingIssues: [],
+      })
+    )
+    expect(mockGraph.invoke).toHaveBeenCalledTimes(1)
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    expect(invokedState.storyArc?.keyBeats[0]?.coveredByMandatoryBeatId).toBe('A1-M1')
+    expect(invokedState.pendingIssues).not.toContainEqual(
+      expect.objectContaining({ ruleId: 'story-completion.required-beat-unproven' })
+    )
+  })
+
+  it('drops a stale required-beat retry issue carried from a previously blocked run', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    const staleIssue = {
+      id: 'past-act-1-required-beat-A1-B1',
+      ruleId: 'story-completion.required-beat-unproven',
+      type: 'outline_coverage' as const,
+      severity: 'error' as const,
+      subject: 'A1-B1',
+      description: '前次阻断持久化的陈旧 issue',
+      source: 'outline_compliance' as const,
+      retryStrategy: 'manual' as const,
+    }
+    const storyMemory = createEmptyStoryMemory()
+    storyMemory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '第一幕关键转折',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['event-proof'],
+    }
+    storyMemory.beats['A1-B1'] = {
+      id: 'A1-B1',
+      description: '第一幕关键转折',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        totalChapters: 5,
+        currentChapterIndex: 3,
+        storyArc: {
+          totalChapters: 5,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 3,
+              title: 'Act 1',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-a'],
+            },
+            {
+              index: 2,
+              startChapter: 4,
+              endChapter: 5,
+              title: 'Act 2',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-b'],
+            },
+          ],
+          keyBeats: [
+            {
+              id: 'A1-B1',
+              beat: '第一幕关键转折',
+              deadlineAct: 1,
+              required: true,
+              coveredByMandatoryBeatId: null,
+            },
+          ],
+        },
+        storyMemory,
+        actProgress: {
+          1: { consumed: ['beat-a'], pending: [] },
+          2: { consumed: [], pending: ['beat-b'] },
+        },
+        pendingIssues: [staleIssue],
+        outline: [
+          { number: 1, title: 'Chapter 1', description: 'Desc 1' },
+          { number: 2, title: 'Chapter 2', description: 'Desc 2' },
+          { number: 3, title: 'Chapter 3', description: 'Desc 3' },
+          { number: 4, title: 'Chapter 4', description: 'Desc 4' },
+          { number: 5, title: 'Chapter 5', description: 'Desc 5' },
+        ],
+        chapters: [{}, {}, {}, null, null],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+    const context = createMockContext()
+    context.provider.chatStructured = vi.fn().mockResolvedValue({ covered: true })
+
+    await runOneChapter('story-1', { mode: 'draft', retryIssues: [staleIssue] }, context)
+
+    expect(mockGraph.invoke).toHaveBeenCalledTimes(1)
+    const invokedState = mockGraph.invoke.mock.calls[0]![0] as ReturnType<
+      typeof createBaseGraphState
+    >
+    expect(invokedState.pendingIssues).toEqual([])
+  })
+
+  it('keeps blocking when re-adjudication rejects coverage for the blocking key beat', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    const storyMemory = createEmptyStoryMemory()
+    storyMemory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '另一项已证明的义务',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['event-proof'],
+    }
+    storyMemory.beats['A1-B1'] = {
+      id: 'A1-B1',
+      description: '第一幕关键转折',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: null,
+      provenByEventIds: [],
+    }
+
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({
+        totalChapters: 5,
+        currentChapterIndex: 3,
+        storyArc: {
+          totalChapters: 5,
+          acts: [
+            {
+              index: 1,
+              startChapter: 1,
+              endChapter: 3,
+              title: 'Act 1',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-a'],
+            },
+            {
+              index: 2,
+              startChapter: 4,
+              endChapter: 5,
+              title: 'Act 2',
+              theme: '',
+              function: '',
+              mandatoryBeats: ['beat-b'],
+            },
+          ],
+          keyBeats: [
+            {
+              id: 'A1-B1',
+              beat: '第一幕关键转折',
+              deadlineAct: 1,
+              required: true,
+              coveredByMandatoryBeatId: null,
+            },
+          ],
+        },
+        storyMemory,
+        actProgress: {
+          1: { consumed: ['beat-a'], pending: [] },
+          2: { consumed: [], pending: ['beat-b'] },
+        },
+        outline: [
+          { number: 1, title: 'Chapter 1', description: 'Desc 1' },
+          { number: 2, title: 'Chapter 2', description: 'Desc 2' },
+          { number: 3, title: 'Chapter 3', description: 'Desc 3' },
+          { number: 4, title: 'Chapter 4', description: 'Desc 4' },
+          { number: 5, title: 'Chapter 5', description: 'Desc 5' },
+        ],
+        chapters: [{}, {}, {}, null, null],
+      }),
+      config: { configurable: { checkpoint_id: 'checkpoint-123' } },
+    })
+    const context = createMockContext()
+    context.provider.chatStructured = vi.fn().mockResolvedValue({ covered: false })
+
+    const result = await runOneChapter('story-1', { mode: 'draft' }, context)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(3)
+    expect(mockGraph.invoke).not.toHaveBeenCalled()
+    expect(result.rewriteRequested).toBe(true)
+    expect(result.pendingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'past-act-1-required-beat-A1-B1',
+          ruleId: 'story-completion.required-beat-unproven',
+        }),
+      ])
+    )
+  })
+
   it('audits legacy duplicate obligations and reuses the mandatory proof before past-act gating', async () => {
     const { runOneChapter } = await import('../../src/core/runner.js')
     const storyMemory = createEmptyStoryMemory()

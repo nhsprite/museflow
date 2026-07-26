@@ -37,6 +37,7 @@ import {
   type LegacyStoryMemoryV2,
 } from '../story-memory/resolution-policy.js'
 import type { StoryMemory } from '../types/story-memory.js'
+import type { StoryArc } from '../types/outline.js'
 import { applyEvents } from '../story-memory/projector.js'
 import { projectForeshadowStack } from '../story-memory/foreshadow-policy.js'
 import {
@@ -44,7 +45,7 @@ import {
   resolveStoryBoundaryChapter,
 } from '../story-memory/foreshadow-deadline-boundary.js'
 import { getUnprovenRequiredKeyBeatIdsThroughAct } from './story-completion.js'
-import { auditKeyBeatCoverage } from './beat-coverage.js'
+import { auditKeyBeatCoverage, verifyUnprovenKeyBeatCoverage } from './beat-coverage.js'
 import { isBeatProven, mergeKeyBeatCoverageMetadata } from '../utils/beat-coverage.js'
 import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
 
@@ -587,7 +588,62 @@ export async function runOneChapter(
     }
   }
 
-  const pastActCoverageIssues = findPastActCoverageIssues(storyId, workingState, targetIndex)
+  let pastActCoverageIssues = findPastActCoverageIssues(storyId, workingState, targetIndex)
+  const blockedKeyBeatIds = [
+    ...new Set(
+      pastActCoverageIssues
+        .filter((issue) => issue.ruleId === 'story-completion.required-beat-unproven')
+        .map((issue) => issue.subject)
+        .filter((subject): subject is string => typeof subject === 'string' && subject.length > 0)
+    ),
+  ]
+  if (blockedKeyBeatIds.length > 0 && workingState.storyArc && workingState.storyMemory) {
+    // 批量覆盖审计可能漏掉等价义务；假阴性会把故事永久锁死在"重写截止幕末章、
+    // 截断后续全部章节"的路径上。阻断前先对临界 key beat 做聚焦复核。
+    const coverageLinks = await verifyUnprovenKeyBeatCoverage(
+      workingState.storyArc,
+      workingState.storyMemory,
+      blockedKeyBeatIds,
+      context.provider
+    )
+    if (coverageLinks.length > 0) {
+      const linkByBeatId = new Map(
+        coverageLinks.map((link) => [link.keyBeatId, link.mandatoryBeatId])
+      )
+      const applyCoverageLinks = (arc: StoryArc): StoryArc => ({
+        ...arc,
+        keyBeats: arc.keyBeats.map((keyBeat) => {
+          const linked = linkByBeatId.get(keyBeat.id)
+          return linked !== undefined ? { ...keyBeat, coveredByMandatoryBeatId: linked } : keyBeat
+        }),
+      })
+      workingState = { ...workingState, storyArc: applyCoverageLinks(workingState.storyArc) }
+      // 关联落地后，同步清除 pendingIssues 中已被证明的陈旧 required-beat 阻断
+      // issue（可能由前次阻断持久化、经 retryIssues 传入），避免其随 workingState
+      // 进入图内被当作未解决的人工阻断处理。
+      workingState = {
+        ...workingState,
+        pendingIssues: pruneResolvedRequiredBeatIssues(workingState.pendingIssues, workingState),
+      }
+      if (latestState.storyArc) {
+        latestState = { ...latestState, storyArc: applyCoverageLinks(latestState.storyArc) }
+        latestState = {
+          ...latestState,
+          pendingIssues: pruneResolvedRequiredBeatIssues(latestState.pendingIssues, latestState),
+        }
+        await checkpointService.updateLatestState({
+          storyArc: latestState.storyArc,
+          pendingIssues: latestState.pendingIssues,
+        })
+      }
+      pastActCoverageIssues = findPastActCoverageIssues(storyId, workingState, targetIndex)
+      logger.info(
+        `[MuseFlow] 阻断复核为 ${coverageLinks.length} 个 key beat 重新关联了 mandatory beat 证明：${coverageLinks
+          .map((link) => `${link.keyBeatId} → ${link.mandatoryBeatId}`)
+          .join('、')}`
+      )
+    }
+  }
   if (pastActCoverageIssues.length > 0) {
     const replacementKeys = new Set(
       pastActCoverageIssues.map((issue) => `${issue.ruleId}\u0000${issue.subject ?? ''}`)

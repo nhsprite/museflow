@@ -4,6 +4,7 @@ import {
   getVerifiedBeatIdsWithCoverage,
   isBeatProven,
   mergeKeyBeatCoverageMetadata,
+  verifyUnprovenKeyBeatCoverage,
 } from '../../src/core/beat-coverage.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 import type { ModelProvider } from '../../src/model/provider.js'
@@ -103,5 +104,99 @@ describe('beat coverage', () => {
       expect.objectContaining({ id: 'A1-B1', coveredByMandatoryBeatId: 'A1-M1' }),
       expect.objectContaining({ id: 'A1-B2', coveredByMandatoryBeatId: null }),
     ])
+  })
+
+  it('links a blocking key beat to a proven mandatory beat confirmed by pairwise verification', async () => {
+    const storyArc = makeArc()
+    storyArc.keyBeats[0]!.coveredByMandatoryBeatId = null
+    const memory = createEmptyStoryMemory()
+    memory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '真相完整揭开',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['evt-proof'],
+    }
+    const provider = providerWith({ covered: true })
+
+    const links = await verifyUnprovenKeyBeatCoverage(storyArc, memory, ['A1-B1'], provider)
+
+    expect(links).toEqual([{ keyBeatId: 'A1-B1', mandatoryBeatId: 'A1-M1' }])
+  })
+
+  it('only considers proven mandatory beats as verification candidates', async () => {
+    const storyArc = makeArc()
+    storyArc.keyBeats[0]!.coveredByMandatoryBeatId = null
+    const memory = createEmptyStoryMemory()
+    const provider = providerWith({ covered: true })
+
+    const links = await verifyUnprovenKeyBeatCoverage(storyArc, memory, ['A1-B1'], provider)
+
+    expect(links).toEqual([])
+    expect(provider.chatStructured).not.toHaveBeenCalled()
+  })
+
+  it('returns no link when pairwise verification rejects coverage', async () => {
+    const storyArc = makeArc()
+    storyArc.keyBeats[0]!.coveredByMandatoryBeatId = null
+    const memory = createEmptyStoryMemory()
+    memory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '真相完整揭开',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['evt-proof'],
+    }
+    const provider = providerWith({ covered: false })
+
+    const links = await verifyUnprovenKeyBeatCoverage(storyArc, memory, ['A1-B1'], provider)
+
+    expect(links).toEqual([])
+  })
+
+  it('treats invalid verification output as not covered without linking', async () => {
+    const storyArc = makeArc()
+    storyArc.keyBeats[0]!.coveredByMandatoryBeatId = null
+    const memory = createEmptyStoryMemory()
+    memory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '真相完整揭开',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['evt-proof'],
+    }
+    const provider = providerWith({})
+
+    const links = await verifyUnprovenKeyBeatCoverage(storyArc, memory, ['A1-B1'], provider)
+
+    expect(links).toEqual([])
+    expect(provider.chatStructured).toHaveBeenCalledTimes(3)
+  })
+
+  it('skips key beats that already carry a coverage link', async () => {
+    const storyArc = makeArc()
+    storyArc.keyBeats[0]!.coveredByMandatoryBeatId = 'A1-M1'
+    const memory = createEmptyStoryMemory()
+    memory.beats['A1-M1'] = {
+      id: 'A1-M1',
+      description: '真相完整揭开',
+      actIndex: 1,
+      deadlineAct: 1,
+      required: true,
+      claimedIn: 2,
+      provenByEventIds: ['evt-proof'],
+    }
+    const provider = providerWith({ covered: true })
+
+    const links = await verifyUnprovenKeyBeatCoverage(storyArc, memory, ['A1-B1'], provider)
+
+    expect(links).toEqual([])
+    expect(provider.chatStructured).not.toHaveBeenCalled()
   })
 })
