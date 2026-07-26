@@ -87,9 +87,9 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
       无名功能性角色不构成 invented character，前提是他们没有名字、没有亲属关系、不进入 storyState。
     </dimension>
     <dimension name="timeline_anchor" priority="critical">
-      角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的、或在超现实场景中看到的。
+      角色在叙述、回忆、内心独白中提及的事件，必须是该角色已经经历过的、或明确被告知的、或在明确的特殊叙事框架或超现实场景中看到的。
       严禁角色将尚未发生的事件描述为已发生的回忆。
-      如果角色提及未来事件，必须使用前瞻性的措辞，且必须是在明确的超现实场景中。
+      如果角色提及未来事件，必须使用前瞻性的措辞，且必须处于明确的特殊叙事框架或超现实场景中。
       特别注意：涉及非线性叙事时，必须严格区分"已发生的回忆"和"未发生的预示"。
     </dimension>
     <dimension name="dialogue" priority="critical">角色说过的话是否前后矛盾。前一章角色亲口说的内容，本章不能自相矛盾</dimension>

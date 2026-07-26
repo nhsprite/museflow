@@ -280,6 +280,9 @@ export function tagIssueSource(
  */
 const RERUN_ISSUE_SOURCES: ReadonlySet<IssueSource> = new Set(['word_count', 'consistency'])
 
+/** 相邻章节字数健全检查的方差阈值：较短章字数不足较长章的该比例时给出警告。 */
+const CHAPTER_WORDCOUNT_VARIANCE_THRESHOLD = 0.5
+
 /**
  * 移除属于本轮重跑检测器的旧 issue，保留其他来源的 issue
  * （如结构化校验、大纲义务等由各自管线环节跨轮维护）。
@@ -346,7 +349,7 @@ export async function validate_chapter(
       const prevWordCount = countChineseWords(prevContent)
       const shorter = Math.min(wordCount, prevWordCount)
       const longer = Math.max(wordCount, prevWordCount)
-      if (longer > 0 && shorter / longer < 0.5) {
+      if (longer > 0 && shorter / longer < CHAPTER_WORDCOUNT_VARIANCE_THRESHOLD) {
         newIssues.push(
           tagIssueSource(
             {

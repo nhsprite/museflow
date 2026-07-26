@@ -34,12 +34,18 @@ export function isClosingPhase(
  */
 export const BEAT_PACING_PRESSURE_FACTOR = 2
 
+/** 节拍预算乘数：单章预算 = ceil(平均配速 × 该值)，为后续章节保留弹性。 */
+export const BEAT_BUDGET_PACING_MULTIPLIER = 1.5
+
+/** 幕首章节拍预算上限：第一章通常承担启幕功能，最多认领 2 个。 */
+export const FIRST_CHAPTER_BEAT_CAP = 2
+
 /**
  * 计算当前章节在当前幕中最多可认领的 mandatory beats 数量。
  *
  * 目标：避免幕前期把全部节拍一次性消费完，导致后续章节无节拍可领。
- * 策略：用“剩余节拍 / 剩余章节”作为平均值，前期允许最多 1.5 倍平均值，
- * 为后续保留弹性；第一章通常承担启幕功能，最多认领 2 个。
+ * 策略：用“剩余节拍 / 剩余章节”作为平均值，前期允许最多 BEAT_BUDGET_PACING_MULTIPLIER
+ * 倍平均值，为后续保留弹性；第一章通常承担启幕功能，最多认领 FIRST_CHAPTER_BEAT_CAP 个。
  */
 export function calculateBeatBudget(
   act: ActArc,
@@ -55,10 +61,10 @@ export function calculateBeatBudget(
   }
 
   const average = pendingBeats.length / remainingChapters
-  const cap = Math.ceil(average * 1.5)
+  const cap = Math.ceil(average * BEAT_BUDGET_PACING_MULTIPLIER)
 
   if (currentPositionInAct === 1) {
-    return Math.min(pendingBeats.length, Math.max(1, Math.min(cap, 2)))
+    return Math.min(pendingBeats.length, Math.max(1, Math.min(cap, FIRST_CHAPTER_BEAT_CAP)))
   }
 
   return Math.min(pendingBeats.length, Math.max(1, cap))

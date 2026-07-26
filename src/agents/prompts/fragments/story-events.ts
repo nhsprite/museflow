@@ -20,7 +20,7 @@ expectedEvents 中每个对象必须严格匹配下列一种完整 JSON 结构�
 - 创建事件是唯一例外：foreshadow-introduce.foreshadowId 与 task-create.taskId 必须使用新的唯一机器 ID；foreshadow-introduce.beatId 若非 null，仍必须复用上下文中的权威 beatId。
 - 位置变化与状态变化的区分（高频错误，务必注意）：
   - character-location：角色从一个地点移动到另一个地点（如离开、抵达、回家、出门）。只要角色位置发生改变，就必须使用此类型，不得使用 character-status。
-  - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。"锁回木箱""放入抽屉""贴身携带"等动作都属于位置变化，必须使用 item-location，并将木箱/抽屉/角色等对应 ID 填入 locationId 或 holderId。
+  - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。任何改变物品所在位置或持有者的动作都属于位置变化，必须使用 item-location，并将目标地点/容器/角色对应的权威 ID 填入 locationId 或 holderId。
   - 【关键区分】locationId 是物品的"主位置"（canonical location）。物品最终停留在某个固定地点/容器时，locationId 必须是该地点/容器 ID，holderId 必须为 null；物品最终被角色随身携带且其位置就是该角色时，locationId 应填写该角色 ID（与 holderId 一致），而不是某个地点 ID。禁止出现 "locationId=地点ID 但 holderId=角色ID" 这种两者语义矛盾的写法。
   - item-state：仅用于物品自身属性变化，如破损、开封、浸湿、折叠、密封状态变化、燃烧等，不用于位置变化。
   - 如果 expectedEvents 已提供 item-location，正文必须逐字段复用该事件；禁止把 location 变化改写成 item-state。
