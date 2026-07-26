@@ -431,7 +431,7 @@ describe('expandOutlineForChapter', () => {
 
     const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
 
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
     expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
     expect(result.outline?.[1]?.claimedBeats).toEqual([])
     expect(
@@ -525,9 +525,9 @@ describe('expandOutlineForChapter', () => {
     })
 
     await expect(expandOutlineForChapter(jitState, 2, createMockProvider())).rejects.toThrow(
-      /连续 2 次未认领任何 mandatory beat/
+      /连续 3 次未认领任何 mandatory beat/
     )
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
   })
 
   it('aborts the chapter when claim stripping leaves zero mandatory claims under high pressure', async () => {
@@ -558,11 +558,157 @@ describe('expandOutlineForChapter', () => {
     await expect(expandOutlineForChapter(jitState, 2, createMockProvider())).rejects.toThrow(
       /未能形成有效 mandatory beat 认领/
     )
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('retries then soft-lands zero-claim outlines under pacing (medium) pressure', async () => {
+    // 第 2 章（第 2 幕第 2-4 章）：2 个 pending、剩余槽位含本章 3 章 → 2×2 > 3 → 配速中压
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 4,
+      storyArc: {
+        totalChapters: 4,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '旧幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: ['旧幕节拍'],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 4,
+            title: '新幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: ['新幕节拍一', '新幕节拍二'],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        { number: 1, title: '旧幕收束', description: '旧幕节拍已完成。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '新幕继续', description: '新幕继续推进。' },
+        { number: 4, title: '新幕收束', description: '新幕完成收束。' },
+      ],
+      actProgress: {
+        1: { consumed: ['旧幕节拍'], pending: [] },
+        2: { consumed: [], pending: ['新幕节拍一', '新幕节拍二'] },
+      },
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明，没有任何事件发生。',
+        introducedCharacters: [],
+        claimedBeats: [],
+        claimedMandatoryBeatIds: [],
+      },
+    })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    // 中压同样要求认领并打回重试，但耗尽后软着陆，不中止章节
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+    const firstInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      mandatoryBeatClaimRequired?: boolean
+    }
+    expect(firstInput.mandatoryBeatClaimRequired).toBe(true)
+    const retryInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      beatClaimRejection?: {
+        requiredClaims?: {
+          pendingMandatoryBeats: Array<{ beatId: string; beat: string }>
+          chaptersRemainingInAct: number
+        }
+      }
+    }
+    expect(retryInput.beatClaimRejection?.requiredClaims).toEqual({
+      pendingMandatoryBeats: [
+        { beatId: 'A2-M1', beat: '新幕节拍一' },
+        { beatId: 'A2-M2', beat: '新幕节拍二' },
+      ],
+      chaptersRemainingInAct: 2,
+    })
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
+    expect(
+      result.pendingIssues?.some(
+        (issue) =>
+          issue.ruleId === 'outline.zero-claim-under-pacing-pressure' &&
+          issue.severity === 'warning'
+      )
+    ).toBe(true)
+  })
+
+  it('soft-lands after claim stripping under pacing (medium) pressure', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      totalChapters: 4,
+      storyArc: {
+        totalChapters: 4,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 1,
+            title: '旧幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: ['旧幕节拍'],
+          },
+          {
+            index: 2,
+            startChapter: 2,
+            endChapter: 4,
+            title: '新幕',
+            theme: '',
+            function: '',
+            mandatoryBeats: ['新幕节拍一', '新幕节拍二'],
+          },
+        ],
+        keyBeats: [],
+      },
+      outline: [
+        { number: 1, title: '旧幕收束', description: '旧幕节拍已完成。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '新幕继续', description: '新幕继续推进。' },
+        { number: 4, title: '新幕收束', description: '新幕完成收束。' },
+      ],
+      actProgress: {
+        1: { consumed: ['旧幕节拍'], pending: [] },
+        2: { consumed: [], pending: ['新幕节拍一', '新幕节拍二'] },
+      },
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明。',
+        introducedCharacters: [],
+        claimedBeats: ['新幕节拍一'],
+        claimedMandatoryBeatIds: ['A2-M1'],
+      },
+    })
+    verifyBeatClaimsMock.mockResolvedValue([
+      { beatId: 'A2-M1', beat: '新幕节拍一', reason: 'description 只有静守，没有节拍事件' },
+    ])
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
+    expect(
+      result.pendingIssues?.some((issue) => issue.ruleId === 'outline.beat-claim-stripped')
+    ).toBe(true)
   })
 
   it('does not retry zero-claim outlines when act-boundary pressure is below high', async () => {
-    // 第 2 章：pending 1 个 beat、剩余 1 章 → 中压，保持建议性，不打回
+    // 第 2 章：pending 1 个 beat、剩余槽位含本章 2 章 → 1×2 不 > 2 → 低压，不打回
     const jitState: ReducedGraphState = {
       ...baseState,
       outline: [
@@ -971,7 +1117,7 @@ describe('expandOutlineForChapter', () => {
       )
     ).rejects.toThrow('无法裁决相互冲突的伏笔决策：fs-root')
 
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
     const correction = chapterOutlineRunMock.mock.calls[1]![0] as {
       foreshadowPlanningRejection?: { conflictingDecisionIds?: string[] }
     }
@@ -1812,7 +1958,7 @@ describe('expandOutlineForChapter', () => {
       '第 3 章伏笔大纲修订未收敛：必须回收 fs-a, fs-b, fs-c；最终未裁决或错误顺延 fs-a, fs-b, fs-c；修订中回退 无'
     )
 
-    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
     const correction = chapterOutlineRunMock.mock.calls[1]![0] as {
       foreshadowPlanningRejection?: {
         incorrectlyDeferredIds: string[]
@@ -1844,6 +1990,15 @@ describe('expandOutlineForChapter', () => {
         data: {
           title: '第二版修订',
           description: '第二版补上第一条，却丢失后两条。',
+          fulfilledForeshadowIds: ['fs-a'],
+          deferredForeshadowIds: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '第三版修订',
+          description: '第三版仍只保留第一条，后两条继续遗漏。',
           fulfilledForeshadowIds: ['fs-a'],
           deferredForeshadowIds: [],
         },
@@ -2161,12 +2316,15 @@ describe('expandOutlineForChapter', () => {
     try {
       const result = await expandOutlineForChapter(state, 1, createMockProvider())
 
-      expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+      expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
       expect(warnSpy).toHaveBeenCalledWith(
-        '[MuseFlow] 第 2 章即时大纲第 1/2 次存在未裁决或错误顺延伏笔候选：fs-due'
+        '[MuseFlow] 第 2 章即时大纲第 1/3 次存在未裁决或错误顺延伏笔候选：fs-due'
       )
       expect(warnSpy).toHaveBeenCalledWith(
-        '[MuseFlow] 第 2 章即时大纲第 2/2 次存在未裁决或错误顺延伏笔候选：fs-due'
+        '[MuseFlow] 第 2 章即时大纲第 2/3 次存在未裁决或错误顺延伏笔候选：fs-due'
+      )
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[MuseFlow] 第 2 章即时大纲第 3/3 次存在未裁决或错误顺延伏笔候选：fs-due'
       )
       expect(result.outline?.[1]?.deferredForeshadowIds).toContain('fs-due')
       expect(result.outline?.[1]?.fulfilledForeshadowIds).not.toContain('fs-due')
@@ -3015,14 +3173,15 @@ describe('expandOutlineForChapter', () => {
     )
     const currentActPressure = createActPressureConstraint(
       2,
-      '第 2 幕「新幕」还剩 2 章结束，必须优先消费以下 mandatory beats：新幕节拍。'
+      '第 2 幕「新幕」还剩 3 章结束，必须优先消费以下 mandatory beats：新幕节拍一、新幕节拍二。'
     )
     const durableConstraint =
       createGenericVerifiedConstraint('【伏笔边界】不要提前揭示尚未到期的伏笔。')
     const jitState: ReducedGraphState = {
       ...baseState,
+      totalChapters: 4,
       storyArc: {
-        totalChapters: 3,
+        totalChapters: 4,
         acts: [
           {
             index: 1,
@@ -3036,11 +3195,11 @@ describe('expandOutlineForChapter', () => {
           {
             index: 2,
             startChapter: 2,
-            endChapter: 3,
+            endChapter: 4,
             title: '新幕',
             theme: '转折',
             function: '推进新目标',
-            mandatoryBeats: ['新幕节拍'],
+            mandatoryBeats: ['新幕节拍一', '新幕节拍二'],
           },
         ],
         keyBeats: [],
@@ -3049,13 +3208,25 @@ describe('expandOutlineForChapter', () => {
         { number: 1, title: '旧幕收束', description: '旧幕节拍已完成。' },
         { number: 2, title: '', description: '' },
         { number: 3, title: '新幕继续', description: '新幕继续推进。' },
+        { number: 4, title: '新幕收束', description: '新幕完成收束。' },
       ],
       actProgress: {
         1: { consumed: ['旧幕节拍'], pending: [] },
-        2: { consumed: [], pending: ['新幕节拍'] },
+        2: { consumed: [], pending: ['新幕节拍一', '新幕节拍二'] },
       },
       verifiedConstraints: [staleActPressure, durableConstraint, currentActPressure],
     }
+    // 配速中压（2 pending / 3 槽位 > 1/2）：认领一个节拍后一次通过
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '即时标题',
+        description: '即时生成的描述。',
+        introducedCharacters: [],
+        claimedBeats: ['新幕节拍一'],
+        claimedMandatoryBeatIds: ['A2-M1'],
+      },
+    })
 
     await expandOutlineForChapter(jitState, 1, createMockProvider())
 
@@ -3063,9 +3234,9 @@ describe('expandOutlineForChapter', () => {
     expect(agentInput.verifiedConstraints).toEqual([
       durableConstraint.text,
       currentActPressure.text,
-      '【节拍预算】本章属于第 2 幕，剩余 1 个 mandatory beats、1 章未写。本章 description 与 claimedBeats 最多承载 1 个 mandatory beat，严禁在本章内一次性推进本幕其余所有节拍。',
+      '【节拍预算】本章属于第 2 幕，剩余 2 个 mandatory beats、2 章未写。本章 description 与 claimedBeats 最多承载 1 个 mandatory beat，严禁在本章内一次性推进本幕其余所有节拍。',
       // 幕边界压力自此同步注入大纲阶段（此前仅规划阶段可见）
-      '【幕边界压力 - 中】第 2 幕还剩 1 章结束，仍有 1 个 mandatory beats 未消费。本章规划应视情节自然性推进其中 1 个，避免把全部压力留到幕末。',
+      '【幕边界压力 - 中】第 2 幕还剩 2 章结束，仍有 2 个 mandatory beats 未消费：新幕节拍一、新幕节拍二。本章规划应优先实质消费其中 1 个；持续推迟会把消费义务压缩到幕末零余量章节，届时再无缓冲。',
     ])
   })
 

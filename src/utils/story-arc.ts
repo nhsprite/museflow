@@ -28,6 +28,13 @@ export function isClosingPhase(
 }
 
 /**
+ * 配速压力系数：pending mandatory beats 与"剩余槽位（含本章）"的比值超过
+ * 1/BEAT_PACING_PRESSURE_FACTOR（即隔章消费配速）时进入中压。取 2 表示始终为
+ * 叙事保留至少一半章节的喘息空间，避免消费义务全部积压到幕末零余量硬闸。
+ */
+export const BEAT_PACING_PRESSURE_FACTOR = 2
+
+/**
  * 计算当前章节在当前幕中最多可认领的 mandatory beats 数量。
  *
  * 目标：避免幕前期把全部节拍一次性消费完，导致后续章节无节拍可领。
@@ -116,10 +123,18 @@ export function buildArcStatus(
   )
 
   const chaptersRemainingInAct = currentAct ? currentAct.endChapter - (currentChapterIndex + 1) : 0
+  // 高压（硬闸）：pending 超过不含本章的剩余章数——本章再不认领，幕末必然阻塞。
+  // 中压（配速）：pending 超过"隔章消费"配速（pending/剩余槽位含本章 > 1/2）——
+  // 提前强制本章尝试认领，把消费压力分摊到幕内，避免全部积压到幕末零余量硬闸。
+  const slotsLeftIncludingCurrent = chaptersRemainingInAct + 1
   let mandatoryBeatPressure: ArcStatus['mandatoryBeatPressure'] = 'low'
   if (currentAct && beatsPending.length > chaptersRemainingInAct) {
     mandatoryBeatPressure = 'high'
-  } else if (currentAct && beatsPending.length > 0 && chaptersRemainingInAct <= 2) {
+  } else if (
+    currentAct &&
+    beatsPending.length > 0 &&
+    beatsPending.length * BEAT_PACING_PRESSURE_FACTOR > slotsLeftIncludingCurrent
+  ) {
     mandatoryBeatPressure = 'medium'
   }
 

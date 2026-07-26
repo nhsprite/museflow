@@ -166,6 +166,30 @@ describe('story-arc utilities', () => {
     expect(status.riskLevel).toBe('high')
   })
 
+  it('marks pacing (medium) pressure when pending beats exceed every-other-chapter pace', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
+    }
+    // 第 3 章（第 1 幕第 1-5 章）：剩余槽位含本章 3 章，2 个 pending → 2×2 > 3 → 中压
+    const status = buildArcStatus(storyArc, actProgress, 2, 0.15, new Set())
+
+    expect(status.mandatoryBeatPressure).toBe('medium')
+    expect(status.riskLevel).toBe('medium')
+  })
+
+  it('stays low while pending beats fit every-other-chapter pace', () => {
+    const storyArc = makeStoryArc()
+    const actProgress = {
+      1: { consumed: [], pending: ['主角失去庇护', '反派首次施压'] },
+    }
+    // 第 2 章：剩余槽位含本章 4 章，2 个 pending → 2×2 不 > 4 → 低压
+    const status = buildArcStatus(storyArc, actProgress, 1, 0.15, new Set())
+
+    expect(status.mandatoryBeatPressure).toBe('low')
+    expect(status.riskLevel).toBe('low')
+  })
+
   it('marks high risk when key beat is overdue', () => {
     const storyArc = makeStoryArc()
     const actProgress = {

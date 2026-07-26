@@ -93,7 +93,7 @@ export interface ExpandedOutline {
 
 type ChapterContextSource = ModelProvider | RuntimeContext
 
-const MAX_JIT_OUTLINE_ATTEMPTS = 2
+const MAX_JIT_OUTLINE_ATTEMPTS = 3
 const BASE_SEMANTIC_PLANNING_ATTEMPTS = 3
 
 interface SemanticPlanningRetryContext {
@@ -989,7 +989,7 @@ function buildArcStatusConstraint(
     return `【幕边界压力 - 高】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费：${arcStatus.beatsPending.join('、')}。本章规划必须优先推进这些节拍中的至少 1 个，且严禁引入无关过渡场景。`
   }
   if (arcStatus.mandatoryBeatPressure === 'medium') {
-    return `【幕边界压力 - 中】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费。本章规划应视情节自然性推进其中 1 个，避免把全部压力留到幕末。`
+    return `【幕边界压力 - 中】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费：${arcStatus.beatsPending.join('、')}。本章规划应优先实质消费其中 1 个；持续推迟会把消费义务压缩到幕末零余量章节，届时再无缓冲。`
   }
   return undefined
 }
@@ -1361,9 +1361,15 @@ async function generateChapterOutlineIfNeeded(
     : undefined
   const chaptersRemainingInAct = currentAct ? currentAct.endChapter - (chapterIndex + 1) : 0
   // 高压 = 未消费 mandatory beats 多于幕内剩余章节；此时本章再不认领，幕末必然阻塞。
-  // 中低压保持建议性（仅注入压力文本），不打回。
+  // 中压 = 配速压力（pending 超过隔章消费配速）：同样要求认领并打回重试，但重试
+  // 耗尽后允许零认领软着陆（记警告）——配速压力的意义是提前给消费机会，而非挡死
+  // 章节；硬中止只留给高压（幕末零余量）。
+  const mandatoryBeatPressure = arcStatus?.mandatoryBeatPressure
+  const hardMandatoryBeatPressure =
+    mandatoryBeatPressure === 'high' && (arcStatus?.beatsPending.length ?? 0) > 0
   const mustClaimMandatoryBeat =
-    arcStatus?.mandatoryBeatPressure === 'high' && arcStatus.beatsPending.length > 0
+    (mandatoryBeatPressure === 'high' || mandatoryBeatPressure === 'medium') &&
+    (arcStatus?.beatsPending.length ?? 0) > 0
   const pendingMandatoryBeatPairs = mustClaimMandatoryBeat
     ? getMandatoryBeatEntries(state.storyArc)
         .filter((entry) => entry.actIndex === currentAct?.index)
@@ -1380,6 +1386,7 @@ async function generateChapterOutlineIfNeeded(
   let lastBeatClaimRejections: BeatClaimRejection[] = []
   let strippedBeatClaimRejections: BeatClaimRejection[] = []
   let zeroClaimRejected = false
+  let pacingZeroClaimAccepted = false
   const requiredFulfillmentIds = [...mustFulfillForeshadowIds]
   let preservedFulfillmentIds = new Set(foreshadowPlanningRejection?.preservedFulfillmentIds ?? [])
   const regressedFulfillmentIds = new Set(
@@ -1535,6 +1542,15 @@ async function generateChapterOutlineIfNeeded(
       )
       beatClaimRejection = {
         rejectedClaims: beatClaimRejections,
+        // 高压下附上待消费节拍清单：被驳回的重试允许改认另一个更适配当前叙事位置的节拍。
+        ...(mustClaimMandatoryBeat
+          ? {
+              requiredClaims: {
+                pendingMandatoryBeats: pendingMandatoryBeatPairs,
+                chaptersRemainingInAct,
+              },
+            }
+          : {}),
         currentOutline: {
           title: normalizedCandidate.title,
           description: normalizedCandidate.description,
@@ -1639,11 +1655,20 @@ async function generateChapterOutlineIfNeeded(
         beatBudget
       )
     } else if (lastCandidate && zeroClaimRejected) {
-      // 高压下重试仍零认领：中止本章转人工。再放行只会让幕末 pending-beats-at-boundary
-      // 以更高代价爆发（与伏笔严格模式同一处置哲学）。
-      throw new Error(
-        `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领任何 mandatory beat，已中止本章。请重新运行本章生成；若模型持续不认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+      if (hardMandatoryBeatPressure) {
+        // 高压下重试仍零认领：中止本章转人工。再放行只会让幕末 pending-beats-at-boundary
+        // 以更高代价爆发（与伏笔严格模式同一处置哲学）。
+        throw new Error(
+          `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领任何 mandatory beat，已中止本章。请重新运行本章生成；若模型持续不认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+        )
+      }
+      // 中压（配速）下重试仍零认领：软着陆。配速压力的意义是提前给消费机会，
+      // 而不是把章节挡死；未消费节拍保留给后续章节，幕末硬闸判定不变。
+      pacingZeroClaimAccepted = true
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲在幕边界配速压力下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领任何 mandatory beat，本章按零认领软着陆，未消费节拍保留给后续章节`
       )
+      result = finalizeChapterOutlineCandidate(lastCandidate, state, chapterIndex, beatBudget)
     } else {
       throw new Error(`第 ${chapterIndex + 1} 章即时大纲生成失败：未返回可执行大纲`)
     }
@@ -1652,7 +1677,8 @@ async function generateChapterOutlineIfNeeded(
   // 高压下「认领被拒→剥离」与「零认领」同等处置：剥离只是换了一条到达零认领的路径，
   // 放行同样会在幕末留下比剩余章数更多的未消费节拍。循环内的零认领打回覆盖常规路径，
   // 这里兜住剥离兜底分支，保证高压模式下大纲必须持有有效 mandatory beat 认领。
-  if (mustClaimMandatoryBeat && (result.claimedMandatoryBeatIds ?? []).length === 0) {
+  // 中压（配速）剥离到零认领时软着陆，不中止（ stripped 警告已记录）。
+  if (hardMandatoryBeatPressure && (result.claimedMandatoryBeatIds ?? []).length === 0) {
     throw new Error(
       `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下未能形成有效 mandatory beat 认领（认领未通过 description 呈现校验或始终未认领），已中止本章。请重新运行本章生成；若模型持续无法认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
     )
@@ -1686,6 +1712,16 @@ async function generateChapterOutlineIfNeeded(
       type: 'outline_foreshadow',
       severity: 'warning',
       description: `即时大纲连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未对候选伏笔 ${autoDeferredForeshadowIds.join(', ')} 作出裁决，已自动顺延至 deferredForeshadowIds。`,
+      source: 'outline_compliance',
+    })
+  }
+  if (pacingZeroClaimAccepted) {
+    pendingIssues.push({
+      id: `outline-zero-claim-pacing-${chapterIndex}`,
+      ruleId: 'outline.zero-claim-under-pacing-pressure',
+      type: 'outline_beat_claim',
+      severity: 'warning',
+      description: `即时大纲在幕边界配速压力下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领 mandatory beat，本章按零认领软着陆；未消费节拍保留给后续章节，幕末硬闸判定不变。`,
       source: 'outline_compliance',
     })
   }
