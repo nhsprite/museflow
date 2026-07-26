@@ -225,8 +225,8 @@ export async function selectTitleOption(
 function formatOptionForDisplay(option: TitleOption, number: number, _genre?: string): string {
   const features = option.worldDirection.worldFeatures.join('、')
   const powerSystem = option.worldDirection.powerSystem?.trim()
-  const isEmptyPowerSystem =
-    !powerSystem || powerSystem === '无' || option.worldDirection.hasPowerSystem === false
+  // 以结构化字段为准：hasPowerSystem=false 或 powerSystem 为空即不展示规则体系
+  const isEmptyPowerSystem = !powerSystem || option.worldDirection.hasPowerSystem === false
   const powerLine = !isEmptyPowerSystem ? `规则体系：${powerSystem} | ` : ''
   const synopsisLine = option.synopsis?.trim() ? `简介：${option.synopsis.trim()} | ` : ''
   const chapterOpeningInstruction =

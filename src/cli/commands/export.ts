@@ -20,11 +20,9 @@ function hasChapterTitle(content: string, chapterNum: number): boolean {
   if (lines.length === 0) return false
   const firstLine = lines[0]
   if (!firstLine) return false
-  return (
-    /^#{1,2}\s/.test(firstLine) ||
-    firstLine.includes(`第${chapterNum}章`) ||
-    firstLine.includes(`第 ${chapterNum} 章`)
-  )
+  // 只识别行首的章节标题（机器标题惯例），避免正文首行恰好提及章节号时误判
+  const chapterHeadingPattern = new RegExp(`^第\\s*${chapterNum}\\s*章`)
+  return /^#{1,2}\s/.test(firstLine) || chapterHeadingPattern.test(firstLine)
 }
 
 function getLocalIp(): string | null {

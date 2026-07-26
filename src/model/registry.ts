@@ -44,6 +44,41 @@ type ProviderConfig = {
 
 const DEFAULT_FETCH_TIMEOUT_MS = 900000
 
+// 温度解析优先级：用户全局配置 > 调用点/agent 显式值 > 0.7 兜底。
+// 配置通道（museflow config set --temperature）是全局覆盖；未设置时各 agent 的内置默认值生效。
+function resolveTemperature(cfg: ProviderConfig, callValue: number | undefined): number {
+  return cfg.temperature ?? callValue ?? 0.7
+}
+
+/** 传输层可恢复错误的结构化错误码（Node fetch 的 cause.code 等）。 */
+const RECOVERABLE_ERROR_CODES: ReadonlySet<string> = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'EPIPE',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+])
+
+/** 无结构化错误码时的兜底消息标记（本函数自抛的 5xx 与底层传输错误串）。 */
+const RECOVERABLE_ERROR_MARKERS = ['fetch failed', 'Server error', 'timeout'] as const
+
+function errorCode(value: unknown): string | undefined {
+  const code = (value as { code?: unknown } | null | undefined)?.code
+  return typeof code === 'string' ? code : undefined
+}
+
+function isRecoverableFetchError(err: Error): boolean {
+  if (err.name === 'AbortError') return true
+  if (RECOVERABLE_ERROR_CODES.has(errorCode(err) ?? '')) return true
+  const causeCode = errorCode((err as { cause?: unknown }).cause)
+  if (causeCode !== undefined && RECOVERABLE_ERROR_CODES.has(causeCode)) return true
+  return RECOVERABLE_ERROR_MARKERS.some((marker) => err.message.includes(marker))
+}
+
 function describeFetchError(err: unknown): { message: string; cause?: unknown } {
   if (err instanceof Error) {
     const cause = (err as Error & { cause?: unknown }).cause
@@ -68,11 +103,7 @@ async function fetchWithRetry(url: string, init: RequestInit, retries = 3): Prom
     } catch (err) {
       const { message, cause } = describeFetchError(err)
       lastError = err instanceof Error ? err : new Error(String(err))
-      const isRecoverable =
-        lastError.message.includes('fetch failed') ||
-        lastError.message.includes('Server error') ||
-        lastError.name === 'AbortError' ||
-        lastError.message.includes('timeout')
+      const isRecoverable = isRecoverableFetchError(lastError)
       if (!isRecoverable || attempt === retries - 1) {
         logger.error(`API request failed after ${attempt + 1} attempt(s) to ${url}: ${message}`)
         if (cause) {
@@ -105,7 +136,7 @@ class OpenAICompatibleProvider implements ModelProvider {
       body: JSON.stringify({
         model,
         messages,
-        temperature: temperature ?? this.cfg.temperature ?? 0.7,
+        temperature: resolveTemperature(this.cfg, temperature),
         max_tokens: this.cfg.maxTokens ?? 32768,
       }),
       signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
@@ -129,7 +160,7 @@ class OpenAICompatibleProvider implements ModelProvider {
       body: JSON.stringify({
         model,
         messages,
-        temperature: temperature ?? this.cfg.temperature ?? 0.7,
+        temperature: resolveTemperature(this.cfg, temperature),
         max_tokens: this.cfg.maxTokens ?? 32768,
         response_format: {
           type: 'json_schema',
@@ -160,7 +191,7 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       model,
       messages: getNonSystemMessages(messages),
       max_tokens: this.cfg.maxTokens ?? 8192,
-      temperature: temperature ?? this.cfg.temperature ?? 0.7,
+      temperature: resolveTemperature(this.cfg, temperature),
     }
     const system = getSystemMessage(messages)
     if (system) {
@@ -199,7 +230,7 @@ export class AnthropicCompatibleProvider implements ModelProvider {
       model,
       messages: getNonSystemMessages(messages),
       max_tokens: this.cfg.maxTokens ?? 8192,
-      temperature: temperature ?? this.cfg.temperature ?? 0.7,
+      temperature: resolveTemperature(this.cfg, temperature),
       tools: [
         {
           name: toolName,

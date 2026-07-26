@@ -36,7 +36,7 @@ export async function config(action: string, options: ConfigOptions): Promise<vo
     console.log('模型配置:')
     console.log(`  协议: ${cfg.model.provider}`)
     console.log(`  模型: ${cfg.model.model || '(默认)'}`)
-    console.log(`  Temperature: ${cfg.model.temperature ?? '(默认)'}`)
+    console.log(`  Temperature: ${cfg.model.temperature ?? '(未设置，各 agent 使用内置默认值)'}`)
     console.log(`  Max Tokens: ${cfg.model.maxTokens ?? '(默认)'}`)
     if (cfg.model.apiKey) {
       console.log(`  API Key: ${cfg.model.apiKey.substring(0, 8)}...`)

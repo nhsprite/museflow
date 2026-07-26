@@ -259,6 +259,54 @@ describe('createProvider / OpenAICompatibleProvider', () => {
     })
   })
 
+  it('lets config temperature override call-site values', async () => {
+    setConfig({ model: { temperature: 1.3 } })
+    const fetchMock = vi.mocked(globalThis.fetch)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+    } as Response)
+
+    const provider = createProvider()
+    await provider.chat([{ role: 'user', content: 'hi' }], 0.2)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.temperature).toBe(1.3)
+  })
+
+  it('uses the call-site temperature when config temperature is unset', async () => {
+    setConfig({ model: { temperature: undefined } })
+    const fetchMock = vi.mocked(globalThis.fetch)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+    } as Response)
+
+    const provider = createProvider()
+    await provider.chat([{ role: 'user', content: 'hi' }], 0.2)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.temperature).toBe(0.2)
+  })
+
+  it('falls back to 0.7 when neither config nor call-site temperature is set', async () => {
+    setConfig({ model: { temperature: undefined } })
+    const fetchMock = vi.mocked(globalThis.fetch)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+    } as Response)
+
+    const provider = createProvider()
+    await provider.chat([{ role: 'user', content: 'hi' }])
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.temperature).toBe(0.7)
+  })
+
   it('retries on 5xx and succeeds', async () => {
     setConfig()
     const fetchMock = vi.mocked(globalThis.fetch)
