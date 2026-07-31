@@ -6,6 +6,8 @@ import { createEmptyStoryMemory, ensureBeatsHaveActIndex } from '../../story-mem
 import { readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { verifyForeshadowFulfillments } from '../services/foreshadow-fulfillment/semantic-verifier.js'
 import { verifyPlotAdvances } from '../services/plot-advance/semantic-verifier.js'
+import { relocateEvidence, type EvidenceRelocationItem } from '../services/evidence-relocation.js'
+import { resolveCanonicalForeshadowId } from '../../story-memory/foreshadow-alias.js'
 import { logger } from '../../utils/logger.js'
 import { isBeatProven } from '../../utils/beat-coverage.js'
 
@@ -86,12 +88,6 @@ export async function validateChapterStructured(
     chapterContent: chapterContent ?? '',
     candidates: fulfillmentCandidates,
   })
-  const falseFulfillments = [
-    ...new Set([
-      ...result.falseFulfillments,
-      ...semanticRejections.map((rejection) => rejection.foreshadowId),
-    ]),
-  ]
   const plotAdvanceCandidates = result.actualEvents.filter(
     (event): event is Extract<typeof event, { type: 'plot-advance' }> =>
       event.type === 'plot-advance' && !structurallyRejectedEventIds.has(event.id)
@@ -116,6 +112,73 @@ export async function validateChapterStructured(
     (rejection) => !droppedEventIds.has(rejection.eventId)
   )
 
+  // 证据重锚定：STORY_EVENTS 先于正文输出，@pN 锚点本质是对未写出段落的预测。
+  // claimed 事件的语义驳回可能只是锚点指错而正文已在别处落实命题——先在全章范围内
+  // 定位能实质呈现命题的段落并修正证据；只有找不到时才维持驳回（此时驳回才可靠地
+  // 意味着正文缺失该场景，需要走 draft/大纲层修复）。
+  const fsEventIdByRejectionId = new Map<string, string>()
+  const relocationItems: EvidenceRelocationItem[] = []
+  if (chapterContent && chapterContent.trim().length > 0) {
+    for (const rejection of claimedPlotAdvanceRejections) {
+      if (rejection.verdict !== 'not_proven' && rejection.verdict !== 'uncertain') continue
+      relocationItems.push({
+        key: rejection.eventId,
+        claim: memory.beats[rejection.beatId]?.description ?? rejection.beatId,
+        rejectedParagraphIndex: rejection.evidenceParagraphIndex ?? 0,
+        rejectionReason: rejection.reason,
+      })
+    }
+    for (const rejection of semanticRejections) {
+      if (rejection.verdict !== 'not_fulfilled' && rejection.verdict !== 'uncertain') continue
+      const event = fulfillmentCandidates.find(
+        (candidate) =>
+          resolveCanonicalForeshadowId(memory, candidate.foreshadowId) === rejection.foreshadowId
+      )
+      if (!event) continue
+      const planted = memory.foreshadows[rejection.foreshadowId]
+      const claim = planted
+        ? [planted.text, planted.resolutionQuestion, planted.fulfillmentCriteria]
+            .filter((part): part is string => typeof part === 'string' && part.length > 0)
+            .join('；')
+        : rejection.foreshadowId
+      fsEventIdByRejectionId.set(rejection.foreshadowId, event.id)
+      relocationItems.push({
+        key: event.id,
+        claim,
+        rejectedParagraphIndex: rejection.evidenceParagraphIndex ?? 0,
+        rejectionReason: rejection.reason,
+      })
+    }
+  }
+  const relocatedEvidence = await relocateEvidence({
+    provider: context.provider,
+    chapterContent: chapterContent ?? '',
+    items: relocationItems,
+  })
+  if (relocatedEvidence.size > 0) {
+    const originalIndexByEventId = new Map(
+      result.actualEvents.map((event) => [event.id, event.evidence?.paragraphIndex ?? null])
+    )
+    for (const [eventId, newIndex] of relocatedEvidence) {
+      logger.info(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章事件 ${eventId} 的证据段落由 p${originalIndexByEventId.get(eventId) ?? '?'} 重锚定为 p${newIndex}（命题已在正文该段落实质呈现）`
+      )
+    }
+  }
+  const survivingPlotAdvanceRejections = claimedPlotAdvanceRejections.filter(
+    (rejection) => !relocatedEvidence.has(rejection.eventId)
+  )
+  const survivingSemanticRejections = semanticRejections.filter((rejection) => {
+    const eventId = fsEventIdByRejectionId.get(rejection.foreshadowId)
+    return eventId === undefined || !relocatedEvidence.has(eventId)
+  })
+  const falseFulfillments = [
+    ...new Set([
+      ...result.falseFulfillments,
+      ...survivingSemanticRejections.map((rejection) => rejection.foreshadowId),
+    ]),
+  ]
+
   if (acceptedUnauthorizedPlotAdvanceEvents.length > 0) {
     logger.info(
       `[MuseFlow] 第 ${chapterIndex + 1} 章接受 ${acceptedUnauthorizedPlotAdvanceEvents.length} 条未认领但经语义验证证实的节拍推进：${acceptedUnauthorizedPlotAdvanceEvents.map((event) => event.beatId).join('、')}`
@@ -127,7 +190,9 @@ export async function validateChapterStructured(
     )
   }
 
-  const rejectedBeatIds = new Set(claimedPlotAdvanceRejections.map((rejection) => rejection.beatId))
+  const rejectedBeatIds = new Set(
+    survivingPlotAdvanceRejections.map((rejection) => rejection.beatId)
+  )
   const claimedBeatIds = [...(plan.claimedMandatoryBeatIds ?? []), ...(plan.claimedBeatIds ?? [])]
   const claimedButUnprovenBeats = [
     ...new Set([
@@ -153,13 +218,21 @@ export async function validateChapterStructured(
       unexpectedEvents: unexpectedNonPlotEvents,
       droppedUnauthorizedPlotAdvanceEvents,
       falseFulfillments,
-      foreshadowFulfillmentRejections: semanticRejections,
+      foreshadowFulfillmentRejections: survivingSemanticRejections,
       claimedButUnprovenBeats,
-      plotAdvanceRejections: claimedPlotAdvanceRejections,
+      plotAdvanceRejections: survivingPlotAdvanceRejections,
     },
     // 补全事件与被接受的未授权 plot-advance 随 draftChapterEvents 写回，定稿时写入 StoryMemory；
     // 被丢弃的未授权事件在此剔除（下一轮校验若 writer 重发，会按同一闸门重新裁决）。
-    draftChapterEvents: result.actualEvents.filter((event) => !droppedEventIds.has(event.id)),
+    // 经重锚定的事件携带修正后的证据段落序号写回。
+    draftChapterEvents: result.actualEvents
+      .filter((event) => !droppedEventIds.has(event.id))
+      .map((event) => {
+        const relocatedIndex = relocatedEvidence.get(event.id)
+        return relocatedIndex !== undefined
+          ? { ...event, evidence: { paragraphIndex: relocatedIndex } }
+          : event
+      }),
   }
 }
 

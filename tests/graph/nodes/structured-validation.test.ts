@@ -266,7 +266,8 @@ describe('validateChapterStructured', () => {
 
     const result = await validateChapterStructured(context, state)
 
-    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    // 第 1 次调用是单段落语义验证，第 2 次是驳回触发的证据重锚定（响应无效时 fail-open 维持驳回）
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(2)
     expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual(['beat-1'])
     expect(result.structuredValidationResult?.plotAdvanceRejections).toEqual([
       {
@@ -277,6 +278,164 @@ describe('validateChapterStructured', () => {
         reason: '证据没有发生要求的选择。',
       },
     ])
+  })
+
+  it('relocates event evidence when the claim is realized in another paragraph', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce(
+      '角色仍维持原状，没有作出选择。\n\n使者当面宣读裁断，角色当庭作出了不可逆的关键选择。'
+    )
+    const event: StoryEvent = {
+      id: 'evt-mispointed',
+      type: 'plot-advance',
+      plotId: 'plot-1',
+      beatId: 'beat-1',
+      chapterIndex: 3,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [{ ...event, id: 'evt-expected', source: 'outline' }],
+      claimedBeatIds: ['beat-1'],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      beats: {
+        'beat-1': {
+          id: 'beat-1',
+          description: '角色作出不可逆的关键选择',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 3,
+          provenByEventIds: [],
+        },
+      },
+    }
+    const state = {
+      currentChapterIndex: 3,
+      story: { outputDir: '/tmp/semantic-plot-test' },
+      storyMemory: memory,
+      chapterPlan: plan,
+      draftChapterEvents: [event],
+    } as ReducedGraphState
+    const context = createMockContext()
+    // 第 1 次：原锚点段落被驳回；第 2 次：重锚定在 p2 找到实质呈现
+    vi.mocked(context.provider.chatStructured!)
+      .mockResolvedValueOnce({
+        judgments: [
+          {
+            eventId: 'evt-mispointed',
+            beatId: 'beat-1',
+            verdict: 'not_proven',
+            reason: '证据没有发生要求的选择。',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        judgments: [
+          {
+            key: 'evt-mispointed',
+            verdict: 'proven',
+            paragraphIndex: 2,
+            reason: '第二段当庭作出选择，实质呈现节拍。',
+          },
+        ],
+      })
+
+    const result = await validateChapterStructured(context, state)
+
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(2)
+    // 重锚定成功：驳回撤销，节拍不再视为未证明，事件携带修正后的证据序号写回
+    expect(result.structuredValidationResult?.plotAdvanceRejections).toEqual([])
+    expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual([])
+    const written = result.draftChapterEvents?.find((item) => item.id === 'evt-mispointed')
+    expect(written?.evidence?.paragraphIndex).toBe(2)
+  })
+
+  it('keeps the rejection when no paragraph in the chapter realizes the claim', async () => {
+    vi.mocked(readChapterContentForRun).mockResolvedValueOnce(
+      '角色仍维持原状，没有作出选择。\n\n夜色渐深，一切如常。'
+    )
+    const event: StoryEvent = {
+      id: 'evt-missing-scene',
+      type: 'plot-advance',
+      plotId: 'plot-1',
+      beatId: 'beat-1',
+      chapterIndex: 3,
+      source: 'chapter',
+      evidence: { paragraphIndex: 1 },
+    }
+    const plan: ChapterPlan = {
+      chapterIndex: 3,
+      sections: [],
+      timeline: [],
+      outlineCheck: [],
+      expectedEvents: [{ ...event, id: 'evt-expected', source: 'outline' }],
+      claimedBeatIds: ['beat-1'],
+      fulfilledForeshadowIds: [],
+      introducedForeshadowIds: [],
+      resolvedTaskIds: [],
+      createdTaskIds: [],
+    }
+    const memory: StoryMemory = {
+      ...createEmptyStoryMemory(),
+      beats: {
+        'beat-1': {
+          id: 'beat-1',
+          description: '角色作出不可逆的关键选择',
+          actIndex: 1,
+          deadlineAct: 1,
+          required: true,
+          claimedIn: 3,
+          provenByEventIds: [],
+        },
+      },
+    }
+    const state = {
+      currentChapterIndex: 3,
+      story: { outputDir: '/tmp/semantic-plot-test' },
+      storyMemory: memory,
+      chapterPlan: plan,
+      draftChapterEvents: [event],
+    } as ReducedGraphState
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!)
+      .mockResolvedValueOnce({
+        judgments: [
+          {
+            eventId: 'evt-missing-scene',
+            beatId: 'beat-1',
+            verdict: 'not_proven',
+            reason: '证据没有发生要求的选择。',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        judgments: [
+          {
+            key: 'evt-missing-scene',
+            verdict: 'not_found',
+            paragraphIndex: null,
+            reason: '全文没有任何段落写出选择发生。',
+          },
+        ],
+      })
+
+    const result = await validateChapterStructured(context, state)
+
+    // 全文无落实段落：驳回维持，事件证据不被改写
+    expect(result.structuredValidationResult?.claimedButUnprovenBeats).toEqual(['beat-1'])
+    expect(result.structuredValidationResult?.plotAdvanceRejections).toHaveLength(1)
+    const written = result.draftChapterEvents?.find((item) => item.id === 'evt-missing-scene')
+    expect(written?.evidence?.paragraphIndex).toBe(1)
   })
 
   it('validates chapter final-state declarations against draft events', async () => {
@@ -405,7 +564,8 @@ describe('validateChapterStructured', () => {
 
     const result = await validateChapterStructured(context, state)
 
-    expect(context.provider.chatStructured).toHaveBeenCalledTimes(1)
+    // 第 1 次调用是伏笔兑现语义验证，第 2 次是驳回触发的证据重锚定（响应无效时 fail-open 维持驳回）
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(2)
     expect(result.structuredValidationResult?.falseFulfillments).toEqual(['fs-b'])
     expect(result.structuredValidationResult?.foreshadowFulfillmentRejections).toEqual([
       {
