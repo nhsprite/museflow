@@ -223,6 +223,18 @@ export function validateWordCount(
   return { valid: true, wordCount }
 }
 
+// 生成协议残留检测：=== 区块标记与 STORY_EVENTS 事件行是机器可读的输出协议
+// 分隔符，不属于正文。此处只做显式分隔符的格式匹配，不涉及正文语义判断。
+const PROTOCOL_SECTION_MARKER = /^={2,}\s*[A-Z][A-Z_\s]*={2,}\s*$/m
+const STORY_EVENT_LINE =
+  /^-?\s*(?:character-location|character-status|item-location|item-state|plot-advance|foreshadow-introduce|foreshadow-fulfill|task-resolve|task-create):/m
+
+export function findProtocolArtifacts(content: string): string | null {
+  if (PROTOCOL_SECTION_MARKER.test(content)) return '=== 区块标记'
+  if (STORY_EVENT_LINE.test(content)) return 'STORY_EVENTS 事件行'
+  return null
+}
+
 export async function validateFixedChapterContent(
   rawContent: string,
   options: ValidationOptions,
@@ -236,6 +248,14 @@ export async function validateFixedChapterContent(
 
   if (!rawContent || rawContent.trim().length === 0) {
     return { valid: false, error: '修复后的内容为空' }
+  }
+
+  const protocolArtifact = findProtocolArtifacts(rawContent)
+  if (protocolArtifact) {
+    return {
+      valid: false,
+      error: `修复后的内容包含生成协议残留（${protocolArtifact}），不是纯正文`,
+    }
   }
 
   const heading = findChapterHeading(rawContent)

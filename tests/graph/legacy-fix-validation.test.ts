@@ -75,10 +75,10 @@ describe('runLegacyFix validation', () => {
   it('does not write revision plan content to chapter file', async () => {
     const outputDir = tmpDir
     const existingContent = '# 第四章 王府递帖\n\n旧正文。'
+    // 不带 === 协议标记：协议残留已由结构校验单独拦截，本用例验证 LLM 修订计划识别路径
     const planContent =
-      '=== FIXED_CHAPTER ===\n# 第四章 王府递帖\n\n问题分析：情感层次单一。修复建议：应该增加哭泣描写。' +
-      '可以加入陆福的安慰。'.repeat(400) +
-      '\n=== END_FIXED_CHAPTER ==='
+      '# 第四章 王府递帖\n\n问题分析：情感层次单一。修复建议：应该增加哭泣描写。' +
+      '可以加入陆福的安慰。'.repeat(400)
 
     const agent = {
       run: vi.fn().mockResolvedValue({ success: true, content: planContent }),

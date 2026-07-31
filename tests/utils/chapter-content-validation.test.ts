@@ -102,6 +102,30 @@ describe('validateFixedChapterContent', () => {
     expect(result.error).toContain('标题')
   })
 
+  it('rejects content with protocol section markers leaked into prose', async () => {
+    const content =
+      '# 第四章 王府递帖\n\n卯时刚过，灵堂里已经站满了人。\n\n=== STORY_EVENTS ===\n\n苏半城垂手立在棺前。'
+    const result = await validateFixedChapterContent(
+      content,
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
+      createProvider()
+    )
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain('协议残留')
+  })
+
+  it('rejects content with story-event protocol lines leaked into prose', async () => {
+    const content =
+      '# 第四章 王府递帖\n\n卯时刚过，灵堂里已经站满了人。\n\n- character-location: c-1 -> l-1 @p1\n\n苏半城垂手立在棺前。'
+    const result = await validateFixedChapterContent(
+      content,
+      { chapterIndex: 3, wordCountPolicy: createWordCountPolicy(10) },
+      createProvider()
+    )
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain('协议残留')
+  })
+
   it('rejects content with wrong chapter number', async () => {
     const result = await validateFixedChapterContent(
       '# 第五章 王府递帖\n\n正文内容。',
