@@ -3,7 +3,11 @@ import {
   dropBeatClaimsFromOutline,
   findPersistentBeatUnprovenBeatIds,
 } from '../../../../src/core/chapter-generation/routing/beat-claim-revocation.js'
-import { decideNextStep } from '../../../../src/core/chapter-generation/routing/index.js'
+import {
+  decideNextStep,
+  MAX_OUTLINE_REGEN_ATTEMPTS,
+  buildBeatClaimOutlineRejection,
+} from '../../../../src/core/chapter-generation/routing/index.js'
 import type {
   RoutingContext,
   RoutingDeps,
@@ -288,9 +292,34 @@ describe('decideNextStep beat claim revocation', () => {
     expect(stillPending?.description).toContain('evt-2')
   })
 
-  it('blocks with request_rewrite instead of revoking mandatory beats under high act-boundary pressure', async () => {
+  const highPressureStoryArc: StoryArc = {
+    totalChapters: 50,
+    acts: [
+      {
+        index: 5,
+        startChapter: 46,
+        endChapter: 50,
+        title: '终幕',
+        theme: '主题',
+        function: '功能',
+        mandatoryBeats: ['节拍一', '节拍二'],
+      },
+    ],
+    keyBeats: [],
+  }
+
+  const highPressureOutline: ChapterOutline[] = Array.from({ length: 46 }, (_, index) => ({
+    number: index + 1,
+    title: index === 45 ? '静守' : `第${index + 1}章`,
+    description: index === 45 ? '二人静守。' : '前章描述。',
+  }))
+
+  it('regenerates the outline with prose-stage rejection feedback instead of blocking under high pressure', async () => {
     const ctx: RoutingContext = {
-      session: makeSession({ previousIssues: [beatUnprovenIssue('A5-M2')] }),
+      session: makeSession({
+        previousIssues: [beatUnprovenIssue('A5-M2')],
+        issueFingerprintHistory: [['fp-1'], ['fp-1']],
+      }),
       pendingIssues: [],
       genre: 'general',
       chapterFileExists: true,
@@ -307,6 +336,64 @@ describe('decideNextStep beat claim revocation', () => {
       }),
       mandatoryBeatHighPressure: true,
       unprovenMandatoryBeatIds: ['A5-M2', 'A5-M3'],
+      storyArc: highPressureStoryArc,
+      outline: highPressureOutline,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    // 高压下不撤销认领、不直接阻断：保留强制认领约束，携带驳回反馈重生成大纲
+    expect(result.step).toMatchObject({
+      kind: 'draft_chapter',
+      discardPlan: true,
+      regenerateOutline: true,
+      feedbackIssues: [],
+    })
+    expect(result.sessionUpdate.outlineRegenAttempts).toBe(1)
+    expect(result.sessionUpdate.errorRewriteAttempts).toBe(2)
+    expect(result.sessionUpdate.forceStructuralRewrite).toBe(true)
+    // 大纲前提已变，停滞指纹必须重置，否则新大纲会被旧指纹误判停滞
+    expect(result.sessionUpdate.issueFingerprintHistory).toEqual([])
+
+    const rejection = result.sessionUpdate.beatClaimOutlineRejection
+    expect(rejection?.rejectedClaims).toHaveLength(1)
+    expect(rejection?.rejectedClaims[0]?.beatId).toBe('A5-M2')
+    // 节拍文本必须来自注册表，驳回原因来自正文验证 issue
+    expect(rejection?.rejectedClaims[0]?.beat).toBe('节拍二')
+    expect(rejection?.rejectedClaims[0]?.reason).toContain('没有真相揭开')
+    // 高压下强制认领要求随反馈一起注入：必须认领待消费 mandatory beat 之一
+    expect(rejection?.requiredClaims?.chaptersRemainingInAct).toBe(4)
+    expect(rejection?.requiredClaims?.pendingMandatoryBeats.map((beat) => beat.beatId)).toEqual([
+      'A5-M2',
+      'A5-M3',
+    ])
+    expect(rejection?.currentOutline).toEqual({ title: '静守', description: '二人静守。' })
+  })
+
+  it('blocks with request_rewrite after outline regeneration attempts are exhausted under high pressure', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({
+        previousIssues: [beatUnprovenIssue('A5-M2')],
+        outlineRegenAttempts: MAX_OUTLINE_REGEN_ATTEMPTS,
+      }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        plotAdvanceRejections: [
+          {
+            eventId: 'evt-1',
+            beatId: 'A5-M2',
+            evidenceParagraphIndex: 3,
+            verdict: 'not_proven',
+            reason: '证据段落只描写了静守，没有真相揭开',
+          },
+        ],
+      }),
+      mandatoryBeatHighPressure: true,
+      unprovenMandatoryBeatIds: ['A5-M2', 'A5-M3'],
+      storyArc: highPressureStoryArc,
+      outline: highPressureOutline,
     }
 
     const result = await decideNextStep(ctx, makeDeps())
@@ -357,5 +444,24 @@ describe('decideNextStep beat claim revocation', () => {
       discardPlan: true,
       revokedBeatClaimIds: ['A5-B1'],
     })
+  })
+})
+
+describe('buildBeatClaimOutlineRejection', () => {
+  it('falls back to beat id text and omits currentOutline when storyArc/outline are unavailable', () => {
+    const rejection = buildBeatClaimOutlineRejection({
+      beatIds: ['A5-M2'],
+      issues: [],
+      storyArc: null,
+      outline: undefined,
+      chapterIndex: 45,
+      pendingMandatoryBeatIds: ['A5-M2'],
+    })
+
+    expect(rejection.rejectedClaims[0]?.beat).toBe('A5-M2')
+    expect(rejection.rejectedClaims[0]?.reason).toContain('A5-M2')
+    expect(rejection.requiredClaims?.pendingMandatoryBeats[0]?.beat).toBe('A5-M2')
+    expect(rejection.requiredClaims?.chaptersRemainingInAct).toBe(0)
+    expect(rejection.currentOutline).toBeUndefined()
   })
 })

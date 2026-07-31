@@ -100,6 +100,8 @@ interface SemanticPlanningRetryContext {
   attempt: number
   rejection?: ForeshadowPlanningRejection
   outlineOrigin?: 'persisted' | 'jit-generated'
+  /** 正文阶段节拍驳回反馈：存在时强制重生成大纲（保留认领，仅重做实现方式）。 */
+  beatClaimRejection?: BeatClaimPlanningRejection
 }
 
 function isRuntimeContext(source: ChapterContextSource): source is RuntimeContext {
@@ -1281,6 +1283,7 @@ interface GenerateChapterOutlineResult {
 interface GenerateChapterOutlineOptions {
   force?: boolean
   foreshadowPlanningRejection?: ForeshadowPlanningRejection
+  beatClaimRejection?: BeatClaimPlanningRejection
 }
 
 async function generateChapterOutlineIfNeeded(
@@ -1382,7 +1385,7 @@ async function generateChapterOutlineIfNeeded(
   let lastCandidate: ChapterOutlineResult | null = null
   let lastMissingScheduledForeshadowIds: string[] = []
   let lastConflictingDecisionIds: string[] = []
-  let beatClaimRejection: BeatClaimPlanningRejection | undefined
+  let beatClaimRejection: BeatClaimPlanningRejection | undefined = options.beatClaimRejection
   let lastBeatClaimRejections: BeatClaimRejection[] = []
   let strippedBeatClaimRejections: BeatClaimRejection[] = []
   let zeroClaimRejected = false
@@ -1855,12 +1858,20 @@ async function reconcileOutlineCandidate(
   }
 }
 
+export interface ExpandOutlineOptions {
+  beatClaimRejection?: BeatClaimPlanningRejection
+}
+
 export async function expandOutlineForChapter(
   state: ReducedGraphState,
   chapterIndex: number,
-  source: ChapterContextSource
+  source: ChapterContextSource,
+  options?: ExpandOutlineOptions
 ): Promise<ExpandedOutline> {
-  return expandOutlineForChapterInternal(state, chapterIndex, source, { attempt: 0 })
+  return expandOutlineForChapterInternal(state, chapterIndex, source, {
+    attempt: 0,
+    ...(options?.beatClaimRejection ? { beatClaimRejection: options.beatClaimRejection } : {}),
+  })
 }
 
 async function expandOutlineForChapterInternal(
@@ -1876,8 +1887,13 @@ async function expandOutlineForChapterInternal(
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
   const jitBaseState = state
   const generatedSemanticRetry = semanticRetry.outlineOrigin === 'jit-generated'
+  // 正文阶段节拍驳回触发的大纲重生成：即使已有 description 也强制重新生成，
+  // 但状态协调仍走 'apply'（与常规 JIT 生成一致，自动协调冲突而非丢弃候选）。
+  const beatClaimRegen = Boolean(semanticRetry.beatClaimRejection)
   const persistedOutline =
-    Boolean(state.outline[chapterIndex]?.description.trim()) && !generatedSemanticRetry
+    Boolean(state.outline[chapterIndex]?.description.trim()) &&
+    !generatedSemanticRetry &&
+    !beatClaimRegen
 
   if (persistedOutline) {
     const resolution = await reconcileOutlineCandidate(state, chapterIndex, source, 'expose')
@@ -1900,9 +1916,12 @@ async function expandOutlineForChapterInternal(
         chapterIndex,
         provider,
         {
-          ...(generatedSemanticRetry ? { force: true } : {}),
+          ...(generatedSemanticRetry || beatClaimRegen ? { force: true } : {}),
           ...(semanticRetry.rejection
             ? { foreshadowPlanningRejection: semanticRetry.rejection }
+            : {}),
+          ...(semanticRetry.beatClaimRejection
+            ? { beatClaimRejection: semanticRetry.beatClaimRejection }
             : {}),
         }
       )

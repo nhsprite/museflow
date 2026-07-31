@@ -1,6 +1,8 @@
 import type { Issue } from '../../../types/agent.js'
+import type { BeatClaimPlanningRejection } from '../../../agents/types.js'
 import type { BlockingReason } from '../../../types/blocking-report.js'
 import type { ChapterPlanningConfig } from '../../../types/genre.js'
+import type { ChapterOutline, StoryArc } from '../../../types/outline.js'
 import type { StructuredValidationResult } from '../../../story-memory/validator.js'
 
 export type ChapterStep =
@@ -10,6 +12,8 @@ export type ChapterStep =
       feedbackIssues: Issue[]
       /** 连续多轮未被正文证实、本轮应从大纲撤销的节拍认领 ID。 */
       revokedBeatClaimIds?: string[]
+      /** 高压下 mandatory beat 连续未被正文证实：保留认领，携带驳回反馈重生成大纲。 */
+      regenerateOutline?: boolean
     }
   | { kind: 'fix_chapter'; patchableIssues: Issue[] }
   | { kind: 'finalize_chapter' }
@@ -34,6 +38,10 @@ export interface ChapterSession {
   stateRepairAttempts?: number
   /** 上轮状态修复被结构化校验拒绝的提案反馈，供下一次 LLM 提案参考。 */
   stateRepairRejections?: string[]
+  /** 高压下已触发的「携带驳回反馈重生成大纲」次数，上限见 MAX_OUTLINE_REGEN_ATTEMPTS。 */
+  outlineRegenAttempts?: number
+  /** 正文阶段节拍驳回反馈，随下一轮 draft 注入大纲重生成；一次性消费后清除。 */
+  beatClaimOutlineRejection?: BeatClaimPlanningRejection
 }
 
 export interface RoutingContext {
@@ -46,6 +54,10 @@ export interface RoutingContext {
   mandatoryBeatHighPressure?: boolean
   /** 当前幕尚未被正文证实的 mandatory beat ID；撤销名单与之相交即触发高压阻塞。 */
   unprovenMandatoryBeatIds?: readonly string[]
+  /** 故事弧线：合成大纲重生成驳回反馈时查询节拍注册表文本。 */
+  storyArc?: StoryArc | null
+  /** 当前大纲：合成驳回反馈时提供 currentOutline 上下文。 */
+  outline?: readonly ChapterOutline[]
 }
 
 export interface IssuePolicyDeps {

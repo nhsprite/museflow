@@ -292,6 +292,32 @@ describe('expandOutlineForChapter', () => {
     expect(writeOutlineContent).not.toHaveBeenCalled()
   })
 
+  it('forces outline regeneration with beat claim rejection feedback even when description exists', async () => {
+    const beatClaimRejection = {
+      rejectedClaims: [
+        { beatId: 'A1-M1', beat: '主角离开家乡', reason: '正文证据仅描写阅读行为，未呈现节拍事件' },
+      ],
+      requiredClaims: {
+        pendingMandatoryBeats: [{ beatId: 'A1-M1', beat: '主角离开家乡' }],
+        chaptersRemainingInAct: 1,
+      },
+      currentOutline: { title: '遇敌', description: '主角遭遇敌人并暂时被困。' },
+    }
+
+    const result = await expandOutlineForChapter(baseState, 1, createMockProvider(), {
+      beatClaimRejection,
+    })
+
+    // description 已存在也必须重生成大纲，且首轮 agent 输入即携带驳回反馈
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    const agentInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      beatClaimRejection?: typeof beatClaimRejection
+    }
+    expect(agentInput.beatClaimRejection).toEqual(beatClaimRejection)
+    expect(result.outline?.[1]?.title).toBe('即时标题')
+    expect(result.outline?.[1]?.description).toBe('即时生成的描述。')
+  })
+
   it('passes current state snapshot to JIT outline agent', async () => {
     const jitState: ReducedGraphState = {
       ...baseState,

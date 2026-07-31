@@ -14,6 +14,7 @@ import {
   getChapterWordCountPolicy,
 } from '../../utils/chapter-content-validation.js'
 import type { RuntimeContext } from '../../core/context.js'
+import type { ChapterSession } from '../../core/chapter-generation/routing/types.js'
 import type { StoryEvent, ChapterFinalStateDeclaration } from '../../types/story-memory.js'
 import {
   acceptEmittedChapterEvents,
@@ -35,7 +36,13 @@ export async function draft_chapter(
   const agent = getChapterAgent(context.provider)
   const chapterIndex = state.currentChapterIndex
 
-  const expanded = await expandOutlineForChapter(state, chapterIndex, context)
+  // 路由层判定大纲实现缺陷时留下的节拍驳回反馈：注入大纲重生成，一次性消费后清除。
+  const beatClaimOutlineRejection = state.session?.beatClaimOutlineRejection
+  const expanded = beatClaimOutlineRejection
+    ? await expandOutlineForChapter(state, chapterIndex, context, {
+        beatClaimRejection: beatClaimOutlineRejection,
+      })
+    : await expandOutlineForChapter(state, chapterIndex, context)
   let chapterPlan = expanded.chapterPlan
   const {
     boundaryHints,
@@ -185,7 +192,15 @@ export async function draft_chapter(
     chapterFinalStateDeclarations: finalStateDeclarations,
     canonicalFactsDelta: baseContext.reconciledState.canonicalFacts ?? [],
     supersededFactsDelta: baseContext.reconciledState.supersededFacts ?? [],
+    ...(state.session ? { session: clearBeatClaimOutlineRejection(state.session) } : {}),
   }
+}
+
+/** 驳回反馈为一次性输入：消费后从 session 剔除，避免陈旧反馈反复触发大纲重生成。 */
+function clearBeatClaimOutlineRejection(session: ChapterSession): ChapterSession {
+  if (!session.beatClaimOutlineRejection) return session
+  const { beatClaimOutlineRejection: _consumed, ...rest } = session
+  return rest
 }
 
 function isStoryEventsData(data: unknown): data is { storyEvents?: StoryEvent[] } {

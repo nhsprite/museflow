@@ -285,6 +285,8 @@ export async function convergeAndDecide(
     genre: state.genre,
     chapterFileExists,
     structuredValidationResult: state.structuredValidationResult,
+    storyArc: state.storyArc,
+    outline: state.outline,
     ...buildMandatoryBeatPressureContext(state, planningConfig),
   }
 

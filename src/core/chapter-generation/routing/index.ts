@@ -17,9 +17,14 @@ import {
   STRUCTURED_ISSUE_TYPES,
 } from './structured-issues.js'
 import { findPersistentBeatUnprovenBeatIds } from './beat-claim-revocation.js'
+import {
+  buildBeatClaimOutlineRejection,
+  MAX_OUTLINE_REGEN_ATTEMPTS,
+} from './outline-regeneration.js'
 import { calculateFingerprintSetSimilarity, isFingerprintSubset } from './fingerprint.js'
 
 export * from './types.js'
+export * from './outline-regeneration.js'
 
 export interface RoutingDeps {
   issuePolicy: IssuePolicyDeps
@@ -301,12 +306,48 @@ export async function decideNextStep(
     )
 
     // 幕边界高压下不允许撤销 mandatory beat 认领：撤销只是换了一条「本章零消费」的
-    // 放行路径，幕末必然以更高代价阻塞。节拍最终未消费即判本章写作失败，转人工处置
-    // （重试本章、adjust-act 延长本幕，或人工修订大纲）。
+    // 放行路径，幕末必然以更高代价阻塞。但连续未证实暴露的可能是大纲层的实现缺陷
+    // （description 只写了节拍的外围仪式，正文无论如何起草都无法证明），此时先把
+    // 正文驳回反馈回流到大纲生成层重生成大纲（保留强制认领约束，次数有上限）；
+    // 重生成耗尽后才判本章写作失败，转人工处置（重试本章、adjust-act 延长本幕，
+    // 或人工修订大纲）。
     const revokedMandatoryBeatIds = ctx.mandatoryBeatHighPressure
       ? revokedBeatClaimIds.filter((id) => ctx.unprovenMandatoryBeatIds?.includes(id))
       : []
     if (revokedMandatoryBeatIds.length > 0) {
+      const outlineRegenAttempts = session.outlineRegenAttempts ?? 0
+      if (outlineRegenAttempts < MAX_OUTLINE_REGEN_ATTEMPTS) {
+        const beatClaimOutlineRejection = buildBeatClaimOutlineRejection({
+          beatIds: revokedMandatoryBeatIds,
+          issues: remainingErrors,
+          storyArc: ctx.storyArc,
+          outline: ctx.outline,
+          chapterIndex: session.chapterIndex,
+          pendingMandatoryBeatIds: ctx.unprovenMandatoryBeatIds ?? [],
+        })
+        deps.rewritePolicy.log?.(
+          'warn',
+          `[MuseFlow] 幕边界高压下 mandatory beat ${revokedMandatoryBeatIds.join('、')} 连续未被正文证实，将携带驳回反馈重生成第 ${session.chapterIndex + 1} 章大纲（第 ${outlineRegenAttempts + 1}/${MAX_OUTLINE_REGEN_ATTEMPTS} 次）`
+        )
+        return {
+          step: {
+            kind: 'draft_chapter',
+            discardPlan: true,
+            regenerateOutline: true,
+            feedbackIssues: [],
+          },
+          sessionUpdate: {
+            outlineRegenAttempts: outlineRegenAttempts + 1,
+            beatClaimOutlineRejection,
+            errorRewriteAttempts: session.errorRewriteAttempts + 1,
+            forceStructuralRewrite: true,
+            // 大纲前提已变，基于旧大纲的停滞指纹不再适用，重置以免误报停滞。
+            issueFingerprintHistory: [],
+          },
+          processedIssues: policyResult.issues,
+          newConstraints: policyResult.newConstraints,
+        }
+      }
       const highPressureIssue: Issue = {
         id: `mandatory-beat-unproven-high-pressure-${session.chapterIndex}`,
         ruleId: 'outline.mandatory-beat-unproven-high-pressure',
