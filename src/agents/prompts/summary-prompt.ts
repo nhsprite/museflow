@@ -77,6 +77,7 @@ ${STATE_AUTHORITY_RULES}
 <output_rules>
   <requirement>你的响应必须且只能包含三个区块：&lt;chapter_summary&gt;、&lt;chapter_handoff&gt; 和 &lt;story_events&gt;。</requirement>
   <requirement>&lt;chapter_summary&gt; 中是人类可读摘要，不要包含 JSON 或代码块。</requirement>
+  <requirement>&lt;chapter_summary&gt; 只记录事实、事件与状态变化：不记录修辞手法、仪式化动作细节与氛围描写；物品、位置、状态只在发生变化时记录，不要罗列未变化的既有状态。摘要是后续章节的上下文输入，记录未变状态会被当成需要维持的设定而放大。</requirement>
   <requirement>&lt;chapter_handoff&gt; 中是一个合法的 JSON 对象，描述本章结尾用于下一章承接的状态；不要包含 Markdown 代码块标记、注释或解释性文字。</requirement>
   <requirement>&lt;story_events&gt; 中是一个合法的 JSON 数组，不要包含 Markdown 代码块标记、注释或解释性文字。</requirement>
   <requirement>JSON 必须完整可解析：所有键名用双引号包裹；字符串值中的双引号必须转义；数组和对象末尾不要有多余逗号。</requirement>

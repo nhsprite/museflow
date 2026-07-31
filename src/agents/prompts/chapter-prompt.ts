@@ -209,7 +209,9 @@ ${TIMELINE_RULES}
 <rule id="7"><mandatory>【必须】</mandatory>因果关系明确：前一事件的结果必须自然导致后一事件，不能生硬跳转</rule>
 <rule id="8"><mandatory>【必须】</mandatory>信息一致性：本章内所有描述必须自洽，不能前后矛盾</rule>
 ${AI_PHRASE_PROHIBITIONS}
-<rule id="10">注重人物对话和心理描写</rule>
+<rule id="10"><mandatory>【必须】</mandatory>注重人物对话与行动：两个以上角色同场且存在信息交流时，交流内容必须以直接对白或具体行动呈现，不得整章以眼神、默契、心照不宣等非语言方式替代一切人物交流</rule>
+<rule id="10b"><mandatory>【必须】</mandatory>本章每一段都应提供新的事件、新的信息或新的变化；不得把前文已经确立的事实、线索清单或物品状态整段复述重列来填充篇幅，确需回扣前情时以一两句简要点到为止</rule>
+<rule id="10c"><mandatory>【必须】</mandatory>正文只写故事世界内的内容：不得以"第N章""前文""本章"等元叙述引用作品自身；不得把大纲、章节规划或节拍中的功能批注（主题、定性、回响类描述）原文写进正文——主题必须通过事件与场景呈现，禁止叙述者直接宣告主题；内部结构化 ID（实体 ID 等）只能出现在 STORY_EVENTS 区块，严禁写进正文</rule>
 <rule id="11">适时埋下伏笔，为后续章节留下悬念</rule>
 <rule id="12"><mandatory>【必须】</mandatory>每章字数要求：
      - 本章总字数应控制在 {CHAPTER_WORD_COUNT_MIN}-{CHAPTER_WORD_COUNT_MAX} 字之间

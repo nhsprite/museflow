@@ -51,7 +51,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 6. 如果当前幕进度偏慢（剩余章节少、pending beats 多），请在本章安排推进至少一个 pending beat。
 7. 【节拍预算】本章 claimedBeats 数量不得超过 <current_act> 中“本章节拍预算”给出的上限。description 中若涉及多个节拍事件，请只选择本章真正核心推进的若干项纳入 claimedBeats，其余可作为铺垫、悬念或后续伏笔处理，避免把整幕节拍集中在本章一次性消费完。
 8. claimedBeats 只能包含 description 已明确写出具体事件、冲突或状态变化的本幕 mandatory beats，不要强行贴标签。
-9. 除章节内容外，输出下列结构化声明字段（无相关项时为空数组）：
+9. 情节处于等待期时，用时间跳跃压缩等待过程，让下一个实质事件尽早发生；不得安排整章无事件的守候——逐时辰记录等待不构成章节内容。
+10. 除章节内容外，输出下列结构化声明字段（无相关项时为空数组）：
    - touchedCharacterIds: 本章出现的角色 EntityId 列表
    - touchedItemIds: 本章出现的物品 EntityId 列表
    - touchedLocationIds: 本章出现的地点 EntityId 列表
