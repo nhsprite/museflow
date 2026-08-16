@@ -19,9 +19,11 @@ import {
 import { findPersistentBeatUnprovenBeatIds } from './beat-claim-revocation.js'
 import {
   buildBeatClaimOutlineRejection,
+  buildZeroProgressOutlineRejection,
   MAX_OUTLINE_REGEN_ATTEMPTS,
 } from './outline-regeneration.js'
 import { calculateFingerprintSetSimilarity, isFingerprintSubset } from './fingerprint.js'
+import { generateId } from '../../../utils/id.js'
 
 export * from './types.js'
 export * from './outline-regeneration.js'
@@ -88,10 +90,39 @@ export async function decideNextStep(
 
   const freshStructuredIssues = buildStructuredIssues(
     ctx.structuredValidationResult,
-    ctx.session.chapterIndex
+    ctx.session.chapterIndex,
+    // 幕边界高压下本章必须认领 mandatory beat：零认领且当前幕有待消费节拍时报 error（C.2.1）。
+    { requireMandatoryBeatClaim: ctx.mandatoryBeatHighPressure === true }
   )
+  // D.2.1 佐证重试耗尽：proven 但未佐证的 mandatory beat 已享受过一次携带
+  // beatCorroboration 反馈的起草重试；次轮仍未佐证即按未证明处理（转换为
+  // beat_unproven），交由现有撤销/大纲重生成路径处置（含 mandatory beat 高压保护）。
+  const corroborationRetriedBeatIds = new Set(
+    session.previousIssues
+      .filter((issue) => issue.type === 'beat_uncorroborated' && issue.severity === 'error')
+      .map((issue) => issue.subject)
+      .filter((subject): subject is string => typeof subject === 'string' && subject.length > 0)
+  )
+  const structuredIssues = freshStructuredIssues.map((issue) => {
+    if (
+      issue.type !== 'beat_uncorroborated' ||
+      issue.severity !== 'error' ||
+      !issue.subject ||
+      !corroborationRetriedBeatIds.has(issue.subject)
+    ) {
+      return issue
+    }
+    return {
+      ...issue,
+      type: 'beat_unproven' as const,
+      ruleId: 'structured.beat-uncorroborated-exhausted',
+      description: `mandatory beat ${issue.subject} 经一次起草重试后仍未留下结构化佐证痕迹（绑定的状态类事件或受佐证的终态声明），按未证明处理。`,
+      suggestion:
+        '该节拍声称的结局始终无法佐证：正文须把节拍事件落实为可观察的状态变化并留下结构化痕迹；否则认领将被撤销（幕边界高压下改为携带驳回反馈重生成大纲）。',
+    }
+  })
   const currentIssues = ctx.structuredValidationResult
-    ? replaceStructuredIssues(ctx.pendingIssues, freshStructuredIssues)
+    ? replaceStructuredIssues(ctx.pendingIssues, structuredIssues)
     : ctx.pendingIssues
   const { issues: processedIssues } = await applyIssuePolicy(currentIssues, deps.issuePolicy)
 
@@ -104,6 +135,94 @@ export async function decideNextStep(
   const currentErrorFingerprints = await Promise.all(remainingErrors.map(fingerprintIssue))
 
   const nextFingerprintHistory = [...session.issueFingerprintHistory, currentErrorFingerprints]
+
+  // 跨章零增量闸（C.2.2）：本章校验后无任何故事状态/情节增量（角色位置/状态、
+  // 物品、伏笔、任务、节拍均无变化）时，第一次记 warning 随章节报告落地；连续达到
+  // error 阈值则禁止定稿，携带 ZeroProgressRejection 重生成大纲（复用高压大纲重生成
+  // 管线与次数上限），重生成耗尽后转人工。有增量即由定稿环节清零连击计数。
+  const chapterIncrement = ctx.structuredValidationResult?.increment
+  const zeroIncrementActive =
+    remainingErrors.length === 0 &&
+    ctx.chapterFileExists &&
+    chapterIncrement !== undefined &&
+    chapterIncrement.chapterIndex === session.chapterIndex &&
+    chapterIncrement.zeroIncrement
+  let issuesWithDensitySignals = policyResult.issues
+  if (zeroIncrementActive && chapterIncrement) {
+    const zeroIncrementStreak = (ctx.consecutiveZeroIncrementChapters ?? 0) + 1
+    if (zeroIncrementStreak >= config.zeroIncrementErrorThreshold) {
+      const outlineRegenAttempts = session.outlineRegenAttempts ?? 0
+      if (outlineRegenAttempts < MAX_OUTLINE_REGEN_ATTEMPTS) {
+        const zeroProgressOutlineRejection = buildZeroProgressOutlineRejection({
+          chapterIndex: session.chapterIndex,
+          consecutiveZeroIncrementChapters: zeroIncrementStreak,
+          storyMemory: ctx.storyMemory,
+          outline: ctx.outline,
+          currentAcceptedEventCount: chapterIncrement.acceptedEventCount,
+        })
+        deps.rewritePolicy.log?.(
+          'warn',
+          `[MuseFlow] 连续 ${zeroIncrementStreak} 章无任何故事增量（含第 ${session.chapterIndex + 1} 章），将携带零增量驳回反馈重生成第 ${session.chapterIndex + 1} 章大纲（第 ${outlineRegenAttempts + 1}/${MAX_OUTLINE_REGEN_ATTEMPTS} 次）`
+        )
+        return {
+          step: {
+            kind: 'draft_chapter',
+            discardPlan: true,
+            regenerateOutline: true,
+            feedbackIssues: [],
+          },
+          sessionUpdate: {
+            outlineRegenAttempts: outlineRegenAttempts + 1,
+            zeroProgressOutlineRejection,
+            errorRewriteAttempts: session.errorRewriteAttempts + 1,
+            forceStructuralRewrite: true,
+            // 大纲前提已变，基于旧大纲的停滞指纹不再适用，重置以免误报停滞。
+            issueFingerprintHistory: [],
+          },
+          processedIssues: policyResult.issues,
+          newConstraints: policyResult.newConstraints,
+        }
+      }
+      const zeroProgressIssue: Issue = {
+        id: `zero-increment-stall-${session.chapterIndex}`,
+        ruleId: 'structured.zero-increment-chapter',
+        type: 'event_missing',
+        severity: 'error',
+        subject: `chapter-${session.chapterIndex + 1}`,
+        description: `截至第 ${session.chapterIndex + 1} 章已连续 ${zeroIncrementStreak} 章无任何故事状态或情节增量，大纲重生成 ${MAX_OUTLINE_REGEN_ATTEMPTS} 次后仍无增量：本章写作失败。请重新运行本章生成，或人工修订大纲后再继续。`,
+        source: 'outline_compliance',
+        location: `第 ${session.chapterIndex + 1} 章`,
+        retryStrategy: 'manual',
+      }
+      return {
+        step: {
+          kind: 'request_rewrite',
+          reason: 'zero_progress_stall' as const,
+          blockingIssues: [zeroProgressIssue],
+        },
+        sessionUpdate: {
+          rewriteApproved: false,
+          issueFingerprintHistory: nextFingerprintHistory,
+        },
+        processedIssues: [...policyResult.issues, zeroProgressIssue],
+        newConstraints: policyResult.newConstraints,
+      }
+    }
+    if (zeroIncrementStreak >= config.zeroIncrementWarnThreshold) {
+      issuesWithDensitySignals = [
+        ...policyResult.issues,
+        {
+          id: generateId(),
+          ruleId: 'structured.zero-increment-chapter',
+          type: 'event_missing' as const,
+          severity: 'warning' as const,
+          description: `本章未产生任何故事状态或情节增量（角色位置/状态、物品、伏笔、任务、节拍推进均无变化）。若连续 ${config.zeroIncrementErrorThreshold} 章无增量，将触发大纲重生成。`,
+          source: 'outline_compliance' as const,
+          location: `第 ${session.chapterIndex + 1} 章`,
+        },
+      ]
+    }
+  }
 
   // 停滞检测：连续多轮问题指纹高度相似，或连续两轮当前错误集是上一轮子集，
   // 说明 rewrite 循环无法收敛
@@ -187,7 +306,7 @@ export async function decideNextStep(
           autoFixAttempts: session.autoFixAttempts + 1,
           issueFingerprintHistory: nextFingerprintHistory,
         },
-        processedIssues: policyResult.issues,
+        processedIssues: issuesWithDensitySignals,
         newConstraints: policyResult.newConstraints,
       }
     }
@@ -201,7 +320,7 @@ export async function decideNextStep(
           rewriteApproved: false,
           issueFingerprintHistory: nextFingerprintHistory,
         },
-        processedIssues: policyResult.issues,
+        processedIssues: issuesWithDensitySignals,
         newConstraints: policyResult.newConstraints,
       }
     }
@@ -213,7 +332,7 @@ export async function decideNextStep(
           rewriteApproved: true,
           issueFingerprintHistory: nextFingerprintHistory,
         },
-        processedIssues: policyResult.issues,
+        processedIssues: issuesWithDensitySignals,
         newConstraints: policyResult.newConstraints,
       }
     }
@@ -224,7 +343,7 @@ export async function decideNextStep(
         rewriteApproved: false,
         issueFingerprintHistory: nextFingerprintHistory,
       },
-      processedIssues: policyResult.issues,
+      processedIssues: issuesWithDensitySignals,
       newConstraints: policyResult.newConstraints,
     }
   }

@@ -74,6 +74,28 @@ describe('chapter planning config', () => {
       actBoundaryAutoAdjustmentMaxChapters: 3,
       actBoundaryAutoAdjustmentMaxCumulativeChapters: 3,
       actBoundaryAutoAdjustmentMaxGlobalRatio: 0.15,
+      zeroIncrementWarnThreshold: 1,
+      zeroIncrementErrorThreshold: 2,
+      zeroClaimEscalationThreshold: 2,
+    })
+  })
+
+  it('allows genre skills to override the density gate thresholds (C.3)', async () => {
+    const skill = createSkill({
+      zeroIncrementWarnThreshold: 2,
+      zeroIncrementErrorThreshold: 4,
+      zeroClaimEscalationThreshold: 3,
+    })
+    vi.doMock('../../src/genres/registry.js', () => ({
+      getGenreSkill: () => skill,
+    }))
+
+    const { getChapterPlanningConfig } = await import('../../src/utils/chapter-planning.js')
+
+    expect(getChapterPlanningConfig('custom')).toMatchObject({
+      zeroIncrementWarnThreshold: 2,
+      zeroIncrementErrorThreshold: 4,
+      zeroClaimEscalationThreshold: 3,
     })
   })
 })

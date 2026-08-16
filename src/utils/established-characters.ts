@@ -1,5 +1,7 @@
 import type { Character } from '../types/character.js'
 import type { StoryState } from '../types/story-state.js'
+import type { StoryMemory } from '../types/story-memory.js'
+import { isMachineReadableId } from '../story-memory/identifier.js'
 
 function extractNamesFromSummary(summaryText: string): string[] {
   try {
@@ -27,9 +29,21 @@ function extractNamesFromSummary(summaryText: string): string[] {
 
 export function extractEstablishedCharacters(
   summaries: string[],
-  storyState?: StoryState | null
+  storyState?: StoryState | null,
+  storyMemory?: StoryMemory | null
 ): Character[] {
   const seen = new Map<string, string>()
+
+  // 实体注册表（B.3）是权威来源之一：经 entity-register 注册的角色拥有可读名
+  // （占位名 name===id 的未注册实体不纳入），优先于摘要 JSON 的 characterFacts。
+  if (storyMemory) {
+    for (const character of Object.values(storyMemory.entities.characters)) {
+      const name = character.name.trim()
+      if (name.length > 0 && !isMachineReadableId(name) && !seen.has(name)) {
+        seen.set(name, '实体注册表中已登记')
+      }
+    }
+  }
 
   summaries.forEach((summary, index) => {
     for (const name of extractNamesFromSummary(summary)) {

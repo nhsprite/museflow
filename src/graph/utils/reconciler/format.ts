@@ -1,19 +1,42 @@
 import type { StoryState, PendingTask, CanonicalFact } from '../../../types/story-state.js'
 import type { StoryMemory } from '../../../types/story-memory.js'
 import { findActiveCanonicalFact } from '../../../utils/canonical-facts.js'
+import { formatStoryTime, isEmptyStoryTime } from '../../../utils/story-time.js'
 
 /** formatStoryState 渲染上限：避免长篇后期 prompt 无界膨胀。数组均按时间升序追加，保留最新若干条。 */
 export const MAX_RENDERED_REVEALED_SECRETS = 20
 export const MAX_RENDERED_SUPERSEDED_FACTS = 20
-export const MAX_RENDERED_CANONICAL_FACTS = 20
+/**
+ * 权威事实「其余按新近度」泳道的渲染上限（B.2）：取代旧的 20 条单一窗口。
+ * 终态/生命周期事实与本章契约触及实体的事实不受此上限约束（见 prioritizeCanonicalFacts）。
+ */
+export const MAX_RENDERED_CANONICAL_FACTS = 40
 
 type StoryStateEntities = StoryMemory['entities']
 
+export interface FormatStoryStateOptions {
+  /**
+   * true 时以「名称（id）」渲染实体，仅供需要精确 id 引用的结构化修复通道
+   * （state-repair 的 oldValue 精确匹配）。默认 false：面向正文写作的渲染段
+   * 只输出纯名字，内部 id 不得进入可复制进正文的上下文（体例泄漏源收敛）。
+   */
+  includeEntityIds?: boolean
+  /**
+   * 本章契约触及的实体 id（B.2）：这些实体的权威事实进入优先渲染泳道，
+   * 不被新近度窗口截断。
+   */
+  priorityEntityIds?: readonly string[]
+}
+
 /**
- * 将实体 ID 渲染为 agent 可读的「名称（id）」形式。
- * 仅当 entities 中存在该 ID 且名称与 ID 不同时才展开，其余情况原样返回。
+ * 将实体 ID 渲染为 agent 可读标签。默认渲染纯名字（ prose-facing ）；
+ * includeEntityIds 时渲染「名称（id）」。实体缺失或名称与 ID 相同时原样返回 ID。
  */
-function resolveEntityLabel(id: string, entities: StoryStateEntities | undefined): string {
+function resolveEntityLabel(
+  id: string,
+  entities: StoryStateEntities | undefined,
+  includeEntityIds: boolean
+): string {
   if (!entities) return id
   const name =
     entities.characters[id]?.name ??
@@ -21,19 +44,21 @@ function resolveEntityLabel(id: string, entities: StoryStateEntities | undefined
     entities.locations[id]?.name ??
     entities.factions[id]?.name ??
     entities.plots[id]?.name
-  return name !== undefined && name !== id ? `${name}（${id}）` : id
+  if (name === undefined || name === id) return id
+  return includeEntityIds ? `${name}（${id}）` : name
 }
 
 function resolveRecordLabels(
   entries: Record<string, string>,
   entities: StoryStateEntities | undefined,
-  resolveValues: boolean
+  resolveValues: boolean,
+  includeEntityIds: boolean
 ): Record<string, string> {
   if (!entities) return entries
   const resolved: Record<string, string> = {}
   for (const [key, value] of Object.entries(entries)) {
-    resolved[resolveEntityLabel(key, entities)] = resolveValues
-      ? resolveEntityLabel(value, entities)
+    resolved[resolveEntityLabel(key, entities, includeEntityIds)] = resolveValues
+      ? resolveEntityLabel(value, entities, includeEntityIds)
       : value
   }
   return resolved
@@ -70,6 +95,29 @@ export function findMatchingKey(
 
 export function findMatchingKeys(record: Record<string, string>, subject: string): string[] {
   return record[subject] !== undefined ? [subject] : []
+}
+
+/**
+ * B.2 权威事实优先级排序（取代旧的单一 20 条窗口）：
+ * (a) 终态/生命周期事实（带结构化 lifecycle 标记）永不截断，排在最前；
+ * (b) 本章契约触及实体（priorityEntityIds）的事实不被新近度窗口截断；
+ * (c) 其余事实按新近度保留至 MAX_RENDERED_CANONICAL_FACTS。
+ * 保证早期章节确立的死亡等终态事实在任意后续章节的上下文中仍然可见。
+ * 返回值为保序数组，调用方不应再对其二次截断。
+ */
+export function prioritizeCanonicalFacts(
+  facts: CanonicalFact[],
+  priorityEntityIds?: readonly string[]
+): CanonicalFact[] {
+  const priorityIds = new Set(priorityEntityIds ?? [])
+  const lifecycleFacts = facts.filter((fact) => fact.lifecycle !== undefined)
+  const priorityFacts = facts.filter(
+    (fact) => fact.lifecycle === undefined && priorityIds.has(fact.subject)
+  )
+  const remaining = facts.filter(
+    (fact) => fact.lifecycle === undefined && !priorityIds.has(fact.subject)
+  )
+  return [...lifecycleFacts, ...priorityFacts, ...remaining.slice(-MAX_RENDERED_CANONICAL_FACTS)]
 }
 
 /**
@@ -113,7 +161,12 @@ export function formatCanonicalItemEntries(
   return lines
 }
 
-export function formatStoryState(storyState: StoryState, entities?: StoryStateEntities): string {
+export function formatStoryState(
+  storyState: StoryState,
+  entities?: StoryStateEntities,
+  options: FormatStoryStateOptions = {}
+): string {
+  const includeEntityIds = options.includeEntityIds ?? false
   const lines: string[] = []
 
   // 位置投影与权威事实的优先级：某实体存在 active 的 canonicalFact（attribute=location）时，
@@ -127,7 +180,9 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
   if (locations.length > 0) {
     lines.push('【角色位置】')
     for (const [char, loc] of locations) {
-      lines.push(`  ${resolveEntityLabel(char, entities)}：${resolveEntityLabel(loc, entities)}`)
+      lines.push(
+        `  ${resolveEntityLabel(char, entities, includeEntityIds)}：${resolveEntityLabel(loc, entities, includeEntityIds)}`
+      )
     }
   }
 
@@ -135,7 +190,7 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
   if (statuses.length > 0) {
     lines.push('【角色状态】')
     for (const [char, status] of statuses) {
-      lines.push(`  ${resolveEntityLabel(char, entities)}：${status}`)
+      lines.push(`  ${resolveEntityLabel(char, entities, includeEntityIds)}：${status}`)
     }
   }
 
@@ -144,13 +199,13 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
   )
   lines.push(
     ...formatCanonicalItemEntries(
-      resolveRecordLabels(keyItemsLocation, entities, true),
+      resolveRecordLabels(keyItemsLocation, entities, true, includeEntityIds),
       '【关键物品】'
     )
   )
   lines.push(
     ...formatCanonicalItemEntries(
-      resolveRecordLabels(storyState.keyItemsState ?? {}, entities, false),
+      resolveRecordLabels(storyState.keyItemsState ?? {}, entities, false, includeEntityIds),
       '【关键物品状态】'
     )
   )
@@ -199,12 +254,14 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
   const activeCanonicalFacts = (storyState.canonicalFacts ?? []).filter(
     (fact) => fact.retiredIn === undefined
   )
+  // B.2 优先级渲染：终态/生命周期事实永不截断，契约触及实体优先，其余按新近度。
+  const prioritizedFacts = prioritizeCanonicalFacts(activeCanonicalFacts, options.priorityEntityIds)
   lines.push(
     ...formatCanonicalFactsSections([
       {
         title: '【权威事实】',
-        facts: activeCanonicalFacts,
-        limit: MAX_RENDERED_CANONICAL_FACTS,
+        facts: prioritizedFacts,
+        limit: prioritizedFacts.length,
         formatFact: (fact) => {
           const tierMarker =
             fact.source === 'outline_inference' ? '（大纲推断，提示级，正文优先）' : ''
@@ -224,8 +281,8 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
     lines.push(`【当前场景】${storyState.currentScene}`)
   }
 
-  if (storyState.storyTime) {
-    lines.push(`【上一章结束时间】${storyState.storyTime}`)
+  if (!isEmptyStoryTime(storyState.storyTime)) {
+    lines.push(`【上一章结束时间】${formatStoryTime(storyState.storyTime)}`)
   }
 
   if (storyState.chapterHandoff) {
@@ -235,7 +292,9 @@ export function formatStoryState(storyState: StoryState, entities?: StoryStateEn
     lines.push('【章节交接】')
     lines.push(`  章节：第${handoff.chapterNumber}章`)
     if (handoff.endScene) lines.push(`  结束场景：${handoff.endScene}`)
-    if (handoff.endTime) lines.push(`  结束时间：${handoff.endTime}`)
+    if (!isEmptyStoryTime(handoff.endTime)) {
+      lines.push(`  结束时间：${formatStoryTime(handoff.endTime)}`)
+    }
     if (charactersPresent.length > 0) {
       lines.push(`  在场角色：${charactersPresent.join('、')}`)
     }

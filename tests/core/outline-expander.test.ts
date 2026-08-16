@@ -119,7 +119,15 @@ const baseState: ReducedGraphState = {
 function createCompleteChapterPlan(overrides: Partial<ChapterPlan> = {}): ChapterPlan {
   return {
     chapterIndex: 1,
-    sections: [],
+    sections: [
+      {
+        title: '核心事件',
+        summary: '推进核心事件',
+        wordCount: 2500,
+        events: ['核心事件'],
+        characters: ['主角'],
+      },
+    ],
     timeline: [],
     outlineCheck: [],
     expectedEvents: [],
@@ -218,7 +226,19 @@ function stateWithScheduledForeshadows(
 describe('expandOutlineForChapter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    planChapterWithOverrideMock.mockResolvedValue({ chapterPlan: { sections: [] } })
+    planChapterWithOverrideMock.mockResolvedValue({
+      chapterPlan: {
+        sections: [
+          {
+            title: '核心事件',
+            summary: '推进核心事件',
+            wordCount: 2500,
+            events: ['核心事件'],
+            characters: ['主角'],
+          },
+        ],
+      },
+    })
     verifyForeshadowPlanMock.mockResolvedValue([])
     verifyBeatClaimsMock.mockResolvedValue([])
     mockChatStructured.mockResolvedValue({ results: [true, true] })
@@ -526,6 +546,7 @@ describe('expandOutlineForChapter', () => {
     expect(retryInput.beatClaimRejection?.requiredClaims).toEqual({
       pendingMandatoryBeats: [{ beatId: 'A1-M1', beat: '主角离开家乡' }],
       chaptersRemainingInAct: 0,
+      pressureSource: 'act_boundary',
     })
     expect(result.outline?.[2]?.claimedMandatoryBeatIds).toEqual(['A1-M1'])
   })
@@ -660,6 +681,7 @@ describe('expandOutlineForChapter', () => {
         { beatId: 'A2-M2', beat: '新幕节拍二' },
       ],
       chaptersRemainingInAct: 2,
+      pressureSource: 'act_boundary',
     })
     expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
     expect(
@@ -669,6 +691,168 @@ describe('expandOutlineForChapter', () => {
           issue.severity === 'warning'
       )
     ).toBe(true)
+  })
+
+  it('forces a mandatory-beat claim after consecutive zero-claim chapters regardless of beat arithmetic (C.2.3)', async () => {
+    // baseState 第 2 章：pending 1、剩余槽位含本章 2 章 → 无幕边界算术压力。
+    // 但此前已连续 2 章零认领，升级压力生效：零认领打回重试，模型认领会一次通过。
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      consecutiveZeroClaimChapters: 2,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+    chapterOutlineRunMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '静守',
+          description: '二人在屋内静守至天明，没有任何事件发生。',
+          introducedCharacters: [],
+          claimedBeats: [],
+          claimedMandatoryBeatIds: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          title: '离乡',
+          description: '主角收拾行囊，拜别乡亲离开家乡。',
+          introducedCharacters: [],
+          claimedBeats: ['主角离开家乡'],
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
+      })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(2)
+    const firstInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      mandatoryBeatClaimRequired?: boolean
+      zeroClaimEscalation?: boolean
+    }
+    expect(firstInput.mandatoryBeatClaimRequired).toBe(true)
+    expect(firstInput.zeroClaimEscalation).toBe(true)
+    const retryInput = chapterOutlineRunMock.mock.calls[1]![0] as {
+      beatClaimRejection?: {
+        requiredClaims?: {
+          pendingMandatoryBeats: Array<{ beatId: string; beat: string }>
+          chaptersRemainingInAct: number
+          pressureSource?: string
+        }
+      }
+    }
+    expect(retryInput.beatClaimRejection?.requiredClaims).toEqual({
+      pendingMandatoryBeats: [{ beatId: 'A1-M1', beat: '主角离开家乡' }],
+      chaptersRemainingInAct: 1,
+      pressureSource: 'zero_claim_streak',
+    })
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual(['A1-M1'])
+  })
+
+  it('aborts instead of soft-landing when zero-claim retries are exhausted under zero-claim escalation', async () => {
+    // 升级压力下关闭零认领逃逸口：重试耗尽不放行（区别于配速中压的软着陆）。
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      consecutiveZeroClaimChapters: 2,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明，没有任何事件发生。',
+        introducedCharacters: [],
+        claimedBeats: [],
+        claimedMandatoryBeatIds: [],
+      },
+    })
+
+    await expect(expandOutlineForChapter(jitState, 1, createMockProvider())).rejects.toThrow(
+      /连续零认领升级压力.*连续 3 次未认领任何 mandatory beat/
+    )
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not force a claim when the zero-claim streak is below the escalation threshold', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      consecutiveZeroClaimChapters: 1,
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明，没有任何事件发生。',
+        introducedCharacters: [],
+        claimedBeats: [],
+        claimedMandatoryBeatIds: [],
+      },
+    })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    const firstInput = chapterOutlineRunMock.mock.calls[0]![0] as {
+      mandatoryBeatClaimRequired?: boolean
+    }
+    expect(firstInput.mandatoryBeatClaimRequired).toBeUndefined()
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
+  })
+
+  it('does not escalate when the current act has no pending mandatory beats to claim', async () => {
+    const jitState: ReducedGraphState = {
+      ...baseState,
+      consecutiveZeroClaimChapters: 3,
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 3,
+            title: '第一幕',
+            theme: '测试主题',
+            function: '测试功能',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [],
+      },
+      actProgress: { 1: { consumed: [], pending: [] } },
+      outline: [
+        { number: 1, title: '启程', description: '主角离开家乡。' },
+        { number: 2, title: '', description: '' },
+        { number: 3, title: '脱困', description: '主角脱困并反击。' },
+      ],
+    }
+    chapterOutlineRunMock.mockResolvedValue({
+      success: true,
+      data: {
+        title: '静守',
+        description: '二人在屋内静守至天明，没有任何事件发生。',
+        introducedCharacters: [],
+        claimedBeats: [],
+        claimedMandatoryBeatIds: [],
+      },
+    })
+
+    const result = await expandOutlineForChapter(jitState, 1, createMockProvider())
+
+    expect(chapterOutlineRunMock).toHaveBeenCalledTimes(1)
+    expect(result.outline?.[1]?.claimedMandatoryBeatIds).toEqual([])
   })
 
   it('soft-lands after claim stripping under pacing (medium) pressure', async () => {
@@ -4080,7 +4264,7 @@ describe('validateChapterPlanBudget', () => {
     expect(result.reason).toContain('800')
   })
 
-  it('passes for empty plans', async () => {
+  it('fails for empty plans', async () => {
     const plan: ChapterPlan = {
       sections: [],
       timeline: [],
@@ -4089,7 +4273,30 @@ describe('validateChapterPlanBudget', () => {
 
     const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
 
-    expect(result.valid).toBe(true)
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain('sections 为空')
+  })
+
+  it('fails when total word count is zero', async () => {
+    const plan: ChapterPlan = {
+      sections: [
+        {
+          title: '核心事件',
+          summary: '买办登场',
+          wordCount: 0,
+          events: ['陈裕堂登门'],
+          characters: ['苏半城'],
+          timeMark: '午时',
+        },
+      ],
+      timeline: [],
+      outlineCheck: [],
+    }
+
+    const result = await validateChapterPlanBudget(plan, defaultPlanningConfig)
+
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain('总字数为 0')
   })
 
   it('skips LLM when rule-based validation passes', async () => {

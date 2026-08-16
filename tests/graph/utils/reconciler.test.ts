@@ -22,7 +22,12 @@ import {
 } from '../../../src/graph/utils/reconciler/index.js'
 import { BlockingConflictError } from '../../../src/utils/errors.js'
 import { createEmptyStoryMemory } from '../../../src/story-memory/projector.js'
-import type { StoryState, Conflict, StateOverride } from '../../../src/types/story-state.js'
+import type {
+  StoryState,
+  Conflict,
+  StateOverride,
+  CanonicalFact,
+} from '../../../src/types/story-state.js'
 import type { StoryMemory } from '../../../src/types/story-memory.js'
 import type { Character } from '../../../src/types/character.js'
 import type { ModelProvider } from '../../../src/model/provider.js'
@@ -1182,7 +1187,7 @@ describe('formatStoryState', () => {
     }
   }
 
-  it('renders entity IDs as readable 名称（id） labels when entities are provided', () => {
+  it('renders entity IDs as bare readable names for prose-facing sections', () => {
     const state: StoryState = {
       ...emptyState(),
       characterLocations: { 'c-linxuan': 'l-temple' },
@@ -1192,6 +1197,26 @@ describe('formatStoryState', () => {
     }
 
     const text = formatStoryState(state, buildEntities())
+
+    expect(text).toContain('林玄：破庙')
+    expect(text).toContain('林玄：受伤')
+    expect(text).toContain('通灵宝玉：林玄')
+    expect(text).toContain('通灵宝玉：封印中')
+    expect(text).not.toContain('（c-linxuan）')
+    expect(text).not.toContain('（l-temple）')
+    expect(text).not.toContain('（i-jade）')
+  })
+
+  it('renders 名称（id） labels when includeEntityIds is enabled for structured repair channels', () => {
+    const state: StoryState = {
+      ...emptyState(),
+      characterLocations: { 'c-linxuan': 'l-temple' },
+      characterStatus: { 'c-linxuan': '受伤' },
+      keyItemsLocation: { 'i-jade': 'c-linxuan' },
+      keyItemsState: { 'i-jade': '封印中' },
+    }
+
+    const text = formatStoryState(state, buildEntities(), { includeEntityIds: true })
 
     expect(text).toContain('林玄（c-linxuan）：破庙（l-temple）')
     expect(text).toContain('林玄（c-linxuan）：受伤')
@@ -1246,7 +1271,7 @@ describe('formatStoryState', () => {
   })
 
   it('renders only active canonical facts and caps them to the most recent', () => {
-    const facts = Array.from({ length: 25 }, (_, i) => ({
+    const facts = Array.from({ length: 45 }, (_, i) => ({
       id: `cf-${i}`,
       subject: `事实${i}`,
       attribute: 'status' as const,
@@ -1255,7 +1280,7 @@ describe('formatStoryState', () => {
       confidence: 'high' as const,
       source: 'chapter_text' as const,
     }))
-    facts[24] = { ...facts[24]!, retiredIn: 30 }
+    facts[44] = { ...facts[44]!, retiredIn: 50 }
     const state: StoryState = {
       ...emptyState(),
       canonicalFacts: facts,
@@ -1263,11 +1288,11 @@ describe('formatStoryState', () => {
 
     const text = formatStoryState(state)
 
-    expect(text).toContain('[事实23]')
+    expect(text).toContain('[事实43]')
     expect(text).toContain('[事实4]')
     expect(text).not.toContain('[事实3]')
     // retired fact must not be rendered
-    expect(text).not.toContain('[事实24]')
+    expect(text).not.toContain('[事实44]')
   })
 
   it('skips projection location entries overridden by an active canonical fact', () => {
@@ -2114,5 +2139,65 @@ describe('mergeStoryState outline_inference supersede semantics', () => {
     const twice = mergeStoryState(once, delta)
 
     expect(twice.canonicalFacts).toEqual(once.canonicalFacts)
+  })
+})
+
+describe('canonical fact render priority (B.2)', () => {
+  function makeFact(index: number, overrides: Partial<CanonicalFact> = {}): CanonicalFact {
+    return {
+      id: `cf-${index}`,
+      subject: `c-${index}`,
+      attribute: 'status',
+      value: `值${index}`,
+      establishedIn: index,
+      confidence: 'high',
+      source: 'chapter_text',
+      ...overrides,
+    }
+  }
+
+  it('never truncates terminal/lifecycle facts beyond the recency window', () => {
+    const deathFact = makeFact(0, {
+      subject: 'c-dead',
+      attribute: 'lifecycle',
+      value: '死亡',
+      lifecycle: { attribute: 'alive', value: false },
+    })
+    // 45 条普通事实把死亡事实远远推出新近度窗口
+    const filler = Array.from({ length: 45 }, (_, i) => makeFact(i + 1))
+    const state: StoryState = { ...emptyState(), canonicalFacts: [deathFact, ...filler] }
+
+    const text = formatStoryState(state)
+
+    expect(text).toContain('[c-dead]')
+    expect(text).toContain('死亡')
+    // 新近度窗口仍然生效：最早的普通事实被截断
+    expect(text).not.toContain('[c-1]')
+    expect(text).toContain('[c-45]')
+  })
+
+  it('renders facts for contract-touched entities beyond the recency window', () => {
+    const priorityFact = makeFact(0, { subject: 'c-priority', value: '关键约定' })
+    const filler = Array.from({ length: 45 }, (_, i) => makeFact(i + 1))
+    const state: StoryState = { ...emptyState(), canonicalFacts: [priorityFact, ...filler] }
+
+    const text = formatStoryState(state, undefined, { priorityEntityIds: ['c-priority'] })
+
+    expect(text).toContain('[c-priority]')
+    expect(text).not.toContain('[c-1]')
+  })
+
+  it('renders lifecycle facts once even when the entity is also contract-touched', () => {
+    const deathFact = makeFact(0, {
+      subject: 'c-dead',
+      attribute: 'lifecycle',
+      value: '死亡',
+      lifecycle: { attribute: 'alive', value: false },
+    })
+    const state: StoryState = { ...emptyState(), canonicalFacts: [deathFact] }
+
+    const text = formatStoryState(state, undefined, { priorityEntityIds: ['c-dead'] })
+
+    expect(text.match(/\[c-dead\]/g)).toHaveLength(1)
   })
 })

@@ -1,6 +1,7 @@
 import type { Issue } from '../../../types/agent.js'
-import type { BeatClaimPlanningRejection } from '../../../agents/types.js'
+import type { BeatClaimPlanningRejection, ZeroProgressRejection } from '../../../agents/types.js'
 import type { ChapterOutline, StoryArc } from '../../../types/outline.js'
+import type { StoryMemory } from '../../../types/story-memory.js'
 import { findMandatoryBeatById } from '../../../utils/mandatory-beat-ids.js'
 import { getActForChapter } from '../../../utils/story-arc.js'
 
@@ -62,6 +63,60 @@ export function buildBeatClaimOutlineRejection(
       })),
       chaptersRemainingInAct,
     },
+    ...(outlineItem
+      ? {
+          currentOutline: {
+            title: outlineItem.title,
+            description: outlineItem.description,
+          },
+        }
+      : {}),
+  }
+}
+
+export interface BuildZeroProgressOutlineRejectionInput {
+  chapterIndex: number
+  /** 含本章在内的连续零增量章数。 */
+  consecutiveZeroIncrementChapters: number
+  /** StoryMemory：统计零增量连击窗口内已定稿章节的事件计数。 */
+  storyMemory: StoryMemory | null | undefined
+  outline: readonly ChapterOutline[] | undefined
+  /** 本章已接受结构化事件数（零增量章通常极少甚至为 0）。 */
+  currentAcceptedEventCount: number
+}
+
+/**
+ * 跨章零增量闸（C.2.2）升级后的大纲重生成反馈：携带零增量连击窗口内
+ * 最近 N 章（含本章）的已接受结构化事件计数，让大纲 agent 看到量化证据，
+ * 围绕可观察的状态/事件变化重新组织本章。
+ */
+export function buildZeroProgressOutlineRejection(
+  input: BuildZeroProgressOutlineRejectionInput
+): ZeroProgressRejection {
+  const {
+    chapterIndex,
+    consecutiveZeroIncrementChapters,
+    storyMemory,
+    outline,
+    currentAcceptedEventCount,
+  } = input
+
+  const recentChapterEventCounts: ZeroProgressRejection['recentChapterEventCounts'] = []
+  const firstRecentChapter = Math.max(0, chapterIndex - (consecutiveZeroIncrementChapters - 1))
+  for (let index = firstRecentChapter; index < chapterIndex; index++) {
+    recentChapterEventCounts.push({
+      chapterIndex: index,
+      acceptedEventCount: (storyMemory?.events ?? []).filter(
+        (event) => event.chapterIndex === index
+      ).length,
+    })
+  }
+  recentChapterEventCounts.push({ chapterIndex, acceptedEventCount: currentAcceptedEventCount })
+
+  const outlineItem = outline?.[chapterIndex]
+  return {
+    consecutiveZeroIncrementChapters,
+    recentChapterEventCounts,
     ...(outlineItem
       ? {
           currentOutline: {

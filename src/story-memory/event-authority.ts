@@ -39,6 +39,16 @@ function collectEventReferences(authority: StoryEventAuthority, event: StoryEven
     case 'character-status':
       addId(authority.characterIds, event.characterId)
       break
+    case 'character-revival':
+      addId(authority.characterIds, event.characterId)
+      break
+    case 'entity-register':
+      if (event.entityKind === 'character') {
+        addId(authority.characterIds, event.entityId)
+      } else {
+        addId(authority.itemIds, event.entityId)
+      }
+      break
     case 'item-location':
       addId(authority.itemIds, event.itemId)
       addId(authority.locationIds, event.locationId)
@@ -564,6 +574,16 @@ export function validatePlannedStoryEventAuthority(
   events: readonly StoryEvent[]
 ): PlannedStoryEventAuthorityIssue[] {
   const authority = collectStoryEventAuthority(state)
+  // 实体注册（B.3）：同批事件流中先注册的新实体获得真实 id，后续事件可正常引用；
+  // 未注册且不在权威表中的引用仍按既有未知 id 规则报错。
+  for (const event of events) {
+    if (event.type !== 'entity-register') continue
+    if (event.entityKind === 'character') {
+      authority.characterIds.add(event.entityId)
+    } else {
+      authority.itemIds.add(event.entityId)
+    }
+  }
   const issues: PlannedStoryEventAuthorityIssue[] = []
 
   events.forEach((event, index) => {
@@ -573,6 +593,9 @@ export function validatePlannedStoryEventAuthority(
         requireKnown(issues, authority.locationIds, event, index, 'locationId', event.locationId)
         break
       case 'character-status':
+        requireKnown(issues, authority.characterIds, event, index, 'characterId', event.characterId)
+        break
+      case 'character-revival':
         requireKnown(issues, authority.characterIds, event, index, 'characterId', event.characterId)
         break
       case 'item-location': {
@@ -628,6 +651,8 @@ export function validatePlannedStoryEventAuthority(
         requireKnown(issues, authority.taskIds, event, index, 'taskId', event.taskId)
         break
       case 'task-create':
+      case 'entity-register':
+        // 创建事件：entityId/taskId 是新造的唯一机器 ID，不做已知 id 校验。
         break
     }
   })

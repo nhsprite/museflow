@@ -126,6 +126,38 @@ describe('validateFixedChapterContent', () => {
     expect(result.error).toContain('协议残留')
   })
 
+  it('rejects content leaking a known entity id when hygiene context is provided', async () => {
+    const content = '# 第四章 王府递帖\n\n她想起殷温娇（c-25）临走时说的话。'
+    const result = await validateFixedChapterContent(content, {
+      chapterIndex: 3,
+      wordCountPolicy: createWordCountPolicy(10),
+      hygiene: { entityIds: ['c-25'] },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain('prose.internal-identifier')
+  })
+
+  it('rejects narrative chapter self-references within the valid chapter set', async () => {
+    const content = '# 第四章 王府递帖\n\n他的行程仍止于第三章寅时起。'
+    const result = await validateFixedChapterContent(content, {
+      chapterIndex: 3,
+      wordCountPolicy: createWordCountPolicy(10),
+      hygiene: { chapterNumber: 4, totalChapters: 60 },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.error).toContain('prose.chapter-self-reference')
+  })
+
+  it('accepts id-shaped tokens that are not in the known identifier set', async () => {
+    const content = '# 第四章 王府递帖\n\n她提起一个陌生的 c-99 编号。'
+    const result = await validateFixedChapterContent(content, {
+      chapterIndex: 3,
+      wordCountPolicy: createWordCountPolicy(10),
+      hygiene: { entityIds: ['c-25'] },
+    })
+    expect(result.valid).toBe(true)
+  })
+
   it('rejects content with wrong chapter number', async () => {
     const result = await validateFixedChapterContent(
       '# 第五章 王府递帖\n\n正文内容。',

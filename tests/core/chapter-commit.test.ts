@@ -9,6 +9,7 @@ const {
   deleteStagedChapterContentMock,
   hasStagedChapterContentMock,
   readChapterContentMock,
+  readChapterContentForRunMock,
   writeOutlineContentMock,
   saveChapterReportMock,
   deleteChapterReportMock,
@@ -19,6 +20,7 @@ const {
   deleteStagedChapterContentMock: vi.fn().mockResolvedValue(undefined),
   hasStagedChapterContentMock: vi.fn().mockReturnValue(false),
   readChapterContentMock: vi.fn().mockResolvedValue('chapter content'),
+  readChapterContentForRunMock: vi.fn().mockResolvedValue(null),
   writeOutlineContentMock: vi.fn().mockResolvedValue(undefined),
   saveChapterReportMock: vi.fn(),
   deleteChapterReportMock: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   deleteStagedChapterContent: deleteStagedChapterContentMock,
   hasStagedChapterContent: hasStagedChapterContentMock,
   readChapterContent: readChapterContentMock,
+  readChapterContentForRun: readChapterContentForRunMock,
   writeOutlineContent: writeOutlineContentMock,
 }))
 
@@ -48,6 +51,7 @@ describe('chapter commit boundary', () => {
     deleteChapterMarkersFrom: vi.fn().mockResolvedValue(undefined),
     pruneIntermediateCheckpoints: vi.fn().mockResolvedValue(undefined),
     clearPendingWrites: vi.fn().mockResolvedValue(undefined),
+    saveBlockingReport: vi.fn().mockResolvedValue(undefined),
   }
 
   beforeEach(() => {
@@ -57,12 +61,14 @@ describe('chapter commit boundary', () => {
     deleteStagedChapterContentMock.mockResolvedValue(undefined)
     hasStagedChapterContentMock.mockReturnValue(false)
     readChapterContentMock.mockResolvedValue('chapter content')
+    readChapterContentForRunMock.mockResolvedValue(null)
     writeOutlineContentMock.mockResolvedValue(undefined)
     exportMetaFromCheckpointMock.mockResolvedValue(undefined)
     checkpointService.saveChapterMarker.mockResolvedValue(undefined)
     checkpointService.deleteChapterMarkersFrom.mockResolvedValue(undefined)
     checkpointService.pruneIntermediateCheckpoints.mockResolvedValue(undefined)
     checkpointService.clearPendingWrites.mockResolvedValue(undefined)
+    checkpointService.saveBlockingReport.mockResolvedValue(undefined)
   })
 
   it('saves a chapter marker from the persisted graph checkpoint and exports meta projection', async () => {
@@ -241,6 +247,102 @@ describe('chapter commit boundary', () => {
 
     expect(checkpointService.saveChapterMarker).toHaveBeenCalled()
     expect(checkpointService.pruneIntermediateCheckpoints).toHaveBeenCalled()
+  })
+
+  it('aborts the commit with a blocking report when staged content fails the hygiene dry-run', async () => {
+    const { commitChapterRun } = await import('../../src/core/chapter-commit.js')
+    const outputDir = '/tmp/museflow-commit-test'
+    hasStagedChapterContentMock.mockReturnValue(true)
+    readChapterContentForRunMock.mockResolvedValue(
+      '# 第2章 夜谈\n\n她想起殷温娇（c-25）临走时说的话。'
+    )
+
+    await expect(
+      commitChapterRun({
+        result: {
+          rewriteRequested: false,
+          isWriting: true,
+          currentChapterIndex: 2,
+          totalChapters: 10,
+          story: { id: 'story-1', title: 'Story', outputDir },
+          storyMemory: {
+            version: '3',
+            lastChapterIndex: 1,
+            entities: {
+              characters: { 'c-25': { id: 'c-25', name: '殷温娇' } },
+              items: {},
+              locations: {},
+              factions: {},
+              plots: {},
+            },
+            events: [],
+            foreshadows: {},
+            beats: {},
+            tasks: {},
+          },
+        } as unknown as ReducedGraphState,
+        graph: { getState: vi.fn() },
+        config: { configurable: { thread_id: 'story-1', outputDir } },
+        checkpointService,
+        outputDir,
+      })
+    ).rejects.toThrow(/体例检查/)
+
+    expect(promoteStagedChapterContentMock).not.toHaveBeenCalled()
+    expect(checkpointService.saveChapterMarker).not.toHaveBeenCalled()
+    expect(deleteStagedChapterContentMock).toHaveBeenCalledWith(outputDir, 2)
+    expect(checkpointService.saveBlockingReport).toHaveBeenCalledTimes(1)
+    const report = checkpointService.saveBlockingReport.mock.calls[0]?.[0] as {
+      reason: string
+      chapterIndex: number
+      issues: Array<{ ruleId: string }>
+    }
+    expect(report.reason).toBe('prose_hygiene')
+    expect(report.chapterIndex).toBe(1)
+    expect(report.issues[0]?.ruleId).toBe('prose.internal-identifier')
+  })
+
+  it('promotes staged content that passes the hygiene dry-run', async () => {
+    const { commitChapterRun } = await import('../../src/core/chapter-commit.js')
+    const outputDir = '/tmp/museflow-commit-test'
+    hasStagedChapterContentMock.mockReturnValue(true)
+    readChapterContentForRunMock.mockResolvedValue('# 第2章 夜谈\n\n她提起一个陌生的 c-99 编号。')
+
+    await commitChapterRun({
+      result: {
+        rewriteRequested: false,
+        isWriting: true,
+        currentChapterIndex: 2,
+        totalChapters: 10,
+        story: { id: 'story-1', title: 'Story', outputDir },
+        storyMemory: {
+          version: '3',
+          lastChapterIndex: 1,
+          entities: {
+            characters: { 'c-25': { id: 'c-25', name: '殷温娇' } },
+            items: {},
+            locations: {},
+            factions: {},
+            plots: {},
+          },
+          events: [],
+          foreshadows: {},
+          beats: {},
+          tasks: {},
+        },
+      } as unknown as ReducedGraphState,
+      graph: {
+        getState: vi.fn().mockResolvedValue({
+          config: { configurable: { checkpoint_id: 'ckpt-finalized' } },
+        }),
+      },
+      config: { configurable: { thread_id: 'story-1', outputDir } },
+      checkpointService,
+      outputDir,
+    })
+
+    expect(promoteStagedChapterContentMock).toHaveBeenCalledWith(outputDir, 2)
+    expect(checkpointService.saveBlockingReport).not.toHaveBeenCalled()
   })
 })
 

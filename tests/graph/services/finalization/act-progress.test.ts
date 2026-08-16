@@ -288,4 +288,74 @@ describe('updateActProgress', () => {
 
     expect(result.actProgress[1]?.consumed).toEqual(['身份暴露'])
   })
+
+  // D.2.1/D.2.2 消费佐证闸：mandatory beat 须 proven + 佐证审计通过才算 consumed。
+  describe('beat corroboration consumption gate (D.2)', () => {
+    function stateWithBeat(beatOverrides: Partial<StoryMemory['beats'][string]>) {
+      const storyArc = makeStoryArc()
+      return {
+        storyArc,
+        outline: [
+          { number: 1, title: 'A', description: 'a' },
+          { number: 2, title: 'B', description: 'b' },
+        ],
+        storyMemory: makeStoryMemory({
+          beats: {
+            'A1-M1': {
+              id: 'A1-M1',
+              description: '身份暴露',
+              actIndex: 1,
+              deadlineAct: 1,
+              required: true,
+              claimedIn: 0,
+              provenByEventIds: ['evt-1'],
+              ...beatOverrides,
+            },
+          },
+        }),
+        actProgress: {
+          1: { consumed: [], pending: ['身份暴露', '敌友洗牌', '终局布局'] },
+        },
+      } as unknown as ReducedGraphState
+    }
+
+    it('keeps a proven-but-uncorroborated mandatory beat pending', async () => {
+      const state = stateWithBeat({
+        corroboration: {
+          status: 'proven_uncorroborated',
+          corroboratingEventIds: [],
+          corroboratedByFinalState: false,
+        },
+      })
+
+      const result = await updateActProgress(state, 1, 0.2)
+
+      expect(result.actProgress[1]?.consumed).not.toContain('身份暴露')
+      expect(result.actProgress[1]?.pending).toContain('身份暴露')
+    })
+
+    it('consumes a proven mandatory beat whose corroboration audit passed', async () => {
+      const state = stateWithBeat({
+        corroboration: {
+          status: 'consumed',
+          corroboratingEventIds: ['evt-2'],
+          corroboratedByFinalState: false,
+        },
+      })
+
+      const result = await updateActProgress(state, 1, 0.2)
+
+      expect(result.actProgress[1]?.consumed).toContain('身份暴露')
+      expect(result.actProgress[1]?.pending).not.toContain('身份暴露')
+    })
+
+    it('grandfathers pre-adoption consumed beats without audit records', async () => {
+      // 无 corroboration 字段的已证明 beat（采用前旧 checkpoint）维持 consumed
+      const state = stateWithBeat({})
+
+      const result = await updateActProgress(state, 1, 0.2)
+
+      expect(result.actProgress[1]?.consumed).toContain('身份暴露')
+    })
+  })
 })

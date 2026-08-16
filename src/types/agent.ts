@@ -18,6 +18,7 @@ export type IssueType =
   | 'outline_invalid_deadline'
   | 'state_conflict'
   | 'beat_unproven'
+  | 'beat_uncorroborated'
   | 'foreshadow_false_fulfillment'
   | 'foreshadow_invalid_deadline'
   | 'foreshadow_boundary_unresolved'

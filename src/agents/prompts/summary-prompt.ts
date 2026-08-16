@@ -87,14 +87,18 @@ ${STATE_AUTHORITY_RULES}
 <handoff_rules>
   <requirement>chapter_handoff 必须只描述本章最后一个明确场景和即时状态，不得泄露后续章节或大纲未来情节。</requirement>
   <requirement>chapter_handoff 必须包含 chapterNumber、endScene、endTime、charactersPresent、lastAction、openQuestions 字段。</requirement>
+  <requirement>endTime 是结构化对象，描述故事自身时钟走到本章结尾的时刻：尽量填写结构化字段 era（年号/纪元名）、year（整数年份）、month（1-12）、day（1-31）、dayFraction（只能是 dawn、morning、noon、afternoon、evening、night 之一）；正文只给出模糊时间时，把模糊叙述填入 freeform 兜底。</requirement>
+  <requirement>endTime 只记录故事当前时间：正文中档案、公文、书信等文献里提到的历史日期不是故事时间，不得据此填写 era/year。</requirement>
   <requirement>requiredNextOpening 仅在正文结尾强依赖下一章紧接承接时填写；否则省略。</requirement>
-  <requirement>无法从正文确认的字段使用空字符串或空数组，不要推测。</requirement>
+  <requirement>无法从正文确认的字段使用空字符串、空数组或空对象，不要推测。</requirement>
 </handoff_rules>
 
 <event_types>
   事件类型说明：
   - character-location: 角色所在位置发生变化。
-  - character-status: 角色的身体状况、情绪、能力等状态发生变化。
+  - character-status: 角色的身体状况、情绪、能力等状态发生变化。受控生命周期属性 alive 取值必须是布尔字面量（true/false），角色死亡即 alive=false 终态。
+  - character-revival: 已终态（alive=false）的角色真实复活；这是唯一合法的终态反转事件，必须引用该角色的权威 ID。
+  - entity-register: 正文中新引入的有名角色/物品注册；entityKind 必须是 character 或 item，entityId 是新建的唯一机器 ID，displayName 是正文中的实际名字。
   - item-location: 物品的位置或持有者发生变化。
   - item-state: 物品的状态、属性发生变化。
   - plot-advance: 本章推进了某个关键情节节拍；必须引用 outline 中该节拍的精确 beatId。
@@ -128,7 +132,7 @@ ${STATE_AUTHORITY_RULES}
   {
     "chapterNumber": 1,
     "endScene": "本章结尾的明确场景",
-    "endTime": "本章结尾的明确时间",
+    "endTime": { "era": "年号或纪元名（无则省略）", "year": 1, "month": 1, "day": 1, "dayFraction": "dawn|morning|noon|afternoon|evening|night", "freeform": "模糊时间叙述（无法结构化时兜底）" },
     "charactersPresent": ["char-1"],
     "lastAction": "本章最后明确发生的动作",
     "openQuestions": ["本章结尾仍需承接的问题"],

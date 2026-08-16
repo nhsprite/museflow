@@ -1,6 +1,7 @@
 import type { ReducedGraphState } from '../state.js'
 import { readChapterContent } from '../../storage/filesystem/writer.js'
 import { splitContentParagraphs } from '../../utils/text.js'
+import { buildProseHygieneContext, sanitizeProseExcerpt } from '../services/prose-hygiene/index.js'
 
 const DEFAULT_SNIPPET_MAX_CHARS = 900
 
@@ -96,5 +97,18 @@ export async function buildPreviousChapterEndingContext(
   const ending = extractChapterEndingSnippet(previousContent)
   if (!ending) return ''
 
-  return `【上一章结尾片段】\n${ending}`
+  // 回喂净化：上一章若残留协议块或标识符括号注释，直接注入 prompt 会把泄漏
+  // 传染给后续每一章。注入前机械剥离机器可读残留，阻断污染循环。
+  const sanitized = sanitizeProseExcerpt(
+    ending,
+    buildProseHygieneContext({
+      storyMemory: state.storyMemory,
+      storyArc: state.storyArc,
+      chapterNumber: chapterIndex,
+      totalChapters: state.totalChapters,
+    })
+  )
+  if (!sanitized) return ''
+
+  return `【上一章结尾片段】\n${sanitized}`
 }

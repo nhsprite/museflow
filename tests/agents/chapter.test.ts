@@ -878,3 +878,100 @@ describe('ChapterAgent.parse', () => {
     expect(result.data?.finalStateDeclarations).toEqual([])
   })
 })
+
+describe('ChapterAgent.parse prose hygiene gate', () => {
+  it('fails parse when the extracted body contains a STORY_EVENTS block', async () => {
+    const raw = `=== PRE_WRITE_CHECK ===
+- 检查项
+=== CHAPTER_CONTENT ===
+# 第17章 尘埃落定
+
+=== STORY_EVENTS ===
+- character-location: c-25 -> l-1 @p1
+
+正文内容。`
+    const agent = new TestableChapterAgent(createMockProvider(raw))
+    const result = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 60,
+      chapterIndex: 16,
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('prose.protocol-block')
+    expect((result.data as Record<string, unknown> | undefined)?.proseHygieneFailure).toBe(true)
+  })
+
+  it('fails parse when the body uses a known entity id as a prose token', async () => {
+    const raw = `=== CHAPTER_CONTENT ===
+# 第30章 夜谈
+
+她想起殷温娇（c-25）临走时说的话，久久没有作声。`
+    const agent = new TestableChapterAgent(createMockProvider(raw))
+    const result = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 60,
+      chapterIndex: 29,
+      proseHygiene: { entityIds: ['c-25'] },
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('prose.internal-identifier')
+    expect((result.data as Record<string, unknown> | undefined)?.proseHygieneFailure).toBe(true)
+  })
+
+  it('fails parse when the body references a valid chapter number in narration', async () => {
+    const raw = `=== CHAPTER_CONTENT ===
+# 第37章 回京
+
+他的行程仍止于第27章寅时起，此后诸事便再无记载。`
+    const agent = new TestableChapterAgent(createMockProvider(raw))
+    const result = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 60,
+      chapterIndex: 36,
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('prose.chapter-self-reference')
+  })
+
+  it('passes clean prose and unknown id-shaped tokens', async () => {
+    const raw = `=== CHAPTER_CONTENT ===
+# 第30章 夜谈
+
+她提起一个陌生的 c-99 编号，随后便岔开了话。`
+    const agent = new TestableChapterAgent(createMockProvider(raw))
+    const result = await agent.run({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 60,
+      chapterIndex: 29,
+      proseHygiene: { entityIds: ['c-25'] },
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.content).toContain('c-99')
+  })
+
+  it('strips STORY_EVENTS blocks in the no-marker fallback path', () => {
+    const raw = `=== PRE_WRITE_CHECK ===
+- 检查项
+=== STORY_EVENTS ===
+- character-location: c-linxuan -> l-temple @p1
+# 第4章 王府递帖
+
+正文内容。`
+    const agent = new TestableChapterAgent(createMockProvider())
+    const result = agent.exposeParse(raw)
+
+    expect(result.success).toBe(true)
+    expect(result.content).toContain('# 第4章 王府递帖')
+    expect(result.content).not.toContain('STORY_EVENTS')
+    expect(result.content).not.toContain('character-location')
+    expect(result.content).not.toContain('PRE_WRITE_CHECK')
+  })
+})

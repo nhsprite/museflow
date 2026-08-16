@@ -267,7 +267,7 @@ describe('buildChapterAgentContext cache', () => {
 
   it('keeps the most recent protected facts in the chapter contract', async () => {
     const context = createMockContext()
-    const canonicalFacts = Array.from({ length: 25 }, (_, i) => ({
+    const canonicalFacts = Array.from({ length: 45 }, (_, i) => ({
       id: `cf-${i}`,
       subject: `事实${i}`,
       attribute: 'status' as const,
@@ -285,7 +285,7 @@ describe('buildChapterAgentContext cache', () => {
 
     const agentContext = await buildChapterAgentContext(state, 1, context)
 
-    expect(agentContext.chapterContract).toContain('[事实24]')
+    expect(agentContext.chapterContract).toContain('[事实44]')
     expect(agentContext.chapterContract).toContain('[事实5]')
     expect(agentContext.chapterContract).not.toContain('[事实4]')
   })
@@ -370,6 +370,7 @@ describe('buildChapterAgentContext cache', () => {
 
     const agentContext = await buildChapterAgentContext(state, 0, context)
 
-    expect(agentContext.storyState).toContain('林玄（c-linxuan）：破庙（l-temple）')
+    expect(agentContext.storyState).toContain('林玄：破庙')
+    expect(agentContext.storyState).not.toContain('c-linxuan')
   })
 })

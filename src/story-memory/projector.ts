@@ -21,6 +21,8 @@ import {
   resolveCanonicalForeshadowId,
 } from './foreshadow-alias.js'
 import { deriveLegacyRequired, normalizeLegacyForeshadowFields } from './resolution-policy.js'
+import { lifecycleChannelFromStatusEvent } from './lifecycle.js'
+import { normalizeStoryTime } from '../utils/story-time.js'
 
 export function createEmptyStoryMemory(): StoryMemory {
   return {
@@ -62,6 +64,8 @@ export function ensureBeatsHaveActIndex(
       required: existing?.required ?? true,
       claimedIn: existing?.claimedIn ?? null,
       provenByEventIds: existing?.provenByEventIds ?? [],
+      // D.2.3 佐证审计记录随重建保留；缺省维持 grandfathered 语义。
+      ...(existing?.corroboration ? { corroboration: existing.corroboration } : {}),
     }
   }
 
@@ -76,6 +80,7 @@ export function ensureBeatsHaveActIndex(
       required: keyBeat.required ?? existing?.required ?? true,
       claimedIn: existing?.claimedIn ?? null,
       provenByEventIds: existing?.provenByEventIds ?? [],
+      ...(existing?.corroboration ? { corroboration: existing.corroboration } : {}),
     }
   }
   return { ...memory, beats }
@@ -96,10 +101,46 @@ export function projectEntities(events: StoryEvent[]): StoryMemory['entities'] {
         characters[event.characterId]!.locationId = event.locationId
         ensureLocation(locations, event.locationId, event.chapterIndex)
         break
-      case 'character-status':
+      case 'character-status': {
         ensureCharacter(characters, event.characterId)
-        characters[event.characterId]!.status[event.attribute] = event.value
+        const character = characters[event.characterId]!
+        character.status[event.attribute] = event.value
+        const channel = lifecycleChannelFromStatusEvent(event)
+        if (channel) {
+          // 终态单调：alive 一旦为 false，普通 status 事件不得翻回 true；
+          // 只有显式 character-revival 事件可以清除终态标记。
+          const current = character.lifecycle?.[channel.attribute]
+          const blockedFlip =
+            channel.attribute === 'alive' && current === false && channel.value === true
+          if (!blockedFlip) {
+            character.lifecycle = { ...character.lifecycle, [channel.attribute]: channel.value }
+          }
+        }
         break
+      }
+      case 'character-revival': {
+        // 显式复活：唯一合法的终态反转通道，消费后清除 alive 终态标记。
+        ensureCharacter(characters, event.characterId)
+        const character = characters[event.characterId]!
+        character.lifecycle = { ...character.lifecycle, alive: true }
+        break
+      }
+      case 'entity-register': {
+        // 实体注册（B.3）：注册后实体获得真实 id 与可读名，进入位置/状态投影。
+        // 若实体已被先前事件以占位名（name=id）自动建立，注册负责回填可读名与引入章节。
+        if (event.entityKind === 'character') {
+          ensureCharacter(characters, event.entityId)
+          const character = characters[event.entityId]!
+          if (character.name === character.id) character.name = event.displayName
+          if (character.introducedIn === 0) character.introducedIn = event.chapterIndex
+        } else {
+          ensureItem(items, event.entityId)
+          const item = items[event.entityId]!
+          if (item.name === item.id) item.name = event.displayName
+          if (item.introducedIn === 0) item.introducedIn = event.chapterIndex
+        }
+        break
+      }
       case 'item-location':
         ensureItem(items, event.itemId)
         items[event.itemId]!.holderId = event.holderId
@@ -121,6 +162,32 @@ export function projectEntities(events: StoryEvent[]): StoryMemory['entities'] {
   }
 
   return { characters, items, locations, factions, plots: {} }
+}
+
+/**
+ * 存量回填（B.1）：旧 checkpoint 的实体投影缺少 lifecycle 终态标记。
+ * 仅从事件流的结构化数据（lifecycle 通道、attribute 命中受控词表且布尔值、
+ * character-revival 事件）重新推导并覆盖到实体投影；自由文本状态不做任何猜测。
+ * 幂等：投影本就由事件流决定，重复调用结果不变。
+ */
+export function backfillLifecycleProjection(memory: StoryMemory): StoryMemory {
+  const projected = projectEntities(memory.events)
+  let changed = false
+  const characters: Record<string, CharacterMemory> = { ...memory.entities.characters }
+  for (const [id, projectedCharacter] of Object.entries(projected.characters)) {
+    if (projectedCharacter.lifecycle === undefined) continue
+    const existing = characters[id]
+    if (!existing) continue
+    if (
+      JSON.stringify(existing.lifecycle ?? null) === JSON.stringify(projectedCharacter.lifecycle)
+    ) {
+      continue
+    }
+    characters[id] = { ...existing, lifecycle: projectedCharacter.lifecycle }
+    changed = true
+  }
+  if (!changed) return memory
+  return { ...memory, entities: { ...memory.entities, characters } }
 }
 
 export function projectMemory(memory: StoryMemory): StoryMemory {
@@ -183,7 +250,7 @@ function createEmptyProjectedStoryState(): StoryState {
     revealedSecrets: [],
     pendingTasks: [],
     currentScene: '',
-    storyTime: '',
+    storyTime: {},
     canonicalFacts: [],
   }
 }
@@ -294,6 +361,8 @@ export function projectStoryStateFromMemory(
     characterStatus,
     keyItemsLocation,
     keyItemsState,
+    // B.4：旧 checkpoint 的自由文本 storyTime 在读取路径归一化为结构化 { freeform }。
+    storyTime: normalizeStoryTime(base.storyTime),
     pendingTasks: Array.from(pendingTasksById.values()).sort(
       (a, b) => a.createdChapter - b.createdChapter
     ),

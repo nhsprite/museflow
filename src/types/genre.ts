@@ -81,6 +81,12 @@ export interface ChapterPlanningConfig {
   actBoundaryAutoAdjustmentMaxGlobalRatio: number
   /** 当只剩解释性错误时是否自动降级为 warning */
   downgradeInterpretiveErrors: boolean
+  /** 跨章零增量闸：连续零增量章数达到该值时在章节报告记 warning */
+  zeroIncrementWarnThreshold: number
+  /** 跨章零增量闸：连续零增量章数达到该值时升级为 error，路由转向大纲重生成 */
+  zeroIncrementErrorThreshold: number
+  /** 大纲层收紧：连续零认领章数达到该值后强制 mandatory beat 认领（关闭零认领逃逸口） */
+  zeroClaimEscalationThreshold: number
 }
 
 export interface GenreSkill {

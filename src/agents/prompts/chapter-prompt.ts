@@ -145,6 +145,8 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 每条事件使用以下格式之一，并严格使用大纲/规划中给定的精确 ID；每条事件末尾必须追加正文段落证据 @pN，其中 N 是 CHAPTER_CONTENT 中非标题正文段落的 1-based 序号：
 - character-location: <characterId> -> <locationId> @pN
 - character-status: <characterId> / <attribute> -> <value> @pN
+- character-revival: <characterId> @pN
+- entity-register: <entityId> / kind=<character|item> / name=<displayName> @pN
 - item-location: <itemId> / holder=<holderId|none> / location=<locationId|none> @pN
 - item-state: <itemId> / <attribute> -> <value> @pN
 - plot-advance: <plotId> / <beatId> @pN
@@ -153,20 +155,21 @@ const CHAPTER_USER_PROMPT_TEMPLATE = `{absoluteConstraintsSection}
 - task-resolve: <taskId> @pN
 - task-create: <taskId> / <description> @pN
 
-<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符；ID 必须使用机器可读的结构化标识符（如 c-character-id、item-item-id），禁止使用中文名称、描述性短语或自造格式作为 ID 字段的值。</important>
+<important>【重要】只列出本章正文明确造成的事实变化；不要列出前章已确立的状态、不要列出猜测或潜在可能。所有 ID 必须来自大纲、章节规划或前序状态，不得 invent 新的标识符；ID 必须使用机器可读的结构化标识符（如 c-character-id、item-item-id），禁止使用中文名称、描述性短语或自造格式作为 ID 字段的值。唯一例外是 entity-register：本章新引入的有名角色/物品必须先以 entity-register 注册（entityId 为新建的唯一机器 ID，name 为正文中的实际名字），注册后即可在同章后续事件中使用该 ID；无名、一次性的临时路人不注册、不发事件。</important>
 
 <important>【位置与状态事件区分 - 高频错误】
   - character-location：角色从一个地点移动到另一个地点（如离开、抵达、回家、出门）。只要角色位置发生改变，就必须使用此类型，不得使用 character-status。
   - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。任何改变物品所在位置或持有者的动作都属于位置变化，必须使用 item-location，并将目标地点/容器/角色对应的权威 ID 填入 locationId 或 holderId。
   - 【关键区分】locationId 是物品的"主位置"（ canonical location ）。物品最终停留在某个固定地点/容器时，locationId 必须是该地点/容器 ID，holderId 必须为 none；物品最终被角色随身携带且其位置就是该角色时，locationId 应填写该角色 ID（与 holderId 一致），而不是某个地点 ID。禁止出现 "locationId=地点ID 但 holderId=角色ID" 这种两者语义矛盾的写法——那会让系统无法判断物品究竟在哪里。
   - item-state：仅用于物品自身属性变化，如破损、开封、浸湿、折叠、密封状态变化、燃烧等，不用于位置变化。
+  - 【受控生命周期属性】alive 是受控生命周期属性：角色死亡必须输出 character-status: <characterId> / alive -> false（布尔字面量）；alive 一旦为 false 即终态，不得再用普通事件翻回 true，也不得对已终态角色再输出位置/状态/持有人事件。角色真实复活必须且只能使用显式 character-revival 事件（带 @pN 证据），系统校验通过后才会清除终态标记。
   - 没有可定位正文段落证据的事件不得输出。foreshadow-introduce 的 text 必须描述本章正文中实际出现的暗示，不能写未来揭示内容；expected 必须是严格晚于本章的 1-based 整数章节号，无法安排时使用 none。
   - 新建 must_resolve 伏笔必须提供非空 question 与 criteria，分别描述待解问题和可观察的完成判据；新建 should_resolve 伏笔应尽量提供。复用 legacy 事件时允许省略，禁止臆造。</important>
 
 <important>【expectedEvents 强制复用 - 最高优先级】
   - 如果【本章必须输出的结构化事件】已提供 expectedEvents，STORY_EVENTS 必须包含其中的每一条事件，且类型、ID、所有字段值必须与 expectedEvents 中的 JSON 完全一致。
   - 禁止省略、禁止改写为其他类型、禁止更改任何字段值、禁止 invent 新 ID 替换已有 ID。
-  - character-location / item-location / character-status / item-state / plot-advance / foreshadow-introduce / foreshadow-fulfill / task-resolve / task-create 等所有类型的事件都必须按上述规则复用。
+  - character-location / item-location / character-status / character-revival / entity-register / item-state / plot-advance / foreshadow-introduce / foreshadow-fulfill / task-resolve / task-create 等所有类型的事件都必须按上述规则复用。
   - 输出顺序可与 expectedEvents 不同，但内容必须一一对应；系统会通过类型与字段值精确匹配来校验，任何字段不一致都会被判定为错误并要求重写。</important>
 
 <important>【终态覆盖强制要求】如果本章正文中某实体的位置或状态发生了多次变化（例如先移走又放回、先受伤又痊愈），STORY_EVENTS 中该实体该属性的最后一条事件必须反映章末终态，而不是章中的中间状态。章末的归位、恢复、状态逆转等动作与章中的变化动作同等重要，必须输出对应事件。同一实体在本章内发生多次位置/状态变化属于正常叙事，不会被判为冲突，但所有中间变化与最终归位都必须有对应事件。</important>

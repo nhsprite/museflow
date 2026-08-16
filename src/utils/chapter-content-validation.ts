@@ -4,11 +4,21 @@ import { batchValidateFixedContent } from './context-judge.js'
 import { DEFAULT_CHAPTER_WORD_COUNT_MIN, DEFAULT_CHAPTER_WORD_COUNT_MAX } from '../types/genre.js'
 import { getGenreSkill } from '../genres/registry.js'
 import { getChapterPlanningConfig } from './chapter-planning.js'
+import { CHAPTER_NUMERAL_CLASS, parseChineseNumber } from './chinese-numerals.js'
+import {
+  checkProseHygiene,
+  formatProseHygieneIssue,
+  type ProseHygieneContext,
+} from '../graph/services/prose-hygiene/index.js'
+
+export { parseChineseNumber } from './chinese-numerals.js'
 
 interface ValidationOptions {
   chapterIndex: number
   wordCountPolicy?: ChapterWordCountPolicy
   enforceWordCount?: boolean
+  /** 已知标识符集合（实体 id、节拍 id、章节号），用于正文体例硬门禁。 */
+  hygiene?: ProseHygieneContext
 }
 
 interface ValidationResult {
@@ -21,26 +31,6 @@ interface NormalizeChapterHeadingOptions {
   chapterIndex: number
   title?: string | null
 }
-
-const CHINESE_NUMERALS: Record<string, number> = {
-  零: 0,
-  一: 1,
-  二: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-  八: 8,
-  九: 9,
-  十: 10,
-  百: 100,
-  千: 1000,
-  万: 10000,
-}
-
-/** 章节标题中允许的数字字符类（中文数字 + 阿拉伯数字）。 */
-const CHAPTER_NUMERAL_CLASS = '[一二三四五六七八九十百千万零\\d]+'
 
 /**
  * 通用章节标题识别正则。
@@ -62,31 +52,6 @@ export const CHAPTER_TITLE_ONLY_PATTERN = new RegExp(
   `^(#{1,2}\\s+第\\s*${CHAPTER_NUMERAL_CLASS}\\s*章[\\s:：]?)`,
   'm'
 )
-
-export function parseChineseNumber(str: string): number | null {
-  let result = 0
-  let currentUnit = 0
-  let hasDigit = false
-
-  for (const char of str) {
-    const value = CHINESE_NUMERALS[char]
-    if (value === undefined) return null
-    hasDigit = true
-
-    if (value >= 10) {
-      if (currentUnit === 0) {
-        currentUnit = 1
-      }
-      result += currentUnit * value
-      currentUnit = 0
-    } else {
-      currentUnit = currentUnit * 10 + value
-    }
-  }
-
-  if (!hasDigit) return null
-  return result + currentUnit
-}
 
 export function findChapterHeading(text: string): string | null {
   const lines = text.split('\n')
@@ -223,18 +188,6 @@ export function validateWordCount(
   return { valid: true, wordCount }
 }
 
-// 生成协议残留检测：=== 区块标记与 STORY_EVENTS 事件行是机器可读的输出协议
-// 分隔符，不属于正文。此处只做显式分隔符的格式匹配，不涉及正文语义判断。
-const PROTOCOL_SECTION_MARKER = /^={2,}\s*[A-Z][A-Z_\s]*={2,}\s*$/m
-const STORY_EVENT_LINE =
-  /^-?\s*(?:character-location|character-status|item-location|item-state|plot-advance|foreshadow-introduce|foreshadow-fulfill|task-resolve|task-create):/m
-
-export function findProtocolArtifacts(content: string): string | null {
-  if (PROTOCOL_SECTION_MARKER.test(content)) return '=== 区块标记'
-  if (STORY_EVENT_LINE.test(content)) return 'STORY_EVENTS 事件行'
-  return null
-}
-
 export async function validateFixedChapterContent(
   rawContent: string,
   options: ValidationOptions,
@@ -250,11 +203,14 @@ export async function validateFixedChapterContent(
     return { valid: false, error: '修复后的内容为空' }
   }
 
-  const protocolArtifact = findProtocolArtifacts(rawContent)
-  if (protocolArtifact) {
+  // 正文体例硬门禁（共享模块）：协议残留、内部标识符泄漏、章节号自指均为 error 级。
+  const hygieneIssue = checkProseHygiene(rawContent, options.hygiene ?? {}).find(
+    (issue) => issue.severity === 'error'
+  )
+  if (hygieneIssue) {
     return {
       valid: false,
-      error: `修复后的内容包含生成协议残留（${protocolArtifact}），不是纯正文`,
+      error: `修复后的内容包含生成协议残留或内部标识符泄漏（${formatProseHygieneIssue(hygieneIssue)}），不是纯正文`,
     }
   }
 

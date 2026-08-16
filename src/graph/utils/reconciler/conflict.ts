@@ -11,6 +11,7 @@ import type {
 } from '../../../types/story-state.js'
 import { labelFromFactAttribute } from '../../../types/story-state.js'
 import type { ModelProvider } from '../../../model/provider.js'
+import { formatStoryTime, isEmptyStoryTime, normalizeStoryTime } from '../../../utils/story-time.js'
 import {
   batchExtractEntityChanges,
   batchDetectTimeJumps,
@@ -186,7 +187,7 @@ export async function detectTimeAnchorConflicts(
   provider: ModelProvider
 ): Promise<Conflict[]> {
   const conflicts: Conflict[] = []
-  if (!state.storyTime || chapterIndex <= 0) {
+  if (isEmptyStoryTime(state.storyTime) || chapterIndex <= 0) {
     return conflicts
   }
 
@@ -198,7 +199,7 @@ export async function detectTimeAnchorConflicts(
     type: 'time_jump',
     subject: '叙事时间',
     attribute: 'event',
-    oldValue: state.storyTime,
+    oldValue: formatStoryTime(state.storyTime),
     newValue: '大纲明确时间推进',
     outlineReference: outline.slice(0, 200),
     severity: 'auto',
@@ -328,7 +329,7 @@ function reconcileStoryStateContent(
     revealedSecrets: [],
     pendingTasks: [...(storyState.pendingTasks ?? [])],
     currentScene: storyState.currentScene,
-    storyTime: storyState.storyTime,
+    storyTime: normalizeStoryTime(storyState.storyTime),
     ...(storyState.supersededFacts ? { supersededFacts: storyState.supersededFacts } : {}),
     ...(storyState.canonicalFacts ? { canonicalFacts: storyState.canonicalFacts } : {}),
     ...(storyState.overrides ? { overrides: storyState.overrides } : {}),

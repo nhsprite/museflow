@@ -245,6 +245,13 @@ const proseDecisionAllowlist: Record<string, string[]> = {
   'src/graph/utils/text-patching.ts': [
     'const matches = [...paragraph.matchAll(/[^。！？\\n]+[。！？\\n]?/g)]',
   ],
+  // prose-hygiene 模块的匹配均为机器格式解析或已知标识符集合成员判定（红线允许类）：
+  // indexOf 用于已知 id 的 token 边界扫描；matchAll 用于第N章章节号格式与 chapter-N id 格式。
+  'src/graph/services/prose-hygiene/check.ts': [
+    'const index = content.indexOf(id, fromIndex)',
+    'for (const match of line.text.matchAll(CHAPTER_REFERENCE)) {',
+    "for (const match of line.text.matchAll(new RegExp(CHAPTER_ID_TOKEN.source, 'g'))) {",
+  ],
 }
 
 describe('prose-anchored string predicates require explicit allowlist entries', () => {

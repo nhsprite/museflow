@@ -94,12 +94,13 @@ describe('buildChapterAgentContext chapterContract', () => {
       【大纲推断事实（提示级，正文/已确立事实优先）】
       - [c-2] known_info: 知道密信下落
       - [item-2] holder: c-1
-      【执行要求】规划、正文与一致性检查必须优先满足本契约；如需改变受保护事实，必须由本章大纲明确授权并在正文中提供清晰动作或证据。"
+      【执行要求】规划、正文与一致性检查必须优先满足本契约；如需改变受保护事实，必须由本章大纲明确授权并在正文中提供清晰动作或证据。
+      【体例约束】本契约中的 [实体 id] 仅供结构化引用（STORY_EVENTS、状态声明），严禁抄入正文；正文一律使用角色/地点/物品的名称。"
     `)
   })
 
-  it('caps protected facts to 20 and outline-inferred facts to 10', async () => {
-    const protectedFacts = Array.from({ length: 22 }, (_, i) =>
+  it('caps protected facts to the recency lane (40) and outline-inferred facts to 10', async () => {
+    const protectedFacts = Array.from({ length: 42 }, (_, i) =>
       makeFact({ id: `p-${i}`, subject: `受保护${i}`, value: `值${i}` })
     )
     const inferredFacts = Array.from({ length: 12 }, (_, i) =>
@@ -118,7 +119,7 @@ describe('buildChapterAgentContext chapterContract', () => {
     )
     const contract = context.chapterContract!
 
-    expect(contract).toContain('[受保护21]')
+    expect(contract).toContain('[受保护41]')
     expect(contract).toContain('[受保护2]')
     expect(contract).not.toContain('[受保护1]')
     expect(contract).not.toContain('[受保护0]')

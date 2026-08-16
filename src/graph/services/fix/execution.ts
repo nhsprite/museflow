@@ -11,12 +11,14 @@ import {
 } from '../../../utils/chapter-content-validation.js'
 import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
 import { formatStoryState, prepareStoryStateForChapter } from '../../utils/reconciler/index.js'
+import { collectChapterContractEntityIds } from '../../utils/chapter-context.js'
 import { buildEffectiveCharactersList, charactersToString } from '../../utils/characters.js'
 import { splitIntoParagraphs } from '../../utils/text-patching.js'
 import { buildDuplicateEndingParagraphMessage } from '../../utils/chapter-window.js'
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import { createIssue } from '../../../utils/agent-output.js'
 import { logger } from '../../../utils/logger.js'
+import { buildProseHygieneContext } from '../prose-hygiene/index.js'
 
 /**
  * 句子/段落级修复的合并产出校验，与 runLegacyFix 的 validateFixedChapterContent 口径一致。
@@ -31,7 +33,17 @@ async function validateMergedFixContent(
   const wordCountPolicy = getChapterWordCountPolicy(state.genre)
   const baseValidation = await validateFixedChapterContent(
     content,
-    { chapterIndex, wordCountPolicy, enforceWordCount: false },
+    {
+      chapterIndex,
+      wordCountPolicy,
+      enforceWordCount: false,
+      hygiene: buildProseHygieneContext({
+        storyMemory: state.storyMemory,
+        storyArc: state.storyArc,
+        chapterNumber: chapterIndex + 1,
+        totalChapters: state.totalChapters,
+      }),
+    },
     provider
   )
   if (!baseValidation.valid) {
@@ -147,7 +159,9 @@ export async function runSentenceFix(
   const context = contextParagraphs.join('\n\n')
 
   const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex, provider)
-  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities, {
+    priorityEntityIds: collectChapterContractEntityIds(state, chapterIndex),
+  })
 
   const {
     merged: effectiveCharacters,
@@ -263,7 +277,9 @@ export async function runParagraphFix(
   const context = contextParagraphs.join('\n\n')
 
   const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex, provider)
-  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities, {
+    priorityEntityIds: collectChapterContractEntityIds(state, chapterIndex),
+  })
 
   const {
     merged: effectiveCharacters,
@@ -350,7 +366,9 @@ export async function runLegacyFix(
   nextBoundaryHint: string
 ): Promise<Partial<ReducedGraphState>> {
   const { reconciledState } = await prepareStoryStateForChapter(state, chapterIndex, provider)
-  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities, {
+    priorityEntityIds: collectChapterContractEntityIds(state, chapterIndex),
+  })
 
   const {
     merged: effectiveCharacters,
@@ -398,6 +416,12 @@ export async function runLegacyFix(
       chapterIndex,
       wordCountPolicy,
       enforceWordCount: false,
+      hygiene: buildProseHygieneContext({
+        storyMemory: state.storyMemory,
+        storyArc: state.storyArc,
+        chapterNumber: chapterIndex + 1,
+        totalChapters: state.totalChapters,
+      }),
     },
     provider
   )

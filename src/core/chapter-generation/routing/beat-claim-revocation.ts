@@ -15,6 +15,11 @@ import { findMandatoryBeatById } from '../../../utils/mandatory-beat-ids.js'
 /**
  * 找出连续两轮未通过正文验证的节拍 ID。
  * previousIssues 是上一轮路由回写的问题快照；currentErrors 是本轮剩余 error。
+ *
+ * D.2.1：上一轮为 proven 但未佐证的 mandatory beat（beat_uncorroborated error）
+ * 已享受过一次携带 beatCorroboration 反馈的起草重试，本轮仍未佐证的会被路由层
+ * 转换为 beat_unproven——上一轮的 beat_uncorroborated 计入「持续未证明」的前任，
+ * 使撤销/大纲重生成路径在重试耗尽后立即生效，而不是再空转两轮。
  */
 export function findPersistentBeatUnprovenBeatIds(
   previousIssues: readonly Issue[],
@@ -22,7 +27,11 @@ export function findPersistentBeatUnprovenBeatIds(
 ): string[] {
   const previouslyUnproven = new Set(
     previousIssues
-      .filter((issue) => issue.type === 'beat_unproven')
+      .filter(
+        (issue) =>
+          issue.type === 'beat_unproven' ||
+          (issue.type === 'beat_uncorroborated' && issue.severity === 'error')
+      )
       .map((issue) => issue.subject)
       .filter((subject): subject is string => typeof subject === 'string' && subject.length > 0)
   )

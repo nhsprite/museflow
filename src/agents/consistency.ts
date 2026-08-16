@@ -138,8 +138,11 @@ ${state.chapterContract}
 
     void canonicalFacts
     const issues = await normalizeIssues(data.issues, 'consistency', this.provider, {
-      ruleId: (issue, mappedType) =>
-        `consistency.${mappedType}.${issue.aspect ?? 'general'}.${issue.type ?? 'unspecified'}`,
+      ruleId: (issue, mappedType) => {
+        if (issue.aspect === 'prose_artifact') return 'consistency.prose-artifact'
+        if (issue.aspect === 'prose_repetition') return 'consistency.prose-repetition'
+        return `consistency.${mappedType}.${issue.aspect ?? 'general'}.${issue.type ?? 'unspecified'}`
+      },
       mapType: (issue) => {
         if (issue.aspect === 'outline') {
           return issue.type === 'missing_event' ? 'outline_violation' : 'outline_deviation'

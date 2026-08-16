@@ -11,8 +11,14 @@ function renderPendingClaims(
 function renderRequiredClaims(
   requiredClaims: NonNullable<BeatClaimPlanningRejection['requiredClaims']>
 ): string {
+  const claimsList = renderPendingClaims(requiredClaims.pendingMandatoryBeats)
+  if (requiredClaims.pressureSource === 'zero_claim_streak') {
+    return `【连续零认领 - 零认领打回】此前已连续多章大纲未认领任何 mandatory beat，上一版大纲仍未认领：
+${claimsList}
+本轮必须在 claimedMandatoryBeatIds 中认领上述至少 1 个节拍（不得超出节拍预算），并在 description 中写出该节拍所述事件本身在本章实际发生（行动、揭示、决定或后果）；仅写开端、铺垫或阶段性进展视为未兑现认领，不得再输出保持原状、无事件推进的过渡章。`
+  }
   return `【幕边界高压 - 零认领打回】本幕只剩 ${requiredClaims.chaptersRemainingInAct} 章结束，未消费的 mandatory beats 已多于剩余章数，上一版大纲却未认领任何 mandatory beat：
-${renderPendingClaims(requiredClaims.pendingMandatoryBeats)}
+${claimsList}
 本轮必须在 claimedMandatoryBeatIds 中认领上述至少 1 个节拍（不得超出节拍预算），并在 description 中写出该节拍所述事件本身在本章实际发生（行动、揭示、决定或后果）；仅写开端、铺垫或阶段性进展视为未兑现认领，不得再输出保持原状、无事件推进的过渡章。`
 }
 

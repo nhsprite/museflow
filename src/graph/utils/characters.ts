@@ -29,7 +29,8 @@ export function buildEffectiveCharactersList(
   const outlineMerged = mergeCharacterLists(official, outline)
   const established = extractEstablishedCharacters(
     selectChapterSummaries(state.chapters, chapterIndex),
-    state.storyState
+    state.storyState,
+    state.storyMemory
   ).filter((ec) => !outlineMerged.some((c) => c.name === ec.name))
   const merged = [...outlineMerged, ...established]
   return { official, outline: outlineMerged.slice(official.length), established, merged }

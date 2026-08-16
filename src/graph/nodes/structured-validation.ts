@@ -2,7 +2,13 @@ import type { ReducedGraphState } from '../state.js'
 import type { RuntimeContext } from '../../core/context.js'
 import type { StoryEvent } from '../../types/story-memory.js'
 import { validateChapterEvents } from '../../story-memory/validator.js'
-import { createEmptyStoryMemory, ensureBeatsHaveActIndex } from '../../story-memory/projector.js'
+import {
+  applyEvents,
+  backfillLifecycleProjection,
+  createEmptyStoryMemory,
+  ensureBeatsHaveActIndex,
+} from '../../story-memory/projector.js'
+import { evaluateChapterIncrement } from '../../story-memory/increment.js'
 import { readChapterContentForRun } from '../../storage/filesystem/writer.js'
 import { verifyForeshadowFulfillments } from '../services/foreshadow-fulfillment/semantic-verifier.js'
 import { verifyPlotAdvances } from '../services/plot-advance/semantic-verifier.js'
@@ -10,6 +16,8 @@ import { relocateEvidence, type EvidenceRelocationItem } from '../services/evide
 import { resolveCanonicalForeshadowId } from '../../story-memory/foreshadow-alias.js'
 import { logger } from '../../utils/logger.js'
 import { isBeatProven } from '../../utils/beat-coverage.js'
+import { findMandatoryBeatById } from '../../utils/mandatory-beat-ids.js'
+import { evaluateChapterBeatCorroborations } from '../../story-memory/beat-corroboration.js'
 
 export async function validateChapterStructured(
   context: RuntimeContext,
@@ -18,9 +26,8 @@ export async function validateChapterStructured(
   const chapterIndex = state.currentChapterIndex ?? 0
   const plan = state.chapterPlan
   const actualEvents = state.draftChapterEvents ?? []
-  const memory = ensureBeatsHaveActIndex(
-    state.storyMemory ?? createEmptyStoryMemory(),
-    state.storyArc
+  const memory = backfillLifecycleProjection(
+    ensureBeatsHaveActIndex(state.storyMemory ?? createEmptyStoryMemory(), state.storyArc)
   )
 
   if (!plan) {
@@ -45,6 +52,9 @@ export async function validateChapterStructured(
         finalStateUncorroborated: [],
         autoCompletedEvents: [],
         droppedUnauthorizedPlotAdvanceEvents: [],
+        terminalStateViolations: [],
+        terminalDuplicateEvents: [],
+        beatCorroborations: [],
       },
     }
   }
@@ -212,6 +222,49 @@ export async function validateChapterStructured(
     }
   }
 
+  // 补全事件与被接受的未授权 plot-advance 随 draftChapterEvents 写回，定稿时写入 StoryMemory；
+  // 被丢弃的未授权事件在此剔除（下一轮校验若 writer 重发，会按同一闸门重新裁决）。
+  // 经重锚定的事件携带修正后的证据段落序号写回。
+  const writebackEvents = result.actualEvents
+    .filter((event) => !droppedEventIds.has(event.id))
+    .map((event) => {
+      const relocatedIndex = relocatedEvidence.get(event.id)
+      return relocatedIndex !== undefined
+        ? { ...event, evidence: { paragraphIndex: relocatedIndex } }
+        : event
+    })
+
+  // 跨章零增量判定（C.2.2）：对比章前 memory 与应用本章已接受事件后的投影。
+  // 纯事件枚举/实体 ID 比较；路由层据此决定 warning 或大纲重生成升级。
+  const knownEventIds = new Set(memory.events.map((event) => event.id))
+  const chapterNewEvents = writebackEvents.filter(
+    (event) => event.chapterIndex === chapterIndex && !knownEventIds.has(event.id)
+  )
+  const memoryAfter = chapterNewEvents.length > 0 ? applyEvents(memory, chapterNewEvents) : memory
+  const increment = evaluateChapterIncrement(chapterIndex, memory, memoryAfter, chapterNewEvents)
+
+  // D.2.1 mandatory beat 佐证评估：本章已接受事件中新获证明的 mandatory beat，
+  // 须另有绑定的状态类事件或受佐证的终态声明留下结构化痕迹才算消费；
+  // key beat 维持单段验证标准，不参与评估。
+  const chapterAcceptedEvents = writebackEvents.filter(
+    (event) => event.chapterIndex === chapterIndex
+  )
+  const provenMandatoryBeatIds = new Set(
+    chapterAcceptedEvents
+      .filter(
+        (event): event is Extract<StoryEvent, { type: 'plot-advance' }> =>
+          event.type === 'plot-advance'
+      )
+      .map((event) => event.beatId)
+      .filter((beatId) => findMandatoryBeatById(state.storyArc, beatId) !== undefined)
+  )
+  const beatCorroborations = evaluateChapterBeatCorroborations({
+    chapterEvents: chapterAcceptedEvents,
+    finalStateDeclarations: state.chapterFinalStateDeclarations ?? [],
+    foreshadows: memoryAfter.foreshadows,
+    beatIds: provenMandatoryBeatIds,
+  })
+
   return {
     structuredValidationResult: {
       ...result,
@@ -221,18 +274,10 @@ export async function validateChapterStructured(
       foreshadowFulfillmentRejections: survivingSemanticRejections,
       claimedButUnprovenBeats,
       plotAdvanceRejections: survivingPlotAdvanceRejections,
+      increment,
+      beatCorroborations,
     },
-    // 补全事件与被接受的未授权 plot-advance 随 draftChapterEvents 写回，定稿时写入 StoryMemory；
-    // 被丢弃的未授权事件在此剔除（下一轮校验若 writer 重发，会按同一闸门重新裁决）。
-    // 经重锚定的事件携带修正后的证据段落序号写回。
-    draftChapterEvents: result.actualEvents
-      .filter((event) => !droppedEventIds.has(event.id))
-      .map((event) => {
-        const relocatedIndex = relocatedEvidence.get(event.id)
-        return relocatedIndex !== undefined
-          ? { ...event, evidence: { paragraphIndex: relocatedIndex } }
-          : event
-      }),
+    draftChapterEvents: writebackEvents,
   }
 }
 

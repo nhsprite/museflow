@@ -1,3 +1,5 @@
+import type { LifecycleChannel } from './story-memory.js'
+
 export interface SupersededFact {
   subject: string
   oldFact: string
@@ -16,6 +18,7 @@ export type CanonicalFactSource =
 export type FactAttribute =
   | 'location'
   | 'status'
+  | 'lifecycle'
   | 'origin'
   | 'maker'
   | 'giver'
@@ -36,6 +39,7 @@ export type FactAttribute =
 const FACT_ATTRIBUTE_LABELS: Record<FactAttribute, string> = {
   location: '所在位置',
   status: '状态',
+  lifecycle: '生命周期',
   origin: '来源',
   maker: '制造者',
   giver: '赠予者',
@@ -79,6 +83,11 @@ export interface CanonicalFact {
   retiredIn?: number | undefined
   confidence: 'high' | 'medium' | 'low'
   source: CanonicalFactSource
+  /**
+   * 生命周期事实的结构化标记（B.2）：由定稿回采从 lifecycle 通道事件派生。
+   * 渲染层据此将该事实归入「终态/生命周期」优先级，永不截断。旧数据缺省。
+   */
+  lifecycle?: LifecycleChannel | undefined
   evidence?:
     | {
         chapterIndex: number
@@ -103,10 +112,29 @@ export interface PendingTask {
   status: 'pending' | 'done' | 'postponed' | 'superseded' | 'expired'
 }
 
+/**
+ * 结构化故事时间（B.4）：故事自身时钟的章末时刻。
+ * 结构化字段尽量填写；只能确定模糊叙述时用 freeform 兜底。
+ * 校验（单调性/年号一致性）只作用于该结构化通道本身，不解析正文；
+ * 文中档案/公文等的历史日期是物品元数据，不属于故事时间断言。
+ * 旧 checkpoint 的自由文本 storyTime 归一化为 { freeform: 原文 }（src/utils/story-time.ts）。
+ */
+export const DAY_FRACTIONS = ['dawn', 'morning', 'noon', 'afternoon', 'evening', 'night'] as const
+export type DayFraction = (typeof DAY_FRACTIONS)[number]
+
+export interface StoryTime {
+  era?: string | undefined
+  year?: number | undefined
+  month?: number | undefined
+  day?: number | undefined
+  dayFraction?: DayFraction | undefined
+  freeform?: string | undefined
+}
+
 export interface ChapterHandoff {
   chapterNumber: number
   endScene: string
-  endTime: string
+  endTime: StoryTime
   charactersPresent: string[]
   lastAction: string
   openQuestions: string[]
@@ -122,7 +150,7 @@ export interface StoryState {
   revealedSecrets: string[]
   pendingTasks: PendingTask[]
   currentScene: string
-  storyTime: string
+  storyTime: StoryTime
   chapterHandoff?: ChapterHandoff
   supersededFacts?: SupersededFact[]
   canonicalFacts?: CanonicalFact[]

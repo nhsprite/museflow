@@ -6,6 +6,8 @@ expectedEvents 中每个对象必须严格匹配下列一种完整 JSON 结构�
 
 - {"id": "evt-id", "type": "character-location", "characterId": "character-id", "locationId": null, ${base}}
 - {"id": "evt-id", "type": "character-status", "characterId": "character-id", "attribute": "attribute", "value": "value", ${base}}
+- {"id": "evt-id", "type": "character-revival", "characterId": "character-id", ${base}}
+- {"id": "evt-id", "type": "entity-register", "entityKind": "character", "entityId": "new-entity-id", "displayName": "display name", ${base}}
 - {"id": "evt-id", "type": "item-location", "itemId": "item-id", "holderId": null, "locationId": "location-id", ${base}}
 - {"id": "evt-id", "type": "item-state", "itemId": "item-id", "attribute": "attribute", "value": "value", ${base}}
 - {"id": "evt-id", "type": "plot-advance", "plotId": "plot-id", "beatId": "beat-id", ${base}}
@@ -17,7 +19,7 @@ expectedEvents 中每个对象必须严格匹配下列一种完整 JSON 结构�
 严格规则：
 - 事件记录自身的 id 必须是本事件新建的唯一机器 ID，不是实体引用，不要求预先存在于权威 ID 注册表。
 - 所有既有实体或义务的引用 ID（characterId、itemId、locationId、holderId、plotId、beatId、foreshadow-fulfill.foreshadowId、task-resolve.taskId 等）必须使用上下文提供的权威机器 ID，禁止使用中文名称、描述性短语或自造 ID。
-- 创建事件是唯一例外：foreshadow-introduce.foreshadowId 与 task-create.taskId 必须使用新的唯一机器 ID；foreshadow-introduce.beatId 若非 null，仍必须复用上下文中的权威 beatId。
+- 创建事件是唯一例外：entity-register.entityId、foreshadow-introduce.foreshadowId 与 task-create.taskId 必须使用新的唯一机器 ID；entity-register 的 entityKind 必须是 character 或 item，displayName 必须是正文中实际出现的名字；同章后续事件可以引用本章已注册的 entityId。foreshadow-introduce.beatId 若非 null，仍必须复用上下文中的权威 beatId。
 - 位置变化与状态变化的区分（高频错误，务必注意）：
   - character-location：角色从一个地点移动到另一个地点（如离开、抵达、回家、出门）。只要角色位置发生改变，就必须使用此类型，不得使用 character-status。
   - item-location：物品被移动、交接、取出、放回、随身携带、锁回某处等导致物品所在位置或持有者变化的情况。任何改变物品所在位置或持有者的动作都属于位置变化，必须使用 item-location，并将目标地点/容器/角色对应的权威 ID 填入 locationId 或 holderId。

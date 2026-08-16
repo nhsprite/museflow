@@ -25,6 +25,7 @@ import { dropBeatClaimsFromOutline } from '../../../core/chapter-generation/rout
 import type { RoutingDecision } from '../../../core/chapter-generation/routing/types.js'
 import { buildArcStatus, getVerifiedBeatsFromMemory } from '../../../utils/story-arc.js'
 import { getMandatoryBeatEntries } from '../../../utils/mandatory-beat-ids.js'
+import { isConsumedMandatoryBeat } from '../../../story-memory/beat-corroboration.js'
 import type { RuntimeContext } from '../../../core/context.js'
 import { createChapterSession } from '../../../core/chapter-generation/routing/session.js'
 import {
@@ -164,6 +165,14 @@ function buildBlockingReport(
     })
   }
 
+  if (reason === 'zero_progress_stall') {
+    suggestedActions.push({
+      type: 'manual_rewrite',
+      description:
+        '连续多章无任何故事增量且大纲重生成未改善：请运行 museflow rewrite <story-id> 重试本章，或人工修订本章大纲（安排可观察的状态/事件变化）后再继续',
+    })
+  }
+
   return {
     id: generateId('block'),
     storyId,
@@ -242,9 +251,11 @@ function buildMandatoryBeatPressureContext(
     return { mandatoryBeatHighPressure: false, unprovenMandatoryBeatIds: [] }
   }
 
+  // D.2.1：未消费 = 未证明或已证明未通过佐证审计。高压下禁止撤销认领的保护
+  // 同样覆盖 proven_uncorroborated 的 mandatory beat（撤销等于本章零消费放行）。
   const unprovenMandatoryBeatIds = getMandatoryBeatEntries(state.storyArc)
     .filter((entry) => entry.actIndex === arcStatus.currentAct?.index)
-    .filter((entry) => !verifiedBeatIds.has(entry.id))
+    .filter((entry) => !isConsumedMandatoryBeat(state.storyMemory?.beats[entry.id]))
     .map((entry) => entry.id)
   return { mandatoryBeatHighPressure: true, unprovenMandatoryBeatIds }
 }
@@ -287,6 +298,8 @@ export async function convergeAndDecide(
     structuredValidationResult: state.structuredValidationResult,
     storyArc: state.storyArc,
     outline: state.outline,
+    consecutiveZeroIncrementChapters: state.consecutiveZeroIncrementChapters ?? 0,
+    storyMemory: state.storyMemory,
     ...buildMandatoryBeatPressureContext(state, planningConfig),
   }
 

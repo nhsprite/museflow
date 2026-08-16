@@ -245,7 +245,7 @@ function buildRepairMessages(input: StateRepairInput, memory: StoryMemory): Mess
 ${issuesText}
 
 【当前状态记录】
-${formatStoryState(input.storyState, memory.entities)}
+${formatStoryState(input.storyState, memory.entities, { includeEntityIds: true })}
 
 ${relevantFacts.length > 0 ? `【相关权威事实（按问题涉及的实体筛选）】\n${relevantFacts.map((f) => `- ${f.subject} / ${f.attribute}: ${f.value}（来源: ${f.source}, 确立于第 ${f.establishedIn + 1} 章${f.retiredIn !== undefined ? `, 废止于第 ${f.retiredIn + 1} 章` : ''}）`).join('\n')}\n\n` : ''}${relevantSuperseded.length > 0 ? `【相关被覆盖事实】\n${relevantSuperseded.map((f) => `- ${f.subject}: ${f.oldFact}（原因: ${f.reason}）`).join('\n')}\n\n` : ''}【已知实体 id】
 ${[...knownEntityIds].join('、')}

@@ -20,6 +20,8 @@ import {
   acceptEmittedChapterEvents,
   augmentExpectedEventsWithClaimedBeats,
 } from '../../story-memory/event-completion.js'
+import { buildProseHygieneContext } from '../services/prose-hygiene/index.js'
+import { PROSE_HYGIENE_FAILURE_KEY } from '../../agents/chapter.js'
 
 /**
  * 起草产出校验（字数等）未通过时的最大起草次数（首次 + 携带反馈的重试）。
@@ -36,13 +38,19 @@ export async function draft_chapter(
   const agent = getChapterAgent(context.provider)
   const chapterIndex = state.currentChapterIndex
 
-  // 路由层判定大纲实现缺陷时留下的节拍驳回反馈：注入大纲重生成，一次性消费后清除。
+  // 路由层判定大纲实现缺陷时留下的节拍驳回反馈 / 跨章零增量闸留下的大纲重生成反馈：
+  // 注入大纲重生成，一次性消费后清除。
   const beatClaimOutlineRejection = state.session?.beatClaimOutlineRejection
-  const expanded = beatClaimOutlineRejection
-    ? await expandOutlineForChapter(state, chapterIndex, context, {
-        beatClaimRejection: beatClaimOutlineRejection,
-      })
-    : await expandOutlineForChapter(state, chapterIndex, context)
+  const zeroProgressOutlineRejection = state.session?.zeroProgressOutlineRejection
+  const expanded =
+    beatClaimOutlineRejection || zeroProgressOutlineRejection
+      ? await expandOutlineForChapter(state, chapterIndex, context, {
+          ...(beatClaimOutlineRejection ? { beatClaimRejection: beatClaimOutlineRejection } : {}),
+          ...(zeroProgressOutlineRejection
+            ? { zeroProgressRejection: zeroProgressOutlineRejection }
+            : {}),
+        })
+      : await expandOutlineForChapter(state, chapterIndex, context)
   let chapterPlan = expanded.chapterPlan
   const {
     boundaryHints,
@@ -88,6 +96,12 @@ export async function draft_chapter(
   const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
   const wordCountPolicy = getChapterWordCountPolicy(state.genre)
+  const proseHygiene = buildProseHygieneContext({
+    storyMemory: state.storyMemory,
+    storyArc: state.storyArc,
+    chapterNumber: chapterIndex + 1,
+    totalChapters: state.totalChapters,
+  })
   const validationFeedback: Issue[] = []
   let content = ''
   let acceptedEvents: ReturnType<typeof acceptEmittedChapterEvents> = { content: '', events: [] }
@@ -103,11 +117,33 @@ export async function draft_chapter(
       ...(attemptIssues.length > 0 ? { issues: attemptIssues } : {}),
       ...(existingContent ? { chapterContent: existingContent } : {}),
       ...(state.chapterPlan ? { chapterPlan: state.chapterPlan } : {}),
+      proseHygiene,
     }) as ChapterAgentInput
 
     const output = await agent.run(agentState)
 
     if (!output.success && output.error) {
+      if (isProseHygieneFailure(output.data)) {
+        // 体例失败与产出校验失败同通道：携带具体残留位置反馈重新起草，耗尽后报错。
+        lastValidationError = output.error
+        if (attempt + 1 >= MAX_DRAFT_VALIDATION_ATTEMPTS) break
+        logger.warn(
+          `[MuseFlow] 第 ${chapterIndex + 1} 章起草第 ${attempt + 1}/${MAX_DRAFT_VALIDATION_ATTEMPTS} 次未通过正文体例检查：${lastValidationError}，将携带反馈重新起草`
+        )
+        validationFeedback.push(
+          createIssue(
+            {
+              ruleId: 'draft.prose-hygiene',
+              type: 'draft_failure',
+              severity: 'error',
+              description: `第 ${chapterIndex + 1} 章上一稿未通过正文体例检查：${lastValidationError}。请重新撰写正文，正文中不得出现 === 区块标记、结构化事件行、内部 ID 或对自身章节号的引用。`,
+            },
+            'quality',
+            'draft'
+          )
+        )
+        continue
+      }
       throw new Error(`第 ${chapterIndex + 1} 章 AI 生成失败：${output.error}`)
     }
 
@@ -140,6 +176,7 @@ export async function draft_chapter(
       chapterIndex,
       wordCountPolicy,
       enforceWordCount: true,
+      hygiene: proseHygiene,
     })
 
     if (validation.valid) {
@@ -192,19 +229,31 @@ export async function draft_chapter(
     chapterFinalStateDeclarations: finalStateDeclarations,
     canonicalFactsDelta: baseContext.reconciledState.canonicalFacts ?? [],
     supersededFactsDelta: baseContext.reconciledState.supersededFacts ?? [],
-    ...(state.session ? { session: clearBeatClaimOutlineRejection(state.session) } : {}),
+    ...(state.session ? { session: clearOutlineRejections(state.session) } : {}),
   }
 }
 
 /** 驳回反馈为一次性输入：消费后从 session 剔除，避免陈旧反馈反复触发大纲重生成。 */
-function clearBeatClaimOutlineRejection(session: ChapterSession): ChapterSession {
-  if (!session.beatClaimOutlineRejection) return session
-  const { beatClaimOutlineRejection: _consumed, ...rest } = session
+function clearOutlineRejections(session: ChapterSession): ChapterSession {
+  if (!session.beatClaimOutlineRejection && !session.zeroProgressOutlineRejection) return session
+  const {
+    beatClaimOutlineRejection: _consumedBeatClaim,
+    zeroProgressOutlineRejection: _consumedZeroProgress,
+    ...rest
+  } = session
   return rest
 }
 
 function isStoryEventsData(data: unknown): data is { storyEvents?: StoryEvent[] } {
   return typeof data === 'object' && data !== null && 'storyEvents' in data
+}
+
+function isProseHygieneFailure(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as Record<string, unknown>)[PROSE_HYGIENE_FAILURE_KEY] === true
+  )
 }
 
 function isFinalStateData(

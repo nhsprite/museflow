@@ -52,6 +52,9 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   actBoundaryAutoAdjustmentMaxCumulativeChapters: 3,
   actBoundaryAutoAdjustmentMaxGlobalRatio: 0.15,
   downgradeInterpretiveErrors: true,
+  zeroIncrementWarnThreshold: 1,
+  zeroIncrementErrorThreshold: 2,
+  zeroClaimEscalationThreshold: 2,
 }
 
 export function getChapterPlanningConfig(genreName: string): Required<ChapterPlanningConfig> {
@@ -118,9 +121,10 @@ function computeBudgetValidation(
 ): ChapterPlanBudgetValidation {
   const sections = plan.sections
   if (!sections || sections.length === 0) {
+    // 空段落规划等于没有规划：判 invalid 走重试反馈，而不是放行注水章节。
     return {
-      valid: true,
-      reason: undefined,
+      valid: false,
+      reason: '章节规划未包含任何段落（sections 为空），无法支撑正文撰写',
       totalWordCount: 0,
       coreWordCount: 0,
       coreRatio: 0,
@@ -146,9 +150,10 @@ function computeBudgetValidation(
   }
 
   if (totalWordCount === 0) {
+    // 总字数为 0 的规划无法支撑正文撰写：判 invalid 走重试反馈。
     return {
-      valid: true,
-      reason: undefined,
+      valid: false,
+      reason: '章节规划总字数为 0，无法支撑正文撰写',
       totalWordCount: 0,
       coreWordCount: 0,
       coreRatio: 0,

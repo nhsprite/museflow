@@ -54,6 +54,22 @@ export interface StoryEventEvidence {
 export type FinalStateAttribute = 'location' | 'status'
 
 /**
+ * 受控生命周期属性词表（B.1）。初版仅 alive，可扩展。
+ * 生命周期属性拥有类型化语义（终态、单调性），其余属性仍是自由文本 status。
+ */
+export const LIFECYCLE_ATTRIBUTES = ['alive'] as const
+export type LifecycleAttribute = (typeof LIFECYCLE_ATTRIBUTES)[number]
+
+/**
+ * character-status 事件的可选类型化生命周期通道。
+ * 携带后投影层按生命周期语义（终态单调）消费；自由文本 attribute/value 字段保留兼容存量。
+ */
+export interface LifecycleChannel {
+  attribute: LifecycleAttribute
+  value: boolean
+}
+
+/**
  * Structured chapter-end final-state declaration emitted by the draft agent in
  * the STORY_FINAL_STATE block. For `location` attributes `value` may be an
  * entity id or `null` (off-screen / no fixed location); for `status` it must
@@ -96,6 +112,8 @@ interface BaseEvent {
 export type StoryEvent =
   | CharacterLocationEvent
   | CharacterStatusEvent
+  | CharacterRevivalEvent
+  | EntityRegisterEvent
   | ItemLocationEvent
   | ItemStateEvent
   | PlotAdvanceEvent
@@ -119,6 +137,37 @@ export interface CharacterStatusEvent extends BaseEvent {
   characterId: EntityId
   attribute: string
   value: unknown
+  /**
+   * 可选类型化生命周期通道（B.1）。存在时投影按生命周期语义消费
+   * （alive=false 为终态且单调，仅 character-revival 可显式反转）。
+   */
+  lifecycle?: LifecycleChannel
+}
+
+/**
+ * 显式复活事件（B.1）：唯一可以反转 alive=false 终态的事件类型。
+ * 必须携带正文段落证据锚点（与 plot-advance 同一证据纪律），投影消费后清除终态标记。
+ * 复活是合法情节，但必须显式、可审计，绝不通过普通 status 事件隐式翻回。
+ */
+export interface CharacterRevivalEvent extends BaseEvent {
+  type: 'character-revival'
+  characterId: EntityId
+}
+
+/**
+ * 实体注册事件（B.3）：writer/规划在正文中引入新的有名角色/物品时先注册，
+ * 注册后该实体获得真实机器 id，进入位置/状态投影与权威 ID 校验（次要角色从此可追踪）。
+ * 创建事件（与 task-create.taskId 同一纪律）：entityId 是新造的唯一机器 ID，
+ * 不要求预先存在于权威注册表；同章后续事件可引用已注册的 entityId。
+ * 引入章节即 BaseEvent.chapterIndex（与 foreshadow-introduce 同一惯例），不重复携带。
+ */
+export type EntityRegisterKind = 'character' | 'item'
+
+export interface EntityRegisterEvent extends BaseEvent {
+  type: 'entity-register'
+  entityKind: EntityRegisterKind
+  entityId: EntityId
+  displayName: string
 }
 
 export interface ItemLocationEvent extends BaseEvent {
@@ -208,6 +257,11 @@ export interface CharacterMemory {
   name: string
   locationId: EntityId | null
   status: Record<string, unknown>
+  /**
+   * 类型化生命周期投影（B.1）：由 lifecycle 通道 / character-revival 事件推导。
+   * alive=false 为终态标记，单调不可逆（仅显式复活事件可清除）。旧数据缺省。
+   */
+  lifecycle?: Partial<Record<LifecycleAttribute, boolean>>
   introducedIn: number
 }
 
@@ -257,6 +311,19 @@ export interface ForeshadowMemory {
   mergedInto?: ForeshadowId
 }
 
+/**
+ * mandatory beat 消费的佐证审计记录（D.2.3）。
+ * 采用前已消费的 beat 无此字段（grandfathered，幕进度判定视为 consumed）；
+ * 采用后每当 beat 的推进事件随章节定稿写入 StoryMemory，即记录一次审计结果。
+ */
+export interface BeatCorroboration {
+  status: 'consumed' | 'proven_uncorroborated'
+  /** 与推进事件因果绑定（共享证据锚点或共享主体实体）的同章状态类事件 ID。 */
+  corroboratingEventIds: EventId[]
+  /** 是否存在受事件流佐证且与该 beat 绑定的章末终态声明。 */
+  corroboratedByFinalState: boolean
+}
+
 export interface BeatMemory {
   id: BeatId
   description: string
@@ -265,6 +332,23 @@ export interface BeatMemory {
   required: boolean
   claimedIn: number | null
   provenByEventIds: EventId[]
+  /** 佐证审计记录（D.2.3）；缺省表示采用前已消费（grandfathered）。 */
+  corroboration?: BeatCorroboration
+}
+
+/**
+ * 单章内单个 mandatory beat 的佐证评估结果（D.2.1），
+ * 由结构化校验节点（路由反馈）与定稿环节（审计持久化）分别计算。
+ */
+export interface BeatCorroborationEvaluation {
+  beatId: BeatId
+  /** 本章已接受事件中证明该 beat 的 plot-advance 事件 ID。 */
+  provingEventIds: EventId[]
+  /** 与推进事件因果绑定的同章状态类事件 ID。 */
+  corroboratingEventIds: EventId[]
+  /** 是否存在受事件流佐证且与该 beat 绑定的章末终态声明。 */
+  corroboratedByFinalState: boolean
+  corroborated: boolean
 }
 
 export interface TaskMemory {

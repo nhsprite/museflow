@@ -456,4 +456,123 @@ check
     expect(Array.isArray(result.canonicalFactsDelta)).toBe(true)
     expect(Array.isArray(result.supersededFactsDelta)).toBe(true)
   })
+
+  it('retries with prose-hygiene feedback when the agent reports a hygiene parse failure', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValueOnce({
+      success: false,
+      error:
+        '正文包含生成协议残留或内部标识符泄漏：prose.protocol-block（偏移 0-19）：=== STORY_EVENTS ===',
+      data: { proseHygieneFailure: true },
+    })
+
+    const result = await draft_chapter(createMockContext(), state)
+
+    expect(result).toBeDefined()
+    expect(chapterAgentRunMock).toHaveBeenCalledTimes(2)
+    const secondInput = chapterAgentRunMock.mock.calls[1]?.[0] as {
+      issues?: Array<{ ruleId?: string; description?: string }>
+      proseHygiene?: { chapterNumber?: number; totalChapters?: number }
+    }
+    const feedback = secondInput.issues?.find((i) => i.ruleId === 'draft.prose-hygiene')
+    expect(feedback).toBeDefined()
+    expect(feedback?.description).toContain('体例检查')
+    expect(secondInput.proseHygiene?.chapterNumber).toBe(1)
+    expect(secondInput.proseHygiene?.totalChapters).toBe(10)
+
+    const written = await fs.readFile(
+      path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'),
+      'utf8'
+    )
+    expect(written).toContain('缺少章节标题的正文内容')
+  })
+
+  it('never stages content that keeps failing the hygiene gate after retries', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      pendingIssues: [],
+      rewriteApproved: false,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValue({
+      success: true,
+      content: `# 第1章 开篇\n\n=== STORY_EVENTS ===\n- character-location: c-1 -> l-1 @p1\n\n${'主角走在路上，心中思绪万千。'.repeat(50)}`,
+    })
+
+    await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(/体例|协议残留/)
+    expect(chapterAgentRunMock).toHaveBeenCalledTimes(3)
+    await expect(
+      fs.readFile(path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'), 'utf8')
+    ).rejects.toThrow()
+  })
+
+  it('rejects draft content leaking a known entity id from storyMemory', async () => {
+    const state = {
+      story: { id: 'test', title: 'Test', outputDir: tmpDir },
+      idea: 'test',
+      genre: 'default',
+      totalChapters: 10,
+      currentChapterIndex: 0,
+      outline: [{ number: 1, title: '开篇', description: '测试' }],
+      chapters: [null],
+      chapterSummaries: [],
+      foreshadowStack: [],
+      characters: [],
+      world: null,
+      storyState: null,
+      storyMemory: {
+        version: '3',
+        lastChapterIndex: 0,
+        entities: {
+          characters: { 'c-25': { id: 'c-25', name: '殷温娇' } },
+          items: {},
+          locations: {},
+          factions: {},
+          plots: {},
+        },
+        events: [],
+        foreshadows: {},
+        beats: {},
+        tasks: {},
+      },
+      pendingIssues: [],
+      rewriteApproved: false,
+    } as unknown as ReducedGraphState
+    chapterAgentRunMock.mockResolvedValue({
+      success: true,
+      content: `# 第1章 开篇\n\n她想起殷温娇（c-25）临走时说的话。${'主角走在路上。'.repeat(50)}`,
+    })
+
+    await expect(draft_chapter(createMockContext(), state)).rejects.toThrow(
+      /prose.internal-identifier/
+    )
+    await expect(
+      fs.readFile(path.join(tmpDir, '.staging', 'chapters', 'chapter_1.md'), 'utf8')
+    ).rejects.toThrow()
+  })
 })

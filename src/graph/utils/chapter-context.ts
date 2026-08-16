@@ -14,11 +14,13 @@ import {
   formatCanonicalFactsSections,
   formatStoryState,
   prepareStoryStateForChapter,
+  prioritizeCanonicalFacts,
   type PrepareStoryStateOptions,
   type PreparedStoryState,
 } from './reconciler/index.js'
 import { buildEffectiveCharactersList, charactersToString } from './characters.js'
 import { buildPreviousChapterEndingContext } from './chapter-window.js'
+import { formatStoryTime, isEmptyStoryTime } from '../../utils/story-time.js'
 
 type ChapterContextSource = ModelProvider | RuntimeContext
 
@@ -126,6 +128,38 @@ export interface ChapterAgentContext {
   writingConstraints?: WritingConstraints
 }
 
+/**
+ * 本章契约触及的实体 id 集合（B.2 渲染优先级）：章节大纲 touched 实体 +
+ * 章节规划 expectedEvents 引用的实体。纯结构化 id 收集，供权威事实优先渲染。
+ */
+export function collectChapterContractEntityIds(
+  state: ReducedGraphState,
+  chapterIndex: number
+): string[] {
+  const ids = new Set<string>()
+  const outlineItem = state.outline[chapterIndex]
+  for (const id of outlineItem?.touchedCharacterIds ?? []) ids.add(id)
+  for (const id of outlineItem?.touchedItemIds ?? []) ids.add(id)
+  for (const id of outlineItem?.touchedLocationIds ?? []) ids.add(id)
+  for (const event of state.chapterPlan?.expectedEvents ?? []) {
+    switch (event.type) {
+      case 'character-location':
+      case 'character-status':
+      case 'character-revival':
+        ids.add(event.characterId)
+        break
+      case 'item-location':
+        ids.add(event.itemId)
+        if (event.holderId !== null) ids.add(event.holderId)
+        break
+      case 'item-state':
+        ids.add(event.itemId)
+        break
+    }
+  }
+  return [...ids]
+}
+
 function renderWritingConstraintsForContract(writingConstraints?: WritingConstraints): string[] {
   if (!writingConstraints) return []
 
@@ -162,7 +196,9 @@ function buildChapterContract(
     const openQuestions = handoff.openQuestions ?? []
     lines.push('【上一章交接状态】')
     if (handoff.endScene) lines.push(`- 结束场景：${handoff.endScene}`)
-    if (handoff.endTime) lines.push(`- 结束时间：${handoff.endTime}`)
+    if (!isEmptyStoryTime(handoff.endTime)) {
+      lines.push(`- 结束时间：${formatStoryTime(handoff.endTime)}`)
+    }
     if (charactersPresent.length > 0) {
       lines.push(`- 在场角色：${charactersPresent.join('、')}`)
     }
@@ -204,12 +240,18 @@ function buildChapterContract(
   const activeFacts = (reconciledState.canonicalFacts ?? []).filter(
     (fact) => fact.retiredIn === undefined && fact.confidence !== 'low'
   )
+  // B.2：受保护事实同样走优先级渲染——终态/生命周期事实与本章契约触及实体
+  // 不被新近度窗口截断，保证早期确立的死亡事实在后期章节契约中仍可见。
+  const prioritizedProtectedFacts = prioritizeCanonicalFacts(
+    activeFacts.filter((fact) => fact.source !== 'outline_inference'),
+    collectChapterContractEntityIds(state, chapterIndex)
+  )
   lines.push(
     ...formatCanonicalFactsSections([
       {
         title: '【受保护权威事实】',
-        facts: activeFacts.filter((fact) => fact.source !== 'outline_inference'),
-        limit: 20,
+        facts: prioritizedProtectedFacts,
+        limit: prioritizedProtectedFacts.length,
         formatFact: (fact) => [`- [${fact.subject}] ${fact.attribute}: ${fact.value}`],
       },
       {
@@ -224,6 +266,9 @@ function buildChapterContract(
   if (lines.length === 1) return ''
   lines.push(
     '【执行要求】规划、正文与一致性检查必须优先满足本契约；如需改变受保护事实，必须由本章大纲明确授权并在正文中提供清晰动作或证据。'
+  )
+  lines.push(
+    '【体例约束】本契约中的 [实体 id] 仅供结构化引用（STORY_EVENTS、状态声明），严禁抄入正文；正文一律使用角色/地点/物品的名称。'
   )
   return lines.join('\n')
 }
@@ -247,7 +292,10 @@ export async function buildChapterAgentContext(
     .filter(Boolean)
     .join('\n\n')
   const { reconciledState, stateConflicts } = preparedState
-  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities)
+  const contractEntityIds = collectChapterContractEntityIds(state, chapterIndex)
+  const storyStateStr = formatStoryState(reconciledState, state.storyMemory?.entities, {
+    priorityEntityIds: contractEntityIds,
+  })
   const chapterContract = buildChapterContract(state, chapterIndex, reconciledState)
 
   const {

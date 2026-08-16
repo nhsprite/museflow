@@ -10,6 +10,7 @@ import type {
 } from '../types/story-memory.js'
 import { isMachineReadableId } from './identifier.js'
 import { isForeshadowResolutionPolicy } from './resolution-policy.js'
+import { isLifecycleAttribute } from './lifecycle.js'
 
 export function parseStoryEventsBlock(text: string, chapterIndex: number): StoryEvent[] {
   const match = text.match(/=== STORY_EVENTS ===\n([\s\S]*?)\n=== CHAPTER_CONTENT ===/)
@@ -136,13 +137,78 @@ function parseEventLine(line: string, chapterIndex: number): StoryEvent | null {
       logger.warn(`[MuseFlow] 丢弃含非法 characterId 的 STORY_EVENTS 行: ${line}`)
       return null
     }
+    const attribute = charStatus[2]!
+    const rawValue = charStatus[3]!.trim()
+    // 受控生命周期属性（B.1）：布尔字面量解析为类型化值并携带 lifecycle 通道；
+    // 其余属性保持自由文本原样。仅做枚举/布尔字面量解析，不做语义推断。
+    if (isLifecycleAttribute(attribute) && (rawValue === 'true' || rawValue === 'false')) {
+      const boolValue = rawValue === 'true'
+      return withEvidence(
+        {
+          id: generateId('evt'),
+          type: 'character-status',
+          characterId: charStatus[1],
+          attribute,
+          value: boolValue,
+          lifecycle: { attribute, value: boolValue },
+          chapterIndex,
+          source: 'chapter',
+        },
+        evidence
+      )
+    }
     return withEvidence(
       {
         id: generateId('evt'),
         type: 'character-status',
         characterId: charStatus[1],
-        attribute: charStatus[2]!,
-        value: charStatus[3]!.trim(),
+        attribute,
+        value: rawValue,
+        chapterIndex,
+        source: 'chapter',
+      },
+      evidence
+    )
+  }
+
+  const charRevival = eventLine.match(/^-\s*character-revival:\s*(\S+)$/)
+  if (charRevival) {
+    if (!isMachineReadableId(charRevival[1])) {
+      logger.warn(`[MuseFlow] 丢弃含非法 characterId 的 STORY_EVENTS 行: ${line}`)
+      return null
+    }
+    return withEvidence(
+      {
+        id: generateId('evt'),
+        type: 'character-revival',
+        characterId: charRevival[1],
+        chapterIndex,
+        source: 'chapter',
+      },
+      evidence
+    )
+  }
+
+  const entityRegister = eventLine.match(/^-\s*entity-register:\s*(\S+)\s*\/\s*(.+)$/)
+  if (entityRegister) {
+    if (!isMachineReadableId(entityRegister[1])) {
+      logger.warn(`[MuseFlow] 丢弃含非法 entityId 的 STORY_EVENTS 行: ${line}`)
+      return null
+    }
+    const fields = parseMachineFields(entityRegister[2]!)
+    const entityKind = fields.kind
+    const displayName = fields.name?.trim()
+    if ((entityKind !== 'character' && entityKind !== 'item') || !displayName) {
+      logger.warn(`[MuseFlow] 丢弃缺少合法 kind/name 的 entity-register 行: ${line}`)
+      return null
+    }
+    return withEvidence(
+      {
+        id: generateId('evt'),
+        type: 'entity-register',
+        entityKind,
+        entityId: entityRegister[1]!,
+        displayName,
         chapterIndex,
         source: 'chapter',
       },

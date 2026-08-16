@@ -138,7 +138,7 @@ function createMockContext(): RuntimeContext {
 function makeChapterContent(chapterIndex: number): string {
   const sentence = '主角走在青石板路上，心中思索着接下来的计划，脚步不由得加快了几分。'
   const body = Array.from({ length: 120 }, () => sentence).join('')
-  return `# 第${chapterIndex + 1}章 测试章节\n\n${body}\n\n第${chapterIndex + 1}章结尾。`
+  return `# 第${chapterIndex + 1}章 测试章节\n\n${body}\n\n夜幕落下，城中第${chapterIndex + 1}片灯火次第亮起。`
 }
 
 const chapter1Events: StoryEvent[] = [
@@ -161,6 +161,16 @@ const chapter1Events: StoryEvent[] = [
     type: 'plot-advance',
     plotId: 'act-1',
     beatId: 'A1-M1',
+    chapterIndex: 0,
+    source: 'chapter',
+    evidence: { paragraphIndex: 1 },
+  },
+  {
+    // D.2.1：mandatory beat 消费须留下结构化痕迹——共享证据锚点的状态类事件佐证。
+    id: 'evt-loc-1',
+    type: 'character-location',
+    characterId: 'char-test-0',
+    locationId: 'loc-city',
     chapterIndex: 0,
     source: 'chapter',
     evidence: { paragraphIndex: 1 },

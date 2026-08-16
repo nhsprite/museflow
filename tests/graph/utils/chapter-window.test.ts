@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
+  buildPreviousChapterEndingContext,
   extractChapterEndingParagraphs,
   hasDuplicateEndingParagraphs,
 } from '../../../src/graph/utils/chapter-window.js'
+import type { ReducedGraphState } from '../../../src/graph/state.js'
 
 describe('chapter-window', () => {
   describe('extractChapterEndingParagraphs', () => {
@@ -57,6 +62,74 @@ describe('chapter-window', () => {
       const current = `# 第二章\n\n`
       const result = hasDuplicateEndingParagraphs(previous, current)
       expect(result.duplicate).toBe(false)
+    })
+  })
+
+  describe('buildPreviousChapterEndingContext sanitization', () => {
+    let storyDir: string
+
+    beforeEach(() => {
+      storyDir = mkdtempSync(join(tmpdir(), 'museflow-chapter-window-'))
+      mkdirSync(join(storyDir, 'chapters'), { recursive: true })
+    })
+
+    afterEach(() => {
+      rmSync(storyDir, { recursive: true, force: true })
+    })
+
+    function makeState(): ReducedGraphState {
+      return {
+        story: { id: 'story-1', title: 'Story', outputDir: storyDir },
+        totalChapters: 10,
+        storyArc: null,
+        storyMemory: {
+          version: '3',
+          lastChapterIndex: 0,
+          entities: {
+            characters: { 'c-25': { id: 'c-25', name: '殷温娇' } },
+            items: {},
+            locations: {},
+            factions: {},
+            plots: {},
+          },
+          events: [],
+          foreshadows: {},
+          beats: {},
+          tasks: {},
+        },
+      } as unknown as ReducedGraphState
+    }
+
+    it('strips protocol residue and identifier parentheticals before re-feeding', async () => {
+      writeFileSync(
+        join(storyDir, 'chapters', 'chapter_1.md'),
+        `# 第1章 进京\n\n${'夜色渐深，更鼓声远远传来。'.repeat(30)}\n\n=== STORY_EVENTS ===\n- character-location: c-25 -> l-1 @p1\n\n殷温娇（c-25）吹灭了灯。`,
+        'utf-8'
+      )
+
+      const context = await buildPreviousChapterEndingContext(makeState(), 1)
+
+      expect(context).toContain('【上一章结尾片段】')
+      expect(context).not.toContain('STORY_EVENTS')
+      expect(context).not.toContain('character-location')
+      expect(context).not.toContain('（c-25）')
+      expect(context).toContain('殷温娇吹灭了灯')
+    })
+
+    it('returns the ending as-is when there is nothing to strip', async () => {
+      writeFileSync(
+        join(storyDir, 'chapters', 'chapter_1.md'),
+        `# 第1章 进京\n\n${'夜色渐深，更鼓声远远传来。'.repeat(30)}\n\n殷温娇吹灭了灯。`,
+        'utf-8'
+      )
+
+      const context = await buildPreviousChapterEndingContext(makeState(), 1)
+
+      expect(context).toContain('殷温娇吹灭了灯')
+    })
+
+    it('returns empty string for the first chapter', async () => {
+      expect(await buildPreviousChapterEndingContext(makeState(), 0)).toBe('')
     })
   })
 })

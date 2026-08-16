@@ -65,6 +65,7 @@ vi.mock('../../src/graph/utils/reconciler/index.js', () => ({
   })),
   formatStoryState: vi.fn(() => ''),
   formatCanonicalFactsSections: vi.fn(() => [] as string[]),
+  prioritizeCanonicalFacts: vi.fn((facts: unknown[]) => facts),
   buildCharacterFactTimeline: vi.fn(() => ''),
   mergeStoryState: vi.fn((existing: unknown, update: unknown) => ({
     ...(existing as object),

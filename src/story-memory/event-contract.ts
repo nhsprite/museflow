@@ -1,5 +1,11 @@
-import type { ForeshadowKind, StoryEvent, StoryEventEvidence } from '../types/story-memory.js'
+import type {
+  ForeshadowKind,
+  LifecycleChannel,
+  StoryEvent,
+  StoryEventEvidence,
+} from '../types/story-memory.js'
 import { isMachineReadableId } from './identifier.js'
+import { isLifecycleAttribute } from './lifecycle.js'
 import {
   deriveLegacyRequired,
   isForeshadowResolutionPolicy,
@@ -151,6 +157,23 @@ export function normalizeStoryEvent(
         return invalid('character-status.attribute must be a non-empty string')
       }
       if (!hasOwn(value, 'value')) return invalid('character-status.value is required')
+      // 类型化生命周期通道（B.1）：显式 lifecycle 字段需通过枚举/布尔校验；
+      // 缺失时从结构化字段推导（attribute 命中受控词表且 value 为布尔字面量）。
+      let lifecycle: LifecycleChannel | undefined
+      if (value.lifecycle !== undefined) {
+        if (
+          !isRecord(value.lifecycle) ||
+          !isLifecycleAttribute(value.lifecycle.attribute) ||
+          typeof value.lifecycle.value !== 'boolean'
+        ) {
+          return invalid(
+            'character-status.lifecycle must be { attribute: LifecycleAttribute, value: boolean }'
+          )
+        }
+        lifecycle = { attribute: value.lifecycle.attribute, value: value.lifecycle.value }
+      } else if (isLifecycleAttribute(value.attribute) && typeof value.value === 'boolean') {
+        lifecycle = { attribute: value.attribute, value: value.value }
+      }
       return {
         ok: true,
         normalized: base.normalized,
@@ -160,6 +183,43 @@ export function normalizeStoryEvent(
           characterId: value.characterId,
           attribute: value.attribute,
           value: value.value,
+          ...(lifecycle ? { lifecycle } : {}),
+        },
+      }
+    }
+    case 'character-revival': {
+      if (!isMachineReadableId(value.characterId)) {
+        return invalid('character-revival.characterId must be an identifier')
+      }
+      return {
+        ok: true,
+        normalized: base.normalized,
+        event: {
+          ...eventBase(base),
+          type: value.type,
+          characterId: value.characterId,
+        },
+      }
+    }
+    case 'entity-register': {
+      if (value.entityKind !== 'character' && value.entityKind !== 'item') {
+        return invalid('entity-register.entityKind must be character or item')
+      }
+      if (!isMachineReadableId(value.entityId)) {
+        return invalid('entity-register.entityId must be an identifier')
+      }
+      if (!isNonEmptyString(value.displayName)) {
+        return invalid('entity-register.displayName must be a non-empty string')
+      }
+      return {
+        ok: true,
+        normalized: base.normalized,
+        event: {
+          ...eventBase(base),
+          type: value.type,
+          entityKind: value.entityKind,
+          entityId: value.entityId,
+          displayName: value.displayName,
         },
       }
     }

@@ -4,6 +4,7 @@ import { mergeItemRecordsExact } from '../../../utils/items.js'
 import { generateId } from '../../../utils/id.js'
 import { findMatchingKey, findMatchingKeys } from './format.js'
 import { isCharacterSubject } from './timeline.js'
+import { isEmptyStoryTime, normalizeStoryTime } from '../../../utils/story-time.js'
 
 /**
  * 将作者通过 CLI 做出的裁决（source='author' 的 overrides）应用到 storyState。
@@ -190,7 +191,10 @@ export function mergeStoryState(existing: StoryState | null, delta: StoryState):
     revealedSecrets: mergedSecrets,
     pendingTasks: mergedPendingTasks,
     currentScene: safeDelta.currentScene || base.currentScene,
-    storyTime: safeDelta.storyTime || base.storyTime,
+    // B.4：storyTime 为结构化对象；空对象（{}）不得覆盖既有值，旧格式字符串读取时归一化。
+    storyTime: isEmptyStoryTime(safeDelta.storyTime)
+      ? normalizeStoryTime(base.storyTime)
+      : normalizeStoryTime(safeDelta.storyTime),
   }
 
   const mergedChapterHandoff = safeDelta.chapterHandoff ?? base.chapterHandoff

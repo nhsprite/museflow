@@ -4,6 +4,7 @@ import type { SummaryAgentInput } from '../../../agents/types.js'
 import { getSummaryAgent } from '../../agent-factory.js'
 import {
   applyEvents,
+  backfillLifecycleProjection,
   createEmptyStoryMemory,
   ensureBeatsHaveActIndex,
   projectStoryStateFromMemory,
@@ -50,6 +51,7 @@ import {
 import { rebuildStoryMemoryVerifiedConstraints } from '../../../utils/story-memory-constraints.js'
 import { mergeStoryState } from '../../utils/reconciler/state-merge.js'
 import { createEmptyStoryState } from '../../../storage/meta/stores/story-state.js'
+import { harvestChapterCanonicalFacts } from './fact-harvest.js'
 import {
   getActForChapter,
   getPendingMandatoryBeats,
@@ -60,6 +62,7 @@ import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
 import {
   findMandatoryBeatById,
   getMandatoryBeatEntries,
+  getMandatoryBeatEntriesForAct,
   getMandatoryBeatTextById,
 } from '../../../utils/mandatory-beat-ids.js'
 import { reconcileForeshadowEquivalence } from '../foreshadow-equivalence/reconcile.js'
@@ -70,6 +73,15 @@ import {
   evaluateStoryCompletion,
   getUnprovenRequiredKeyBeatIdsThroughAct,
 } from '../../../core/story-completion.js'
+import { evaluateChapterIncrement } from '../../../story-memory/increment.js'
+import { auditChapterBeatCorroboration } from '../../../story-memory/beat-corroboration.js'
+import {
+  compareStoryTime,
+  formatStoryTime,
+  hasStoryTimeEraConflict,
+  isEmptyStoryTime,
+  normalizeStoryTime,
+} from '../../../utils/story-time.js'
 
 function ensureOutlineLength(
   outline: ReducedGraphState['outline'],
@@ -223,7 +235,12 @@ function ensureChaptersLength(
   return next
 }
 
-function buildActBoundaryPendingIssue(storyId: string, act: ActArc, pendingBeats: string[]): Issue {
+function buildActBoundaryPendingIssue(
+  storyId: string,
+  act: ActArc,
+  pendingBeats: string[],
+  uncorroboratedBeatIds: readonly string[] = []
+): Issue {
   const extensionChapters = Math.min(2, Math.max(1, pendingBeats.length))
   const rewriteCommand = `museflow rewrite ${storyId} -c ${act.endChapter}`
   const proposal = {
@@ -232,13 +249,20 @@ function buildActBoundaryPendingIssue(storyId: string, act: ActArc, pendingBeats
     reason: `第 ${act.index} 幕结束时仍有 mandatory beats 未消费。`,
   }
 
+  // D.2.2 幕关闭质量复审：pending 中 proven 但未通过佐证审计的 mandatory beats
+  // 在描述中单独点明——它们的正文推进事件成立，但声称的结局未留下结构化痕迹。
+  const corroborationNote =
+    uncorroboratedBeatIds.length > 0
+      ? `其中 ${uncorroboratedBeatIds.length} 个（${uncorroboratedBeatIds.join('、')}）虽有正文推进事件但未通过佐证审计（缺少绑定的状态类事件或受佐证的终态声明），幕关闭质量复审不予通过。`
+      : ''
+
   return {
     id: `act-${act.index}-pending-beats-at-boundary`,
     ruleId: 'outline-coverage.pending-beats-at-boundary',
     type: 'outline_coverage',
     severity: 'error',
     subject: `act-${act.index}`,
-    description: `第 ${act.index} 幕已到结束章节第 ${act.endChapter} 章，但仍有 ${pendingBeats.length} 个 mandatory beats 未消费：${pendingBeats.join('、')}。不能在本幕未完成时进入下一幕；请运行 ${rewriteCommand} 重写本幕末章，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕后再继续。`,
+    description: `第 ${act.index} 幕已到结束章节第 ${act.endChapter} 章，但仍有 ${pendingBeats.length} 个 mandatory beats 未消费：${pendingBeats.join('、')}。${corroborationNote}不能在本幕未完成时进入下一幕；请运行 ${rewriteCommand} 重写本幕末章，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕后再继续。`,
     suggestion: `运行 ${rewriteCommand} 重写当前章节，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕。`,
     source: 'outline_compliance',
     retryStrategy: 'manual',
@@ -280,7 +304,9 @@ function isChapterHandoff(value: unknown): value is ChapterHandoff {
   return (
     typeof handoff.chapterNumber === 'number' &&
     typeof handoff.endScene === 'string' &&
-    typeof handoff.endTime === 'string' &&
+    // B.4：endTime 为结构化对象；兼容旧数据/模型输出的自由文本字符串（读取时归一化）。
+    (typeof handoff.endTime === 'string' ||
+      (typeof handoff.endTime === 'object' && handoff.endTime !== null)) &&
     isStringArray(handoff.charactersPresent) &&
     typeof handoff.lastAction === 'string' &&
     isStringArray(handoff.openQuestions) &&
@@ -340,13 +366,14 @@ export async function finalizeChapter(
     })
   }
   const hasInputStoryMemory = state.storyMemory !== null && state.storyMemory !== undefined
-  let updatedStoryMemory = ensureBeatsHaveActIndex(
-    state.storyMemory ?? createEmptyStoryMemory(),
-    state.storyArc
+  let updatedStoryMemory = backfillLifecycleProjection(
+    ensureBeatsHaveActIndex(state.storyMemory ?? createEmptyStoryMemory(), state.storyArc)
   )
   const invalidForeshadowDeadlineEvents: Array<
     Extract<StoryEvent, { type: 'foreshadow-introduce' }>
   > = []
+  // B.4 结构化故事时间校验产出的问题（单调性/年号一致性），在定稿问题汇总前并入。
+  const storyTimeIssues: Issue[] = []
   const newForeshadowIntroduceEvents: Array<Extract<StoryEvent, { type: 'foreshadow-introduce' }>> =
     []
   let updatedForeshadowEquivalenceAudit: ReducedGraphState['foreshadowEquivalenceAudit']
@@ -504,12 +531,48 @@ export async function finalizeChapter(
           updatedChapters[chapterIndex] = updatedChapter
           summarySuccess = true
           if (isChapterHandoff(summaryData.chapterHandoff) && updatedStoryState) {
+            const nextStoryTime = normalizeStoryTime(summaryData.chapterHandoff.endTime)
+            // B.4 确定性校验：只作用于 storyTime 结构化通道（不解析正文）。
+            // 年号冲突优先于单调性报告（era 不同无法定序）。
+            if (
+              !isEmptyStoryTime(nextStoryTime) &&
+              !isEmptyStoryTime(state.storyState?.storyTime)
+            ) {
+              if (hasStoryTimeEraConflict(state.storyState?.storyTime, nextStoryTime)) {
+                storyTimeIssues.push({
+                  id: `time-era-conflict-${chapterIndex}-${generateId()}`,
+                  ruleId: 'structured.time-era-conflict',
+                  type: 'state_conflict',
+                  severity: 'error',
+                  description: `第 ${chapterIndex + 1} 章断言的故事时间（${formatStoryTime(nextStoryTime)}）与运行中的故事年份（${formatStoryTime(state.storyState?.storyTime)}）年号不一致。注意：文中档案/公文的历史日期不是故事时间，只有故事自身时钟的章末时刻才应进入该断言。`,
+                  suggestion:
+                    '若本章正文确实改元/更换纪元，请人工确认后强制定稿；否则修正章节内容或摘要中的故事时间断言。',
+                  source: 'state_reconciliation',
+                  retryStrategy: 'manual',
+                })
+              } else if (
+                compareStoryTime(state.storyState?.storyTime, nextStoryTime) === 'earlier'
+              ) {
+                storyTimeIssues.push({
+                  id: `time-regression-${chapterIndex}-${generateId()}`,
+                  ruleId: 'structured.time-regression',
+                  type: 'state_conflict',
+                  severity: 'error',
+                  description: `第 ${chapterIndex + 1} 章的章末故事时间（${formatStoryTime(nextStoryTime)}）早于上一章结束时间（${formatStoryTime(state.storyState?.storyTime)}），故事时钟不得倒退。`,
+                  suggestion:
+                    '修正本章的故事时间断言（摘要 endTime 的结构化字段），使其不早于上一章结束时间；若正文确实时间倒退，请先修正正文。',
+                  source: 'state_reconciliation',
+                  retryStrategy: 'manual',
+                })
+              }
+            }
             updatedStoryState = {
               ...updatedStoryState,
-              chapterHandoff: summaryData.chapterHandoff,
-              ...(summaryData.chapterHandoff.endTime
-                ? { storyTime: summaryData.chapterHandoff.endTime }
-                : {}),
+              chapterHandoff: {
+                ...summaryData.chapterHandoff,
+                endTime: nextStoryTime,
+              },
+              ...(!isEmptyStoryTime(nextStoryTime) ? { storyTime: nextStoryTime } : {}),
             }
           }
 
@@ -675,6 +738,16 @@ export async function finalizeChapter(
     updatedStoryState = projectStoryStateFromMemory(updatedStoryMemory, updatedStoryState)
   }
 
+  // D.2.1/D.2.3 mandatory beat 消费佐证审计：对本章新获证明的 mandatory beat
+  // 评估结构化佐证（绑定的同章状态类事件 / 受佐证的章末终态声明），审计记录随
+  // memory 持久化；未佐证的 beat 在幕进度（下方 updateActProgress）中保持 pending。
+  updatedStoryMemory = auditChapterBeatCorroboration(
+    updatedStoryMemory,
+    state.storyArc,
+    chapterIndex,
+    state.chapterFinalStateDeclarations ?? []
+  )
+
   const currentDisplayChapter = chapterIndex + 1
   if (updatedStoryState) {
     const agedTasks = agePendingTasks(updatedStoryState.pendingTasks, currentDisplayChapter)
@@ -685,6 +758,21 @@ export async function finalizeChapter(
     if (hasAgedTasks) {
       updatedStoryState = { ...updatedStoryState, pendingTasks: agedTasks }
     }
+  }
+
+  // B.2 事实回采：从本章已接受事件流与受佐证的章末终态声明派生 canonicalFacts
+  // （source 'chapter_text'）。mergeStoryState 对同 subject+attribute+value 幂等替换，
+  // 对同 subject+attribute 新值退休旧值，因此重写/重复定稿不会产生重复事实。
+  const harvestedFacts = harvestChapterCanonicalFacts({
+    chapterIndex,
+    acceptedEvents: draftEvents,
+    finalStateDeclarations: state.chapterFinalStateDeclarations ?? [],
+  })
+  if (harvestedFacts.length > 0) {
+    updatedStoryState = mergeStoryState(updatedStoryState ?? null, {
+      ...createEmptyStoryState(),
+      canonicalFacts: harvestedFacts,
+    })
   }
 
   const snapshot: import('../../../types/timeline.js').StateSnapshot = {
@@ -780,6 +868,9 @@ export async function finalizeChapter(
         retryStrategy: 'draft' as const,
       })),
     ]
+  }
+  if (storyTimeIssues.length > 0) {
+    updatedPendingIssues = [...updatedPendingIssues, ...storyTimeIssues]
   }
   const acts = state.storyArc?.acts ?? []
   const finalActIndex = acts.at(-1)?.index
@@ -907,9 +998,22 @@ export async function finalizeChapter(
       pending: [...finalizedAct.mandatoryBeats],
     }
     if (finalizedProgress.pending.length > 0) {
+      // D.2.2 幕关闭质量复审：proven 但未佐证的 mandatory beat 已被消费闸留在
+      // pending 中，此处单独点名，供作者判断是重写补佐证还是人工强制关闭。
+      const uncorroboratedBeatIds = getMandatoryBeatEntriesForAct(finalizedAct)
+        .filter(
+          (entry) =>
+            updatedStoryMemory?.beats[entry.id]?.corroboration?.status === 'proven_uncorroborated'
+        )
+        .map((entry) => entry.id)
       updatedPendingIssues = [
         ...updatedPendingIssues,
-        buildActBoundaryPendingIssue(state.story.id, finalizedAct, finalizedProgress.pending),
+        buildActBoundaryPendingIssue(
+          state.story.id,
+          finalizedAct,
+          finalizedProgress.pending,
+          uncorroboratedBeatIds
+        ),
       ]
     }
     if (updatedStoryArc && updatedStoryMemory) {
@@ -1069,6 +1173,51 @@ export async function finalizeChapter(
     )
   }
 
+  // 章节密度计数器（C.2.2/C.2.3）：随定稿提交并随 checkpoint 持久化。
+  // 零增量连击：本章定稿后 memory 无任何增量 +1，有增量清零；
+  // 零认领连击：本章大纲零认领且当前幕仍有待消费 mandatory beat +1，否则清零。
+  let nextConsecutiveZeroIncrementChapters = state.consecutiveZeroIncrementChapters ?? 0
+  if (hasInputStoryMemory && state.storyMemory) {
+    const beforeEventIds = new Set(state.storyMemory.events.map((event) => event.id))
+    const chapterDeltaEvents = updatedStoryMemory.events.filter(
+      (event) => event.chapterIndex === chapterIndex && !beforeEventIds.has(event.id)
+    )
+    const incrementVerdict = evaluateChapterIncrement(
+      chapterIndex,
+      state.storyMemory,
+      updatedStoryMemory,
+      chapterDeltaEvents
+    )
+    if (incrementVerdict.zeroIncrement) {
+      nextConsecutiveZeroIncrementChapters += 1
+      logger.warn(
+        `[MuseFlow] 第 ${chapterIndex + 1} 章为连续第 ${nextConsecutiveZeroIncrementChapters} 个零增量章（角色位置/状态、物品、伏笔、任务、节拍推进均无变化）`
+      )
+    } else {
+      nextConsecutiveZeroIncrementChapters = 0
+    }
+  }
+  const finalizedClaimedMandatoryBeatIds =
+    updatedOutline[chapterIndex]?.claimedMandatoryBeatIds ?? []
+  const verifiedBeatIdsAfterFinalize = new Set(
+    getVerifiedBeatsFromMemory(updatedStoryMemory, updatedStoryArc ?? state.storyArc)
+  )
+  const pendingMandatoryBeatsInAct = finalizedAct
+    ? getMandatoryBeatEntries(updatedStoryArc ?? state.storyArc).filter(
+        (entry) =>
+          entry.actIndex === finalizedAct.index && !verifiedBeatIdsAfterFinalize.has(entry.id)
+      )
+    : []
+  const nextConsecutiveZeroClaimChapters =
+    finalizedClaimedMandatoryBeatIds.length === 0 && pendingMandatoryBeatsInAct.length > 0
+      ? (state.consecutiveZeroClaimChapters ?? 0) + 1
+      : 0
+  if (nextConsecutiveZeroClaimChapters > 0) {
+    logger.warn(
+      `[MuseFlow] 第 ${chapterIndex + 1} 章为连续第 ${nextConsecutiveZeroClaimChapters} 个零认领章（当前幕仍有 ${pendingMandatoryBeatsInAct.length} 个待消费 mandatory beat）`
+    )
+  }
+
   return {
     story: updatedStory,
     totalChapters: updatedTotalChapters,
@@ -1086,6 +1235,8 @@ export async function finalizeChapter(
     storyArc: updatedStoryArc,
     canonicalFactsDelta: undefined,
     supersededFactsDelta: undefined,
+    consecutiveZeroIncrementChapters: nextConsecutiveZeroIncrementChapters,
+    consecutiveZeroClaimChapters: nextConsecutiveZeroClaimChapters,
     ...(updatedForeshadowEquivalenceAudit !== undefined
       ? { foreshadowEquivalenceAudit: updatedForeshadowEquivalenceAudit }
       : {}),

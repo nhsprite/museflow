@@ -560,7 +560,7 @@ describe('ChapterPlannerAgent issues integration', () => {
     expect(outputFormat).not.toContain('"locationId": "l-1"')
   })
 
-  it('renders the unnamed-walk-on exclusion rule for expectedEvents', () => {
+  it('renders the register-first rule for newly introduced named entities', () => {
     const agent = new TestableChapterPlannerAgent(createMockProvider())
     const messages = agent.exposePrompt({
       idea: '测试',
@@ -576,8 +576,9 @@ describe('ChapterPlannerAgent issues integration', () => {
     })
 
     const prompt = messages[1]?.content ?? ''
-    expect(prompt).toContain('无名角色禁入事件')
-    expect(prompt).toContain('不输出 expectedEvents 的临时龙套')
+    expect(prompt).toContain('新有名实体先注册再引用')
+    expect(prompt).toContain('entity-register')
+    expect(prompt).toContain('不进入事件流')
   })
 
   it('renders only the typed story event authority registry in its machine-readable section', () => {

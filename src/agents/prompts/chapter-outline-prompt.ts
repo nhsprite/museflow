@@ -4,6 +4,7 @@ import type { ChapterPlanningConfig } from '../../types/genre.js'
 import {
   buildBeatClaimRejectionSection,
   buildForeshadowPlanningSection,
+  buildZeroProgressRejectionSection,
 } from './fragments/index.js'
 
 const CHAPTER_OUTLINE_SYSTEM_PROMPT =
@@ -40,6 +41,8 @@ const CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE = `<task>请为第 {DISPLAY_CHAPTER_N
 {FORESHADOW_PLANNING_SECTION}
 
 {BEAT_CLAIM_REJECTION_SECTION}
+
+{ZERO_PROGRESS_REJECTION_SECTION}
 </context>
 
 <instruction>
@@ -109,10 +112,15 @@ export function buildChapterOutlineUserPrompt(
   const storyArc = state.storyArc
   const displayChapterNumber = toDisplayChapterNumber(state.chapterIndex ?? 0)
 
-  // 幕边界高压（由 outline-expander 依据结构化进度数据计算后标记）时关闭逃逸口：
-  // 常态下允许"本章不适合推进"的说明，高压下必须认领并在本章实质完成至少 1 个 mandatory beat。
+  // 幕边界高压或连续零认领升级（由 outline-expander 依据结构化进度数据计算后标记）时
+  // 关闭逃逸口：常态下允许"本章不适合推进"的说明，强制认领时必须认领并在本章实质完成
+  // 至少 1 个 mandatory beat。两种触发源共享同一份认领承诺规则，仅强制原因不同。
+  const mandatoryClaimCommitmentRules =
+    '在 claimedMandatoryBeatIds 中认领其中至少 1 个 ID，并在 description 中写出该节拍所述事件本身——可观察的行动、揭示、决定或后果在本章实际发生。认领即承诺本章写完该节拍：节拍所述事件必须在本章完成闭合——清算要清算完毕、揭示要揭示到底、抉择要作出定论；仅写出开端、铺垫、阶段性进展、对进展的口头确认，或把事件主体留待后续章节，均视为未兑现认领，将被驳回。本章不允许整章不推进任何 mandatory beat——仅描写角色维持原状、等待时间流逝或重复既有状态，不视为推进。认领前先选定当前叙事位置最可写的节拍，并围绕它组织本章；不要把过渡章写好后再贴上认领标签。事件由外部变化主动降临（对手行动、危机爆发、信息送达、异变发生）同样成立，不要求主角主动打破既有策略。'
   const beatProgressInstruction = state.mandatoryBeatClaimRequired
-    ? '4. 【强制】当前幕未消费的 mandatory beats 已多于幕内剩余章节，本章必须推进：在 claimedMandatoryBeatIds 中认领其中至少 1 个 ID，并在 description 中写出该节拍所述事件本身——可观察的行动、揭示、决定或后果在本章实际发生。认领即承诺本章写完该节拍：节拍所述事件必须在本章完成闭合——清算要清算完毕、揭示要揭示到底、抉择要作出定论；仅写出开端、铺垫、阶段性进展、对进展的口头确认，或把事件主体留待后续章节，均视为未兑现认领，将被驳回。本章不允许整章不推进任何 mandatory beat——仅描写角色维持原状、等待时间流逝或重复既有状态，不视为推进。认领前先选定当前叙事位置最可写的节拍，并围绕它组织本章；不要把过渡章写好后再贴上认领标签。事件由外部变化主动降临（对手行动、危机爆发、信息送达、异变发生）同样成立，不要求主角主动打破既有策略。'
+    ? state.zeroClaimEscalation
+      ? `4. 【强制】此前已连续多章大纲未认领任何 mandatory beat，本章必须推进：${mandatoryClaimCommitmentRules}`
+      : `4. 【强制】当前幕未消费的 mandatory beats 已多于幕内剩余章节，本章必须推进：${mandatoryClaimCommitmentRules}`
     : '4. 优先推进当前幕尚未消费的 mandatory beats；如果本章不适合推进任何 beat，请说明原因。'
 
   return renderTemplate(CHAPTER_OUTLINE_USER_PROMPT_TEMPLATE, {
@@ -152,5 +160,6 @@ export function buildChapterOutlineUserPrompt(
         : '',
     FORESHADOW_PLANNING_SECTION: buildForeshadowPlanningSection(state),
     BEAT_CLAIM_REJECTION_SECTION: buildBeatClaimRejectionSection(state),
+    ZERO_PROGRESS_REJECTION_SECTION: buildZeroProgressRejectionSection(state),
   })
 }

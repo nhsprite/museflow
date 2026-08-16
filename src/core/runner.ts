@@ -204,6 +204,8 @@ export async function runStory(
     canonicalFactsDelta: undefined,
     supersededFactsDelta: undefined,
     structuredValidationResult: undefined,
+    consecutiveZeroIncrementChapters: 0,
+    consecutiveZeroClaimChapters: 0,
   }
 
   const config: RunnableConfig = {

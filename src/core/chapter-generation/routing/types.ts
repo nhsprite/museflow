@@ -1,8 +1,9 @@
 import type { Issue } from '../../../types/agent.js'
-import type { BeatClaimPlanningRejection } from '../../../agents/types.js'
+import type { BeatClaimPlanningRejection, ZeroProgressRejection } from '../../../agents/types.js'
 import type { BlockingReason } from '../../../types/blocking-report.js'
 import type { ChapterPlanningConfig } from '../../../types/genre.js'
 import type { ChapterOutline, StoryArc } from '../../../types/outline.js'
+import type { StoryMemory } from '../../../types/story-memory.js'
 import type { StructuredValidationResult } from '../../../story-memory/validator.js'
 
 export type ChapterStep =
@@ -42,6 +43,8 @@ export interface ChapterSession {
   outlineRegenAttempts?: number
   /** 正文阶段节拍驳回反馈，随下一轮 draft 注入大纲重生成；一次性消费后清除。 */
   beatClaimOutlineRejection?: BeatClaimPlanningRejection
+  /** 跨章零增量闸触发的大纲重生成反馈，随下一轮 draft 注入；一次性消费后清除。 */
+  zeroProgressOutlineRejection?: ZeroProgressRejection
 }
 
 export interface RoutingContext {
@@ -58,6 +61,10 @@ export interface RoutingContext {
   storyArc?: StoryArc | null
   /** 当前大纲：合成驳回反馈时提供 currentOutline 上下文。 */
   outline?: readonly ChapterOutline[]
+  /** 截至上一章的连续零增量章数（定稿时更新，随 checkpoint 持久化）。 */
+  consecutiveZeroIncrementChapters?: number
+  /** StoryMemory：合成零增量驳回反馈时统计最近章节的事件计数。 */
+  storyMemory?: StoryMemory | null
 }
 
 export interface IssuePolicyDeps {

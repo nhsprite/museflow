@@ -917,7 +917,11 @@ describe('finalizeChapter', () => {
 
     const result = await finalizeChapter(state, provider)
 
-    expect(result.storyState?.chapterHandoff).toEqual(chapterHandoff)
+    // B.4：endTime 在定稿边界归一化为结构化 storyTime。
+    expect(result.storyState?.chapterHandoff).toEqual({
+      ...chapterHandoff,
+      endTime: { freeform: '黄昏' },
+    })
   })
 
   it('uses StoryMemory as the foreshadow source of truth during finalization', async () => {
@@ -1026,6 +1030,17 @@ describe('finalizeChapter', () => {
           source: 'chapter',
           evidence: { paragraphIndex: 1 },
         } as StoryEvent,
+        // D.2.1：mandatory beat 消费须留下结构化痕迹——补一条与推进事件
+        // 共享证据锚点的状态类事件作为佐证。
+        {
+          id: 'evt-draft-2',
+          type: 'character-location',
+          characterId: 'char-1',
+          locationId: 'loc-2',
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        } as StoryEvent,
       ],
     })
     const provider = createMockProvider()
@@ -1035,10 +1050,114 @@ describe('finalizeChapter', () => {
     expect(result.rewriteRequested).toBeFalsy()
     expect(result.currentChapterIndex).toBe(1)
     expect(result.storyMemory?.beats['A1-M1']?.provenByEventIds).toContain('evt-draft-1')
+    expect(result.storyMemory?.beats['A1-M1']?.corroboration?.status).toBe('consumed')
+    expect(result.storyMemory?.beats['A1-M1']?.corroboration?.corroboratingEventIds).toContain(
+      'evt-draft-2'
+    )
     expect(result.outline?.[0]?.verifiedBeats).toContain('主角离开家乡')
     expect(result.actProgress?.[1]?.consumed).toContain('主角离开家乡')
     expect(result.actProgress?.[1]?.pending).not.toContain('主角离开家乡')
     expect(provider.chat).not.toHaveBeenCalled()
+  })
+
+  it('keeps a proven-but-uncorroborated mandatory beat unconsumed at finalization (D.2.1)', async () => {
+    // 摘要补提事件也可能提供佐证（共享锚点的状态类事件）；本例用空摘要事件流，
+    // 单独验证「裸推进事件、无任何佐证」的审计结果。
+    vi.mocked(getSummaryAgent).mockReturnValue(emptySummaryAgent())
+    const state = buildState(tmpDir, {
+      storyArc: {
+        ...buildState(tmpDir).storyArc!,
+        keyBeats: [],
+      },
+      draftChapterEvents: [
+        {
+          id: 'evt-draft-1',
+          type: 'plot-advance',
+          plotId: 'act-1',
+          beatId: 'A1-M1',
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        } as StoryEvent,
+      ],
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    // 章节定稿不受影响，但 beat 未留下结构化痕迹：审计记录为
+    // proven_uncorroborated，幕进度不消费它（保持 pending）。
+    expect(result.rewriteRequested).toBeFalsy()
+    expect(result.storyMemory?.beats['A1-M1']?.provenByEventIds).toContain('evt-draft-1')
+    expect(result.storyMemory?.beats['A1-M1']?.corroboration).toEqual({
+      status: 'proven_uncorroborated',
+      corroboratingEventIds: [],
+      corroboratedByFinalState: false,
+    })
+    expect(result.actProgress?.[1]?.consumed).not.toContain('主角离开家乡')
+    expect(result.actProgress?.[1]?.pending).toContain('主角离开家乡')
+  })
+
+  it('flags uncorroborated mandatory beats in the act-close review at the act boundary (D.2.2)', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_3.md'),
+      '# 第三章 脱困\n\n主角脱困。',
+      'utf-8'
+    )
+    const baseMemory = makeStoryMemory()
+    const state = buildState(tmpDir, {
+      currentChapterIndex: 2,
+      chapters: [
+        null,
+        null,
+        {
+          id: 'ch-3',
+          storyId: 'test-story',
+          number: 3,
+          title: '脱困',
+          outline: '主角脱困。',
+          summary: null,
+          foreshadows: null,
+          status: 'drafting',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
+      storyMemory: {
+        ...baseMemory,
+        beats: {
+          'A1-M1': {
+            id: 'A1-M1',
+            description: '主角离开家乡',
+            actIndex: 1,
+            deadlineAct: 1,
+            required: true,
+            claimedIn: 0,
+            provenByEventIds: ['evt-old-1'],
+            corroboration: {
+              status: 'proven_uncorroborated',
+              corroboratingEventIds: [],
+              corroboratedByFinalState: false,
+            },
+          },
+        },
+      },
+      draftChapterEvents: [],
+    })
+    const provider = createMockProvider()
+
+    const result = await finalizeChapter(state, provider)
+
+    // 幕关闭质量复审：proven 但未佐证的 mandatory beat 回到 pending，幕不得关闭；
+    // 阻断描述中单独点名未佐证 beat，作者可走人工路径强制关闭。
+    const boundaryIssue = result.pendingIssues?.find(
+      (issue) => issue.ruleId === 'outline-coverage.pending-beats-at-boundary'
+    )
+    expect(boundaryIssue).toBeDefined()
+    expect(boundaryIssue?.severity).toBe('error')
+    expect(boundaryIssue?.description).toContain('A1-M1')
+    expect(boundaryIssue?.description).toContain('佐证审计')
+    expect(result.rewriteRequested).toBe(true)
   })
 
   it('does not consume claimed beats through prose-based coverage fallback', async () => {
@@ -2997,7 +3116,8 @@ describe('finalizeChapter — canonical facts delta & regenerable constraints', 
 
     const result = await finalizeChapter(buildState(tmpDir), createMockProvider())
 
-    expect(result.storyState?.storyTime).toBe('第三日黄昏')
+    // B.4：自由文本 endTime 归一化为结构化 { freeform }。
+    expect(result.storyState?.storyTime).toEqual({ freeform: '第三日黄昏' })
   })
 
   it('rebuilds regenerable constraints while carrying over foreign constraints', async () => {
@@ -3141,5 +3261,121 @@ describe('finalizeChapter — canonical facts delta & regenerable constraints', 
         (entry) => entry.kind === 'generic' && entry.id === 'foreshadow-boundary:fs-alias'
       )
     ).toBe(false)
+  })
+})
+
+describe('finalizeChapter — chapter density counters (C.2.2/C.2.3)', () => {
+  let tmpDir: string
+
+  function createEmptyEventsSummaryAgent() {
+    return {
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        data: { chapterSummary: '本章没有任何结构化事件。', storyEvents: [] },
+      }),
+    }
+  }
+
+  beforeEach(async () => {
+    loadConfigMock.mockReturnValue({
+      model: { provider: 'openai' as const, model: 'gpt-4o' },
+      autoAdjustActBoundaries: false,
+    })
+    vi.mocked(getSummaryAgent).mockReturnValue(
+      createEmptyEventsSummaryAgent() as unknown as ReturnType<typeof getSummaryAgent>
+    )
+    vi.mocked(proposeActBoundaryAdjustments).mockReturnValue([])
+    vi.mocked(applyActBoundaryAdjustment).mockReturnValue({ storyArc: null, applied: false })
+
+    tmpDir = path.join(
+      process.cwd(),
+      'tests',
+      'tmp',
+      `finalize-density-${Date.now()}-${Math.random()}`
+    )
+    await fs.mkdir(path.join(tmpDir, 'chapters'), { recursive: true })
+    await fs.writeFile(
+      path.join(tmpDir, 'chapters', 'chapter_1.md'),
+      '# 第一章 启程\n\n主角告别了故乡，踏上了未知的旅途。',
+      'utf-8'
+    )
+  })
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  it('increments both counters when the finalized chapter has no increment and no beat claim', async () => {
+    const state = buildState(tmpDir, { storyMemory: makeStoryMemory() })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.consecutiveZeroIncrementChapters).toBe(1)
+    // 当前幕仍有 1 个待消费 mandatory beat（主角离开家乡）且大纲零认领 → 零认领连击 +1
+    expect(result.consecutiveZeroClaimChapters).toBe(1)
+  })
+
+  it('resets both counters when the chapter produces an increment and claims a beat', async () => {
+    const state = buildState(tmpDir, {
+      storyMemory: makeStoryMemory(),
+      consecutiveZeroIncrementChapters: 2,
+      consecutiveZeroClaimChapters: 2,
+      draftChapterEvents: [
+        {
+          id: 'evt-move',
+          type: 'character-location',
+          characterId: 'char-1',
+          locationId: 'l-1',
+          chapterIndex: 0,
+          source: 'chapter',
+          evidence: { paragraphIndex: 1 },
+        },
+      ],
+      outline: [
+        {
+          number: 1,
+          title: '启程',
+          description: '主角离开家乡。',
+          claimedMandatoryBeatIds: ['A1-M1'],
+        },
+        { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
+        { number: 3, title: '脱困', description: '主角脱困。' },
+      ],
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    expect(result.consecutiveZeroIncrementChapters).toBe(0)
+    expect(result.consecutiveZeroClaimChapters).toBe(0)
+  })
+
+  it('resets the zero-claim counter when the current act has no pending mandatory beats', async () => {
+    const state = buildState(tmpDir, {
+      storyMemory: makeStoryMemory(),
+      consecutiveZeroClaimChapters: 2,
+      storyArc: {
+        totalChapters: 3,
+        acts: [
+          {
+            index: 1,
+            startChapter: 1,
+            endChapter: 3,
+            title: '启程',
+            theme: '出发',
+            function: '建立动机',
+            mandatoryBeats: [],
+          },
+        ],
+        keyBeats: [],
+      },
+      actProgress: { 1: { consumed: [], pending: [] } },
+    })
+
+    const result = await finalizeChapter(state, createMockProvider())
+
+    // 无可认领节拍时不构成零认领连击；零增量连击仍正常累计
+    expect(result.consecutiveZeroClaimChapters).toBe(0)
+    expect(result.consecutiveZeroIncrementChapters).toBe(1)
   })
 })

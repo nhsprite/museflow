@@ -398,3 +398,104 @@ describe('ConsistencyAgent outline detail tolerance', () => {
     expect(issues[0].ruleId).toBe('consistency.outline_deviation.outline.consistency')
   })
 })
+
+describe('ConsistencyAgent prose artifact lane', () => {
+  it('maps prose_artifact aspect issues to the stable consistency.prose-artifact rule id', async () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const output = {
+      success: true,
+      content: '',
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            type: 'consistency',
+            severity: 'warning',
+            description: '正文残留自我修正痕迹“——不，”，以及占位日期“某年某月某日”。',
+            aspect: 'prose_artifact',
+            location: '第5段',
+          },
+        ],
+      },
+    }
+
+    const issues = await agent.processOutput(output)
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0].ruleId).toBe('consistency.prose-artifact')
+    expect(issues[0].severity).toBe('warning')
+  })
+
+  it('documents the prose_artifact dimension and aspect in the prompt', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      chapterContent: '正文。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '',
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('prose_artifact')
+    expect(userMessage).toContain('自我修正残留')
+    expect(userMessage).toContain('占位符残留')
+  })
+})
+
+describe('ConsistencyAgent prose repetition lane (C.2.4)', () => {
+  it('maps prose_repetition aspect issues to the stable consistency.prose-repetition rule id', async () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const output = {
+      success: true,
+      content: '',
+      data: {
+        is_consistent: false,
+        issues: [
+          {
+            type: 'consistency',
+            severity: 'warning',
+            description: '同一物品清单在第 3 段与第 7 段被原样重列，没有新信息。',
+            aspect: 'prose_repetition',
+            location: '第3段',
+          },
+        ],
+      },
+    }
+
+    const issues = await agent.processOutput(output)
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0].ruleId).toBe('consistency.prose-repetition')
+    expect(issues[0].severity).toBe('warning')
+  })
+
+  it('documents the prose_repetition dimension and aspect in the prompt', () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    const messages = agent.exposePrompt({
+      idea: '测试',
+      genre: 'default',
+      totalChapters: 2,
+      world: '',
+      characters: '【主角】',
+      outline: '第2章：接头',
+      chapterContent: '正文。',
+      chapterIndex: 1,
+      foreshadowStack: [],
+      chapterSummaries: [],
+      storyState: '',
+      chapterTimeAnchor: '故事时间第二日',
+    })
+
+    const userMessage = messages[1]?.content ?? ''
+    expect(userMessage).toContain('prose_repetition')
+    expect(userMessage).toContain('反复重列')
+  })
+})

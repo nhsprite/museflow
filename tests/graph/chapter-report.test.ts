@@ -43,6 +43,20 @@ function verifiedMandatoryDraftEvent() {
   }
 }
 
+// D.2.1：mandatory beat 消费须另有结构化痕迹——与推进事件共享证据锚点的状态类事件。
+function corroboratingStatusDraftEvent() {
+  return {
+    id: 'evt-draft-corroborating',
+    type: 'character-status' as const,
+    characterId: 'char-1',
+    attribute: 'resolve',
+    value: '启程',
+    chapterIndex: 0,
+    source: 'chapter' as const,
+    evidence: { paragraphIndex: 1 },
+  }
+}
+
 vi.mock('../../src/config/store.js', () => ({
   loadConfig: loadConfigMock,
 }))
@@ -353,7 +367,7 @@ describe('chapter report generation', () => {
 
   it('updates actProgress with verified beats only', async () => {
     const state = buildState(tmpDir, {
-      draftChapterEvents: [verifiedMandatoryDraftEvent()],
+      draftChapterEvents: [verifiedMandatoryDraftEvent(), corroboratingStatusDraftEvent()],
       outline: [
         {
           number: 1,
@@ -403,7 +417,7 @@ describe('chapter report generation', () => {
 
   it('stores evidence for verified mandatory beats', async () => {
     const state = buildState(tmpDir, {
-      draftChapterEvents: [verifiedMandatoryDraftEvent()],
+      draftChapterEvents: [verifiedMandatoryDraftEvent(), corroboratingStatusDraftEvent()],
       outline: [
         {
           number: 1,
@@ -458,7 +472,7 @@ describe('chapter report generation', () => {
 
   it('clears stale outline coverage warning when its beat becomes verified', async () => {
     const state = buildState(tmpDir, {
-      draftChapterEvents: [verifiedMandatoryDraftEvent()],
+      draftChapterEvents: [verifiedMandatoryDraftEvent(), corroboratingStatusDraftEvent()],
       pendingIssues: [
         {
           id: 'unverified-beat-1-0',

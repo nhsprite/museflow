@@ -391,6 +391,92 @@ describe('diffMemorySnapshots', () => {
     expect(diff.characterLocations[0]?.after).toBe('l-2')
   })
 
+  it('detects character status attribute changes between snapshots', () => {
+    const before = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'character-status',
+        characterId: 'c-1',
+        attribute: 'health',
+        value: 'healthy',
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+    ])
+    const after = applyEvents(before, [
+      {
+        id: 'e2',
+        type: 'character-status',
+        characterId: 'c-1',
+        attribute: 'health',
+        value: 'injured',
+        chapterIndex: 2,
+        source: 'chapter',
+      },
+    ])
+    const diff = diffMemorySnapshots(before, after)
+    expect(diff.characterStatuses).toEqual([
+      { id: 'c-1', attribute: 'health', before: 'healthy', after: 'injured' },
+    ])
+    expect(diff.characterLocations).toHaveLength(0)
+  })
+
+  it('detects item state attribute changes between snapshots', () => {
+    const before = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'item-state',
+        itemId: 'i-1',
+        attribute: 'sealed',
+        value: true,
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+    ])
+    const after = applyEvents(before, [
+      {
+        id: 'e2',
+        type: 'item-state',
+        itemId: 'i-1',
+        attribute: 'sealed',
+        value: false,
+        chapterIndex: 2,
+        source: 'chapter',
+      },
+    ])
+    const diff = diffMemorySnapshots(before, after)
+    expect(diff.itemStates).toEqual([
+      { id: 'i-1', attribute: 'sealed', before: true, after: false },
+    ])
+  })
+
+  it('reports no status diff when attribute values are unchanged', () => {
+    const before = applyEvents(createEmptyStoryMemory(), [
+      {
+        id: 'e1',
+        type: 'character-status',
+        characterId: 'c-1',
+        attribute: 'health',
+        value: 'healthy',
+        chapterIndex: 1,
+        source: 'chapter',
+      },
+    ])
+    const after = applyEvents(before, [
+      {
+        id: 'e2',
+        type: 'character-status',
+        characterId: 'c-1',
+        attribute: 'health',
+        value: 'healthy',
+        chapterIndex: 2,
+        source: 'chapter',
+      },
+    ])
+    const diff = diffMemorySnapshots(before, after)
+    expect(diff.characterStatuses).toEqual([])
+  })
+
   it('does not report a new obligation when a new duplicate merges into a historical root', () => {
     const before = applyEvents(createEmptyStoryMemory(), [
       {

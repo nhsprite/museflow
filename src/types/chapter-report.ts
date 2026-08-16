@@ -125,6 +125,7 @@ export function createEmptyIssueSummary(): ChapterIssueSummary {
       outline_invalid_deadline: 0,
       state_conflict: 0,
       beat_unproven: 0,
+      beat_uncorroborated: 0,
       foreshadow_false_fulfillment: 0,
       foreshadow_invalid_deadline: 0,
       foreshadow_boundary_unresolved: 0,

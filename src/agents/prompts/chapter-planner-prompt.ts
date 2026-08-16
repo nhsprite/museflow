@@ -140,14 +140,15 @@ const CHAPTER_PLANNER_USER_PROMPT_TEMPLATE = `<task>请为第 {displayChapterNum
   13. 【结构化事件与声明 - 必须输出】
      - 输出 expectedEvents 数组，记录本章计划产生的、会影响故事记忆的状态变化事件。
      - 每个事件必须包含 id、type、chapterIndex，以及对应类型所需的字段（如 characterId、locationId、itemId、beatId、foreshadowId、taskId 等）。
-     - 事件类型包括：character-location、character-status、item-location、item-state、plot-advance、foreshadow-introduce、foreshadow-fulfill、task-resolve、task-create。
+     - 事件类型包括：character-location、character-status、character-revival、entity-register、item-location、item-state、plot-advance、foreshadow-introduce、foreshadow-fulfill、task-resolve、task-create。
      {storyEventContractSection}
      - 【位置/状态事件纪律】character-location / character-status / item-location / item-state 事件只记录本章 sections/timeline 中实际发生的变化（含章末归位）或首次确立的状态：
        1) 不得为全程未移动、状态未变的角色或物品输出位置/状态事件（例如全程在原地熟睡的角色不应有 character-location 事件）；
        2) 不得把本章主场景地点套用到所有出场角色——每个位置事件必须与 section 中描述的具体动作一一对应；
        3) 位置/状态事件的值必须与已有故事记忆一致或体现本章真实变化，禁止编造未在 sections 中出现的移动或状态改变；
        4) 位置变化与状态变化的区分：角色或物品的移动、交接、取出、放回、随身携带、锁回某处等必须使用 location 类型事件（character-location / item-location），不得使用 status/state 类型；item-state / character-status 只用于物品或角色自身的属性变化（如破损、开封、情绪、伤势等）。
-       5) 【无名角色禁入事件】expectedEvents 只允许记录上下文中已有权威 ID 的角色与物品；没有权威 ID 的无名临时角色（功能性路人）即使在本章发生移动或状态变化，也禁止为其输出 character-location / character-status 事件，禁止用中文名、描述性短语或自造 ID 充当 characterId——其动作只写入 sections/timeline 文本，不进入 storyState；
+       5) 【受控生命周期属性】alive 是受控生命周期属性：角色死亡必须规划 character-status 事件（attribute 为 alive、value 为布尔 false）；角色真实复活必须规划显式 character-revival 事件，不得用普通 status 事件把 alive 翻回 true；已终态（alive=false）的角色不得再出现在任何位置/状态/持有人事件中。
+       5) 【新有名实体先注册再引用】expectedEvents 只允许引用上下文中已有权威 ID 的角色与物品。本章新引入的有名角色/物品（在权威 ID 列表中不存在对应实体、且在正文中有具体名字、会在本章或后续章节再次被提及）：必须先在 expectedEvents 中输出 entity-register 事件（entityKind + 新的唯一机器 entityId + displayName），注册后即可在同章后续事件中正常引用该 entityId（位置/状态等事件照常输出）；禁止用中文名、描述性短语充当 characterId/itemId，也禁止把有名角色的变化藏进文本而不发事件。真正无名、一次性、此后不再出现的临时龙套仍只写入 sections/timeline 文本，不进入事件流。
      - foreshadow-introduce 事件必须包含 text、kind、resolutionPolicy、required、expectedFulfillChapter；新建 must_resolve 事件还必须包含 resolutionQuestion 与 fulfillmentCriteria，新建 should_resolve 事件应尽量包含。若与某个节拍绑定，填写 beatId，否则 beatId 为 null。策略与截止章节必须遵守 <story_event_json_contract> 中的结构化约束。
      - 每个事件的 source 固定为 "chapter"。
      - expectedEvents 中的所有事件都由本章产生，其内部零基章节索引固定为 {chapterIndex}；不得填写展示章节号 {displayChapterNumber} 或其他章节索引。

@@ -44,6 +44,8 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
         a.attribute === b.attribute &&
         JSON.stringify(a.value) === JSON.stringify(b.value)
       )
+    case 'character-revival':
+      return b.type === 'character-revival' && a.characterId === b.characterId
     case 'item-location':
       return (
         b.type === 'item-location' &&
@@ -96,6 +98,8 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
       return b.type === 'task-create' && a.taskId === b.taskId && a.description === b.description
     case 'task-resolve':
       return b.type === 'task-resolve' && a.taskId === b.taskId
+    case 'entity-register':
+      return b.type === 'entity-register' && a.entityId === b.entityId
     default:
       return false
   }
@@ -103,12 +107,35 @@ function eventsMatch(a: StoryEvent, b: StoryEvent): boolean {
 
 export interface StateSnapshotDiff {
   characterLocations: Array<{ id: EntityId; before: string | null; after: string | null }>
+  characterStatuses: Array<{ id: EntityId; attribute: string; before: unknown; after: unknown }>
   itemHolders: Array<{ id: EntityId; before: string | null; after: string | null }>
   itemLocations: Array<{ id: EntityId; before: string | null; after: string | null }>
+  itemStates: Array<{ id: EntityId; attribute: string; before: unknown; after: unknown }>
   newForeshadows: string[]
   fulfilledForeshadows: string[]
   newTasks: string[]
   resolvedTasks: string[]
+}
+
+/** 逐属性对比自由文本状态记录（character.status / item.state），只做键集合与值相等比较。 */
+function diffAttributeRecords(
+  ids: ReadonlySet<string>,
+  before: (id: string) => Record<string, unknown> | undefined,
+  after: (id: string) => Record<string, unknown> | undefined
+): Array<{ id: EntityId; attribute: string; before: unknown; after: unknown }> {
+  const changes: Array<{ id: EntityId; attribute: string; before: unknown; after: unknown }> = []
+  for (const id of ids) {
+    const beforeRecord = before(id) ?? {}
+    const afterRecord = after(id) ?? {}
+    for (const attribute of new Set([...Object.keys(beforeRecord), ...Object.keys(afterRecord)])) {
+      const beforeValue: unknown = beforeRecord[attribute]
+      const afterValue: unknown = afterRecord[attribute]
+      if (JSON.stringify(beforeValue ?? null) !== JSON.stringify(afterValue ?? null)) {
+        changes.push({ id, attribute, before: beforeValue ?? null, after: afterValue ?? null })
+      }
+    }
+  }
+  return changes
 }
 
 export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): StateSnapshotDiff {
@@ -123,6 +150,16 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
       characterLocations.push({ id, before: beforeLoc, after: afterLoc })
     }
   }
+
+  const characterIds = new Set([
+    ...Object.keys(before.entities.characters),
+    ...Object.keys(after.entities.characters),
+  ])
+  const characterStatuses = diffAttributeRecords(
+    characterIds,
+    (id) => before.entities.characters[id]?.status,
+    (id) => after.entities.characters[id]?.status
+  )
 
   const itemHolders: StateSnapshotDiff['itemHolders'] = []
   for (const id of new Set([
@@ -147,6 +184,16 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
       itemLocations.push({ id, before: beforeLocation, after: afterLocation })
     }
   }
+
+  const itemIds = new Set([
+    ...Object.keys(before.entities.items),
+    ...Object.keys(after.entities.items),
+  ])
+  const itemStates = diffAttributeRecords(
+    itemIds,
+    (id) => before.entities.items[id]?.state,
+    (id) => after.entities.items[id]?.state
+  )
 
   const canonicalAfterForeshadows = getCanonicalForeshadows(after)
   const beforeRootsByAfterRoot = new Map<string, Set<string>>()
@@ -184,8 +231,10 @@ export function diffMemorySnapshots(before: StoryMemory, after: StoryMemory): St
 
   return {
     characterLocations,
+    characterStatuses,
     itemHolders,
     itemLocations,
+    itemStates,
     newForeshadows,
     fulfilledForeshadows,
     newTasks,

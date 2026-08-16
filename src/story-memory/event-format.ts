@@ -17,6 +17,10 @@ export function renderStoryEventLine(event: StoryEvent): string {
       return `character-location: ${event.characterId} -> ${renderNullableId(event.locationId)}`
     case 'character-status':
       return `character-status: ${event.characterId} / ${event.attribute} -> ${renderEventValue(event.value)}`
+    case 'character-revival':
+      return `character-revival: ${event.characterId}`
+    case 'entity-register':
+      return `entity-register: ${event.entityId} / kind=${event.entityKind} / name=${event.displayName}`
     case 'item-location':
       return `item-location: ${event.itemId} / holder=${renderNullableId(event.holderId)} / location=${renderNullableId(event.locationId)}`
     case 'item-state':

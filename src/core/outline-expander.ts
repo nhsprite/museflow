@@ -6,12 +6,14 @@ import {
   reconcileOutlineWithState,
 } from '../utils/outline-boundary.js'
 import { toDisplayChapterNumber } from '../utils/chapter-display.js'
+import { formatStoryTime } from '../utils/story-time.js'
 import type {
   BeatClaimPlanningRejection,
   ChapterPlan,
   ChapterOutlineAgentInput,
   ForeshadowPlanningObligation,
   ForeshadowPlanningRejection,
+  ZeroProgressRejection,
 } from '../agents/types.js'
 import { readChapterContent } from '../storage/filesystem/writer.js'
 import {
@@ -102,6 +104,8 @@ interface SemanticPlanningRetryContext {
   outlineOrigin?: 'persisted' | 'jit-generated'
   /** 正文阶段节拍驳回反馈：存在时强制重生成大纲（保留认领，仅重做实现方式）。 */
   beatClaimRejection?: BeatClaimPlanningRejection
+  /** 跨章零增量闸反馈：存在时强制重生成大纲（围绕可观察变化重组本章）。 */
+  zeroProgressRejection?: ZeroProgressRejection
 }
 
 function isRuntimeContext(source: ChapterContextSource): source is RuntimeContext {
@@ -1225,8 +1229,9 @@ function buildCurrentStateSnapshot(state: ReducedGraphState): string {
 
   const parts: string[] = []
 
-  if (handoff?.endTime || storyTime) {
-    parts.push(`【上一章结束时间】${handoff?.endTime ?? storyTime}`)
+  const previousEndTime = handoff ? formatStoryTime(handoff.endTime) : formatStoryTime(storyTime)
+  if (previousEndTime) {
+    parts.push(`【上一章结束时间】${previousEndTime}`)
   }
   if (handoff?.charactersPresent && handoff.charactersPresent.length > 0) {
     parts.push(`【上一章结尾在场角色】${handoff.charactersPresent.join('、')}`)
@@ -1284,6 +1289,7 @@ interface GenerateChapterOutlineOptions {
   force?: boolean
   foreshadowPlanningRejection?: ForeshadowPlanningRejection
   beatClaimRejection?: BeatClaimPlanningRejection
+  zeroProgressRejection?: ZeroProgressRejection
 }
 
 async function generateChapterOutlineIfNeeded(
@@ -1370,15 +1376,29 @@ async function generateChapterOutlineIfNeeded(
   const mandatoryBeatPressure = arcStatus?.mandatoryBeatPressure
   const hardMandatoryBeatPressure =
     mandatoryBeatPressure === 'high' && (arcStatus?.beatsPending.length ?? 0) > 0
-  const mustClaimMandatoryBeat =
+  const beatArithmeticClaimPressure =
     (mandatoryBeatPressure === 'high' || mandatoryBeatPressure === 'medium') &&
     (arcStatus?.beatsPending.length ?? 0) > 0
-  const pendingMandatoryBeatPairs = mustClaimMandatoryBeat
-    ? getMandatoryBeatEntries(state.storyArc)
-        .filter((entry) => entry.actIndex === currentAct?.index)
-        .filter((entry) => !isBeatAlreadyProven(state, entry.id))
-        .map((entry) => ({ beatId: entry.id, beat: entry.beat }))
-    : []
+  // 零认领连击升级（C.2.3）：连续 zeroClaimEscalationThreshold 章大纲零认领 mandatory beat 后，
+  // 无论 beat 算术如何都强制本章认领——关闭零认领逃逸口，重试/中止机制与幕边界高压一致。
+  // 当前幕没有可认领节拍时不构成认领义务，不升级。
+  const zeroClaimStreak = state.consecutiveZeroClaimChapters ?? 0
+  const currentActPendingMandatoryPairs = getMandatoryBeatEntries(state.storyArc)
+    .filter((entry) => entry.actIndex === currentAct?.index)
+    .filter((entry) => !isBeatAlreadyProven(state, entry.id))
+    .map((entry) => ({ beatId: entry.id, beat: entry.beat }))
+  const zeroClaimEscalation =
+    zeroClaimStreak >= planningConfig.zeroClaimEscalationThreshold &&
+    currentActPendingMandatoryPairs.length > 0
+  const mustClaimMandatoryBeat = beatArithmeticClaimPressure || zeroClaimEscalation
+  const pendingMandatoryBeatPairs = mustClaimMandatoryBeat ? currentActPendingMandatoryPairs : []
+  // 强制认领反馈的触发源：beat 算术压力优先如实呈现，否则为连续零认领升级。
+  const claimPressureSource = beatArithmeticClaimPressure ? 'act_boundary' : 'zero_claim_streak'
+  if (zeroClaimEscalation && !beatArithmeticClaimPressure) {
+    logger.warn(
+      `[MuseFlow] 此前已连续 ${zeroClaimStreak} 章大纲零认领 mandatory beat，第 ${chapterIndex + 1} 章按升级压力强制认领（关闭零认领逃逸口）`
+    )
+  }
 
   let foreshadowPlanningRejection = options.foreshadowPlanningRejection
   let result: ChapterOutlineResult | null = null
@@ -1432,6 +1452,11 @@ async function generateChapterOutlineIfNeeded(
       ...(foreshadowPlanningRejection ? { foreshadowPlanningRejection } : {}),
       ...(beatClaimRejection ? { beatClaimRejection } : {}),
       ...(mustClaimMandatoryBeat ? { mandatoryBeatClaimRequired: true } : {}),
+      // 连续零认领升级（非 beat 算术压力）时标记触发源，prompt 据此给出正确的强制原因。
+      ...(zeroClaimEscalation && !beatArithmeticClaimPressure ? { zeroClaimEscalation: true } : {}),
+      ...(options.zeroProgressRejection
+        ? { zeroProgressRejection: options.zeroProgressRejection }
+        : {}),
       currentStateSnapshot: buildCurrentStateSnapshot(state),
     }
 
@@ -1551,6 +1576,7 @@ async function generateChapterOutlineIfNeeded(
               requiredClaims: {
                 pendingMandatoryBeats: pendingMandatoryBeatPairs,
                 chaptersRemainingInAct,
+                pressureSource: claimPressureSource,
               },
             }
           : {}),
@@ -1570,16 +1596,18 @@ async function generateChapterOutlineIfNeeded(
     )
     // 高压下零认领打回：过滤后仍一个 mandatory beat 都没认领时，
     // 本章必将在幕末留下比剩余章数更多的未消费节拍，直接打回比放行更省代价。
+    // 连续零认领升级（C.2.3）下同理：零认领逃逸口已关闭，打回重试。
     if (mustClaimMandatoryBeat && (finalizedCandidate.claimedMandatoryBeatIds ?? []).length === 0) {
       zeroClaimRejected = true
       logger.warn(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次在幕边界高压下未认领任何 mandatory beat，打回重试`
+        `[MuseFlow] 第 ${chapterIndex + 1} 章即时大纲第 ${attempt + 1}/${MAX_JIT_OUTLINE_ATTEMPTS} 次在强制认领压力（${claimPressureSource === 'zero_claim_streak' ? '连续零认领升级' : '幕边界高压'}）下未认领任何 mandatory beat，打回重试`
       )
       beatClaimRejection = {
         rejectedClaims: [],
         requiredClaims: {
           pendingMandatoryBeats: pendingMandatoryBeatPairs,
           chaptersRemainingInAct,
+          pressureSource: claimPressureSource,
         },
         currentOutline: {
           title: normalizedCandidate.title,
@@ -1658,11 +1686,14 @@ async function generateChapterOutlineIfNeeded(
         beatBudget
       )
     } else if (lastCandidate && zeroClaimRejected) {
-      if (hardMandatoryBeatPressure) {
-        // 高压下重试仍零认领：中止本章转人工。再放行只会让幕末 pending-beats-at-boundary
-        // 以更高代价爆发（与伏笔严格模式同一处置哲学）。
+      if (hardMandatoryBeatPressure || zeroClaimEscalation) {
+        // 高压/零认领升级下重试仍零认领：中止本章转人工。再放行只会让幕末
+        // pending-beats-at-boundary 以更高代价爆发，或让零认领连击继续扩大
+        // （与伏笔严格模式同一处置哲学）。
         throw new Error(
-          `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领任何 mandatory beat，已中止本章。请重新运行本章生成；若模型持续不认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+          hardMandatoryBeatPressure
+            ? `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领任何 mandatory beat，已中止本章。请重新运行本章生成；若模型持续不认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+            : `第 ${chapterIndex + 1} 章即时大纲在连续零认领升级压力（此前已连续 ${zeroClaimStreak} 章零认领）下连续 ${MAX_JIT_OUTLINE_ATTEMPTS} 次未认领任何 mandatory beat，已中止本章。请重新运行本章生成；若模型持续不认领，请人工修订大纲后再继续。`
         )
       }
       // 中压（配速）下重试仍零认领：软着陆。配速压力的意义是提前给消费机会，
@@ -1677,13 +1708,19 @@ async function generateChapterOutlineIfNeeded(
     }
   }
 
-  // 高压下「认领被拒→剥离」与「零认领」同等处置：剥离只是换了一条到达零认领的路径，
-  // 放行同样会在幕末留下比剩余章数更多的未消费节拍。循环内的零认领打回覆盖常规路径，
-  // 这里兜住剥离兜底分支，保证高压模式下大纲必须持有有效 mandatory beat 认领。
+  // 高压/零认领升级下「认领被拒→剥离」与「零认领」同等处置：剥离只是换了一条到达
+  // 零认领的路径，放行同样会在幕末留下比剩余章数更多的未消费节拍（或让零认领连击
+  // 继续扩大）。循环内的零认领打回覆盖常规路径，这里兜住剥离兜底分支，保证强制认领
+  // 模式下大纲必须持有有效 mandatory beat 认领。
   // 中压（配速）剥离到零认领时软着陆，不中止（ stripped 警告已记录）。
-  if (hardMandatoryBeatPressure && (result.claimedMandatoryBeatIds ?? []).length === 0) {
+  if (
+    (hardMandatoryBeatPressure || zeroClaimEscalation) &&
+    (result.claimedMandatoryBeatIds ?? []).length === 0
+  ) {
     throw new Error(
-      `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下未能形成有效 mandatory beat 认领（认领未通过 description 呈现校验或始终未认领），已中止本章。请重新运行本章生成；若模型持续无法认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+      hardMandatoryBeatPressure
+        ? `第 ${chapterIndex + 1} 章即时大纲在幕边界高压状态（未消费 mandatory beats 多于幕内剩余章节）下未能形成有效 mandatory beat 认领（认领未通过 description 呈现校验或始终未认领），已中止本章。请重新运行本章生成；若模型持续无法认领，可运行 adjust-act 延长本幕，或人工修订大纲后再继续。`
+        : `第 ${chapterIndex + 1} 章即时大纲在连续零认领升级压力（此前已连续 ${zeroClaimStreak} 章零认领）下未能形成有效 mandatory beat 认领（认领未通过 description 呈现校验或始终未认领），已中止本章。请重新运行本章生成；若模型持续无法认领，请人工修订大纲后再继续。`
     )
   }
 
@@ -1860,6 +1897,7 @@ async function reconcileOutlineCandidate(
 
 export interface ExpandOutlineOptions {
   beatClaimRejection?: BeatClaimPlanningRejection
+  zeroProgressRejection?: ZeroProgressRejection
 }
 
 export async function expandOutlineForChapter(
@@ -1871,6 +1909,9 @@ export async function expandOutlineForChapter(
   return expandOutlineForChapterInternal(state, chapterIndex, source, {
     attempt: 0,
     ...(options?.beatClaimRejection ? { beatClaimRejection: options.beatClaimRejection } : {}),
+    ...(options?.zeroProgressRejection
+      ? { zeroProgressRejection: options.zeroProgressRejection }
+      : {}),
   })
 }
 
@@ -1887,13 +1928,15 @@ async function expandOutlineForChapterInternal(
   state = await autoExtendCurrentActBeforeOutline(state, chapterIndex)
   const jitBaseState = state
   const generatedSemanticRetry = semanticRetry.outlineOrigin === 'jit-generated'
-  // 正文阶段节拍驳回触发的大纲重生成：即使已有 description 也强制重新生成，
-  // 但状态协调仍走 'apply'（与常规 JIT 生成一致，自动协调冲突而非丢弃候选）。
-  const beatClaimRegen = Boolean(semanticRetry.beatClaimRejection)
+  // 正文阶段驳回反馈（节拍驳回 / 跨章零增量）触发的大纲重生成：即使已有 description
+  // 也强制重新生成，但状态协调仍走 'apply'（与常规 JIT 生成一致，自动协调冲突而非丢弃候选）。
+  const outlineRegenRequested = Boolean(
+    semanticRetry.beatClaimRejection ?? semanticRetry.zeroProgressRejection
+  )
   const persistedOutline =
     Boolean(state.outline[chapterIndex]?.description.trim()) &&
     !generatedSemanticRetry &&
-    !beatClaimRegen
+    !outlineRegenRequested
 
   if (persistedOutline) {
     const resolution = await reconcileOutlineCandidate(state, chapterIndex, source, 'expose')
@@ -1916,12 +1959,15 @@ async function expandOutlineForChapterInternal(
         chapterIndex,
         provider,
         {
-          ...(generatedSemanticRetry || beatClaimRegen ? { force: true } : {}),
+          ...(generatedSemanticRetry || outlineRegenRequested ? { force: true } : {}),
           ...(semanticRetry.rejection
             ? { foreshadowPlanningRejection: semanticRetry.rejection }
             : {}),
           ...(semanticRetry.beatClaimRejection
             ? { beatClaimRejection: semanticRetry.beatClaimRejection }
+            : {}),
+          ...(semanticRetry.zeroProgressRejection
+            ? { zeroProgressRejection: semanticRetry.zeroProgressRejection }
             : {}),
         }
       )

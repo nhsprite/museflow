@@ -46,4 +46,27 @@ describe('project smoke test', () => {
 
     expect(matches, `retired prompt limits found:\n${matches.join('\n')}`).toEqual([])
   })
+
+  it('keeps the prose hygiene gate on the chapter commit path and the re-feed path', async () => {
+    const repoRoot = process.cwd()
+    const commitSource = await readFile(join(repoRoot, 'src/core/chapter-commit.ts'), 'utf-8')
+
+    // commit 边界必须引用共享体例模块，且干跑校验必须先于 promote。
+    expect(commitSource).toContain('prose-hygiene')
+    expect(commitSource).toContain('checkProseHygiene')
+    const gateCall = commitSource.indexOf('await assertStagedChapterHygiene')
+    const promoteCall = commitSource.indexOf(
+      'await promoteStagedChapterContent(outputDir, result.currentChapterIndex)'
+    )
+    expect(gateCall).toBeGreaterThanOrEqual(0)
+    expect(promoteCall).toBeGreaterThanOrEqual(0)
+    expect(gateCall).toBeLessThan(promoteCall)
+
+    // 上一章结尾回喂注入 prompt 前必须经过净化，阻断污染循环。
+    const windowSource = await readFile(
+      join(repoRoot, 'src/graph/utils/chapter-window.ts'),
+      'utf-8'
+    )
+    expect(windowSource).toContain('sanitizeProseExcerpt')
+  })
 })

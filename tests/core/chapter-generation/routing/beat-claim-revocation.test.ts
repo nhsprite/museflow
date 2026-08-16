@@ -61,6 +61,40 @@ describe('findPersistentBeatUnprovenBeatIds', () => {
 
     expect(findPersistentBeatUnprovenBeatIds(previous, current)).toEqual(['A5-M2'])
   })
+
+  // D.2.1：上一轮的 beat_uncorroborated error 计入「持续未证明」前任，
+  // 使佐证重试耗尽后立即进入撤销/大纲重生成路径。
+  it('treats a previous beat_uncorroborated error as an unproven predecessor', () => {
+    const previous: Issue[] = [
+      {
+        id: 'issue-uncorroborated-A5-M2',
+        ruleId: 'structured.beat-uncorroborated',
+        type: 'beat_uncorroborated',
+        subject: 'A5-M2',
+        severity: 'error',
+        description: '未留下结构化痕迹',
+        source: 'outline_compliance',
+      },
+    ]
+    expect(findPersistentBeatUnprovenBeatIds(previous, [beatUnprovenIssue('A5-M2')])).toEqual([
+      'A5-M2',
+    ])
+  })
+
+  it('ignores warning-severity beat_uncorroborated issues as predecessors', () => {
+    const previous: Issue[] = [
+      {
+        id: 'issue-uncorroborated-A5-M2',
+        ruleId: 'structured.beat-uncorroborated',
+        type: 'beat_uncorroborated',
+        subject: 'A5-M2',
+        severity: 'warning',
+        description: '未认领的未佐证进展',
+        source: 'outline_compliance',
+      },
+    ]
+    expect(findPersistentBeatUnprovenBeatIds(previous, [beatUnprovenIssue('A5-M2')])).toEqual([])
+  })
 })
 
 describe('dropBeatClaimsFromOutline', () => {
@@ -444,6 +478,177 @@ describe('decideNextStep beat claim revocation', () => {
       discardPlan: true,
       revokedBeatClaimIds: ['A5-B1'],
     })
+  })
+})
+
+function beatUncorroboratedIssue(beatId: string): Issue {
+  return {
+    id: `issue-uncorroborated-${beatId}`,
+    ruleId: 'structured.beat-uncorroborated',
+    type: 'beat_uncorroborated',
+    subject: beatId,
+    severity: 'error',
+    description: `mandatory beat ${beatId} 已通过验证但未留下结构化痕迹`,
+    source: 'outline_compliance',
+    retryStrategy: 'draft',
+  }
+}
+
+function uncorroboratedEvaluation(beatId: string) {
+  return {
+    beatId,
+    provingEventIds: ['evt-p1'],
+    corroboratingEventIds: [] as string[],
+    corroboratedByFinalState: false,
+    corroborated: false,
+  }
+}
+
+describe('decideNextStep beat corroboration (D.2.1)', () => {
+  const corroborationStoryArc: StoryArc = {
+    totalChapters: 50,
+    acts: [
+      {
+        index: 5,
+        startChapter: 46,
+        endChapter: 50,
+        title: '终幕',
+        theme: '主题',
+        function: '功能',
+        mandatoryBeats: ['节拍一', '节拍二'],
+      },
+    ],
+    keyBeats: [],
+  }
+  const corroborationOutline: ChapterOutline[] = Array.from({ length: 46 }, (_, index) => ({
+    number: index + 1,
+    title: `第${index + 1}章`,
+    description: '章节描述。',
+  }))
+
+  it('retries the draft once with beatCorroboration feedback for a claimed uncorroborated beat', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession(),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        claimedMandatoryBeatIds: ['A5-M2'],
+        beatCorroborations: [uncorroboratedEvaluation('A5-M2')],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('draft_chapter')
+    if (result.step.kind !== 'draft_chapter') throw new Error('expected draft_chapter')
+    expect(result.step.discardPlan).toBe(false)
+    expect(result.step.revokedBeatClaimIds).toBeUndefined()
+    const feedback = result.step.feedbackIssues.find(
+      (issue) => issue.type === 'beat_uncorroborated'
+    )
+    expect(feedback?.ruleId).toBe('structured.beat-uncorroborated')
+    expect(feedback?.subject).toBe('A5-M2')
+    expect(feedback?.severity).toBe('error')
+    expect(feedback?.suggestion).toContain('结构化痕迹')
+    expect(feedback?.suggestion).toContain('evt-p1')
+  })
+
+  it('converts to beat_unproven and revokes the claim when the corroboration retry is exhausted', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({ previousIssues: [beatUncorroboratedIssue('A5-M2')] }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        claimedMandatoryBeatIds: ['A5-M2'],
+        beatCorroborations: [uncorroboratedEvaluation('A5-M2')],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    // 重试耗尽：上一轮的 beat_uncorroborated 计入持续未证明前任，
+    // 本轮直接走现有撤销路径，不再空转重试。
+    expect(result.step).toMatchObject({
+      kind: 'draft_chapter',
+      discardPlan: true,
+      revokedBeatClaimIds: ['A5-M2'],
+    })
+    if (result.step.kind !== 'draft_chapter') throw new Error('expected draft_chapter')
+    const revokedFeedback = result.step.feedbackIssues.find(
+      (issue) => issue.type === 'beat_unproven'
+    )
+    expect(revokedFeedback?.description).toContain('认领已撤销')
+  })
+
+  it('regenerates the outline instead of revoking under high act-boundary pressure', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession({ previousIssues: [beatUncorroboratedIssue('A5-M2')] }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        claimedMandatoryBeatIds: ['A5-M2'],
+        beatCorroborations: [uncorroboratedEvaluation('A5-M2')],
+      }),
+      mandatoryBeatHighPressure: true,
+      unprovenMandatoryBeatIds: ['A5-M2'],
+      storyArc: corroborationStoryArc,
+      outline: corroborationOutline,
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step).toMatchObject({
+      kind: 'draft_chapter',
+      discardPlan: true,
+      regenerateOutline: true,
+    })
+    expect(result.sessionUpdate.outlineRegenAttempts).toBe(1)
+    const rejection = result.sessionUpdate.beatClaimOutlineRejection
+    expect(rejection?.rejectedClaims[0]?.beatId).toBe('A5-M2')
+    expect(rejection?.rejectedClaims[0]?.reason).toContain('按未证明处理')
+  })
+
+  it('accepts an unclaimed proven-but-uncorroborated beat as progress with a warning only', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession(),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        claimedMandatoryBeatIds: [],
+        beatCorroborations: [uncorroboratedEvaluation('A5-M2')],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    // 未认领但经正文验证成立：作为真实进展接受（warning），不阻塞定稿；
+    // 该 beat 在幕关闭复审时仍视为未消费。
+    expect(result.step.kind).toBe('finalize_chapter')
+    const warning = result.processedIssues.find((issue) => issue.type === 'beat_uncorroborated')
+    expect(warning?.severity).toBe('warning')
+    expect(warning?.subject).toBe('A5-M2')
+  })
+
+  it('raises no issue when the mandatory beat is corroborated', async () => {
+    const ctx: RoutingContext = {
+      session: makeSession(),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({
+        claimedMandatoryBeatIds: ['A5-M2'],
+        beatCorroborations: [{ ...uncorroboratedEvaluation('A5-M2'), corroborated: true }],
+      }),
+    }
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('finalize_chapter')
+    expect(result.processedIssues.some((issue) => issue.type === 'beat_uncorroborated')).toBe(false)
   })
 })
 

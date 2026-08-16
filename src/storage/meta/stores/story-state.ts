@@ -10,7 +10,7 @@ export function createEmptyStoryState(): StoryState {
     revealedSecrets: [],
     pendingTasks: [],
     currentScene: '',
-    storyTime: '',
+    storyTime: {},
     canonicalFacts: [],
   }
 }

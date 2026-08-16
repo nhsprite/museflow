@@ -127,12 +127,26 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
       - 节奏是否合适、是否存在拖沓或仓促
       - 人物刻画是否立体、对话是否生动
       - 是否存在 AI 惯用腔调或总结性套语
-      - 是否存在大段复述既有信息而无新推进的注水篇幅：同一事实、线索清单或物品/状态清单在章内或跨章被反复重列，而不提供新的事件、信息或变化
       - 多角色同场且存在信息交流时，是否全章没有直接对白，人物交流被眼神、默契等非语言方式完全替代
-      - 章节收束是否与前几章形成同一模板：相同的收尾动作、场景氛围或意象被连续重复使用
       - 正文是否混入元信息：引用作品自身章节号（如"第N章"）、内部结构化 ID、大纲/规划/节拍批注、协议标记（=== 区块）——此类属体例硬伤，报 error
       ${AI_PHRASE_PROHIBITIONS}
       质量问题只报 warning 或 info，除非严重到影响读者理解；元信息混入正文一律报 error。
+    </dimension>
+    <dimension name="prose_repetition" priority="medium">
+      清单复读/注水检查（aspect 必须输出 "prose_repetition"，以便后续指纹化跟踪与定点修复）：
+      - 同一事实、线索清单或物品/状态清单在章内或跨章被反复重列，而不提供新的事件、信息或变化
+      - 章节收束与前几章形成同一模板：相同的收尾动作、场景氛围或意象被连续重复使用
+      以上问题 severity 报 warning 或 info；仅当严重到影响读者理解时报 error。
+      注意：必要的前情回顾、面向读者的首次信息呈现不属于复读，不要误报。
+    </dimension>
+    <dimension name="prose_artifact" priority="high">
+      正文加工残留检查（体例类问题，aspect 必须输出 "prose_artifact"，以便后续指纹化跟踪与定点修复）：
+      - 自我修正残留：正文中留有生成时的涂改痕迹，如"——不，"式的自我打断改写（写到一半推翻重来并留下痕迹）
+      - 占位符残留：未填写的占位内容，如"某年某月某日"式的占位日期或占位名称
+      - 无意义重字/叠字：非修辞需要的明显重复字，如"他他说"这类输入粘连
+      - 作者点题腔/元叙述：叙述者跳出故事直接宣告主题、点评人物或剧情、预告后续发展（主题应通过事件与场景呈现）
+      以上问题 severity 报 warning；仅当严重到影响读者理解时报 error。
+      注意：修辞性反复、排比、角色口癖属于正常表达，不要误报。
     </dimension>
   </check_dimensions>
 
@@ -274,7 +288,7 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
         "type": "consistency",
         "severity": "error|warning|info",
         "description": "问题描述（请明确指出涉及哪些章节的哪些内容）",
-        "aspect": "time|space|causality|character_knowledge|dialogue|information|foreshadowing|pace|world_integrity|outline|quality",
+        "aspect": "time|space|causality|character_knowledge|dialogue|information|foreshadowing|pace|world_integrity|outline|quality|prose_artifact|prose_repetition",
         "location": "具体位置",
         "locationRef": {"paragraphNumber": 1, "sentenceNumber": 1},
         "subject": "涉及实体的稳定 id 或名称（角色/物品/地点）。severity=error 时必须填写，便于后续 reconcile 和去重",

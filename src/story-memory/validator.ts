@@ -3,6 +3,7 @@ import type {
   StoryEvent,
   ForeshadowId,
   BeatId,
+  BeatCorroborationEvaluation,
   ChapterFinalStateDeclaration,
   FinalStateAttribute,
 } from '../types/story-memory.js'
@@ -12,9 +13,12 @@ import { applyEvents } from './projector.js'
 import { partitionInvalidForeshadowIntroductions } from './foreshadow-policy.js'
 import { splitContentParagraphs } from '../utils/text.js'
 import { getCanonicalForeshadows, resolveCanonicalForeshadowId } from './foreshadow-alias.js'
+import { getTerminalCharacterIds, lifecycleChannelFromStatusEvent } from './lifecycle.js'
 import { generateId } from '../utils/id.js'
 import type { StoryArc } from '../types/outline.js'
 import { getCoveredMandatoryBeatId, isBeatProven } from '../utils/beat-coverage.js'
+import { getActForChapter } from '../utils/story-arc.js'
+import type { ChapterIncrementVerdict } from './increment.js'
 
 export interface StructuredValidationResult {
   expectedEvents: StoryEvent[]
@@ -31,7 +35,10 @@ export interface StructuredValidationResult {
   foreshadowFulfillmentRejections: ForeshadowFulfillmentRejection[]
   plotAdvanceRejections: PlotAdvanceRejection[]
 
+  /** 当前幕到期而未消费、本章规划也未认领的 mandatory beats（按幕过滤，非全弧线）。 */
   unclaimedMandatoryBeats: BeatId[]
+  /** 本章规划认领的 mandatory beat ID（plan.claimedMandatoryBeatIds 透传，供零认领判定）。 */
+  claimedMandatoryBeatIds?: BeatId[]
   claimedButUnprovenBeats: BeatId[]
 
   stateConflicts: StateConflict[]
@@ -48,6 +55,32 @@ export interface StructuredValidationResult {
    * 由 structured-validation 节点在语义验证后填充；纯 diff 校验阶段恒为空。
    */
   droppedUnauthorizedPlotAdvanceEvents: Array<Extract<StoryEvent, { type: 'plot-advance' }>>
+  /**
+   * 跨章零增量判定（C.2.2）：由 structured-validation 节点在事件过滤后填充；
+   * 路由层据此决定 warning / 大纲重生成升级。
+   */
+  increment?: ChapterIncrementVerdict
+  /**
+   * 终态实体被本章事件引用（B.1 确定性不变量，error）：
+   * 位置/状态/持有人等任何事件引用已置终态标记（alive=false）的角色。
+   * 显式 character-revival 事件是唯一合法引用，可清除终态标记。
+   */
+  terminalStateViolations: TerminalStateViolation[]
+  /**
+   * 对已终态实体再次发出同一终态事件（重复死亡，B.1 确定性不变量，error）。
+   */
+  terminalDuplicateEvents: TerminalStateViolation[]
+  /**
+   * 本章新获证明的 mandatory beat 的佐证评估（D.2.1）：
+   * 由 structured-validation 节点在语义验证与事件过滤后填充；纯 diff 校验阶段恒为空。
+   * 路由层据此对未佐证的认领节拍给出一次 beatCorroboration 重试。
+   */
+  beatCorroborations?: BeatCorroborationEvaluation[]
+}
+
+export interface TerminalStateViolation {
+  entityId: string
+  event: StoryEvent
 }
 
 export interface ForeshadowFulfillmentRejection {
@@ -115,7 +148,12 @@ export function validateChapterEvents(
   const canonicalExpected = canonicalizeForeshadowFulfillmentEvents(memory, chapterExpected)
   const canonicalAccepted = canonicalizeForeshadowFulfillmentEvents(memory, acceptedEvents)
 
-  const { missing, unexpected } = diffEvents(canonicalExpected, canonicalAccepted)
+  // entity-register 是自授权创建事件（B.3）：writer 在正文中引入新有名实体时先注册，
+  // 规划无法预知全部注册需求，因此不参与 expected/actual 的 missing/unexpected 对比；
+  // 事件仍留在 accepted/actual 中参与投影、增量判定与事实回采。
+  const diffExpected = canonicalExpected.filter((event) => event.type !== 'entity-register')
+  const diffAccepted = canonicalAccepted.filter((event) => event.type !== 'entity-register')
+  const { missing, unexpected } = diffEvents(diffExpected, diffAccepted)
 
   const unfulfilledRequiredForeshadows: ForeshadowId[] = []
   const overdueForeshadows: ForeshadowId[] = []
@@ -159,9 +197,14 @@ export function validateChapterEvents(
   const unclaimedMandatoryBeats: BeatId[] = []
   const claimedButUnprovenBeats: BeatId[] = []
 
+  // 「未认领」信号按幕过滤：只有当前幕到期而未消费的 required beat 才与本章的
+  // 认领义务相关；后续幕的 pending beat 是正常配速，不构成章级信号。
+  const currentAct = getActForChapter(options.storyArc, chapterIndex)
   for (const beat of Object.values(effectiveMemory.beats)) {
     if (
       beat.required &&
+      currentAct !== undefined &&
+      beat.actIndex === currentAct.index &&
       getCoveredMandatoryBeatId(options.storyArc, beat.id) === undefined &&
       !isBeatProven(options.storyArc, effectiveMemory, beat.id)
     ) {
@@ -175,6 +218,12 @@ export function validateChapterEvents(
       claimedButUnprovenBeats.push(id)
     }
   }
+
+  // B.1 终态不变量：基于章前投影的终态标记，按事件顺序确定性判定。
+  const { terminalStateViolations, terminalDuplicateEvents } = detectTerminalStateViolations(
+    memory,
+    acceptedEvents
+  )
 
   return {
     expectedEvents: chapterExpected,
@@ -190,13 +239,74 @@ export function validateChapterEvents(
     foreshadowFulfillmentRejections: [],
     plotAdvanceRejections: [],
     unclaimedMandatoryBeats,
+    claimedMandatoryBeatIds: [...(plan.claimedMandatoryBeatIds ?? [])],
     claimedButUnprovenBeats,
     stateConflicts: detectStateConflicts(acceptedEvents),
     finalStateMismatches: finalState.finalStateMismatches,
     finalStateUncorroborated: finalState.finalStateUncorroborated,
     autoCompletedEvents: finalState.autoCompletedEvents,
     droppedUnauthorizedPlotAdvanceEvents: [],
+    terminalStateViolations,
+    terminalDuplicateEvents,
   }
+}
+
+/**
+ * B.1 终态不变量检测（纯结构化，不触碰正文语义）：
+ * 以章前投影的终态角色集合为起点，按事件顺序维护本章局部终态集合——
+ * alive=false 的 lifecycle 事件加入集合，显式 character-revival 事件移出集合；
+ * 集合内角色再被任何实体事件引用即违规，再收到死亡事件即重复终态。
+ * character-revival 本身是唯一合法的终态实体引用（显式反转通道）。
+ */
+function detectTerminalStateViolations(
+  memory: StoryMemory,
+  chapterEvents: StoryEvent[]
+): {
+  terminalStateViolations: TerminalStateViolation[]
+  terminalDuplicateEvents: TerminalStateViolation[]
+} {
+  const terminalStateViolations: TerminalStateViolation[] = []
+  const terminalDuplicateEvents: TerminalStateViolation[] = []
+  const terminal = getTerminalCharacterIds(memory.entities)
+
+  for (const event of chapterEvents) {
+    switch (event.type) {
+      case 'character-location': {
+        if (terminal.has(event.characterId)) {
+          terminalStateViolations.push({ entityId: event.characterId, event })
+        }
+        break
+      }
+      case 'character-status': {
+        const channel = lifecycleChannelFromStatusEvent(event)
+        const isDeathEvent = channel?.attribute === 'alive' && channel.value === false
+        if (terminal.has(event.characterId)) {
+          if (isDeathEvent) {
+            terminalDuplicateEvents.push({ entityId: event.characterId, event })
+          } else {
+            terminalStateViolations.push({ entityId: event.characterId, event })
+          }
+        }
+        if (isDeathEvent) {
+          terminal.add(event.characterId)
+        }
+        break
+      }
+      case 'character-revival': {
+        terminal.delete(event.characterId)
+        break
+      }
+      case 'item-location': {
+        // 持有人语义引用角色：已终态角色不能再成为物品持有人。
+        if (event.holderId !== null && terminal.has(event.holderId)) {
+          terminalStateViolations.push({ entityId: event.holderId, event })
+        }
+        break
+      }
+    }
+  }
+
+  return { terminalStateViolations, terminalDuplicateEvents }
 }
 
 function canonicalizeForeshadowFulfillmentEvents(
@@ -296,6 +406,12 @@ const FINAL_STATE_EVENT_TYPES: Record<FinalStateAttribute, readonly StoryEvent['
   location: ['character-location', 'item-location'],
   status: ['character-status', 'item-state'],
 }
+
+/**
+ * 终态声明佐证的共享判定件（B.2 回采复用同一 corroboration 规则，避免重复实现）：
+ * 支撑事件类型表、事件的终态值提取、事件的实体 id 提取。
+ */
+export { FINAL_STATE_EVENT_TYPES }
 
 /** 系统补全事件的事件源标记；每轮校验都会先剔除旧补全事件再按最新声明重算。 */
 const FINAL_STATE_COMPLETION_SOURCE = 'final-state-completion' as const
@@ -460,7 +576,7 @@ function buildFinalStateCompletionEvent(
   }
 }
 
-function finalStateEventValue(event: StoryEvent): string | null {
+export function finalStateEventValue(event: StoryEvent): string | null {
   switch (event.type) {
     case 'character-location':
       return event.locationId
@@ -488,7 +604,7 @@ function detectStateConflicts(_events: StoryEvent[]): StateConflict[] {
   return []
 }
 
-function entityIdFromEvent(event: StoryEvent): string {
+export function entityIdFromEvent(event: StoryEvent): string {
   switch (event.type) {
     case 'character-location':
     case 'character-status':

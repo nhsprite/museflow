@@ -6,6 +6,8 @@ export type BlockingReason =
   | 'rewrite_loop_stalled'
   | 'blocking_outline_conflict'
   | 'mandatory_beat_unproven'
+  | 'prose_hygiene'
+  | 'zero_progress_stall'
 
 export interface BlockingConflict {
   subject: string

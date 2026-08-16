@@ -88,6 +88,14 @@ export const GraphState = Annotation.Root({
 
   // structured validation result for the current chapter (populated by the story memory validator)
   structuredValidationResult: Annotation<StructuredValidationResult | undefined>,
+
+  // 跨章零增量闸（C.2.2）：截至最近定稿章的连续零增量章数；定稿时更新，有增量即清零。
+  // 旧 checkpoint 无此通道，读取处按 undefined → 0 处理。
+  consecutiveZeroIncrementChapters: Annotation<number | undefined>,
+
+  // 大纲层零认领连击（C.2.3）：截至最近定稿章的连续零认领（mandatory beat）章数；
+  // 定稿时更新，认领或当前幕无可认领节拍即清零。
+  consecutiveZeroClaimChapters: Annotation<number | undefined>,
 })
 
 export type ReducedGraphState = typeof GraphState.State

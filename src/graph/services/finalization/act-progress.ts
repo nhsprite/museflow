@@ -11,6 +11,7 @@ import {
 } from '../../../utils/mandatory-beat-ids.js'
 import type { VerifiedConstraint } from '../../../types/verified-constraint.js'
 import { isBeatProven } from '../../../utils/beat-coverage.js'
+import { isConsumedMandatoryBeat } from '../../../story-memory/beat-corroboration.js'
 
 export interface ActProgressUpdate {
   actProgress: ReducedGraphState['actProgress']
@@ -88,11 +89,14 @@ function updateActProgressFromStructuredIds(
   const actProgress: ReducedGraphState['actProgress'] = {}
   for (const act of storyArc?.acts ?? []) {
     const entries = getMandatoryBeatEntriesForAct(act)
+    // D.2.1/D.2.2：mandatory beat 的消费以「proven + 佐证审计通过」为准；
+    // proven 但未佐证的 beat 保持 pending（幕边界判定仍视为未消费）；
+    // 采用前已消费（无审计记录）的 beat grandfathered 为 consumed。
     const consumed = entries
-      .filter((entry) => verifiedBeatIds.has(entry.id))
+      .filter((entry) => isConsumedMandatoryBeat(state.storyMemory?.beats[entry.id]))
       .map((entry) => entry.beat)
     const pending = entries
-      .filter((entry) => !verifiedBeatIds.has(entry.id))
+      .filter((entry) => !isConsumedMandatoryBeat(state.storyMemory?.beats[entry.id]))
       .map((entry) => entry.beat)
     actProgress[act.index] = { consumed, pending }
   }

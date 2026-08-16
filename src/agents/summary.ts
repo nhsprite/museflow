@@ -15,6 +15,7 @@ import { parseJsonFromLLM } from '../utils/json.js'
 import type { StoryEvent } from '../types/story-memory.js'
 import type { ChapterHandoff } from '../types/story-state.js'
 import { normalizeStoryEvents } from '../story-memory/event-contract.js'
+import { normalizeStoryTime } from '../utils/story-time.js'
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -26,7 +27,9 @@ function isChapterHandoff(value: unknown): value is ChapterHandoff {
   return (
     typeof handoff.chapterNumber === 'number' &&
     typeof handoff.endScene === 'string' &&
-    typeof handoff.endTime === 'string' &&
+    // B.4：endTime 为结构化对象；兼容模型仍输出自由文本字符串（读取时归一化）。
+    (typeof handoff.endTime === 'string' ||
+      (typeof handoff.endTime === 'object' && handoff.endTime !== null)) &&
     isStringArray(handoff.charactersPresent) &&
     typeof handoff.lastAction === 'string' &&
     isStringArray(handoff.openQuestions) &&
@@ -88,7 +91,10 @@ export class SummaryAgent extends BaseAgent<SummaryAgentInput> {
     if (handoffText) {
       const parsedHandoff = parseJsonFromLLM<unknown>(handoffText)
       if (parsedHandoff.success && isChapterHandoff(parsedHandoff.data)) {
-        chapterHandoff = parsedHandoff.data
+        chapterHandoff = {
+          ...parsedHandoff.data,
+          endTime: normalizeStoryTime(parsedHandoff.data.endTime),
+        }
       } else {
         logger.warn('[MuseFlow] SummaryAgent 忽略了无效 chapter_handoff')
       }

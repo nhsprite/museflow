@@ -6,6 +6,8 @@ import type {
 } from '../../../../src/core/chapter-generation/routing/types.js'
 import type { Issue } from '../../../../src/types/agent.js'
 import type { StructuredValidationResult } from '../../../../src/story-memory/validator.js'
+import type { ChapterIncrementVerdict } from '../../../../src/story-memory/increment.js'
+import type { StoryMemory } from '../../../../src/types/story-memory.js'
 import type { ChapterPlanningConfig } from '../../../../src/types/genre.js'
 import { DEFAULT_CHAPTER_PLANNING_CONFIG } from '../../../../src/utils/chapter-planning.js'
 
@@ -53,7 +55,18 @@ function makeStructuredResult(
   overrides: Partial<StructuredValidationResult> = {}
 ): StructuredValidationResult {
   return {
-    expectedEvents: [],
+    // 非空 expectedEvents 抑制与本测试无关的 structured.zero-event-chapter 信号；
+    // 零事件/零增量信号有专属测试覆盖。
+    expectedEvents: [
+      {
+        id: 'evt-expected-default',
+        type: 'character-location',
+        characterId: 'c-default',
+        locationId: 'l-default',
+        chapterIndex: 0,
+        source: 'outline',
+      },
+    ],
     actualEvents: [],
     missingEvents: [],
     unexpectedEvents: [],
@@ -448,5 +461,197 @@ describe('decideNextStep structured validation routing', () => {
       discardPlan: false,
       feedbackIssues: ctx.pendingIssues,
     })
+  })
+})
+
+describe('decideNextStep zero-increment gate (C.2.2)', () => {
+  function makeIncrementVerdict(
+    overrides: Partial<ChapterIncrementVerdict> = {}
+  ): ChapterIncrementVerdict {
+    return {
+      chapterIndex: 1,
+      zeroIncrement: true,
+      acceptedEventCount: 0,
+      increments: {
+        characterLocationChanges: 0,
+        characterStatusChanges: 0,
+        itemHolderChanges: 0,
+        itemLocationChanges: 0,
+        itemStateChanges: 0,
+        newForeshadows: 0,
+        fulfilledForeshadows: 0,
+        foreshadowDeadlineExtensions: 0,
+        newTasks: 0,
+        resolvedTasks: 0,
+        plotAdvances: 0,
+      },
+      ...overrides,
+    }
+  }
+
+  function makeMemory(): StoryMemory {
+    return {
+      version: '3',
+      lastChapterIndex: 0,
+      entities: { characters: {}, items: {}, locations: {}, factions: {}, plots: {} },
+      events: [
+        {
+          id: 'evt-prev',
+          type: 'character-location',
+          characterId: 'c-1',
+          locationId: 'l-1',
+          chapterIndex: 0,
+          source: 'chapter',
+        },
+      ],
+      foreshadows: {},
+      beats: {},
+      tasks: {},
+    }
+  }
+
+  function makeZeroIncrementCtx(
+    overrides: Partial<RoutingContext> = {},
+    sessionOverrides: Partial<RoutingContext['session']> = {}
+  ): RoutingContext {
+    return {
+      session: makeSession({ chapterIndex: 1, ...sessionOverrides }),
+      pendingIssues: [],
+      genre: 'general',
+      chapterFileExists: true,
+      structuredValidationResult: makeStructuredResult({ increment: makeIncrementVerdict() }),
+      consecutiveZeroIncrementChapters: 0,
+      storyMemory: makeMemory(),
+      ...overrides,
+    }
+  }
+
+  it('warns and still finalizes on the first zero-increment chapter', async () => {
+    const result = await decideNextStep(makeZeroIncrementCtx(), makeDeps())
+
+    expect(result.step.kind).toBe('finalize_chapter')
+    const warning = result.processedIssues.find(
+      (issue) => issue.ruleId === 'structured.zero-increment-chapter'
+    )
+    expect(warning).toBeDefined()
+    expect(warning?.severity).toBe('warning')
+  })
+
+  it('regenerates the outline with a ZeroProgressRejection on the second consecutive zero-increment chapter', async () => {
+    const result = await decideNextStep(
+      makeZeroIncrementCtx({ consecutiveZeroIncrementChapters: 1 }),
+      makeDeps()
+    )
+
+    expect(result.step).toMatchObject({
+      kind: 'draft_chapter',
+      discardPlan: true,
+      regenerateOutline: true,
+    })
+    expect(result.sessionUpdate.outlineRegenAttempts).toBe(1)
+    expect(result.sessionUpdate.forceStructuralRewrite).toBe(true)
+    expect(result.sessionUpdate.issueFingerprintHistory).toEqual([])
+    const rejection = result.sessionUpdate.zeroProgressOutlineRejection
+    expect(rejection?.consecutiveZeroIncrementChapters).toBe(2)
+    expect(rejection?.recentChapterEventCounts).toEqual([
+      { chapterIndex: 0, acceptedEventCount: 1 },
+      { chapterIndex: 1, acceptedEventCount: 0 },
+    ])
+  })
+
+  it('stops for manual resolution when outline regeneration attempts are exhausted', async () => {
+    const result = await decideNextStep(
+      makeZeroIncrementCtx({ consecutiveZeroIncrementChapters: 1 }, { outlineRegenAttempts: 2 }),
+      makeDeps()
+    )
+
+    expect(result.step.kind).toBe('request_rewrite')
+    expect(result.step.kind === 'request_rewrite' && result.step.reason).toBe('zero_progress_stall')
+    const error = result.processedIssues.find(
+      (issue) => issue.ruleId === 'structured.zero-increment-chapter'
+    )
+    expect(error?.severity).toBe('error')
+  })
+
+  it('does not engage when the chapter produced increments', async () => {
+    const ctx = makeZeroIncrementCtx({
+      structuredValidationResult: makeStructuredResult({
+        increment: makeIncrementVerdict({
+          zeroIncrement: false,
+          acceptedEventCount: 1,
+          increments: { ...makeIncrementVerdict().increments, characterLocationChanges: 1 },
+        }),
+      }),
+    })
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('finalize_chapter')
+    expect(
+      result.processedIssues.some((issue) => issue.ruleId === 'structured.zero-increment-chapter')
+    ).toBe(false)
+  })
+
+  it('ignores stale increment verdicts from a different chapter', async () => {
+    const ctx = makeZeroIncrementCtx(
+      {
+        consecutiveZeroIncrementChapters: 1,
+        structuredValidationResult: makeStructuredResult({
+          increment: makeIncrementVerdict({ chapterIndex: 0 }),
+        }),
+      },
+      { chapterIndex: 1 }
+    )
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('finalize_chapter')
+  })
+
+  it('does not engage without chapter content on disk', async () => {
+    const ctx = makeZeroIncrementCtx({ chapterFileExists: false })
+
+    const result = await decideNextStep(ctx, makeDeps())
+
+    expect(result.step.kind).toBe('draft_chapter')
+    expect(
+      result.processedIssues.some((issue) => issue.ruleId === 'structured.zero-increment-chapter')
+    ).toBe(false)
+  })
+
+  it('honors injected warn/error thresholds', async () => {
+    const relaxedConfig: ChapterPlanningConfig = {
+      ...DEFAULT_CHAPTER_PLANNING_CONFIG,
+      downgradeInterpretiveErrors: false,
+      zeroIncrementWarnThreshold: 2,
+      zeroIncrementErrorThreshold: 3,
+    }
+    const relaxedDeps = makeDeps({
+      issuePolicy: { planningConfig: relaxedConfig, isInterpretiveIssue: () => false },
+      rewritePolicy: {
+        planningConfig: relaxedConfig,
+        calculateIssueSetSimilarity: () => Promise.resolve(0),
+        isInterpretiveIssue: () => false,
+        isStateCorruptionIssue: () => false,
+      },
+    })
+
+    // 连击 1：未达 warn 阈值 2，不定稿拦截也无 warning
+    const first = await decideNextStep(makeZeroIncrementCtx(), relaxedDeps)
+    expect(first.step.kind).toBe('finalize_chapter')
+    expect(
+      first.processedIssues.some((issue) => issue.ruleId === 'structured.zero-increment-chapter')
+    ).toBe(false)
+
+    // 连击 2：达到 warn 阈值但未达 error 阈值 3，仅记 warning
+    const second = await decideNextStep(
+      makeZeroIncrementCtx({ consecutiveZeroIncrementChapters: 1 }),
+      relaxedDeps
+    )
+    expect(second.step.kind).toBe('finalize_chapter')
+    const warning = second.processedIssues.find(
+      (issue) => issue.ruleId === 'structured.zero-increment-chapter'
+    )
+    expect(warning?.severity).toBe('warning')
   })
 })

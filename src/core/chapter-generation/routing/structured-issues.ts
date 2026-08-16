@@ -6,6 +6,7 @@ import { inferRetryStrategy } from '../../../utils/retry-strategy.js'
 export const STRUCTURED_ISSUE_TYPES = new Set<IssueType>([
   'state_conflict',
   'beat_unproven',
+  'beat_uncorroborated',
   'foreshadow_false_fulfillment',
   'foreshadow_invalid_deadline',
   'event_missing',
@@ -29,11 +30,50 @@ function structuredError(
 
 export function buildStructuredIssues(
   result: StructuredValidationResult | undefined,
-  chapterIndex: number
+  chapterIndex: number,
+  options: { requireMandatoryBeatClaim?: boolean } = {}
 ): Issue[] {
   if (!result) return []
 
   const issues: Issue[] = []
+
+  // C.2.1 零事件章节信号：过滤（含未授权丢弃）后 draft 事件为空且规划未要求任何事件，
+  // 说明本章对故事状态与情节均无结构化推进。warning 级，由跨章零增量闸负责升级。
+  const droppedEventIds = new Set(
+    (result.droppedUnauthorizedPlotAdvanceEvents ?? []).map((event) => event.id)
+  )
+  const effectiveDraftEvents = result.actualEvents.filter((event) => !droppedEventIds.has(event.id))
+  if (effectiveDraftEvents.length === 0 && result.expectedEvents.length === 0) {
+    issues.push({
+      id: generateId(),
+      ruleId: 'structured.zero-event-chapter',
+      type: 'event_missing',
+      severity: 'warning',
+      description: '本章未产生任何结构化事件，章节规划也未要求事件：本章对故事状态与情节均无推进。',
+      source: 'outline_compliance',
+      location: `第 ${chapterIndex + 1} 章`,
+    })
+  }
+
+  // C.2.1 消费此前被算出即丢弃的 unclaimedMandatoryBeats 信号：仅在强制认领义务下
+  // （幕边界高压，requireMandatoryBeatClaim 由路由层按压力判定注入）本章仍零认领时
+  // 报 error——这是高压不变量在校验层的兜底（大纲层已先行拦截，此处原则上不应触发）。
+  if (options.requireMandatoryBeatClaim && (result.claimedMandatoryBeatIds ?? []).length === 0) {
+    for (const beatId of result.unclaimedMandatoryBeats) {
+      issues.push(
+        structuredError(chapterIndex, {
+          ruleId: 'structured.mandatory-beat-unclaimed',
+          type: 'beat_unproven',
+          subject: beatId,
+          description: `幕边界高压下本章必须消费 mandatory beat，但当前幕待消费的 ${beatId} 未出现在本章认领中（本章零认领）。`,
+          suggestion:
+            '在本章大纲与规划中认领当前幕至少 1 个待消费 mandatory beat，并在正文中写出该节拍所述事件的可观察完成。',
+          source: 'outline_compliance',
+        })
+      )
+    }
+  }
+
   for (const conflict of result.stateConflicts) {
     issues.push(
       structuredError(chapterIndex, {
@@ -42,6 +82,33 @@ export function buildStructuredIssues(
         subject: conflict.entityId,
         conflictAttribute: conflict.attribute,
         description: conflict.description,
+        source: 'state_reconciliation',
+      })
+    )
+  }
+  // B.1 终态不变量：已终态（alive=false）实体再被事件引用 / 再次被宣告死亡，均为硬错误。
+  for (const violation of result.terminalStateViolations ?? []) {
+    issues.push(
+      structuredError(chapterIndex, {
+        ruleId: 'structured.entity-terminal-state-violation',
+        type: 'state_conflict',
+        subject: violation.entityId,
+        description: `实体 ${violation.entityId} 已处于终态（alive=false），本章事件 ${violation.event.id}（${violation.event.type}）仍引用该实体；终态实体不得再产生位置/状态/持有人等事件`,
+        suggestion:
+          '若该实体确实复活，必须改用显式 character-revival 事件（带 @pN 正文证据）先清除终态标记，再输出后续事件；否则删除对该终态实体的事件引用。',
+        source: 'state_reconciliation',
+      })
+    )
+  }
+  for (const violation of result.terminalDuplicateEvents ?? []) {
+    issues.push(
+      structuredError(chapterIndex, {
+        ruleId: 'structured.entity-terminal-duplicate',
+        type: 'state_conflict',
+        subject: violation.entityId,
+        description: `实体 ${violation.entityId} 此前已被宣告终态（alive=false），本章事件 ${violation.event.id} 再次宣告其死亡（重复终态事件）`,
+        suggestion:
+          '同一实体的终态只能确立一次：删除重复的死亡事件；若前次死亡已被推翻，必须先以显式 character-revival 事件反转终态。',
         source: 'state_reconciliation',
       })
     )
@@ -74,6 +141,39 @@ export function buildStructuredIssues(
         source: 'outline_compliance',
       })
     )
+  }
+  // D.2.1 mandatory beat 消费佐证：proven 但未留下结构化痕迹的 mandatory beat 不予消费。
+  // 本章认领的给 error（一次携带 beatCorroboration 反馈的起草重试，重试耗尽由路由层
+  // 转换为 beat_unproven 走现有撤销/大纲重生成路径）；未认领但经正文验证成立的只给
+  // warning——作为真实进展接受，但幕关闭复审时仍视为未消费。
+  const claimedMandatoryBeatIdSet = new Set(result.claimedMandatoryBeatIds ?? [])
+  for (const evaluation of result.beatCorroborations ?? []) {
+    if (evaluation.corroborated) continue
+    if (claimedMandatoryBeatIdSet.has(evaluation.beatId)) {
+      issues.push(
+        structuredError(chapterIndex, {
+          ruleId: 'structured.beat-uncorroborated',
+          type: 'beat_uncorroborated',
+          subject: evaluation.beatId,
+          description: `mandatory beat ${evaluation.beatId} 的推进事件已通过正文验证，但声称的结局未留下结构化痕迹：本章没有与该推进事件因果绑定（共享 @pN 证据锚点或共享主体实体）的状态类事件，也没有受事件流佐证且与该 beat 绑定的章末终态声明。`,
+          suggestion:
+            `声称的结局必须留下结构化痕迹，二选一：1) 在 STORY_EVENTS 中补一条状态类事件（位置/状态/物品/伏笔回收/任务），其 @pN 证据锚点与该 beat 的推进事件（${evaluation.provingEventIds.join('、')}）指向同一段落，或主体实体相同；` +
+            `2) 在 STORY_FINAL_STATE 中输出该结局的终态声明，并以同章事件流佐证、与推进事件绑定。重试后仍未佐证的认领将按未证明处理。`,
+          source: 'outline_compliance',
+        })
+      )
+    } else {
+      issues.push({
+        id: generateId(),
+        ruleId: 'structured.beat-uncorroborated',
+        type: 'beat_uncorroborated',
+        subject: evaluation.beatId,
+        severity: 'warning',
+        description: `未认领的 mandatory beat ${evaluation.beatId} 经正文验证成立，但缺少结构化佐证（绑定的状态类事件或受佐证的终态声明）；该 beat 作为真实进展接受，但幕关闭复审时仍视为未消费。`,
+        source: 'outline_compliance',
+        location: `第 ${chapterIndex + 1} 章`,
+      })
+    }
   }
   for (const foreshadowId of result.falseFulfillments) {
     const semanticRejection = result.foreshadowFulfillmentRejections?.find(

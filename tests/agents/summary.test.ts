@@ -284,7 +284,8 @@ describe('SummaryAgent prompt', () => {
     expect(result.data?.chapterHandoff).toEqual({
       chapterNumber: 3,
       endScene: '教学楼楼梯口',
-      endTime: '傍晚',
+      // B.4：自由文本 endTime 归一化为结构化 { freeform }。
+      endTime: { freeform: '傍晚' },
       charactersPresent: ['char-1'],
       lastAction: '主角停在楼梯口，准备推门',
       openQuestions: ['门后的争执对象尚未确认'],

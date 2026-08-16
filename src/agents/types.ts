@@ -13,6 +13,7 @@ import type {
   StoryEventAuthorityRegistry,
   TaskId,
 } from '../types/story-memory.js'
+import type { ProseHygieneContext } from '../graph/services/prose-hygiene/index.js'
 
 export interface ForeshadowPlanningObligation {
   id: ForeshadowId
@@ -61,7 +62,26 @@ export interface BeatClaimPlanningRejection {
   requiredClaims?: {
     pendingMandatoryBeats: Array<{ beatId: BeatId; beat: string }>
     chaptersRemainingInAct: number
+    /**
+     * 强制认领的触发源：幕边界 beat 算术压力，或连续零认领章升级（C.2.3）。
+     * 缺省视为 act_boundary（兼容旧 checkpoint 中持久化的驳回反馈）。
+     */
+    pressureSource?: 'act_boundary' | 'zero_claim_streak'
   }
+  currentOutline?: {
+    title: string
+    description: string
+  }
+}
+
+/**
+ * 跨章零增量闸升级后的大纲重生成反馈（C.2.2），随下一轮大纲生成注入 prompt。
+ * 携带最近若干章（零增量连击窗口内，含本章）的已接受结构化事件计数。
+ */
+export interface ZeroProgressRejection {
+  /** 含本章在内的连续零增量章数。 */
+  consecutiveZeroIncrementChapters: number
+  recentChapterEventCounts: Array<{ chapterIndex: number; acceptedEventCount: number }>
   currentOutline?: {
     title: string
     description: string
@@ -157,6 +177,8 @@ export interface AgentInput {
   foreshadowObligations?: ForeshadowPlanningObligation[]
   foreshadowPlanningRejection?: ForeshadowPlanningRejection
   beatClaimRejection?: BeatClaimPlanningRejection
+  /** 跨章零增量闸触发的大纲重生成反馈（C.2.2），仅大纲生成 agent 消费。 */
+  zeroProgressRejection?: ZeroProgressRejection
   charactersList?: Character[]
   outlineCharacters?: Character[]
   establishedCharacters?: Character[]
@@ -184,6 +206,8 @@ export interface AgentInput {
   }
   chapterPlan?: ChapterPlan
   storyEventAuthority?: StoryEventAuthorityRegistry
+  /** 正文体例硬门禁的已知标识符集合；仅章节起草 agent 的 parse 阶段消费。 */
+  proseHygiene?: ProseHygieneContext
 }
 
 export type WorldbuilderAgentInput = AgentInput
@@ -208,6 +232,11 @@ export type ChapterOutlineAgentInput = AgentInput &
      * 由 outline-expander 依据结构化进度数据计算，prompt 据此关闭"本章可不推进"的逃逸口。
      */
     mandatoryBeatClaimRequired?: boolean
+    /**
+     * 连续零认领升级标记（C.2.3）：此前连续多章大纲零认领 mandatory beat 时，
+     * 与 mandatoryBeatClaimRequired 搭配使用，prompt 据此说明强制认领的触发原因。
+     */
+    zeroClaimEscalation?: boolean
   }
 
 export type ChapterAgentInput = AgentInput &

@@ -26,12 +26,22 @@ import {
 import { getMandatoryBeatEntriesForAct } from '../utils/mandatory-beat-ids.js'
 import { classifyForeshadows } from '../story-memory/foreshadow-policy.js'
 import { renderStoryEventLine } from '../story-memory/event-format.js'
+import {
+  checkProseHygiene,
+  formatProseHygieneIssue,
+  type ProseHygieneContext,
+} from '../graph/services/prose-hygiene/index.js'
+
+/** parse 阶段正文体例失败的标记字段，供 draft 节点区分可重试的体例失败与其他生成失败。 */
+export const PROSE_HYGIENE_FAILURE_KEY = 'proseHygieneFailure'
 
 export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   // Note: currentChapterIndex is stored as instance state because BaseAgent.parse
   // only receives the raw content string. Future refactor should pass a context
   // object (including chapterIndex) into parse.
   private currentChapterIndex = 0
+  // 与 currentChapterIndex 同理：parse 阶段体例检查所需的已知标识符集合。
+  private currentHygieneContext: ProseHygieneContext = {}
 
   constructor(provider: ModelProvider) {
     super(provider, 0.7)
@@ -40,6 +50,12 @@ export class ChapterAgent extends BaseAgent<ChapterAgentInput> {
   async run(state: ChapterAgentInput): Promise<AgentOutput> {
     // Store chapterIndex for use during parse, since parse only sees content string.
     this.currentChapterIndex = state.chapterIndex ?? 0
+    // 未显式提供标识符集合时，至少用本章章号与总章数构造合法章节号集合，
+    // 保证章节自指检测始终生效；协议块检测本身不依赖上下文。
+    this.currentHygieneContext = state.proseHygiene ?? {
+      chapterNumber: this.currentChapterIndex + 1,
+      totalChapters: state.totalChapters,
+    }
     return super.run(state)
   }
 
@@ -408,7 +424,8 @@ ${lines.join('\n')}
 - 事件类型、ID、所有字段值必须与下列清单完全一致；
 - 每条事件末尾必须附加正文段落证据 @pN，其中 N 是 CHAPTER_CONTENT 中非标题正文段落的 1-based 序号；请直接将下列行复制到 STORY_EVENTS 区块，再把 @pN 替换为对应段落编号；
 - 禁止把 location 事件改写成 state 事件，禁止把 state 事件改写成 location 事件；
-- 如果某事件在正文中没有发生，必须先修改正文让它发生，而不是省略该事件。
+- 如果某事件在正文中没有发生，必须先修改正文让它发生，而不是省略该事件；
+- 以下事件行与其中的 ID 只属于 STORY_EVENTS 区块，严禁抄入 CHAPTER_CONTENT 正文。
 
 ${eventLines}
 </expected_events>`
@@ -445,26 +462,57 @@ ${eventLines}
       const detectedPreWrite = extractedContent.slice(0, headingMatch.index).trim()
       extractedContent = extractedContent.slice(headingMatch.index).trim()
       if (detectedPreWrite && !standardPreWriteCheck) {
-        return {
-          success: true,
-          content: extractedContent,
-          data: {
-            preWriteCheck: detectedPreWrite,
-            storyEvents: parseStoryEventsBlock(content, this.currentChapterIndex),
-            finalStateDeclarations,
-          },
-        }
+        return this.buildParseResult(
+          extractedContent,
+          detectedPreWrite,
+          content,
+          finalStateDeclarations
+        )
       }
     }
 
     const cleaned = extractedContent.replace(/<!--[\s\S]*?-->/g, '').trim()
 
+    return this.buildParseResult(
+      cleaned || extractedContent || content,
+      standardPreWriteCheck || undefined,
+      content,
+      finalStateDeclarations
+    )
+  }
+
+  /**
+   * 组装 parse 结果前的正文体例硬门禁：分离出的正文若含 error 级体例 issue
+   * （协议块残留、内部标识符泄漏、章节自指），视同解析失败，由调用方走重试通道。
+   */
+  private buildParseResult(
+    body: string,
+    preWriteCheck: string | undefined,
+    rawContent: string,
+    finalStateDeclarations: ReturnType<typeof parseStoryFinalStateBlock>
+  ): AgentOutput {
+    const hygieneIssues = checkProseHygiene(body, this.currentHygieneContext).filter(
+      (issue) => issue.severity === 'error'
+    )
+    if (hygieneIssues.length > 0) {
+      const details = hygieneIssues
+        .slice(0, 5)
+        .map((issue) => formatProseHygieneIssue(issue))
+        .join('；')
+      logger.warn(`[MuseFlow] 警告: 正文未通过体例检查：${details}`)
+      return {
+        success: false,
+        error: `正文包含生成协议残留或内部标识符泄漏：${details}`,
+        data: { [PROSE_HYGIENE_FAILURE_KEY]: true },
+      }
+    }
+
     return {
       success: true,
-      content: cleaned || extractedContent || content,
+      content: body,
       data: {
-        preWriteCheck: standardPreWriteCheck || undefined,
-        storyEvents: parseStoryEventsBlock(content, this.currentChapterIndex),
+        preWriteCheck,
+        storyEvents: parseStoryEventsBlock(rawContent, this.currentChapterIndex),
         finalStateDeclarations,
       },
     }
@@ -475,11 +523,14 @@ ${eventLines}
   }
 
   private extractContentWithoutMarkers(rawContent: string): string {
+    // 缺标记回退路径必须同时剥离 PRE_WRITE_CHECK 与 STORY_EVENTS 两个协议区块：
+    // 只剥前者会让事件行混入正文（历史泄漏的主要来源之一）。
     const contentAfterPreWriteRemoval = rawContent
       .replace(
         /===\s*PRE_WRITE_CHECK\s*===[\s\S]*?(?===\s*STORY_EVENTS\s*===|===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i,
         ''
       )
+      .replace(/===\s*STORY_EVENTS\s*===[\s\S]*?(?===\s*CHAPTER_CONTENT\s*===|#{1,2}\s+第|$)/i, '')
       .trim()
 
     if (this.hasPreWriteCheckArtifacts(contentAfterPreWriteRemoval)) {
