@@ -183,7 +183,10 @@ export async function checkOutlineAgainstPastSummaries(
   ]
 
   try {
-    const response = await provider.chat(messages, 0.2)
+    const response = await provider.chat(messages, 0.2, {
+      purpose: 'outline.summary-conflict-check',
+      chapterIndex: chapterNumber - 1,
+    })
     const conflicts = parseConflicts(response)
     const blocking = conflicts.filter((c) => c.severity === 'blocking')
     if (blocking.length > 0) {

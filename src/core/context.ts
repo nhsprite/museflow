@@ -4,6 +4,7 @@ import type { AppConfig } from '../types/config.js'
 import { createProvider } from '../model/registry.js'
 import { getCheckpointer } from '../graph/checkpointer.js'
 import { loadConfig } from '../config/store.js'
+import { ModelTelemetry } from '../model/telemetry.js'
 
 /**
  * MuseFlow 运行时上下文。
@@ -15,6 +16,7 @@ export interface RuntimeContext {
   provider: ModelProvider
   checkpointer: BaseCheckpointSaver<string>
   config: AppConfig
+  telemetry?: ModelTelemetry
 }
 
 /**
@@ -25,9 +27,11 @@ export interface RuntimeContext {
  */
 export function createRuntimeContext(): RuntimeContext {
   const config = loadConfig()
+  const telemetry = new ModelTelemetry()
   return {
-    provider: createProvider(config),
+    provider: createProvider(config, telemetry),
     checkpointer: getCheckpointer(),
     config,
+    telemetry,
   }
 }

@@ -193,12 +193,18 @@ async function judgeChapterOpeningContinuity(
 
   try {
     const result = provider.chatStructured
-      ? await provider.chatStructured<ContinuityCheckResult>(messages, CONTINUITY_CHECK_SCHEMA, 0.1)
+      ? await provider.chatStructured<ContinuityCheckResult>(
+          messages,
+          CONTINUITY_CHECK_SCHEMA,
+          0.1,
+          { purpose: 'continuity.opening', chapterIndex: chapterNumber - 1 }
+        )
       : await chatStructuredFallback<ContinuityCheckResult>(
           provider,
           messages,
           CONTINUITY_CHECK_SCHEMA,
-          0.1
+          0.1,
+          { purpose: 'continuity.opening', chapterIndex: chapterNumber - 1 }
         )
 
     if (result.isContinuous !== false) return []

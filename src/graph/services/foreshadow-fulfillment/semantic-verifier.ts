@@ -156,8 +156,12 @@ export async function verifyForeshadowFulfillments(
   let raw: unknown
   try {
     raw = input.provider.chatStructured
-      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0)
-      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0)
+      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'validation.foreshadow-fulfillment',
+        })
+      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'validation.foreshadow-fulfillment',
+        })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return [

@@ -123,6 +123,32 @@ describe('JsonCheckpointer', () => {
     expect(tuple?.checkpoint.id).toBe('cp-1')
   })
 
+  it('reports a corrupted latest pointer with a recovery hint instead of ignoring it', async () => {
+    const saver = new JsonCheckpointer()
+    await saver.put(
+      { configurable: { thread_id: TEST_STORY_ID, outputDir } },
+      makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z'),
+      makeMetadata(),
+      {}
+    )
+    writeFileSync(join(outputDir, 'checkpoints', 'latest.json'), '{broken')
+
+    await expect(
+      saver.getTuple({ configurable: { thread_id: TEST_STORY_ID, outputDir } })
+    ).rejects.toThrow(/Checkpoint 数据损坏.*停止写入.*重写/)
+  })
+
+  it('reports a corrupted checkpoint file instead of silently skipping it', async () => {
+    const saver = new JsonCheckpointer()
+    const checkpointDir = join(outputDir, 'checkpoints')
+    mkdirSync(checkpointDir, { recursive: true })
+    writeFileSync(join(checkpointDir, 'broken.json'), '{"checkpointId": "broken"}')
+
+    await expect(
+      saver.getTuple({ configurable: { thread_id: TEST_STORY_ID, outputDir } })
+    ).rejects.toThrow(/broken\.json.*缺少有效的/)
+  })
+
   it('lists checkpoints sorted by timestamp descending', async () => {
     const saver = new JsonCheckpointer()
     const cp1 = makeCheckpoint('cp-1', '2024-01-01T00:00:00.000Z')
@@ -288,6 +314,15 @@ describe('StoryCheckpointService', () => {
       'injected'
     )
     expect(validateUuid((newCheckpoint as { id: string }).id)).toBe(true)
+  })
+
+  it('does not treat corrupted chapter markers as an empty marker set', async () => {
+    const checkpointDir = join(outputDir, 'checkpoints')
+    mkdirSync(checkpointDir, { recursive: true })
+    writeFileSync(join(checkpointDir, 'chapter_markers.json'), '{broken')
+    const service = createCheckpointService(outputDir)
+
+    await expect(service.listChapterMarkers()).rejects.toThrow(/Checkpoint 数据损坏/)
   })
 
   it('clearPendingWrites removes pending_writes.json', async () => {

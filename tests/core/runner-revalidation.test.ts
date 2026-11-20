@@ -19,6 +19,7 @@ const deleteChapterContent = vi.fn().mockResolvedValue(undefined)
 const deleteStagedChapterContent = vi.fn().mockResolvedValue(undefined)
 const promoteStagedChapterContent = vi.fn().mockResolvedValue(true)
 const hasStagedChapterContent = vi.fn().mockReturnValue(false)
+const readChapterCommitJournal = vi.fn().mockResolvedValue(null)
 const saveChapterMarker = vi.fn().mockResolvedValue(undefined)
 const getChapterMarker = vi.fn().mockResolvedValue(undefined)
 const deleteChapterMarkersFrom = vi.fn().mockResolvedValue(undefined)
@@ -58,10 +59,14 @@ vi.mock('../../src/storage/meta/stores/chapter-report.js', () => ({
 
 const mockExistsSync = vi.fn().mockReturnValue(true)
 const mockReaddirSync = vi.fn().mockReturnValue(['test-story-story-1'])
-const mockReadFileSync = vi.fn().mockReturnValue(
-  JSON.stringify({
-    story: { id: 'story-1', outputDir: testTempDir },
-  })
+const mockReadFileSync = vi.fn().mockImplementation((path: unknown) =>
+  JSON.stringify(
+    String(path).endsWith('latest.json')
+      ? { checkpointId: 'checkpoint-123', ts: '2024-01-01T00:00:00.000Z' }
+      : {
+          story: { id: 'story-1', outputDir: testTempDir },
+        }
+  )
 )
 
 function createBaseGraphState(overrides: Record<string, unknown> = {}) {
@@ -120,10 +125,14 @@ vi.mock(import('node:fs'), async (importOriginal) => {
 vi.mock('../../src/storage/filesystem/writer.js', () => ({
   writeChapterContent,
   readChapterContent,
+  readChapterContentForRun: readChapterContent,
   deleteChapterContent,
   deleteStagedChapterContent,
   promoteStagedChapterContent,
   hasStagedChapterContent,
+  readChapterCommitJournal,
+  writeChapterCommitJournal: vi.fn().mockResolvedValue(undefined),
+  deleteChapterCommitJournal: vi.fn().mockResolvedValue(undefined),
   writeOutlineContent: vi.fn(),
   writeStoryBible: vi.fn(),
 }))
@@ -224,6 +233,7 @@ describe('runner revalidation', () => {
     vi.clearAllMocks()
     readChapterContent.mockResolvedValue('chapter content')
     hasStagedChapterContent.mockReturnValue(false)
+    readChapterCommitJournal.mockResolvedValue(null)
     getChapterMarker.mockResolvedValue(undefined)
     mockGraph.getState.mockResolvedValue({
       values: createBaseGraphState(),
@@ -1781,6 +1791,93 @@ describe('runner revalidation', () => {
     expect(promoteStagedChapterContent).toHaveBeenCalledWith(outputDir, 2)
     const invokedState = mockGraph.invoke.mock.calls[0]![0] as Record<string, unknown>
     expect(invokedState.pendingIssues).toEqual([])
+  })
+
+  it.each(['prepared', 'content_promoted', 'marker_saved'] as const)(
+    'recovers a %s commit against the latest state before selecting a rewrite checkpoint',
+    async (phase) => {
+      const { runOneChapter } = await import('../../src/core/runner.js')
+      const outputDir = join(testOutputsDir, 'test-story-story-1')
+      readChapterCommitJournal.mockResolvedValue({
+        version: 1,
+        chapterNumber: 2,
+        phase,
+        checkpointId: 'checkpoint-chapter-2',
+        updatedAt: 1,
+      })
+      getChapterMarker.mockResolvedValue('checkpoint-chapter-1')
+      mockGraph.getState.mockImplementation(async (config) => ({
+        values: createBaseGraphState({
+          currentChapterIndex: config.configurable.checkpoint_id ? 1 : 2,
+        }),
+        config: {
+          configurable: {
+            checkpoint_id: config.configurable.checkpoint_id ?? 'checkpoint-chapter-2',
+          },
+        },
+      }))
+      mockGraph.invoke.mockResolvedValue(createBaseGraphState({ currentChapterIndex: 2 }))
+
+      const result = await runOneChapter(
+        'story-1',
+        { mode: 'rewrite', targetChapterIndex: 1 },
+        createMockContext()
+      )
+
+      expect(result.currentChapterIndex).toBe(2)
+      expect(saveChapterMarker).toHaveBeenNthCalledWith(1, 2, 'checkpoint-chapter-2')
+      expect(saveChapterMarker.mock.invocationCallOrder[0]!).toBeLessThan(
+        getChapterMarker.mock.invocationCallOrder[0]!
+      )
+      expect(mockGraph.getState).toHaveBeenCalledWith({
+        configurable: { thread_id: 'story-1', outputDir, checkpoint_id: 'checkpoint-chapter-1' },
+      })
+      expect(mockGraph.invoke.mock.calls[0]![0]).toMatchObject({
+        currentChapterIndex: 1,
+        pendingIssues: [],
+      })
+    }
+  )
+
+  it('keeps recovery issues scoped to the selected rewrite checkpoint', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    getChapterMarker.mockResolvedValue('checkpoint-chapter-1')
+    mockGraph.getState.mockImplementation(async (config) => ({
+      values: createBaseGraphState({
+        currentChapterIndex: config.configurable.checkpoint_id ? 1 : 3,
+      }),
+      config: {
+        configurable: { checkpoint_id: config.configurable.checkpoint_id ?? 'checkpoint-latest' },
+      },
+    }))
+    readChapterContent.mockResolvedValue(null)
+
+    await runOneChapter('story-1', { mode: 'rewrite', targetChapterIndex: 1 }, createMockContext())
+
+    expect(mockGraph.invoke.mock.calls[0]![0]).toMatchObject({
+      pendingIssues: [expect.objectContaining({ id: 'chapter-1-content-missing' })],
+    })
+  })
+
+  it('still rejects a commit journal ahead of the latest checkpoint', async () => {
+    const { runOneChapter } = await import('../../src/core/runner.js')
+    readChapterCommitJournal.mockResolvedValue({
+      version: 1,
+      chapterNumber: 2,
+      phase: 'prepared',
+      checkpointId: 'checkpoint-chapter-2',
+      updatedAt: 1,
+    })
+    mockGraph.getState.mockResolvedValue({
+      values: createBaseGraphState({ currentChapterIndex: 1 }),
+      config: { configurable: { checkpoint_id: 'checkpoint-chapter-1' } },
+    })
+
+    await expect(runOneChapter('story-1', { mode: 'draft' }, createMockContext())).rejects.toThrow(
+      'checkpoint 仅完成到第 1 章'
+    )
+    expect(mockGraph.invoke).not.toHaveBeenCalled()
+    expect(saveChapterMarker).not.toHaveBeenCalled()
   })
 
   it('injects a structured draft_failure issue when a committed chapter has no content anywhere', async () => {

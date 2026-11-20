@@ -139,8 +139,12 @@ export async function verifyForeshadowPlan(
   let raw: unknown
   try {
     raw = input.provider.chatStructured
-      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0)
-      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0)
+      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'outline.foreshadow-planning-verification',
+        })
+      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'outline.foreshadow-planning-verification',
+        })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return [

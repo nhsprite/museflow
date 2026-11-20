@@ -120,8 +120,12 @@ export async function verifyPlotAdvances(
   let raw: unknown
   try {
     raw = input.provider.chatStructured
-      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0)
-      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0)
+      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'validation.plot-advance',
+        })
+      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'validation.plot-advance',
+        })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return [

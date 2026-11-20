@@ -1,7 +1,5 @@
 import { logger } from '../../../utils/logger.js'
 import type { ReducedGraphState } from '../../state.js'
-import type { SummaryAgentInput } from '../../../agents/types.js'
-import { getSummaryAgent } from '../../agent-factory.js'
 import {
   applyEvents,
   backfillLifecycleProjection,
@@ -10,26 +8,15 @@ import {
   projectStoryStateFromMemory,
 } from '../../../story-memory/projector.js'
 import type { ForeshadowMergeEvent, StoryEvent } from '../../../types/story-memory.js'
-import type { ChapterHandoff } from '../../../types/story-state.js'
 import { readChapterContentForRun } from '../../../storage/filesystem/writer.js'
 import {
-  classifyForeshadows,
-  foreshadowMemoryToItem,
   getBoundaryBlockingForeshadows,
   partitionInvalidForeshadowIntroductions,
   projectForeshadowStack,
 } from '../../../story-memory/foreshadow-policy.js'
 import { generateId } from '../../../utils/id.js'
 import { agePendingTasks } from '../../../utils/pending-tasks.js'
-import { buildEffectiveCharactersList } from '../../utils/characters.js'
-import {
-  createEmptyChapterReport,
-  summarizeIssues,
-  type StateCorrection,
-  type ChapterReport,
-} from '../../../types/chapter-report.js'
-import { countChineseWords } from '../../../utils/text.js'
-import type { ActArc, StoryArc } from '../../../types/outline.js'
+import type { StoryArc } from '../../../types/outline.js'
 import type { Issue } from '../../../types/agent.js'
 import {
   buildClosingPhaseConstraint,
@@ -54,21 +41,15 @@ import { createEmptyStoryState } from '../../../storage/meta/stores/story-state.
 import { harvestChapterCanonicalFacts } from './fact-harvest.js'
 import {
   getActForChapter,
-  getPendingMandatoryBeats,
   pruneResolvedOutlineCoverageIssues,
   updateActProgress,
 } from './act-progress.js'
-import { countEvidenceParagraphs } from '../../../story-memory/validator.js'
 import {
-  findMandatoryBeatById,
   getMandatoryBeatEntries,
   getMandatoryBeatEntriesForAct,
-  getMandatoryBeatTextById,
 } from '../../../utils/mandatory-beat-ids.js'
 import { reconcileForeshadowEquivalence } from '../foreshadow-equivalence/reconcile.js'
 import { ForeshadowEquivalenceError } from '../foreshadow-equivalence/detector.js'
-import { validatePlannedStoryEventAuthority } from '../../../story-memory/event-authority.js'
-import { policyFromLegacyStackFields } from '../../../story-memory/resolution-policy.js'
 import {
   evaluateStoryCompletion,
   getUnprovenRequiredKeyBeatIdsThroughAct,
@@ -76,253 +57,18 @@ import {
 import { evaluateChapterIncrement } from '../../../story-memory/increment.js'
 import { auditChapterBeatCorroboration } from '../../../story-memory/beat-corroboration.js'
 import {
-  compareStoryTime,
-  formatStoryTime,
-  hasStoryTimeEraConflict,
-  isEmptyStoryTime,
-  normalizeStoryTime,
-} from '../../../utils/story-time.js'
-
-function ensureOutlineLength(
-  outline: ReducedGraphState['outline'],
-  totalChapters: number
-): ReducedGraphState['outline'] {
-  const next = outline.slice(0, totalChapters)
-  for (let i = next.length; i < totalChapters; i++) {
-    next.push({ number: i + 1, title: '', description: '' })
-  }
-  return next
-}
-
-function deriveVerifiedBeatsFromPlotAdvanceEvents(
-  events: StoryEvent[],
-  storyArc: StoryArc | null | undefined
-): string[] {
-  const beatIdToText = new Map(storyArc?.keyBeats.map((kb) => [kb.id, kb.beat]) ?? [])
-  return events
-    .filter((e): e is StoryEvent & { type: 'plot-advance' } => e.type === 'plot-advance')
-    .map((e) => getMandatoryBeatTextById(storyArc, e.beatId) ?? beatIdToText.get(e.beatId))
-    .filter((b): b is string => !!b)
-}
-
-function deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents(
-  events: StoryEvent[],
-  storyArc: StoryArc | null | undefined
-): string[] {
-  const verified = new Set<string>()
-  for (const event of events) {
-    if (event.type !== 'plot-advance') continue
-    if (findMandatoryBeatById(storyArc, event.beatId)) {
-      verified.add(event.beatId)
-    }
-  }
-  return Array.from(verified)
-}
-
-function updateOutlineVerifiedBeats(
-  outline: ReducedGraphState['outline'],
-  chapterIndex: number,
-  verifiedBeats: string[],
-  verifiedMandatoryBeatIds: string[] = []
-): ReducedGraphState['outline'] {
-  const currentOutline = outline[chapterIndex]
-  if (!currentOutline || (verifiedBeats.length === 0 && verifiedMandatoryBeatIds.length === 0)) {
-    return outline
-  }
-  const merged = Array.from(new Set([...(currentOutline.verifiedBeats ?? []), ...verifiedBeats]))
-  const mergedIds = Array.from(
-    new Set([...(currentOutline.verifiedMandatoryBeatIds ?? []), ...verifiedMandatoryBeatIds])
-  )
-  const next = [...outline]
-  next[chapterIndex] = {
-    ...currentOutline,
-    ...(merged.length > 0 ? { verifiedBeats: merged } : {}),
-    ...(mergedIds.length > 0 ? { verifiedMandatoryBeatIds: mergedIds } : {}),
-  }
-  return next
-}
-
-function filterStoryEventsForStoryArc(
-  events: StoryEvent[],
-  storyArc: StoryArc | null | undefined
-): StoryEvent[] {
-  if (!storyArc) return events
-  const validBeatIds = new Set([
-    ...storyArc.keyBeats.map((beat) => beat.id),
-    ...getMandatoryBeatEntries(storyArc).map((beat) => beat.id),
-  ])
-  return events.filter((event) => event.type !== 'plot-advance' || validBeatIds.has(event.beatId))
-}
-
-function filterStoryEventsForEvidence(events: StoryEvent[], chapterContent: string): StoryEvent[] {
-  const paragraphCount = countEvidenceParagraphs(chapterContent)
-  return events.filter((event) => {
-    const evidence = event.evidence
-    return (
-      !!evidence &&
-      Number.isInteger(evidence.paragraphIndex) &&
-      evidence.paragraphIndex >= 1 &&
-      evidence.paragraphIndex <= paragraphCount
-    )
-  })
-}
-
-const FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES: ReadonlySet<StoryEvent['type']> = new Set([
-  // 禁止 SummaryAgent 从 prose 中脑补新伏笔；新伏笔必须由 writer 显式埋下。
-  'foreshadow-introduce',
-  // 回收事件必须由 writer 声明并通过结构化语义门禁，SummaryAgent 不得旁路补提。
-  'foreshadow-fulfill',
-  // 伏笔 deadline 延长是定稿调度决策，不应由 SummaryAgent 产生。
-  'foreshadow-deadline-extend',
-  // 放弃回收是作者决策（CLI），agent 无权产生。
-  'foreshadow-waive',
-  // 等价合并是定稿门禁的审计决策，SummaryAgent 不得产生。
-  'foreshadow-merge',
-  // 情节推进必须由 writer 声明并通过语义证据门禁，SummaryAgent 不得旁路补提。
-  'plot-advance',
-])
-
-function filterSummaryFallbackEvents(
-  events: StoryEvent[],
-  chapterIndex: number,
-  existingEventIds: ReadonlySet<string>
-): StoryEvent[] {
-  const seenEventIds = new Set(existingEventIds)
-  return events.filter((event) => {
-    if (event.source !== 'chapter' || event.chapterIndex !== chapterIndex) return false
-    if (seenEventIds.has(event.id)) return false
-    // SummaryAgent 作为事件补提 fallback，禁止脑补需要独立语义证明或调度授权的事件。
-    if (FORBIDDEN_SUMMARY_FALLBACK_EVENT_TYPES.has(event.type)) return false
-    seenEventIds.add(event.id)
-    return true
-  })
-}
-
-function filterSummaryFallbackEventsForAuthority(
-  state: ReducedGraphState,
-  events: StoryEvent[],
-  chapterIndex: number
-): StoryEvent[] {
-  const issues = validatePlannedStoryEventAuthority(state, events)
-  if (issues.length === 0) return events
-
-  const fieldsByEventIndex = new Map<number, Set<string>>()
-  for (const issue of issues) {
-    const fields = fieldsByEventIndex.get(issue.index) ?? new Set<string>()
-    fields.add(issue.field)
-    fieldsByEventIndex.set(issue.index, fields)
-  }
-
-  for (const [eventIndex, fields] of fieldsByEventIndex) {
-    const event = events[eventIndex]
-    if (!event) continue
-    logger.warn(
-      `[MuseFlow] 第 ${chapterIndex + 1} 章摘要补提事件未通过结构化 ID 权威校验，已丢弃（eventId=${event.id}, eventIndex=${eventIndex}, type=${event.type}, fields=${[...fields].sort().join(',')}）`
-    )
-  }
-
-  return events.filter((_, eventIndex) => !fieldsByEventIndex.has(eventIndex))
-}
-
-function ensureChaptersLength(
-  chapters: ReducedGraphState['chapters'],
-  totalChapters: number
-): ReducedGraphState['chapters'] {
-  const next = chapters.slice(0, totalChapters)
-  while (next.length < totalChapters) {
-    next.push(null)
-  }
-  return next
-}
-
-function buildActBoundaryPendingIssue(
-  storyId: string,
-  act: ActArc,
-  pendingBeats: string[],
-  uncorroboratedBeatIds: readonly string[] = []
-): Issue {
-  const extensionChapters = Math.min(2, Math.max(1, pendingBeats.length))
-  const rewriteCommand = `museflow rewrite ${storyId} -c ${act.endChapter}`
-  const proposal = {
-    actIndex: act.index,
-    proposedEndChapter: act.endChapter + extensionChapters,
-    reason: `第 ${act.index} 幕结束时仍有 mandatory beats 未消费。`,
-  }
-
-  // D.2.2 幕关闭质量复审：pending 中 proven 但未通过佐证审计的 mandatory beats
-  // 在描述中单独点明——它们的正文推进事件成立，但声称的结局未留下结构化痕迹。
-  const corroborationNote =
-    uncorroboratedBeatIds.length > 0
-      ? `其中 ${uncorroboratedBeatIds.length} 个（${uncorroboratedBeatIds.join('、')}）虽有正文推进事件但未通过佐证审计（缺少绑定的状态类事件或受佐证的终态声明），幕关闭质量复审不予通过。`
-      : ''
-
-  return {
-    id: `act-${act.index}-pending-beats-at-boundary`,
-    ruleId: 'outline-coverage.pending-beats-at-boundary',
-    type: 'outline_coverage',
-    severity: 'error',
-    subject: `act-${act.index}`,
-    description: `第 ${act.index} 幕已到结束章节第 ${act.endChapter} 章，但仍有 ${pendingBeats.length} 个 mandatory beats 未消费：${pendingBeats.join('、')}。${corroborationNote}不能在本幕未完成时进入下一幕；请运行 ${rewriteCommand} 重写本幕末章，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕后再继续。`,
-    suggestion: `运行 ${rewriteCommand} 重写当前章节，或运行 ${formatActBoundaryAdjustmentCommand(storyId, proposal)} 延长本幕。`,
-    source: 'outline_compliance',
-    retryStrategy: 'manual',
-  }
-}
-
-function buildRequiredBeatCompletionIssues(
-  beatIds: readonly string[],
-  chapterIndex: number,
-  existingIssues: readonly Issue[]
-): Issue[] {
-  const existingBeatIds = new Set(
-    existingIssues
-      .filter((issue) => issue.ruleId === 'story-completion.required-beat-unproven')
-      .flatMap((issue) => (issue.subject ? [issue.subject] : []))
-  )
-  return beatIds
-    .filter((beatId) => !existingBeatIds.has(beatId))
-    .map((beatId) => ({
-      id: `story-completion-unproven-${beatId}-${chapterIndex}`,
-      ruleId: 'story-completion.required-beat-unproven',
-      type: 'outline_coverage' as const,
-      severity: 'error' as const,
-      description: `required beat ${beatId} 已到结构边界，但尚无通过验证的 StoryMemory 事件证据，不能完成当前叙事阶段。`,
-      subject: beatId,
-      location: `第 ${chapterIndex + 1} 章`,
-      source: 'outline_compliance' as const,
-      retryStrategy: 'draft' as const,
-    }))
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string')
-}
-
-function isChapterHandoff(value: unknown): value is ChapterHandoff {
-  if (!value || typeof value !== 'object') return false
-  const handoff = value as Record<string, unknown>
-  return (
-    typeof handoff.chapterNumber === 'number' &&
-    typeof handoff.endScene === 'string' &&
-    // B.4：endTime 为结构化对象；兼容旧数据/模型输出的自由文本字符串（读取时归一化）。
-    (typeof handoff.endTime === 'string' ||
-      (typeof handoff.endTime === 'object' && handoff.endTime !== null)) &&
-    isStringArray(handoff.charactersPresent) &&
-    typeof handoff.lastAction === 'string' &&
-    isStringArray(handoff.openQuestions) &&
-    (!('requiredNextOpening' in handoff) || typeof handoff.requiredNextOpening === 'string')
-  )
-}
-
-function isSummaryData(data: unknown): data is {
-  storyEvents?: StoryEvent[]
-  chapterSummary?: string
-  chapterHandoff?: ChapterHandoff
-} {
-  return (
-    typeof data === 'object' && data !== null && ('storyEvents' in data || 'chapterSummary' in data)
-  )
-}
+  buildActBoundaryPendingIssue,
+  buildRequiredBeatCompletionIssues,
+  deriveVerifiedBeatsFromPlotAdvanceEvents,
+  deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents,
+  ensureChaptersLength,
+  ensureOutlineLength,
+  filterStoryEventsForEvidence,
+  filterStoryEventsForStoryArc,
+  updateOutlineVerifiedBeats,
+} from './chapter-events.js'
+import { buildChapterReport } from './chapter-report.js'
+import { extractChapterSummary } from './chapter-summary.js'
 
 export async function finalizeChapter(
   state: ReducedGraphState,
@@ -466,206 +212,27 @@ export async function finalizeChapter(
     }
   }
 
-  if (updatedChapter) {
-    let summary = updatedChapter.summary || ''
-    const needsSummary = !summary && chapterContent
-    if (needsSummary) {
-      const summaryAgent = getSummaryAgent(provider)
-      const {
-        merged: effectiveCharacters,
-        outline: outlineCharacters,
-        established: establishedCharacters,
-      } = buildEffectiveCharactersList(state, chapterIndex)
-      const currentOutline = updatedOutline[chapterIndex]
-      const beatsToVerify =
-        currentOutline?.claimedBeats && currentOutline.claimedBeats.length > 0
-          ? currentOutline.claimedBeats
-          : getPendingMandatoryBeats(state, chapterIndex)
-      const claimedMandatoryBeatIds = currentOutline?.claimedMandatoryBeatIds ?? []
-      const plannedFallbackItems =
-        state.chapterPlan?.chapterIndex === chapterIndex
-          ? state.chapterPlan.fulfilledForeshadowIds.flatMap((id) => {
-              const memory = updatedStoryMemory.foreshadows[id]
-              return memory && memory.fulfilledIn === null ? [foreshadowMemoryToItem(memory)] : []
-            })
-          : []
-      const plannedFallbackForeshadows = plannedFallbackItems.map(({ id, text }) => ({ id, text }))
-      const summaryState: SummaryAgentInput = {
-        idea: state.idea,
-        genre: state.genre,
-        totalChapters: state.totalChapters,
-        chapterContent,
-        charactersList: effectiveCharacters,
-        outlineCharacters,
-        establishedCharacters,
-        plannedForeshadowFulfillments: plannedFallbackForeshadows,
-        ...(currentOutline?.title ? { chapterTitle: currentOutline.title } : {}),
-        chapterIndex,
-        ...(beatsToVerify.length > 0 ? { claimedBeats: beatsToVerify } : {}),
-        ...(claimedMandatoryBeatIds.length > 0 ? { claimedMandatoryBeatIds } : {}),
-      }
-
-      const MAX_SUMMARY_RETRIES = 2
-      let summarySuccess = false
-      for (let attempt = 0; attempt <= MAX_SUMMARY_RETRIES; attempt++) {
-        if (attempt > 0) {
-          logger.info(
-            `[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成失败，第 ${attempt}/${MAX_SUMMARY_RETRIES} 次重试...`
-          )
-        }
-        try {
-          const summaryOutput = await summaryAgent.run(summaryState)
-          if (!summaryOutput.success) {
-            logger.warn(
-              `[MuseFlow] 第 ${chapterIndex + 1} 章摘要 agent 返回失败: ${summaryOutput.error || '未知错误'}`
-            )
-            continue
-          }
-          const summaryData = isSummaryData(summaryOutput.data) ? summaryOutput.data : undefined
-          if (!summaryData || !summaryData.chapterSummary) {
-            logger.warn(`[MuseFlow] 第 ${chapterIndex + 1} 章摘要处理结果为空`)
-            continue
-          }
-          summary = summaryData.chapterSummary
-          updatedChapter = { ...updatedChapter, summary }
-          updatedChapters[chapterIndex] = updatedChapter
-          summarySuccess = true
-          if (isChapterHandoff(summaryData.chapterHandoff) && updatedStoryState) {
-            const nextStoryTime = normalizeStoryTime(summaryData.chapterHandoff.endTime)
-            // B.4 确定性校验：只作用于 storyTime 结构化通道（不解析正文）。
-            // 年号冲突优先于单调性报告（era 不同无法定序）。
-            if (
-              !isEmptyStoryTime(nextStoryTime) &&
-              !isEmptyStoryTime(state.storyState?.storyTime)
-            ) {
-              if (hasStoryTimeEraConflict(state.storyState?.storyTime, nextStoryTime)) {
-                storyTimeIssues.push({
-                  id: `time-era-conflict-${chapterIndex}-${generateId()}`,
-                  ruleId: 'structured.time-era-conflict',
-                  type: 'state_conflict',
-                  severity: 'error',
-                  description: `第 ${chapterIndex + 1} 章断言的故事时间（${formatStoryTime(nextStoryTime)}）与运行中的故事年份（${formatStoryTime(state.storyState?.storyTime)}）年号不一致。注意：文中档案/公文的历史日期不是故事时间，只有故事自身时钟的章末时刻才应进入该断言。`,
-                  suggestion:
-                    '若本章正文确实改元/更换纪元，请人工确认后强制定稿；否则修正章节内容或摘要中的故事时间断言。',
-                  source: 'state_reconciliation',
-                  retryStrategy: 'manual',
-                })
-              } else if (
-                compareStoryTime(state.storyState?.storyTime, nextStoryTime) === 'earlier'
-              ) {
-                storyTimeIssues.push({
-                  id: `time-regression-${chapterIndex}-${generateId()}`,
-                  ruleId: 'structured.time-regression',
-                  type: 'state_conflict',
-                  severity: 'error',
-                  description: `第 ${chapterIndex + 1} 章的章末故事时间（${formatStoryTime(nextStoryTime)}）早于上一章结束时间（${formatStoryTime(state.storyState?.storyTime)}），故事时钟不得倒退。`,
-                  suggestion:
-                    '修正本章的故事时间断言（摘要 endTime 的结构化字段），使其不早于上一章结束时间；若正文确实时间倒退，请先修正正文。',
-                  source: 'state_reconciliation',
-                  retryStrategy: 'manual',
-                })
-              }
-            }
-            updatedStoryState = {
-              ...updatedStoryState,
-              chapterHandoff: {
-                ...summaryData.chapterHandoff,
-                endTime: nextStoryTime,
-              },
-              ...(!isEmptyStoryTime(nextStoryTime) ? { storyTime: nextStoryTime } : {}),
-            }
-          }
-
-          // SummaryAgent events are a fallback for events the writer missed.
-          // For plot-advance, draft events are authoritative; skip duplicates.
-          const summaryEventCandidates = filterSummaryFallbackEvents(
-            filterStoryEventsForEvidence(
-              filterStoryEventsForStoryArc(summaryData.storyEvents ?? [], state.storyArc),
-              chapterContent
-            ),
-            chapterIndex,
-            new Set(updatedStoryMemory.events.map((event) => event.id))
-          )
-          const authorizedSummaryEventCandidates = filterSummaryFallbackEventsForAuthority(
-            {
-              ...state,
-              storyMemory: updatedStoryMemory,
-              storyState: updatedStoryState,
-            },
-            summaryEventCandidates,
-            chapterIndex
-          )
-          const { valid: actualEvents, invalid: invalidSummaryForeshadows } =
-            partitionInvalidForeshadowIntroductions(authorizedSummaryEventCandidates)
-          invalidForeshadowDeadlineEvents.push(...invalidSummaryForeshadows)
-          const newEvents = actualEvents.filter((event) => {
-            if (event.type === 'plot-advance') {
-              return !draftPlotAdvanceBeatIds.has(event.beatId)
-            }
-            return true
-          })
-          if (newEvents.length > 0) {
-            newForeshadowIntroduceEvents.push(
-              ...newEvents.filter(
-                (e): e is Extract<StoryEvent, { type: 'foreshadow-introduce' }> =>
-                  e.type === 'foreshadow-introduce'
-              )
-            )
-            updatedStoryMemory = applyEvents(
-              updatedStoryMemory ?? createEmptyStoryMemory(),
-              newEvents
-            )
-            logger.info(
-              `[MuseFlow] 第 ${chapterIndex + 1} 章已从摘要补充 ${newEvents.length} 个 storyEvents`
-            )
-          }
-
-          const summaryVerifiedBeats = deriveVerifiedBeatsFromPlotAdvanceEvents(
-            newEvents,
-            state.storyArc
-          )
-          const summaryVerifiedMandatoryBeatIds =
-            deriveVerifiedMandatoryBeatIdsFromPlotAdvanceEvents(newEvents, state.storyArc)
-          if (summaryVerifiedBeats.length > 0 || summaryVerifiedMandatoryBeatIds.length > 0) {
-            updatedOutline = updateOutlineVerifiedBeats(
-              updatedOutline,
-              chapterIndex,
-              summaryVerifiedBeats,
-              summaryVerifiedMandatoryBeatIds
-            )
-          }
-
-          break
-        } catch (err) {
-          logger.warn(
-            `[MuseFlow] 生成第 ${chapterIndex + 1} 章摘要失败 (attempt ${attempt + 1}/${MAX_SUMMARY_RETRIES + 1}):`,
-            err
-          )
-        }
-      }
-
-      if (!summarySuccess) {
-        logger.warn(
-          `[MuseFlow] 第 ${chapterIndex + 1} 章摘要生成最终失败，已阻止 finalize，避免未沉淀内容进入后续章节。`
-        )
-        return {
-          pendingIssues: [
-            ...state.pendingIssues,
-            {
-              id: generateId(),
-              ruleId: 'finalization.state-extraction',
-              type: 'state_corruption',
-              severity: 'error',
-              description: `第 ${chapterIndex + 1} 章摘要提取失败，无法安全进入下一章。`,
-              suggestion:
-                '请重试当前章节 finalize；如果模型持续失败，请检查模型输出或运行 rewrite 重新生成本章。',
-              source: 'state_reconciliation',
-              retryStrategy: 'manual',
-            },
-          ],
-        }
-      }
-    }
+  const summaryResult = await extractChapterSummary({
+    state,
+    provider,
+    chapterContent,
+    chapter: updatedChapter,
+    chapters: updatedChapters,
+    outline: updatedOutline,
+    storyMemory: updatedStoryMemory,
+    storyState: updatedStoryState,
+    draftPlotAdvanceBeatIds,
+  })
+  updatedChapter = summaryResult.chapter
+  updatedChapters = summaryResult.chapters
+  updatedOutline = summaryResult.outline
+  updatedStoryMemory = summaryResult.storyMemory
+  updatedStoryState = summaryResult.storyState
+  newForeshadowIntroduceEvents.push(...summaryResult.newForeshadowIntroduceEvents)
+  invalidForeshadowDeadlineEvents.push(...summaryResult.invalidForeshadowDeadlineEvents)
+  storyTimeIssues.push(...summaryResult.storyTimeIssues)
+  if (summaryResult.failureIssue) {
+    return { pendingIssues: [...state.pendingIssues, summaryResult.failureIssue] }
   }
 
   const planningConfig = getChapterPlanningConfig(state.genre)
@@ -1241,127 +808,4 @@ export async function finalizeChapter(
       ? { foreshadowEquivalenceAudit: updatedForeshadowEquivalenceAudit }
       : {}),
   }
-}
-
-function buildChapterReport(
-  state: ReducedGraphState,
-  chapter: ReducedGraphState['chapters'][number],
-  chapterContent: string,
-  updatedStoryState: ReducedGraphState['storyState'],
-  pendingIssues: Issue[] = state.pendingIssues,
-  foreshadowsNeedingAttention: string[] = []
-): ChapterReport {
-  const chapterIndex = state.currentChapterIndex
-  const outlineItem = state.outline[chapterIndex]
-
-  const report = createEmptyChapterReport(state.story.id, chapterIndex)
-  report.chapterTitle = outlineItem?.title ?? chapter?.title ?? ''
-  report.wordCount = countChineseWords(chapterContent)
-  report.summary = chapter?.summary ?? null
-
-  const session = state.session
-  report.draftStrategy = inferDraftStrategy(state)
-  report.rewriteAttempts = session?.rewriteAttempts ?? 0
-  report.errorRewriteAttempts = session?.errorRewriteAttempts ?? 0
-  report.autoFixAttempts = session?.autoFixAttempts ?? 0
-
-  report.issues = pendingIssues
-  report.issuesSummary = summarizeIssues(pendingIssues)
-
-  report.stateCorrections = buildStateCorrections(updatedStoryState)
-
-  const plantedForeshadows = state.foreshadowStack.filter(
-    (foreshadow) => foreshadow.createdAtChapter === chapterIndex + 1
-  )
-  report.foreshadowsPlantedDetails = plantedForeshadows.map((foreshadow) => {
-    const memory = state.storyMemory?.foreshadows[foreshadow.id]
-    return {
-      id: foreshadow.id,
-      text: foreshadow.text,
-      expectedFulfillChapter:
-        memory !== undefined
-          ? memory.expectedFulfillChapter
-          : foreshadow.expectedFulfillChapter >= Number.MAX_SAFE_INTEGER
-            ? null
-            : foreshadow.expectedFulfillChapter,
-      resolutionPolicy:
-        memory?.resolutionPolicy ??
-        foreshadow.resolutionPolicy ??
-        policyFromLegacyStackFields(foreshadow.required, foreshadow.expectedFulfillChapter),
-    }
-  })
-  report.foreshadowsPlanted = plantedForeshadows.length
-  report.foreshadowsFulfilled = state.foreshadowStack.filter(
-    (f) => f.fulfilledChapter === chapterIndex + 1
-  ).length
-  report.foreshadowsOverdue = classifyForeshadows(
-    state.foreshadowStack,
-    chapterIndex + 1
-  ).overdueRequired.length
-  if (foreshadowsNeedingAttention.length > 0) {
-    report.foreshadowsNeedingAttention = foreshadowsNeedingAttention
-  }
-
-  report.convergence = inferConvergence(state)
-
-  const act = getActForChapter(state.storyArc, chapterIndex)
-  if (act) {
-    const progress = state.actProgress[act.index] ?? {
-      consumed: [],
-      pending: [...act.mandatoryBeats],
-    }
-    report.actProgress = {
-      actIndex: act.index,
-      chaptersRemaining: act.endChapter - (chapterIndex + 1),
-      beatsTotal: act.mandatoryBeats.length,
-      beatsConsumed: progress.consumed.length,
-      beatsPending: progress.pending,
-    }
-  }
-
-  return report
-}
-
-function inferDraftStrategy(state: ReducedGraphState): ChapterReport['draftStrategy'] {
-  const session = state.session
-  if (session?.routingDecision === 'fix_chapter') return 'fix'
-  if (session?.routingDecision === 'finalize_chapter' && (session?.rewriteAttempts ?? 0) === 0) {
-    return 'finalize-only'
-  }
-  if ((session?.autoFixAttempts ?? 0) > 0) return 'fix'
-  return 'draft'
-}
-
-function inferConvergence(state: ReducedGraphState): ChapterReport['convergence'] {
-  const session = state.session
-  if (!state.rewriteRequested) return 'success'
-  const maxAttempts = getChapterPlanningConfig(state.genre).maxErrorRewriteAttempts
-  if ((session?.errorRewriteAttempts ?? 0) >= maxAttempts) return 'max-attempts-reached'
-  return 'manual-rewrite-requested'
-}
-
-function buildStateCorrections(storyState: ReducedGraphState['storyState']): StateCorrection[] {
-  if (!storyState) return []
-  const corrections: StateCorrection[] = []
-  for (const fact of storyState.canonicalFacts ?? []) {
-    for (const old of fact.supersedes ?? []) {
-      corrections.push({
-        subject: fact.subject,
-        attribute: fact.attribute,
-        oldValue: old.oldValue,
-        newValue: fact.value,
-        reason: 'canonical_fact',
-      })
-    }
-  }
-  for (const fact of storyState.supersededFacts ?? []) {
-    corrections.push({
-      subject: fact.subject,
-      attribute: 'fact',
-      oldValue: fact.oldFact,
-      newValue: '',
-      reason: 'superseded_fact',
-    })
-  }
-  return corrections
 }

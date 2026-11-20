@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { ReducedGraphState } from '../../src/graph/state.js'
+import { createHash } from 'node:crypto'
 
 const {
   exportMetaFromCheckpointMock,
@@ -11,6 +12,9 @@ const {
   readChapterContentMock,
   readChapterContentForRunMock,
   writeOutlineContentMock,
+  readChapterCommitJournalMock,
+  writeChapterCommitJournalMock,
+  deleteChapterCommitJournalMock,
   saveChapterReportMock,
   deleteChapterReportMock,
 } = vi.hoisted(() => ({
@@ -22,6 +26,9 @@ const {
   readChapterContentMock: vi.fn().mockResolvedValue('chapter content'),
   readChapterContentForRunMock: vi.fn().mockResolvedValue(null),
   writeOutlineContentMock: vi.fn().mockResolvedValue(undefined),
+  readChapterCommitJournalMock: vi.fn().mockResolvedValue(null),
+  writeChapterCommitJournalMock: vi.fn().mockResolvedValue(undefined),
+  deleteChapterCommitJournalMock: vi.fn().mockResolvedValue(undefined),
   saveChapterReportMock: vi.fn(),
   deleteChapterReportMock: vi.fn(),
 }))
@@ -37,6 +44,9 @@ vi.mock('../../src/storage/filesystem/writer.js', () => ({
   hasStagedChapterContent: hasStagedChapterContentMock,
   readChapterContent: readChapterContentMock,
   readChapterContentForRun: readChapterContentForRunMock,
+  readChapterCommitJournal: readChapterCommitJournalMock,
+  writeChapterCommitJournal: writeChapterCommitJournalMock,
+  deleteChapterCommitJournal: deleteChapterCommitJournalMock,
   writeOutlineContent: writeOutlineContentMock,
 }))
 
@@ -63,6 +73,9 @@ describe('chapter commit boundary', () => {
     readChapterContentMock.mockResolvedValue('chapter content')
     readChapterContentForRunMock.mockResolvedValue(null)
     writeOutlineContentMock.mockResolvedValue(undefined)
+    readChapterCommitJournalMock.mockResolvedValue(null)
+    writeChapterCommitJournalMock.mockResolvedValue(undefined)
+    deleteChapterCommitJournalMock.mockResolvedValue(undefined)
     exportMetaFromCheckpointMock.mockResolvedValue(undefined)
     checkpointService.saveChapterMarker.mockResolvedValue(undefined)
     checkpointService.deleteChapterMarkersFrom.mockResolvedValue(undefined)
@@ -96,6 +109,12 @@ describe('chapter commit boundary', () => {
     expect(promoteStagedChapterContentMock).toHaveBeenCalledWith(outputDir, 2)
     expect(graph.getState).toHaveBeenCalledWith(config)
     expect(checkpointService.saveChapterMarker).toHaveBeenCalledWith(2, 'ckpt-finalized')
+    expect(writeChapterCommitJournalMock.mock.calls.map(([, journal]) => journal.phase)).toEqual([
+      'prepared',
+      'content_promoted',
+      'marker_saved',
+    ])
+    expect(deleteChapterCommitJournalMock).toHaveBeenCalledWith(outputDir)
     expect(exportMetaFromCheckpointMock).toHaveBeenCalledWith(outputDir)
     expect(checkpointService.pruneIntermediateCheckpoints).toHaveBeenCalled()
     expect(checkpointService.clearPendingWrites).toHaveBeenCalled()
@@ -352,6 +371,7 @@ describe('reconcileStagedChapterCommits', () => {
     promoteStagedChapterContentMock.mockResolvedValue(true)
     hasStagedChapterContentMock.mockReturnValue(false)
     readChapterContentMock.mockResolvedValue('chapter content')
+    readChapterCommitJournalMock.mockResolvedValue(null)
   })
 
   it('promotes staged content for committed chapters whose final file is missing', async () => {
@@ -396,6 +416,61 @@ describe('reconcileStagedChapterCommits', () => {
         retryStrategy: 'manual',
       }),
     ])
+  })
+
+  it('replaces stale rewrite content when the journal hash does not match', async () => {
+    const { reconcileStagedChapterCommits } = await import('../../src/core/chapter-commit.js')
+    const nextContent = 'new rewritten chapter'
+    readChapterContentMock.mockResolvedValue('old chapter')
+    hasStagedChapterContentMock.mockReturnValue(true)
+    promoteStagedChapterContentMock.mockImplementation(async () => {
+      readChapterContentMock.mockResolvedValue(nextContent)
+      return true
+    })
+    readChapterCommitJournalMock.mockResolvedValue({
+      version: 1,
+      chapterNumber: 2,
+      phase: 'prepared',
+      checkpointId: 'ckpt-finalized',
+      contentHash: createHash('sha256').update(nextContent).digest('hex'),
+      updatedAt: 1,
+    })
+    const service = {
+      saveChapterMarker: vi.fn().mockResolvedValue(undefined),
+      deleteChapterMarkersFrom: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const issues = await reconcileStagedChapterCommits('/tmp/story', 2, 'story-1', service)
+
+    expect(issues).toEqual([])
+    expect(promoteStagedChapterContentMock).toHaveBeenCalledWith('/tmp/story', 2)
+    expect(service.saveChapterMarker).toHaveBeenCalledWith(2, 'ckpt-finalized')
+  })
+
+  it('restores a missing chapter marker from an interrupted commit journal', async () => {
+    const { reconcileStagedChapterCommits } = await import('../../src/core/chapter-commit.js')
+    readChapterCommitJournalMock.mockResolvedValue({
+      version: 1,
+      chapterNumber: 2,
+      phase: 'content_promoted',
+      checkpointId: 'ckpt-finalized',
+      truncateAfterChapter: 1,
+      totalChapters: 4,
+      updatedAt: 1,
+    })
+    const service = {
+      saveChapterMarker: vi.fn().mockResolvedValue(undefined),
+      deleteChapterMarkersFrom: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const issues = await reconcileStagedChapterCommits('/tmp/story', 2, 'story-1', service)
+
+    expect(issues).toEqual([])
+    expect(service.saveChapterMarker).toHaveBeenCalledWith(2, 'ckpt-finalized')
+    expect(deleteChapterContentMock).toHaveBeenCalledWith('/tmp/story', 3)
+    expect(deleteChapterContentMock).toHaveBeenCalledWith('/tmp/story', 4)
+    expect(service.deleteChapterMarkersFrom).toHaveBeenCalledWith(2)
+    expect(deleteChapterCommitJournalMock).toHaveBeenCalledWith('/tmp/story')
   })
 
   it('does nothing when all committed chapters have final content', async () => {

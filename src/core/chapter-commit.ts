@@ -1,4 +1,5 @@
 import type { RunnableConfig } from '@langchain/core/runnables'
+import { createHash } from 'node:crypto'
 import type { ReducedGraphState } from '../graph/state.js'
 import type { Issue } from '../types/agent.js'
 import type { BlockingReport } from '../types/blocking-report.js'
@@ -7,12 +8,15 @@ import { generateId } from '../utils/id.js'
 import { exportMetaFromCheckpoint } from '../storage/meta/exporter.js'
 import { deleteChapterReport, saveChapterReport } from '../storage/meta/stores/chapter-report.js'
 import {
+  deleteChapterCommitJournal,
   deleteChapterContent,
   deleteStagedChapterContent,
   hasStagedChapterContent,
   promoteStagedChapterContent,
+  readChapterCommitJournal,
   readChapterContent,
   readChapterContentForRun,
+  writeChapterCommitJournal,
   writeOutlineContent,
 } from '../storage/filesystem/writer.js'
 import {
@@ -51,6 +55,10 @@ interface ChapterCommitInput {
 
 function shouldSaveChapterMarker(result: ReducedGraphState): boolean {
   return !result.rewriteRequested && result.isWriting && result.currentChapterIndex > 0
+}
+
+function hashChapterContent(content: string): string {
+  return createHash('sha256').update(content).digest('hex')
 }
 
 /**
@@ -133,9 +141,19 @@ async function assertStagedChapterHygiene(
 export async function reconcileStagedChapterCommits(
   outputDir: string,
   currentChapterIndex: number,
-  storyId: string
+  storyId: string,
+  checkpointService?: Pick<
+    ChapterCommitCheckpointService,
+    'saveChapterMarker' | 'deleteChapterMarkersFrom'
+  >
 ): Promise<Issue[]> {
   const issues: Issue[] = []
+  const journal = await readChapterCommitJournal(outputDir)
+  if (journal && journal.chapterNumber > currentChapterIndex) {
+    throw new Error(
+      `章节提交日志显示第 ${journal.chapterNumber} 章处于 ${journal.phase}，但 checkpoint 仅完成到第 ${currentChapterIndex} 章。请停止写入并检查 checkpoint 与提交日志。`
+    )
+  }
   for (let i = 0; i < currentChapterIndex; i++) {
     const chapterNumber = i + 1
     const content = await readChapterContent(outputDir, chapterNumber)
@@ -160,6 +178,60 @@ export async function reconcileStagedChapterCommits(
       retryStrategy: 'manual',
     })
   }
+
+  if (journal) {
+    let content = await readChapterContent(outputDir, journal.chapterNumber)
+    if (
+      journal.contentHash &&
+      content !== null &&
+      hashChapterContent(content) !== journal.contentHash &&
+      hasStagedChapterContent(outputDir, journal.chapterNumber)
+    ) {
+      await promoteStagedChapterContent(outputDir, journal.chapterNumber)
+      content = await readChapterContent(outputDir, journal.chapterNumber)
+      logger.info(`[MuseFlow] 恢复对账：已用暂存正文替换第 ${journal.chapterNumber} 章旧正文`)
+    }
+    const contentMatches =
+      !journal.contentHash ||
+      (content !== null && hashChapterContent(content) === journal.contentHash)
+    if (content !== null && content.trim().length > 0 && contentMatches) {
+      if (journal.checkpointId && checkpointService) {
+        await checkpointService.saveChapterMarker(journal.chapterNumber, journal.checkpointId)
+      }
+      if (
+        journal.truncateAfterChapter !== undefined &&
+        journal.totalChapters !== undefined &&
+        checkpointService
+      ) {
+        for (
+          let chapter = journal.truncateAfterChapter + 2;
+          chapter <= journal.totalChapters;
+          chapter++
+        ) {
+          await deleteChapterContent(outputDir, chapter)
+          await deleteStagedChapterContent(outputDir, chapter)
+          deleteChapterReport(outputDir, chapter - 1)
+        }
+        await checkpointService.deleteChapterMarkersFrom(journal.truncateAfterChapter + 1)
+      }
+      logger.info(
+        `[MuseFlow] 已按提交日志恢复第 ${journal.chapterNumber} 章（中断阶段：${journal.phase}）`
+      )
+      await deleteChapterCommitJournal(outputDir)
+    } else if (content !== null && !contentMatches) {
+      issues.push({
+        id: `chapter-${journal.chapterNumber}-content-mismatch`,
+        ruleId: 'finalization.chapter-content-mismatch',
+        type: 'draft_failure',
+        severity: 'error',
+        subject: `chapter-${journal.chapterNumber}`,
+        description: `第 ${journal.chapterNumber} 章正文与中断提交日志的内容哈希不一致，且没有可恢复的暂存正文。请运行 museflow rewrite ${storyId} -c ${journal.chapterNumber} 重写该章。`,
+        suggestion: `museflow rewrite ${storyId} -c ${journal.chapterNumber}`,
+        source: 'state_reconciliation',
+        retryStrategy: 'manual',
+      })
+    }
+  }
   return issues
 }
 
@@ -180,12 +252,44 @@ export async function commitChapterRun({
 }: ChapterCommitInput): Promise<void> {
   if (shouldSaveChapterMarker(result)) {
     await assertStagedChapterHygiene(result, outputDir, checkpointService)
-    await promoteStagedChapterContent(outputDir, result.currentChapterIndex)
-
+    const contentToCommit = await readChapterContentForRun(outputDir, result.currentChapterIndex)
+    const contentHash = contentToCommit === null ? undefined : hashChapterContent(contentToCommit)
     const stateAfter = await graph.getState(config)
     const checkpointId = stateAfter.config?.configurable?.checkpoint_id as string | undefined
+    await writeChapterCommitJournal(outputDir, {
+      version: 1,
+      chapterNumber: result.currentChapterIndex,
+      phase: 'prepared',
+      ...(checkpointId ? { checkpointId } : {}),
+      ...(contentHash ? { contentHash } : {}),
+      ...(truncateAfterChapter !== undefined ? { truncateAfterChapter } : {}),
+      totalChapters: result.totalChapters,
+      updatedAt: Date.now(),
+    })
+    await promoteStagedChapterContent(outputDir, result.currentChapterIndex)
+    await writeChapterCommitJournal(outputDir, {
+      version: 1,
+      chapterNumber: result.currentChapterIndex,
+      phase: 'content_promoted',
+      ...(checkpointId ? { checkpointId } : {}),
+      ...(contentHash ? { contentHash } : {}),
+      ...(truncateAfterChapter !== undefined ? { truncateAfterChapter } : {}),
+      totalChapters: result.totalChapters,
+      updatedAt: Date.now(),
+    })
+
     if (checkpointId) {
       await checkpointService.saveChapterMarker(result.currentChapterIndex, checkpointId)
+      await writeChapterCommitJournal(outputDir, {
+        version: 1,
+        chapterNumber: result.currentChapterIndex,
+        phase: 'marker_saved',
+        checkpointId,
+        ...(contentHash ? { contentHash } : {}),
+        ...(truncateAfterChapter !== undefined ? { truncateAfterChapter } : {}),
+        totalChapters: result.totalChapters,
+        updatedAt: Date.now(),
+      })
     }
 
     if (truncateAfterChapter !== undefined) {
@@ -212,4 +316,5 @@ export async function commitChapterRun({
   await exportMetaFromCheckpoint(outputDir).catch(() => {})
   await checkpointService.pruneIntermediateCheckpoints().catch(() => {})
   await checkpointService.clearPendingWrites().catch(() => {})
+  await deleteChapterCommitJournal(outputDir)
 }

@@ -5,7 +5,7 @@ import { logger } from '../utils/logger.js'
 import { writeFileAtomic, ensureDir } from '../utils/fs.js'
 import type { ReducedGraphState } from '../graph/state.js'
 import type { BlockingReport } from '../types/blocking-report.js'
-import { getCheckpointer } from '../graph/checkpointer.js'
+import { CheckpointCorruptionError, getCheckpointer } from '../graph/checkpointer.js'
 import type { Checkpoint, BaseCheckpointSaver } from '@langchain/langgraph-checkpoint'
 import type { RunnableConfig } from '@langchain/core/runnables'
 
@@ -50,9 +50,18 @@ export class StoryCheckpointService {
     if (!existsSync(path)) return {}
     try {
       const raw = readFileSync(path, 'utf-8')
-      return JSON.parse(raw) as Record<number, string>
-    } catch {
-      return {}
+      const markers = JSON.parse(raw) as Record<string, unknown>
+      if (
+        !markers ||
+        typeof markers !== 'object' ||
+        Object.values(markers).some((checkpointId) => typeof checkpointId !== 'string')
+      ) {
+        throw new Error('章节标记必须是 chapterNumber -> checkpointId 的字符串映射')
+      }
+      return markers as Record<number, string>
+    } catch (err) {
+      if (err instanceof CheckpointCorruptionError) throw err
+      throw new CheckpointCorruptionError(path, err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -64,12 +73,16 @@ export class StoryCheckpointService {
   private loadLatestCheckpointId(): string | undefined {
     const path = this.getLatestPath()
     if (!existsSync(path)) return undefined
+    let value: { checkpointId?: unknown }
     try {
-      const value = JSON.parse(readFileSync(path, 'utf-8')) as { checkpointId?: unknown }
-      return typeof value.checkpointId === 'string' ? value.checkpointId : undefined
-    } catch {
-      return undefined
+      value = JSON.parse(readFileSync(path, 'utf-8')) as { checkpointId?: unknown }
+    } catch (err) {
+      throw new CheckpointCorruptionError(path, err instanceof Error ? err.message : String(err))
     }
+    if (typeof value.checkpointId !== 'string' || value.checkpointId.length === 0) {
+      throw new CheckpointCorruptionError(path, 'latest.json 缺少有效的 checkpointId')
+    }
+    return value.checkpointId
   }
 
   async saveChapterMarker(chapterNumber: number, checkpointId: string): Promise<void> {

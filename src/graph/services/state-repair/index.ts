@@ -273,7 +273,8 @@ async function requestRepairProposals(
       raw = await provider.chatStructured<{ proposals: StateRepairProposal[] }>(
         messages,
         STATE_REPAIR_SCHEMA,
-        0.2
+        0.2,
+        { purpose: 'repair.state', chapterIndex: input.currentChapterIndex }
       )
     } catch (structuredErr) {
       logger.debug(
@@ -284,7 +285,8 @@ async function requestRepairProposals(
         provider,
         messages,
         STATE_REPAIR_SCHEMA,
-        0.2
+        0.2,
+        { purpose: 'repair.state', chapterIndex: input.currentChapterIndex }
       )
     }
   } else {
@@ -292,7 +294,8 @@ async function requestRepairProposals(
       provider,
       messages,
       STATE_REPAIR_SCHEMA,
-      0.2
+      0.2,
+      { purpose: 'repair.state', chapterIndex: input.currentChapterIndex }
     )
   }
 

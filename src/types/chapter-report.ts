@@ -32,6 +32,20 @@ export interface ChapterForeshadowDetail {
   resolutionPolicy: ForeshadowResolutionPolicy
 }
 
+export interface ChapterModelUsage {
+  calls: number
+  failures: number
+  structuredCalls: number
+  fallbackCalls: number
+  transportRetries: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  durationMs: number
+  usageReportedCalls: number
+  callsByPurpose: Record<string, number>
+}
+
 export interface ChapterReport {
   storyId: string
   chapterIndex: number
@@ -58,6 +72,7 @@ export interface ChapterReport {
 
   wordCount: number
   summary: string | null
+  modelUsage?: ChapterModelUsage
 
   actProgress?: {
     actIndex: number

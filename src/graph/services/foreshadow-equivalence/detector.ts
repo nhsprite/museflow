@@ -85,8 +85,12 @@ export async function detectForeshadowEquivalence(input: {
   let raw: unknown
   try {
     raw = input.provider.chatStructured
-      ? await input.provider.chatStructured<unknown>(messages, EQUIVALENCE_SCHEMA, 0)
-      : await chatStructuredFallback<unknown>(input.provider, messages, EQUIVALENCE_SCHEMA, 0)
+      ? await input.provider.chatStructured<unknown>(messages, EQUIVALENCE_SCHEMA, 0, {
+          purpose: 'finalization.foreshadow-equivalence',
+        })
+      : await chatStructuredFallback<unknown>(input.provider, messages, EQUIVALENCE_SCHEMA, 0, {
+          purpose: 'finalization.foreshadow-equivalence',
+        })
   } catch (error) {
     throw new ForeshadowEquivalenceError('Foreshadow equivalence provider call failed', {
       cause: error,

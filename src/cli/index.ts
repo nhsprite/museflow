@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
+import { createRequire } from 'node:module'
 import { start } from './commands/start.js'
 import { write } from './commands/write.js'
 import { rewrite } from './commands/rewrite.js'
@@ -19,11 +20,12 @@ import { setDebugEnabled } from '../utils/logger.js'
 import { parseWriteCount } from './utils/write-batch.js'
 
 const program = new Command()
+const { version } = createRequire(import.meta.url)('../../package.json') as { version: string }
 
 program
   .name('museflow')
   .description('AI Native 长篇小说生成工具')
-  .version('0.1.0')
+  .version(version)
   .option('-d, --debug', '显示 LLM 会话调试信息', false)
   .hook('preAction', (thisCommand) => {
     const opts = thisCommand.opts()

@@ -89,8 +89,12 @@ export async function verifyBeatClaims(
   let raw: unknown
   try {
     raw = input.provider.chatStructured
-      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0)
-      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0)
+      ? await input.provider.chatStructured<unknown>(messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'outline.beat-claim-verification',
+        })
+      : await chatStructuredFallback<unknown>(input.provider, messages, VERIFICATION_SCHEMA, 0, {
+          purpose: 'outline.beat-claim-verification',
+        })
   } catch (error) {
     logger.warn(
       `[MuseFlow] 节拍认领语义校验调用失败，本次按通过处理：${error instanceof Error ? error.message : String(error)}`

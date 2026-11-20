@@ -104,8 +104,12 @@ export async function relocateEvidence(input: RelocateEvidenceInput): Promise<Ma
   let raw: unknown
   try {
     raw = input.provider.chatStructured
-      ? await input.provider.chatStructured<unknown>(messages, RELOCATION_SCHEMA, 0)
-      : await chatStructuredFallback<unknown>(input.provider, messages, RELOCATION_SCHEMA, 0)
+      ? await input.provider.chatStructured<unknown>(messages, RELOCATION_SCHEMA, 0, {
+          purpose: 'validation.evidence-relocation',
+        })
+      : await chatStructuredFallback<unknown>(input.provider, messages, RELOCATION_SCHEMA, 0, {
+          purpose: 'validation.evidence-relocation',
+        })
   } catch (error) {
     logger.warn(
       `[MuseFlow] 证据重锚定调用失败，本次按未找到处理：${error instanceof Error ? error.message : String(error)}`

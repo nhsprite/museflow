@@ -30,6 +30,69 @@ function getStagedChapterFilePath(outputDir: string, chapterNumber: number): str
   return join(outputDir, '.staging', 'chapters', `chapter_${chapterNumber}.md`)
 }
 
+export type ChapterCommitPhase = 'prepared' | 'content_promoted' | 'marker_saved'
+
+export interface ChapterCommitJournal {
+  version: 1
+  chapterNumber: number
+  phase: ChapterCommitPhase
+  checkpointId?: string
+  contentHash?: string
+  truncateAfterChapter?: number
+  totalChapters?: number
+  updatedAt: number
+}
+
+function getChapterCommitJournalPath(outputDir: string): string {
+  return join(outputDir, '.staging', 'chapter-commit.json')
+}
+
+export async function writeChapterCommitJournal(
+  outputDir: string,
+  journal: ChapterCommitJournal
+): Promise<void> {
+  await ensureStagingDir(outputDir)
+  const filePath = getChapterCommitJournalPath(outputDir)
+  const tmpPath = `${filePath}.tmp`
+  await writeFile(tmpPath, JSON.stringify(journal, null, 2), 'utf-8')
+  await rename(tmpPath, filePath)
+}
+
+export async function readChapterCommitJournal(
+  outputDir: string
+): Promise<ChapterCommitJournal | null> {
+  const filePath = getChapterCommitJournalPath(outputDir)
+  if (!existsSync(filePath)) return null
+  let value: unknown
+  try {
+    value = JSON.parse(await readFile(filePath, 'utf-8'))
+  } catch (err) {
+    throw new Error(
+      `章节提交日志损坏：${filePath}（${err instanceof Error ? err.message : String(err)}）。请从备份恢复；不要继续写入，以免覆盖尚未完成的提交。`
+    )
+  }
+  const journal = value as Partial<ChapterCommitJournal> | null
+  if (
+    !journal ||
+    journal.version !== 1 ||
+    !Number.isInteger(journal.chapterNumber) ||
+    !['prepared', 'content_promoted', 'marker_saved'].includes(journal.phase ?? '')
+  ) {
+    throw new Error(
+      `章节提交日志格式无效：${filePath}。请从备份恢复；不要继续写入，以免覆盖尚未完成的提交。`
+    )
+  }
+  return journal as ChapterCommitJournal
+}
+
+export async function deleteChapterCommitJournal(outputDir: string): Promise<void> {
+  try {
+    await unlink(getChapterCommitJournalPath(outputDir))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
+}
+
 export async function writeChapterContent(
   outputDir: string,
   chapterNumber: number,

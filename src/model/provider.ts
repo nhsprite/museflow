@@ -10,10 +10,16 @@ export interface JsonSchema {
 }
 
 import { extractJsonBlock, repairMalformedJson } from '../utils/json.js'
+import type { ModelCallMetadata } from './telemetry.js'
 
 export interface ModelProvider {
-  chat(messages: Message[], temperature?: number): Promise<string>
-  chatStructured?<T>(messages: Message[], schema: JsonSchema, temperature?: number): Promise<T>
+  chat(messages: Message[], temperature?: number, metadata?: ModelCallMetadata): Promise<string>
+  chatStructured?<T>(
+    messages: Message[],
+    schema: JsonSchema,
+    temperature?: number,
+    metadata?: ModelCallMetadata
+  ): Promise<T>
 }
 
 export function getSystemMessage(messages: Message[]): string | undefined {
@@ -33,7 +39,8 @@ export async function chatStructuredFallback<T>(
   provider: ModelProvider,
   messages: Message[],
   schema: JsonSchema,
-  temperature?: number
+  temperature?: number,
+  metadata?: ModelCallMetadata
 ): Promise<T> {
   const schemaDescription = JSON.stringify(schema, null, 2)
   const augmentedMessages: Message[] = [
@@ -44,7 +51,10 @@ export async function chatStructuredFallback<T>(
     },
   ]
 
-  const response = await provider.chat(augmentedMessages, temperature)
+  const response = await provider.chat(augmentedMessages, temperature, {
+    ...metadata,
+    fallback: true,
+  })
   const jsonText = extractJsonBlock(response)
 
   try {

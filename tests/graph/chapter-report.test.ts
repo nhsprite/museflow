@@ -11,6 +11,7 @@ import type { ModelProvider } from '../../src/model/provider.js'
 import type { RuntimeContext } from '../../src/core/context.js'
 import { createEmptyIssueSummary, summarizeIssues } from '../../src/types/chapter-report.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
+import { ModelTelemetry } from '../../src/model/telemetry.js'
 
 const { loadConfigMock } = vi.hoisted(() => ({
   loadConfigMock: vi.fn(() => ({
@@ -263,6 +264,28 @@ describe('chapter report generation', () => {
     expect(result.chapterReport!.wordCount).toBeGreaterThan(0)
 
     expect(result.chapterReport!.storyId).toBe('test-story')
+  })
+
+  it('attaches current-chapter model usage to the report', async () => {
+    const state = buildState(tmpDir)
+    const telemetry = new ModelTelemetry()
+    telemetry.record({
+      timestamp: new Date().toISOString(),
+      durationMs: 25,
+      structured: false,
+      transportRetries: 0,
+      metadata: { chapterIndex: 0, purpose: 'chapter' },
+      usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
+    })
+
+    const result = await finalize_chapter({ ...createMockContext(), telemetry }, state)
+
+    expect(result.chapterReport?.modelUsage).toMatchObject({
+      calls: 1,
+      totalTokens: 30,
+      durationMs: 25,
+      callsByPurpose: { chapter: 1 },
+    })
   })
 
   it.each([

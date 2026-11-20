@@ -4,6 +4,20 @@ All notable changes to MuseFlow releases are documented in this file.
 
 This project follows semantic versioning. Dates use `YYYY-MM-DD`.
 
+## [Unreleased]
+
+### Changed
+
+- Split JIT outline expansion into focused foreshadow, act-boundary, and beat-claim modules; separated chapter summary extraction, event filtering, and report building from finalization orchestration.
+- Added per-chapter model-call telemetry for failures, retries, structured-output fallbacks, token usage, duration, and purpose counts.
+- Added standard CI for type checking, linting, tests, and builds; the CLI version now comes from `package.json`.
+
+### Fixed
+
+- Added prompt-based JSON fallback when providers reject native structured output with HTTP 400/422.
+- Added explicit corruption errors for checkpoints, latest pointers, and chapter markers instead of silently treating invalid data as empty.
+- Added journalled chapter commits so interrupted content promotion, marker writes, and rewrite truncation can be reconciled safely.
+
 ## [1.0.2] - 2026-07-09
 
 ### Added

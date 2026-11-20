@@ -140,8 +140,14 @@ export async function auditKeyBeatCoverage(
   for (let attempt = 0; attempt < 2 && decisions === null; attempt++) {
     try {
       const raw = provider.chatStructured
-        ? await provider.chatStructured<unknown>(messages, BEAT_COVERAGE_SCHEMA, 0)
-        : await chatStructuredFallback<unknown>(provider, messages, BEAT_COVERAGE_SCHEMA, 0)
+        ? await provider.chatStructured<unknown>(messages, BEAT_COVERAGE_SCHEMA, 0, {
+            purpose: 'outline.beat-coverage-audit',
+            attempt: attempt + 1,
+          })
+        : await chatStructuredFallback<unknown>(provider, messages, BEAT_COVERAGE_SCHEMA, 0, {
+            purpose: 'outline.beat-coverage-audit',
+            attempt: attempt + 1,
+          })
       decisions = parseCoverageDecisions(raw, candidates, allowedMandatoryIds)
       if (decisions === null && attempt === 0) {
         logger.warn('[MuseFlow] key beat 覆盖关系审计响应无效，正在重试')
@@ -227,8 +233,20 @@ async function verifyPairCoverage(
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const raw = provider.chatStructured
-        ? await provider.chatStructured<unknown>(messages, BEAT_COVERAGE_VERIFY_SCHEMA, 0)
-        : await chatStructuredFallback<unknown>(provider, messages, BEAT_COVERAGE_VERIFY_SCHEMA, 0)
+        ? await provider.chatStructured<unknown>(messages, BEAT_COVERAGE_VERIFY_SCHEMA, 0, {
+            purpose: 'outline.beat-coverage-verify',
+            attempt: attempt + 1,
+          })
+        : await chatStructuredFallback<unknown>(
+            provider,
+            messages,
+            BEAT_COVERAGE_VERIFY_SCHEMA,
+            0,
+            {
+              purpose: 'outline.beat-coverage-verify',
+              attempt: attempt + 1,
+            }
+          )
       if (raw && typeof raw === 'object' && (raw as { covered?: unknown }).covered === true) {
         return true
       }

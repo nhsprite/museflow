@@ -18,6 +18,30 @@ interface CheckpointRecord {
   metadata: CheckpointMetadata
 }
 
+export class CheckpointCorruptionError extends Error {
+  constructor(
+    readonly filePath: string,
+    detail: string
+  ) {
+    super(
+      `Checkpoint 数据损坏：${filePath}（${detail}）。请停止写入并从备份恢复；若损坏仅涉及最近未完成章节，可在恢复可用 checkpoint 后通过 CLI 重写该章。`
+    )
+    this.name = 'CheckpointCorruptionError'
+  }
+}
+
+function isCheckpointRecord(value: unknown): value is CheckpointRecord {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Partial<CheckpointRecord>
+  return (
+    typeof record.checkpointId === 'string' &&
+    typeof record.checkpoint?.id === 'string' &&
+    typeof record.checkpoint.ts === 'string' &&
+    typeof record.checkpoint.channel_values === 'object' &&
+    record.checkpoint.channel_values !== null
+  )
+}
+
 /**
  * JSON-based LangGraph checkpoint saver.
  *
@@ -52,16 +76,22 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
   ): { checkpointId: string; ts: string } | undefined {
     const path = this.getLatestPointerPath(outputDir)
     if (!existsSync(path)) return undefined
+    let data: { checkpointId?: unknown; ts?: unknown }
     try {
-      const raw = readFileSync(path, 'utf-8')
-      const data = JSON.parse(raw) as { checkpointId?: string; ts?: string }
-      if (data.checkpointId) {
-        return { checkpointId: data.checkpointId, ts: data.ts ?? '' }
+      data = JSON.parse(readFileSync(path, 'utf-8')) as {
+        checkpointId?: unknown
+        ts?: unknown
       }
-    } catch {
-      // ignore corrupted pointer
+    } catch (err) {
+      throw new CheckpointCorruptionError(path, err instanceof Error ? err.message : String(err))
     }
-    return undefined
+    if (typeof data.checkpointId !== 'string' || data.checkpointId.length === 0) {
+      throw new CheckpointCorruptionError(path, 'latest.json 缺少有效的 checkpointId')
+    }
+    return {
+      checkpointId: data.checkpointId,
+      ts: typeof data.ts === 'string' ? data.ts : '',
+    }
   }
 
   private writeLatestCheckpointId(outputDir: string, checkpointId: string, ts: string): void {
@@ -75,12 +105,19 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
   ): CheckpointRecord | undefined {
     const path = this.getCheckpointPath(outputDir, checkpointId)
     if (!existsSync(path)) return undefined
+    let value: unknown
     try {
-      const raw = readFileSync(path, 'utf-8')
-      return JSON.parse(raw) as CheckpointRecord
-    } catch {
-      return undefined
+      value = JSON.parse(readFileSync(path, 'utf-8'))
+    } catch (err) {
+      throw new CheckpointCorruptionError(path, err instanceof Error ? err.message : String(err))
     }
+    if (!isCheckpointRecord(value)) {
+      throw new CheckpointCorruptionError(
+        path,
+        '缺少有效的 checkpointId、checkpoint 或 channel_values'
+      )
+    }
+    return value
   }
 
   private recordToTuple(
@@ -116,13 +153,9 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
         file === 'latest.json'
       )
         continue
-      try {
-        const raw = readFileSync(join(dir, file), 'utf-8')
-        const rec = JSON.parse(raw) as CheckpointRecord
-        records.set(rec.checkpointId, rec)
-      } catch {
-        // ignore corrupted checkpoint file
-      }
+      const checkpointId = file.slice(0, -5)
+      const record = this.loadCheckpointRecord(outputDir, checkpointId)
+      if (record) records.set(record.checkpointId, record)
     }
     return records
   }
@@ -149,9 +182,12 @@ export class JsonCheckpointer extends BaseCheckpointSaver<string> {
       if (record) {
         return this.recordToTuple(record, threadId, outputDir)
       }
+      logger.warn(
+        `[MuseFlow] latest.json 指向的 checkpoint ${pointer.checkpointId} 不存在，将扫描目录寻找最新可用 checkpoint。`
+      )
     }
 
-    // Fallback: scan the checkpoint directory (backward compatibility / corrupted pointer)
+    // Fallback: scan the checkpoint directory when the latest pointer is missing or dangling.
     const records = this.loadCheckpointRecords(outputDir)
     if (records.size === 0) return undefined
 

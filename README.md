@@ -208,6 +208,7 @@ Story data is saved locally in the `./books/` directory. The concrete story dire
 | `./books/{story-dir}/chapters/chapter_{n}.md`         | Chapter body text `.md` files                                               |
 | `./books/{story-dir}/reports/chapter_{n}.report.json` | Per-chapter generation report                                               |
 | `./books/{story-dir}/reports/blocking_*.json`         | Manual-resolution report when rewrite convergence stalls                    |
+| `./books/{story-dir}/.staging/chapter-commit.json`    | Temporary journal for recovering interrupted chapter commits                |
 | `./output/*.txt`                                      | Exported manuscripts created by `museflow export`                           |
 
 > **Note**: MuseFlow uses JSON + filesystem storage; it does not depend on SQLite.
@@ -217,11 +218,12 @@ Story data is saved locally in the `./books/` directory. The concrete story dire
 
 - `src/graph/novel.graph.ts` owns the coarse LangGraph state machine.
 - `src/core/runner.ts` builds initial/working graph state and invokes the graph.
-- `src/core/chapter-commit.ts` is the post-graph chapter commit boundary: it saves the chapter marker after LangGraph has persisted the final checkpoint, then exports `meta.json`.
-- `src/core/outline-expander.ts` generates chapter outlines and detailed chapter plans just before drafting, using story arc progress, prior summaries, story state, and next-chapter boundary hints.
+- `src/core/chapter-commit.ts` is the post-graph chapter commit boundary: it journals content/marker stages for crash recovery, saves the chapter marker after LangGraph has persisted the final checkpoint, then exports `meta.json`.
+- `src/core/outline-expander.ts` orchestrates just-in-time chapter planning; focused modules under `src/core/outline/` handle foreshadow scheduling and claims, act boundaries, and beat claims.
 - `src/graph/services/chapter-orchestration/` prepares chapter state and performs convergence-aware routing.
 - `src/core/chapter-generation/routing/` decides whether a chapter should draft, patch-fix, finalize, or stop for manual rewrite.
-- `src/graph/services/finalization/` extracts summary/state/canonical facts, verifies mandatory beats, updates act progress, and writes reports.
+- `src/graph/services/finalization/` extracts summary/state/canonical facts, verifies mandatory beats, updates act progress, and writes reports. Reports include `modelUsage` when runtime telemetry is available: calls, failures, retries, structured-output fallbacks, tokens, duration, and purpose counts.
+- `src/model/registry.ts` falls back from rejected native JSON-schema output (HTTP 400/422) to prompt-based JSON output; authentication and other request errors still fail normally.
 - `verifiedConstraints` are structured runtime state and are rendered to plain text only when passed into agent prompts.
 - `meta.json`, `outline.md`, and reports are projections/artifacts; checkpoint state remains the authoritative runtime record.
 

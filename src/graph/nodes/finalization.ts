@@ -6,7 +6,15 @@ export async function finalize_chapter(
   context: RuntimeContext,
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
-  return finalizeChapter(state, context.provider)
+  const result = await finalizeChapter(state, context.provider)
+  if (!result.chapterReport || !context.telemetry) return result
+  return {
+    ...result,
+    chapterReport: {
+      ...result.chapterReport,
+      modelUsage: context.telemetry.summarizeChapter(state.currentChapterIndex),
+    },
+  }
 }
 
 export async function finalize_story(

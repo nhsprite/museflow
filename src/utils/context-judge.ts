@@ -118,7 +118,8 @@ async function tryBatchJudge<T>(
       const response = await provider.chatStructured<{ results: unknown[] }>(
         messages,
         buildIndexedResultsSchema(schema),
-        0.1
+        0.1,
+        { purpose: 'structured.batch-judge' }
       )
       rawResponse = response
       const results = response.results
@@ -134,7 +135,9 @@ async function tryBatchJudge<T>(
       return undefined
     }
 
-    const text = await provider.chat(messages, 0.1)
+    const text = await provider.chat(messages, 0.1, {
+      purpose: 'structured.batch-judge',
+    })
     rawResponse = text
     const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
     const response = JSON.parse(cleaned) as { results: unknown[] }

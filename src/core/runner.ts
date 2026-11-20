@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { createEmptyStoryState } from '../storage/meta/stores/story-state.js'
 
 import {
+  deleteChapterCommitJournal,
   deleteStagedChapterContent,
   readChapterContent,
   writeOutlineContent,
@@ -227,6 +228,7 @@ async function runChapterGraph(
   const graph = buildNovelGraph(context)
   const checkpointService = createCheckpointService(outputDir)
   await checkpointService.clearPendingWrites()
+  await deleteChapterCommitJournal(outputDir)
   await deleteStagedChapterContent(outputDir, workingState.currentChapterIndex + 1)
 
   const config: RunnableConfig = {
@@ -235,7 +237,10 @@ async function runChapterGraph(
   }
 
   try {
-    const result = await graph.invoke(workingState, config)
+    const invokeGraph = () => graph.invoke(workingState, config)
+    const result = context.telemetry
+      ? await context.telemetry.runWithChapter(workingState.currentChapterIndex, invokeGraph)
+      : await invokeGraph()
 
     await commitChapterRun({
       result: result as ReducedGraphState,
@@ -434,6 +439,18 @@ export async function runOneChapter(
   await migrateLegacyCheckpoints(outputDir)
   await checkpointService.clearPendingWrites()
 
+  const latestSnapshot = await graph.getState({
+    configurable: { thread_id: storyId, outputDir },
+  })
+  let latestState = normalizeRuntimeState(latestSnapshot.values as ReducedGraphState)
+  // 提交日志属于最新状态；先恢复标记，再选择重写所需的历史 checkpoint。
+  const reconciliationIssues = await reconcileStagedChapterCommits(
+    outputDir,
+    latestState.currentChapterIndex,
+    storyId,
+    createCheckpointService(outputDir, context.checkpointer)
+  )
+
   let checkpointId: string | undefined
   if (options.mode === 'rewrite' && options.targetChapterIndex !== undefined) {
     const prevMarker = await checkpointService.getChapterMarker(options.targetChapterIndex)
@@ -447,15 +464,11 @@ export async function runOneChapter(
     }
   }
 
-  const latestSnapshot = await graph.getState({
-    configurable: { thread_id: storyId, outputDir },
-  })
   const snapshot = checkpointId
     ? await graph.getState({
         configurable: { thread_id: storyId, outputDir, checkpoint_id: checkpointId },
       })
     : latestSnapshot
-  let latestState = normalizeRuntimeState(latestSnapshot.values as ReducedGraphState)
   let checkpointState = normalizeRuntimeState(snapshot.values as ReducedGraphState)
 
   const targetIndex = options.targetChapterIndex ?? checkpointState.currentChapterIndex
@@ -518,17 +531,19 @@ export async function runOneChapter(
     targetChapterFileExists =
       existingTargetContent !== null && existingTargetContent.trim().length > 0
   }
-  const reconciliationIssues = await reconcileStagedChapterCommits(
-    outputDir,
-    checkpointState.currentChapterIndex,
-    storyId
+  // 只携带所选基线已完成章节的缺文/哈希错误，后续章节将由重写回滚。
+  const checkpointChapterSubjects = new Set(
+    Array.from(
+      { length: checkpointState.currentChapterIndex },
+      (_, index) => `chapter-${index + 1}`
+    )
   )
   const cleanedPendingIssues = [
     ...pruneResolvedRequiredBeatIssues(
       normalizePendingIssuesForChapter(basePendingIssues, targetChapterFileExists),
       checkpointState
     ),
-    ...reconciliationIssues,
+    ...reconciliationIssues.filter((issue) => checkpointChapterSubjects.has(issue.subject ?? '')),
   ]
 
   let workingState: ReducedGraphState = {

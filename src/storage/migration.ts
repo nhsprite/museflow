@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { logger } from '../utils/logger.js'
 import { writeFileAtomic } from '../utils/fs.js'
+import { CheckpointCorruptionError } from '../graph/checkpointer.js'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -35,10 +36,16 @@ export async function migrateLegacyCheckpoints(outputDir: string): Promise<void>
   let latestCheckpointId: string | undefined
   if (existsSync(latestPath)) {
     try {
-      const latest = JSON.parse(readFileSync(latestPath, 'utf-8')) as { checkpointId?: string }
+      const latest = JSON.parse(readFileSync(latestPath, 'utf-8')) as { checkpointId?: unknown }
+      if (typeof latest.checkpointId !== 'string' || latest.checkpointId.length === 0) {
+        throw new Error('latest.json 缺少有效的 checkpointId')
+      }
       latestCheckpointId = latest.checkpointId
-    } catch {
-      // ignore corrupted latest pointer
+    } catch (err) {
+      throw new CheckpointCorruptionError(
+        latestPath,
+        err instanceof Error ? err.message : String(err)
+      )
     }
   }
 
@@ -46,33 +53,38 @@ export async function migrateLegacyCheckpoints(outputDir: string): Promise<void>
     if (
       !file.endsWith('.json') ||
       file === 'pending_writes.json' ||
-      file === 'chapter_markers.json'
+      file === 'chapter_markers.json' ||
+      file === 'latest.json'
     )
       continue
     const path = join(dir, file)
+    let record: CheckpointRecord
     try {
-      const record = JSON.parse(readFileSync(path, 'utf-8')) as CheckpointRecord
-      const existingId = record.checkpoint.id
-      if (!isLegacyInvalidCheckpointId(existingId)) continue
-
-      const newId = randomUUID()
-      logger.warn(`[MuseFlow] 检测到非法 checkpoint ID，自动修复: ${existingId} -> ${newId}`)
-      record.checkpointId = newId
-      record.checkpoint.id = newId
-
-      const newPath = join(dir, `${newId}.json`)
-      writeFileAtomic(newPath, JSON.stringify(record, null, 2))
-      unlinkSync(path)
-
-      if (latestCheckpointId === existingId) {
-        writeFileAtomic(
-          latestPath,
-          JSON.stringify({ checkpointId: newId, ts: record.checkpoint.ts }, null, 2)
-        )
-        latestCheckpointId = newId
+      record = JSON.parse(readFileSync(path, 'utf-8')) as CheckpointRecord
+      if (typeof record.checkpoint?.id !== 'string' || typeof record.checkpoint.ts !== 'string') {
+        throw new Error('缺少有效的 checkpoint.id 或 checkpoint.ts')
       }
-    } catch {
-      // ignore corrupted checkpoint file
+    } catch (err) {
+      throw new CheckpointCorruptionError(path, err instanceof Error ? err.message : String(err))
+    }
+    const existingId = record.checkpoint.id
+    if (!isLegacyInvalidCheckpointId(existingId)) continue
+
+    const newId = randomUUID()
+    logger.warn(`[MuseFlow] 检测到非法 checkpoint ID，自动修复: ${existingId} -> ${newId}`)
+    record.checkpointId = newId
+    record.checkpoint.id = newId
+
+    const newPath = join(dir, `${newId}.json`)
+    writeFileAtomic(newPath, JSON.stringify(record, null, 2))
+    unlinkSync(path)
+
+    if (latestCheckpointId === existingId) {
+      writeFileAtomic(
+        latestPath,
+        JSON.stringify({ checkpointId: newId, ts: record.checkpoint.ts }, null, 2)
+      )
+      latestCheckpointId = newId
     }
   }
 }

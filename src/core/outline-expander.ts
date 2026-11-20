@@ -11,7 +11,6 @@ import type {
   BeatClaimPlanningRejection,
   ChapterPlan,
   ChapterOutlineAgentInput,
-  ForeshadowPlanningObligation,
   ForeshadowPlanningRejection,
   ZeroProgressRejection,
 } from '../agents/types.js'
@@ -32,21 +31,17 @@ import { formatStoryState, prepareStoryStateForChapter } from '../graph/utils/re
 import { prepareStoryStateForChapterCached } from '../graph/utils/chapter-context.js'
 import { buildPreviousChapterEndingContext } from '../graph/utils/chapter-window.js'
 import type { RuntimeContext } from './context.js'
-import { getCoveredMandatoryBeatId, isBeatProven } from '../utils/beat-coverage.js'
+import { getCoveredMandatoryBeatId } from '../utils/beat-coverage.js'
 import { charactersToString } from '../graph/utils/characters.js'
 import { BlockingConflictError, isBlockingConflictError } from '../utils/errors.js'
 import type { OutlineRevisionProposal } from './chapter-generation/outline-revision-proposal.js'
 import type { Conflict } from '../types/story-state.js'
 import {
-  applyActBoundaryAdjustment,
   buildArcStatus,
   calculateBeatBudget,
   formatActBoundaryAdjustmentCommand,
   getActForChapter,
   getVerifiedBeatsFromMemory,
-  proposeActExtensionAfterForeshadowAdjudication,
-  proposeActBoundaryAdjustments,
-  type ActBoundaryProposal,
 } from '../utils/story-arc.js'
 import { findMandatoryBeatById, getMandatoryBeatEntries } from '../utils/mandatory-beat-ids.js'
 import type { ChapterOutlineResult } from '../agents/chapter-outline.js'
@@ -55,32 +50,45 @@ import {
   filterVerifiedConstraintsForChapter,
   renderVerifiedConstraints,
 } from '../utils/verified-constraints.js'
-import {
-  calculateMinimumForeshadowsToFulfillNow,
-  getBoundaryBlockingForeshadowDetails,
-  normalizeForeshadowCapacity,
-  selectForeshadowsForChapter,
-  selectOpportunityForeshadowsForChapter,
-  type ScheduledForeshadow,
-} from '../story-memory/foreshadow-policy.js'
+import { normalizeForeshadowCapacity } from '../story-memory/foreshadow-policy.js'
 import { normalizeStoryEvents } from '../story-memory/event-contract.js'
 import { verifyForeshadowPlan } from '../graph/services/foreshadow-fulfillment/planning-verifier.js'
 import {
   verifyBeatClaims,
   type BeatClaimRejection,
 } from '../graph/services/plot-advance/beat-claim-verifier.js'
-import {
-  areForeshadowFulfillmentEventsStructurallyCompatible,
-  findForeshadowFulfillmentConflictIds,
-  resolveCanonicalForeshadowId,
-} from '../story-memory/foreshadow-alias.js'
+import { findForeshadowFulfillmentConflictIds } from '../story-memory/foreshadow-alias.js'
 import { validatePlannedStoryEventAuthority } from '../story-memory/event-authority.js'
-import type {
-  ForeshadowFulfillEvent,
-  ForeshadowId,
-  StoryEvent,
-  StoryMemory,
-} from '../types/story-memory.js'
+import {
+  buildForeshadowPlanningObligations,
+  computeForeshadowConstraintContext,
+  getForeshadowScheduleContext,
+} from './outline/foreshadow-scheduling.js'
+import {
+  buildScheduledForeshadowPlanError,
+  canonicalizeChapterForeshadowClaims,
+  canonicalizeForeshadowClaimIds,
+  canonicalizeStateForeshadowClaims,
+  deferForeshadowClaims,
+  evaluateScheduledForeshadowPlanEvidence,
+  formatMissingScheduledForeshadowPlanEvidence,
+  getConflictingForeshadowDecisionIds,
+  getMissingForeshadowPlanEvidenceIds,
+  hasMissingScheduledForeshadowPlanEvidence,
+  logScheduledForeshadowPlanAttempt,
+} from './outline/foreshadow-claims.js'
+import {
+  autoExtendCurrentActBeforeOutline,
+  buildArcStatusConstraint,
+  ensureActCapacityAfterForeshadowAdjudication,
+} from './outline/act-boundary.js'
+import {
+  candidateHasBeatClaim,
+  collectClaimsForBeatVerification,
+  finalizeChapterOutlineCandidate,
+  isBeatAlreadyProven,
+  stripRejectedBeatClaims,
+} from './outline/beat-claims.js'
 
 export interface ExpandedOutline {
   chapterPlan: ChapterPlan
@@ -183,334 +191,12 @@ function reconcileChapterPlanBeatContract(
   }
 }
 
-interface ForeshadowScheduleContext {
-  deadlineCandidateIds: string[]
-  opportunityCandidateIds: string[]
-  opportunityCandidates: ScheduledForeshadow[]
-}
-
-function getLastForeshadowConsideredChapterById(
-  memory: StoryMemory,
-  outline: ReducedGraphState['outline'],
-  chapterIndex: number
-): Map<string, number> {
-  const lastConsideredChapterById = new Map<string, number>()
-  for (let index = 0; index < chapterIndex; index++) {
-    const item = outline[index]
-    if (!item) continue
-    for (const id of [
-      ...(item.fulfilledForeshadowIds ?? []),
-      ...(item.deferredForeshadowIds ?? []),
-    ]) {
-      const canonicalId = resolveCanonicalForeshadowId(memory, id) ?? id
-      lastConsideredChapterById.set(canonicalId, index + 1)
-    }
-  }
-  return lastConsideredChapterById
-}
-
-function getForeshadowScheduleContext(
-  state: ReducedGraphState,
-  chapterIndex: number
-): ForeshadowScheduleContext {
-  const empty = {
-    deadlineCandidateIds: [],
-    opportunityCandidateIds: [],
-    opportunityCandidates: [],
-  }
-  if (!state.storyMemory) return empty
-  const act = getActForChapter(state.storyArc, chapterIndex)
-  if (!act) return empty
-  const chapterNumber = chapterIndex + 1
-  const finalActIndex = state.storyArc?.acts.at(-1)?.index
-  const planningConfig = getChapterPlanningConfig(state.genre)
-  const deadlineCandidateIds = selectForeshadowsForChapter(
-    state.storyMemory,
-    chapterNumber,
-    planningConfig.foreshadowMaxFulfillmentsPerChapter,
-    act.index === finalActIndex
-  )
-  const opportunityCandidates = selectOpportunityForeshadowsForChapter(state.storyMemory, {
-    chapterNumber,
-    minFulfillDistance: planningConfig.foreshadowMinFulfillDistance,
-    capacity: planningConfig.foreshadowMaxOpportunisticCandidatesPerChapter,
-    excludedIds: new Set(deadlineCandidateIds),
-    lastConsideredChapterById: getLastForeshadowConsideredChapterById(
-      state.storyMemory,
-      state.outline,
-      chapterIndex
-    ),
-  })
-  return {
-    deadlineCandidateIds,
-    opportunityCandidateIds: opportunityCandidates.map(({ foreshadow }) => foreshadow.id),
-    opportunityCandidates,
-  }
-}
-
-function buildForeshadowPlanningObligations(
-  state: ReducedGraphState,
-  schedule: ForeshadowScheduleContext,
-  mustFulfillIds: readonly string[]
-): ForeshadowPlanningObligation[] {
-  if (!state.storyMemory) return []
-
-  const mustFulfillSet = new Set(mustFulfillIds)
-  const mandatory = schedule.deadlineCandidateIds.flatMap((id) => {
-    const foreshadow = state.storyMemory?.foreshadows[id]
-    if (!foreshadow) return []
-    return [
-      {
-        id: foreshadow.id,
-        text: foreshadow.text,
-        ...(foreshadow.resolutionQuestion !== undefined
-          ? { resolutionQuestion: foreshadow.resolutionQuestion }
-          : {}),
-        ...(foreshadow.fulfillmentCriteria !== undefined
-          ? { fulfillmentCriteria: foreshadow.fulfillmentCriteria }
-          : {}),
-        kind: foreshadow.kind,
-        introducedChapter: foreshadow.introducedIn,
-        resolutionPolicy: foreshadow.resolutionPolicy,
-        deadlineChapter: foreshadow.expectedFulfillChapter,
-        schedulingMode: 'mandatory' as const,
-        mustFulfillThisChapter: mustFulfillSet.has(id),
-      },
-    ]
-  })
-  const opportunities = schedule.opportunityCandidates.map(({ foreshadow, schedulingMode }) => ({
-    id: foreshadow.id,
-    text: foreshadow.text,
-    ...(foreshadow.resolutionQuestion !== undefined
-      ? { resolutionQuestion: foreshadow.resolutionQuestion }
-      : {}),
-    ...(foreshadow.fulfillmentCriteria !== undefined
-      ? { fulfillmentCriteria: foreshadow.fulfillmentCriteria }
-      : {}),
-    kind: foreshadow.kind,
-    introducedChapter: foreshadow.introducedIn,
-    resolutionPolicy: foreshadow.resolutionPolicy,
-    deadlineChapter: foreshadow.expectedFulfillChapter,
-    schedulingMode,
-    mustFulfillThisChapter: false,
-  }))
-  return [...mandatory, ...opportunities]
-}
-
-interface ForeshadowConstraintContext {
-  scheduledIds: string[]
-  mustFulfillIds: string[]
-  remainingChapters: number
-  pendingBlockingCount: number
-}
-
-function computeForeshadowConstraintContext(
-  state: ReducedGraphState,
-  chapterIndex: number,
-  scheduledIds: string[]
-): ForeshadowConstraintContext {
-  const empty = {
-    scheduledIds,
-    mustFulfillIds: [],
-    remainingChapters: 0,
-    pendingBlockingCount: 0,
-  }
-  if (!state.storyArc || !state.storyMemory || scheduledIds.length === 0) return empty
-
-  const currentChapterNumber = chapterIndex + 1
-  const act = getActForChapter(state.storyArc, chapterIndex)
-  if (!act) return empty
-
-  const remainingChapters = act.endChapter - currentChapterNumber + 1
-  const finalActIndex = state.storyArc.acts.at(-1)?.index
-  const blockingForeshadows = getBoundaryBlockingForeshadowDetails(
-    state.storyMemory,
-    act.endChapter,
-    act.index === finalActIndex
-  )
-  const pendingBlockingCount = blockingForeshadows.length
-  if (pendingBlockingCount === 0) {
-    return { ...empty, remainingChapters, pendingBlockingCount }
-  }
-
-  const planningConfig = getChapterPlanningConfig(state.genre)
-  const capacity = normalizeForeshadowCapacity(planningConfig.foreshadowMaxFulfillmentsPerChapter)
-  const minimumRequiredNow = calculateMinimumForeshadowsToFulfillNow({
-    pendingBlockingCount,
-    remainingChapters,
-    hardCapacity: capacity,
-    headroomPerChapter: planningConfig.foreshadowFulfillmentHeadroomPerChapter,
-  })
-  if (minimumRequiredNow === 0) {
-    return { ...empty, remainingChapters, pendingBlockingCount }
-  }
-
-  const blockingIds = new Set(blockingForeshadows.map((f) => f.id))
-  const mustFulfillIds = scheduledIds
-    .filter((id) => blockingIds.has(id))
-    .slice(0, minimumRequiredNow)
-  return { scheduledIds, mustFulfillIds, remainingChapters, pendingBlockingCount }
-}
-
 function getMissingScheduledForeshadowIds(
   fulfilledForeshadowIds: string[] | undefined,
   scheduledForeshadowIds: string[]
 ): string[] {
   const fulfilled = new Set(fulfilledForeshadowIds ?? [])
   return scheduledForeshadowIds.filter((id) => !fulfilled.has(id))
-}
-
-interface ScheduledForeshadowPlanEvidence {
-  declarationIds: string[]
-  eventIds: string[]
-  forbiddenFulfillmentIds: string[]
-}
-
-interface ScheduledForeshadowPlanEvaluation {
-  missing: ScheduledForeshadowPlanEvidence
-  plan: ChapterPlan
-}
-
-interface ForeshadowClaimOutline {
-  fulfilledForeshadowIds?: ForeshadowId[]
-  deferredForeshadowIds?: ForeshadowId[]
-}
-
-interface CanonicalizedForeshadowPlan {
-  plan: ChapterPlan
-  conflictingEventIds: ForeshadowId[]
-}
-
-function getConflictingForeshadowDecisionIds(outline: ForeshadowClaimOutline): ForeshadowId[] {
-  const deferredIds = new Set(outline.deferredForeshadowIds ?? [])
-  const seen = new Set<ForeshadowId>()
-  const conflictingIds: ForeshadowId[] = []
-
-  for (const id of outline.fulfilledForeshadowIds ?? []) {
-    if (!deferredIds.has(id) || seen.has(id)) continue
-    seen.add(id)
-    conflictingIds.push(id)
-  }
-
-  return conflictingIds
-}
-
-function canonicalizeForeshadowClaimIds(
-  memory: StoryMemory,
-  ids: readonly ForeshadowId[]
-): ForeshadowId[] {
-  const canonicalIds: ForeshadowId[] = []
-  const seen = new Set<ForeshadowId>()
-
-  for (const id of ids) {
-    const canonicalId = resolveCanonicalForeshadowId(memory, id) ?? id
-    if (seen.has(canonicalId)) continue
-    seen.add(canonicalId)
-    canonicalIds.push(canonicalId)
-  }
-
-  return canonicalIds
-}
-
-function canonicalizePlanForeshadowClaims(
-  memory: StoryMemory,
-  plan: ChapterPlan
-): CanonicalizedForeshadowPlan {
-  const expectedEvents: StoryEvent[] = []
-  const firstEventByCanonicalId = new Map<ForeshadowId, ForeshadowFulfillEvent>()
-  const conflictingEventIds = new Set<ForeshadowId>(
-    canonicalizeForeshadowClaimIds(memory, plan.foreshadowFulfillmentConflictIds ?? [])
-  )
-
-  for (const event of plan.expectedEvents ?? []) {
-    if (event.type !== 'foreshadow-fulfill') {
-      expectedEvents.push(event)
-      continue
-    }
-
-    const canonicalId = resolveCanonicalForeshadowId(memory, event.foreshadowId)
-    if (canonicalId === null) {
-      expectedEvents.push(event)
-      continue
-    }
-
-    const canonicalEvent = { ...event, foreshadowId: canonicalId }
-    const firstEvent = firstEventByCanonicalId.get(canonicalId)
-    if (!firstEvent) {
-      firstEventByCanonicalId.set(canonicalId, canonicalEvent)
-      expectedEvents.push(canonicalEvent)
-      continue
-    }
-    if (areForeshadowFulfillmentEventsStructurallyCompatible(firstEvent, canonicalEvent)) continue
-
-    conflictingEventIds.add(canonicalId)
-    expectedEvents.push(canonicalEvent)
-  }
-
-  return {
-    plan: {
-      ...plan,
-      fulfilledForeshadowIds: canonicalizeForeshadowClaimIds(
-        memory,
-        plan.fulfilledForeshadowIds ?? []
-      ),
-      expectedEvents,
-    },
-    conflictingEventIds: Array.from(conflictingEventIds),
-  }
-}
-
-function canonicalizeChapterForeshadowClaims<T extends ForeshadowClaimOutline>(
-  memory: StoryMemory,
-  outline: T,
-  plan: ChapterPlan | null
-): {
-  outline: T
-  plan: ChapterPlan | null
-  conflictingEventIds: ForeshadowId[]
-  conflictingDecisionIds: ForeshadowId[]
-} {
-  const canonicalOutline = {
-    ...outline,
-    ...(outline.fulfilledForeshadowIds
-      ? {
-          fulfilledForeshadowIds: canonicalizeForeshadowClaimIds(
-            memory,
-            outline.fulfilledForeshadowIds
-          ),
-        }
-      : {}),
-    ...(outline.deferredForeshadowIds
-      ? {
-          deferredForeshadowIds: canonicalizeForeshadowClaimIds(
-            memory,
-            outline.deferredForeshadowIds
-          ),
-        }
-      : {}),
-  }
-
-  const canonicalPlan = plan ? canonicalizePlanForeshadowClaims(memory, plan) : null
-  return {
-    outline: canonicalOutline,
-    plan: canonicalPlan?.plan ?? null,
-    conflictingEventIds: canonicalPlan?.conflictingEventIds ?? [],
-    conflictingDecisionIds: getConflictingForeshadowDecisionIds(canonicalOutline),
-  }
-}
-
-function canonicalizeStateForeshadowClaims(
-  state: ReducedGraphState,
-  chapterIndex: number
-): ReducedGraphState {
-  const memory = state.storyMemory
-  const outlineItem = state.outline[chapterIndex]
-  if (!memory || !outlineItem) return state
-
-  const canonical = canonicalizeChapterForeshadowClaims(memory, outlineItem, null)
-  const outline = [...state.outline]
-  outline[chapterIndex] = canonical.outline
-  return { ...state, outline }
 }
 
 function canonicalizeStateCoveredBeatClaims(
@@ -569,186 +255,6 @@ function canonicalizeStateCoveredBeatClaims(
   }
 }
 
-function deferForeshadowClaims(
-  state: ReducedGraphState,
-  chapterIndex: number,
-  plan: ChapterPlan,
-  ids: readonly string[]
-): { state: ReducedGraphState; plan: ChapterPlan } {
-  const deferredIds = new Set(ids)
-  const outline = [...state.outline]
-  const item = outline[chapterIndex]
-  if (!item) return { state, plan }
-
-  outline[chapterIndex] = {
-    ...item,
-    fulfilledForeshadowIds: (item.fulfilledForeshadowIds ?? []).filter(
-      (id) => !deferredIds.has(id)
-    ),
-    deferredForeshadowIds: Array.from(
-      new Set([...(item.deferredForeshadowIds ?? []), ...deferredIds])
-    ),
-  }
-
-  const { foreshadowFulfillmentConflictIds: _conflictIds, ...deferredPlan } = plan
-  const remainingConflictIds = (plan.foreshadowFulfillmentConflictIds ?? []).filter(
-    (id) => !deferredIds.has(id)
-  )
-
-  return {
-    state: { ...state, outline },
-    plan: {
-      ...deferredPlan,
-      ...(remainingConflictIds.length > 0
-        ? { foreshadowFulfillmentConflictIds: remainingConflictIds }
-        : {}),
-      fulfilledForeshadowIds: plan.fulfilledForeshadowIds.filter((id) => !deferredIds.has(id)),
-      expectedEvents: plan.expectedEvents.filter(
-        (event) => event.type !== 'foreshadow-fulfill' || !deferredIds.has(event.foreshadowId)
-      ),
-    },
-  }
-}
-
-/**
- * 以大纲裁决的 fulfilledForeshadowIds 为基准校验章节规划：
- * plan 的 fulfilledForeshadowIds 与 foreshadow-fulfill expectedEvents 必须覆盖大纲声称的每个 id。
- * 调度器只提供候选，规划层不再与调度器对齐。
- */
-function evaluateScheduledForeshadowPlanEvidence(
-  chapterPlan: ChapterPlan,
-  outlineFulfilledForeshadowIds: string[],
-  outlineDeferredForeshadowIds: string[],
-  requestedChapterIndex: number,
-  memory: StoryMemory | null | undefined
-): ScheduledForeshadowPlanEvaluation {
-  const canonicalized = memory
-    ? canonicalizeChapterForeshadowClaims(
-        memory,
-        {
-          fulfilledForeshadowIds: outlineFulfilledForeshadowIds,
-          deferredForeshadowIds: outlineDeferredForeshadowIds,
-        },
-        chapterPlan
-      )
-    : {
-        outline: {
-          fulfilledForeshadowIds: outlineFulfilledForeshadowIds,
-          deferredForeshadowIds: outlineDeferredForeshadowIds,
-        },
-        plan: chapterPlan,
-        conflictingEventIds: Array.from(
-          new Set([
-            ...(chapterPlan.foreshadowFulfillmentConflictIds ?? []),
-            ...findForeshadowFulfillmentConflictIds(undefined, chapterPlan.expectedEvents ?? []),
-          ])
-        ),
-        conflictingDecisionIds: getConflictingForeshadowDecisionIds({
-          fulfilledForeshadowIds: outlineFulfilledForeshadowIds,
-          deferredForeshadowIds: outlineDeferredForeshadowIds,
-        }),
-      }
-  const canonicalPlan = canonicalized.plan ?? chapterPlan
-  const canonicalOutlineFulfilledIds = canonicalized.outline.fulfilledForeshadowIds ?? []
-  const canonicalOutlineDeferredIds = new Set(canonicalized.outline.deferredForeshadowIds ?? [])
-  const declarationIds = getMissingScheduledForeshadowIds(
-    canonicalPlan.fulfilledForeshadowIds,
-    canonicalOutlineFulfilledIds
-  )
-  const eventForeshadowIds = new Set<string>()
-  for (const event of canonicalPlan.expectedEvents ?? []) {
-    if (event.type === 'foreshadow-fulfill' && event.chapterIndex === requestedChapterIndex) {
-      eventForeshadowIds.add(event.foreshadowId)
-    }
-  }
-  const forbiddenFulfillmentIds = new Set<string>()
-  for (const id of canonicalPlan.fulfilledForeshadowIds ?? []) {
-    if (canonicalOutlineDeferredIds.has(id)) forbiddenFulfillmentIds.add(id)
-  }
-  for (const event of canonicalPlan.expectedEvents ?? []) {
-    if (
-      event.type === 'foreshadow-fulfill' &&
-      canonicalOutlineDeferredIds.has(event.foreshadowId)
-    ) {
-      forbiddenFulfillmentIds.add(event.foreshadowId)
-    }
-  }
-  const missing = {
-    declarationIds,
-    eventIds: Array.from(
-      new Set([
-        ...canonicalOutlineFulfilledIds.filter((id) => !eventForeshadowIds.has(id)),
-        ...canonicalized.conflictingEventIds,
-      ])
-    ),
-    forbiddenFulfillmentIds: Array.from(forbiddenFulfillmentIds),
-  }
-  return { missing, plan: { ...canonicalPlan, chapterIndex: requestedChapterIndex } }
-}
-
-function hasMissingScheduledForeshadowPlanEvidence(
-  missing: ScheduledForeshadowPlanEvidence
-): boolean {
-  return (
-    missing.declarationIds.length > 0 ||
-    missing.eventIds.length > 0 ||
-    missing.forbiddenFulfillmentIds.length > 0
-  )
-}
-
-function formatMissingScheduledForeshadowPlanEvidence(
-  missing: ScheduledForeshadowPlanEvidence
-): string {
-  return [
-    `fulfilledForeshadowIds：${missing.declarationIds.join(', ') || '（无遗漏）'}`,
-    `expectedEvents.foreshadow-fulfill：${missing.eventIds.join(', ') || '（无遗漏）'}`,
-    ...(missing.forbiddenFulfillmentIds.length > 0
-      ? [`禁止兑现：${missing.forbiddenFulfillmentIds.join(', ')}`]
-      : []),
-  ].join('；')
-}
-
-function formatScheduledForeshadowPlanDiagnostic(
-  missing: ScheduledForeshadowPlanEvidence,
-  capacity: number
-): string {
-  return `${formatMissingScheduledForeshadowPlanEvidence(missing)}（单章容量 ${capacity}）`
-}
-
-function logScheduledForeshadowPlanAttempt(
-  chapterIndex: number,
-  stage: string,
-  attempt: number,
-  maxAttempts: number,
-  missing: ScheduledForeshadowPlanEvidence,
-  capacity: number,
-  informational = false
-): void {
-  const message = `[MuseFlow] 第 ${chapterIndex + 1} 章${stage}第 ${attempt}/${maxAttempts} 次遗漏大纲声称的伏笔兑现证据：${formatScheduledForeshadowPlanDiagnostic(missing, capacity)}`
-  if (informational) {
-    logger.info(message)
-  } else {
-    logger.warn(message)
-  }
-}
-
-function getMissingForeshadowPlanEvidenceIds(missing: ScheduledForeshadowPlanEvidence): string[] {
-  return Array.from(
-    new Set([...missing.declarationIds, ...missing.eventIds, ...missing.forbiddenFulfillmentIds])
-  )
-}
-
-function buildScheduledForeshadowPlanError(
-  chapterIndex: number,
-  stage: string,
-  missing: ScheduledForeshadowPlanEvidence,
-  capacity: number
-): Error {
-  return new Error(
-    `第 ${chapterIndex + 1} 章${stage}遗漏大纲声称的伏笔兑现证据：${formatScheduledForeshadowPlanDiagnostic(missing, capacity)}`
-  )
-}
-
 const CORE_SECTION_JUDGE_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
@@ -758,395 +264,6 @@ const CORE_SECTION_JUDGE_SCHEMA: JsonSchema = {
     },
   },
   required: ['results'],
-}
-
-function ensureOutlineLength(
-  outline: ReducedGraphState['outline'],
-  totalChapters: number
-): ReducedGraphState['outline'] {
-  const next = [...outline]
-  for (let i = next.length; i < totalChapters; i++) {
-    next.push({ number: i + 1, title: '', description: '' })
-  }
-  return next
-}
-
-function ensureChaptersLength(
-  chapters: ReducedGraphState['chapters'],
-  totalChapters: number
-): ReducedGraphState['chapters'] {
-  const next = [...chapters]
-  while (next.length < totalChapters) {
-    next.push(null)
-  }
-  return next
-}
-
-function synchronizeStateWithStoryArc(
-  state: ReducedGraphState,
-  updatedStoryArc: NonNullable<ReducedGraphState['storyArc']>
-): ReducedGraphState {
-  if (updatedStoryArc === state.storyArc) return state
-
-  const updatedTotalChapters = Math.max(state.totalChapters, updatedStoryArc.totalChapters)
-  const updatedOutline = ensureOutlineLength(state.outline, updatedTotalChapters)
-  const updatedChapters = ensureChaptersLength(state.chapters, updatedTotalChapters)
-  const updatedStory =
-    updatedTotalChapters === state.story.totalChapters
-      ? state.story
-      : { ...state.story, totalChapters: updatedTotalChapters, updatedAt: Date.now() }
-
-  return {
-    ...state,
-    story: updatedStory,
-    totalChapters: updatedTotalChapters,
-    storyArc: updatedStoryArc,
-    outline: updatedOutline,
-    chapters: updatedChapters,
-  }
-}
-
-interface ApplyAutomaticExtensionResult {
-  state: ReducedGraphState
-  applied: boolean
-  requiresManualResolution: boolean
-  reason: string | undefined
-  proposal: ActBoundaryProposal | undefined
-  requestedExtension: number | undefined
-  availableExtensions: number | undefined
-}
-
-function applyAutomaticActExtensions(
-  state: ReducedGraphState,
-  chapterIndex: number,
-  proposals: readonly ActBoundaryProposal[],
-  stage: string,
-  options: { logFailure?: boolean } = {}
-): ApplyAutomaticExtensionResult {
-  const logFailure = options.logFailure ?? true
-  if (!state.storyArc || proposals.length === 0) {
-    return {
-      state,
-      applied: false,
-      requiresManualResolution: false,
-      reason: undefined,
-      proposal: undefined,
-      requestedExtension: undefined,
-      availableExtensions: undefined,
-    }
-  }
-
-  let updatedStoryArc = state.storyArc
-  const planningConfig = getChapterPlanningConfig(state.genre)
-  for (const proposal of proposals) {
-    const result = applyActBoundaryAdjustment(
-      updatedStoryArc,
-      proposal,
-      chapterIndex,
-      planningConfig
-    )
-    if (!result.applied) {
-      if (logFailure) {
-        logger.warn(`[MuseFlow] ${stage}自动延长第 ${proposal.actIndex} 幕失败：${result.reason}`)
-        const command = formatActBoundaryAdjustmentCommand(state.story.id, proposal)
-        logger.warn(`[MuseFlow] 建议运行：${command}`)
-      }
-      return {
-        state: synchronizeStateWithStoryArc(state, updatedStoryArc),
-        applied: false,
-        requiresManualResolution: result.requiresManualResolution ?? false,
-        reason: result.reason,
-        proposal,
-        requestedExtension: result.requestedExtension,
-        availableExtensions: result.availableExtensions,
-      }
-    }
-    updatedStoryArc = result.storyArc
-    logger.info(`[MuseFlow] ${stage}${result.reason}`)
-  }
-
-  return {
-    state: synchronizeStateWithStoryArc(state, updatedStoryArc),
-    applied: true,
-    requiresManualResolution: false,
-    reason: undefined,
-    proposal: undefined,
-    requestedExtension: undefined,
-    availableExtensions: undefined,
-  }
-}
-
-async function autoExtendCurrentActBeforeOutline(
-  state: ReducedGraphState,
-  chapterIndex: number
-): Promise<ReducedGraphState> {
-  if (!state.storyArc) return state
-
-  const currentChapterNumber = chapterIndex + 1
-  const currentAct = state.storyArc.acts.find(
-    (act) => currentChapterNumber >= act.startChapter && currentChapterNumber <= act.endChapter
-  )
-  if (!currentAct) return state
-
-  const planningConfig = getChapterPlanningConfig(state.genre)
-
-  const extensionProposals = proposeActBoundaryAdjustments(
-    state.storyArc,
-    state.actProgress,
-    chapterIndex,
-    state.storyMemory,
-    planningConfig.foreshadowMaxFulfillmentsPerChapter
-  ).filter(
-    (proposal) =>
-      proposal.actIndex === currentAct.index && proposal.proposedEndChapter > currentAct.endChapter
-  )
-
-  if (extensionProposals.length === 0) return state
-
-  const result = applyAutomaticActExtensions(state, chapterIndex, extensionProposals, '写前')
-  if (result.requiresManualResolution) {
-    const affectedForeshadowIds = state.storyMemory
-      ? getBoundaryBlockingForeshadowDetails(
-          state.storyMemory,
-          extensionProposals[0]!.proposedEndChapter,
-          currentAct.index === state.storyArc.acts.at(-1)?.index
-        ).map((foreshadow) => foreshadow.id)
-      : []
-    const diagnostic = JSON.stringify({
-      actIndex: currentAct.index,
-      proposedEndChapter: extensionProposals[0]!.proposedEndChapter,
-      availableExtensions: result.availableExtensions ?? 0,
-      affectedForeshadowIds,
-    })
-    throw new Error(
-      [
-        `写前自动延长第 ${currentAct.index} 幕失败：${result.reason ?? '需要人工调整幕边界。'}`,
-        `容量诊断：${diagnostic}`,
-        `请先运行：${formatActBoundaryAdjustmentCommand(state.story.id, extensionProposals[0]!)}`,
-      ].join('\n')
-    )
-  }
-  return result.state
-}
-
-function ensureActCapacityAfterForeshadowAdjudication(
-  state: ReducedGraphState,
-  chapterIndex: number,
-  plannedFulfillmentIds: readonly string[]
-): ApplyAutomaticExtensionResult {
-  if (!state.storyArc || !state.storyMemory) {
-    return {
-      state,
-      applied: false,
-      requiresManualResolution: false,
-      reason: undefined,
-      proposal: undefined,
-      requestedExtension: undefined,
-      availableExtensions: undefined,
-    }
-  }
-
-  const planningConfig = getChapterPlanningConfig(state.genre)
-  const proposal = proposeActExtensionAfterForeshadowAdjudication(
-    state.storyArc,
-    chapterIndex,
-    state.storyMemory,
-    planningConfig.foreshadowMaxFulfillmentsPerChapter,
-    plannedFulfillmentIds
-  )
-  if (!proposal) {
-    return {
-      state,
-      applied: false,
-      requiresManualResolution: false,
-      reason: undefined,
-      proposal: undefined,
-      requestedExtension: undefined,
-      availableExtensions: undefined,
-    }
-  }
-
-  return applyAutomaticActExtensions(state, chapterIndex, [proposal], '伏笔裁决后', {
-    logFailure: false,
-  })
-}
-
-function buildArcStatusConstraint(
-  storyArc: import('../types/outline.js').StoryArc,
-  actProgress: Record<number, { consumed: string[]; pending: string[] }>,
-  chapterIndex: number,
-  bookClosingPhaseRatio: number,
-  verifiedBeatIds: ReadonlySet<string>
-): string | undefined {
-  const arcStatus = buildArcStatus(
-    storyArc,
-    actProgress,
-    chapterIndex,
-    bookClosingPhaseRatio,
-    verifiedBeatIds
-  )
-  const currentAct = arcStatus.currentAct
-  if (!currentAct) return undefined
-
-  const chaptersRemaining = currentAct.endChapter - (chapterIndex + 1)
-  const pendingCount = arcStatus.beatsPending.length
-
-  if (arcStatus.mandatoryBeatPressure === 'high') {
-    return `【幕边界压力 - 高】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费：${arcStatus.beatsPending.join('、')}。本章规划必须优先推进这些节拍中的至少 1 个，且严禁引入无关过渡场景。`
-  }
-  if (arcStatus.mandatoryBeatPressure === 'medium') {
-    return `【幕边界压力 - 中】第 ${currentAct.index} 幕还剩 ${chaptersRemaining} 章结束，仍有 ${pendingCount} 个 mandatory beats 未消费：${arcStatus.beatsPending.join('、')}。本章规划应优先实质消费其中 1 个；持续推迟会把消费义务压缩到幕末零余量章节，届时再无缓冲。`
-  }
-  return undefined
-}
-
-function finalizeChapterOutlineCandidate(
-  candidate: ChapterOutlineResult,
-  state: ReducedGraphState,
-  chapterIndex: number,
-  beatBudget: number
-): ChapterOutlineResult {
-  const filteredClaimedBeatPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
-    candidate.claimedMandatoryBeatIds,
-    state,
-    chapterIndex
-  )
-  const cappedClaimedBeatPairs =
-    beatBudget > 0 ? filteredClaimedBeatPairs.slice(0, beatBudget) : filteredClaimedBeatPairs
-  const cappedClaimedBeats = cappedClaimedBeatPairs.map((pair) => pair.beat)
-  const cappedClaimedMandatoryBeatIds = cappedClaimedBeatPairs.map((pair) => pair.id)
-  const claimedBeatIds = filterClaimedKeyBeatIdsToStoryArc(
-    candidate.claimedBeatIds,
-    state,
-    chapterIndex
-  )
-  if (filteredClaimedBeatPairs.length > cappedClaimedBeatPairs.length) {
-    logger.info(
-      `[MuseFlow] 第 ${chapterIndex + 1} 章声称节拍 ${filteredClaimedBeatPairs.length} 个，超出预算 ${beatBudget} 个，已裁剪为：${cappedClaimedBeats.join('、') || '（无）'}`
-    )
-  }
-
-  return {
-    ...candidate,
-    claimedBeats: cappedClaimedBeats,
-    claimedMandatoryBeatIds: cappedClaimedMandatoryBeatIds,
-    claimedBeatIds,
-  }
-}
-
-function isBeatAlreadyProven(state: ReducedGraphState, beatId: string): boolean {
-  return isBeatProven(state.storyArc, state.storyMemory, beatId)
-}
-
-function filterClaimedMandatoryBeatPairsToCurrentAct(
-  claimedMandatoryBeatIds: string[] | undefined,
-  state: ReducedGraphState,
-  chapterIndex: number
-): Array<{ beat: string; id: string }> {
-  const currentAct = getActForChapter(state.storyArc, chapterIndex)
-  if (!currentAct) return []
-
-  const pairs: Array<{ beat: string; id: string }> = []
-  const addPair = (beat: string, id: string) => {
-    if (!pairs.some((pair) => pair.id === id)) {
-      pairs.push({ beat, id })
-    }
-  }
-
-  for (const id of claimedMandatoryBeatIds ?? []) {
-    const trimmed = id.trim()
-    const lookup = findMandatoryBeatById(state.storyArc, trimmed)
-    if (!lookup || lookup.act.index !== currentAct?.index) continue
-    if (isBeatAlreadyProven(state, trimmed)) {
-      logger.info(
-        `[MuseFlow] 第 ${chapterIndex + 1} 章声称的节拍 ${trimmed} 已在之前章节被证明，跳过`
-      )
-      continue
-    }
-    addPair(lookup.beat, trimmed)
-  }
-
-  return pairs
-}
-
-function filterClaimedKeyBeatIdsToStoryArc(
-  claimedBeatIds: string[] | undefined,
-  state: ReducedGraphState,
-  chapterIndex: number
-): string[] {
-  if (!state.storyArc) return []
-  const currentAct = getActForChapter(state.storyArc, chapterIndex)
-  const allowed = new Set(
-    state.storyArc.keyBeats
-      .filter(
-        (beat) =>
-          getCoveredMandatoryBeatId(state.storyArc, beat.id) === undefined &&
-          (!currentAct || beat.deadlineAct === currentAct.index)
-      )
-      .map((beat) => beat.id)
-  )
-  const result: string[] = []
-  for (const id of claimedBeatIds ?? []) {
-    const trimmed = id.trim()
-    if (allowed.has(trimmed) && !result.includes(trimmed)) {
-      result.push(trimmed)
-    }
-  }
-  return result
-}
-
-/**
- * 收集 finalize 实际会保留的节拍认领（mandatory 按预算截断 + key beats），
- * 供写作前的「认领 vs description」语义校验使用。beat 文本一律取自注册表。
- */
-function collectClaimsForBeatVerification(
-  candidate: ChapterOutlineResult,
-  state: ReducedGraphState,
-  chapterIndex: number,
-  beatBudget: number
-): Array<{ beatId: string; beat: string }> {
-  const mandatoryPairs = filterClaimedMandatoryBeatPairsToCurrentAct(
-    candidate.claimedMandatoryBeatIds,
-    state,
-    chapterIndex
-  )
-  const cappedMandatoryPairs = beatBudget > 0 ? mandatoryPairs.slice(0, beatBudget) : mandatoryPairs
-  const keyBeatIds = filterClaimedKeyBeatIdsToStoryArc(
-    candidate.claimedBeatIds,
-    state,
-    chapterIndex
-  )
-  const keyBeatClaims = keyBeatIds.flatMap((id) => {
-    const beat = state.storyArc?.keyBeats.find((keyBeat) => keyBeat.id === id)?.beat
-    return beat ? [{ beatId: id, beat }] : []
-  })
-  return [
-    ...cappedMandatoryPairs.map((pair) => ({ beatId: pair.id, beat: pair.beat })),
-    ...keyBeatClaims,
-  ]
-}
-
-/** 从候选大纲中剔除被拒绝的节拍认领 ID；claimedBeats 文本由 finalize 按剩余 ID 重建。 */
-function stripRejectedBeatClaims(
-  candidate: ChapterOutlineResult,
-  rejectedBeatClaimIds: readonly string[]
-): ChapterOutlineResult {
-  if (rejectedBeatClaimIds.length === 0) return candidate
-  const rejected = new Set(rejectedBeatClaimIds)
-  return {
-    ...candidate,
-    claimedMandatoryBeatIds: (candidate.claimedMandatoryBeatIds ?? []).filter(
-      (id) => !rejected.has(id)
-    ),
-    claimedBeatIds: (candidate.claimedBeatIds ?? []).filter((id) => !rejected.has(id)),
-  }
-}
-
-function candidateHasBeatClaim(candidate: ChapterOutlineResult, beatId: string): boolean {
-  return (
-    (candidate.claimedMandatoryBeatIds ?? []).includes(beatId) ||
-    (candidate.claimedBeatIds ?? []).includes(beatId)
-  )
 }
 
 async function judgeCoreSectionsWithModel(
@@ -1192,12 +309,15 @@ async function judgeCoreSectionsWithModel(
       const response = await provider.chatStructured<{ results: boolean[] }>(
         messages,
         CORE_SECTION_JUDGE_SCHEMA,
-        0.3
+        0.3,
+        { purpose: 'outline.core-section-judge' }
       )
       return response.results
     }
 
-    const text = await provider.chat(messages, 0.3)
+    const text = await provider.chat(messages, 0.3, {
+      purpose: 'outline.core-section-judge',
+    })
     const parsed = JSON.parse(text) as { results: boolean[] }
     return parsed.results
   } catch (err) {

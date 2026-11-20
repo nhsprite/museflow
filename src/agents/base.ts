@@ -1,4 +1,5 @@
 import type { ModelProvider, Message } from '../model/provider.js'
+import type { ModelCallMetadata } from '../model/telemetry.js'
 import { getGenreSkill } from '../genres/registry.js'
 import type { GenreSkill } from '../types/genre.js'
 import type { AgentInput, AgentOutput } from './types.js'
@@ -13,8 +14,8 @@ export abstract class BaseAgent<TInput extends AgentInput> {
     this.temperature = temperature
   }
 
-  protected async chat(messages: Message[]): Promise<string> {
-    return this.provider.chat(messages, this.temperature)
+  protected async chat(messages: Message[], metadata?: ModelCallMetadata): Promise<string> {
+    return this.provider.chat(messages, this.temperature, metadata)
   }
 
   protected systemMessage(content: string): Message {
@@ -40,7 +41,11 @@ export abstract class BaseAgent<TInput extends AgentInput> {
     logger.debug(`[Agent] ${agentName} started`)
     const messages = this.buildPrompt(state)
     try {
-      const content = await this.chat(messages)
+      const content = await this.chat(messages, {
+        agent: agentName,
+        purpose: agentName,
+        ...(state.chapterIndex !== undefined ? { chapterIndex: state.chapterIndex } : {}),
+      })
       logger.debug(`[Agent] ${agentName} completed`)
       return this.parse(content)
     } catch (err) {

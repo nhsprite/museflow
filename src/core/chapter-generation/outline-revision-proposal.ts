@@ -216,7 +216,10 @@ export async function generateOutlineRevisionProposal(
   ]
 
   try {
-    const response = await provider.chat(messages, 0.3)
+    const response = await provider.chat(messages, 0.3, {
+      purpose: 'outline.revision-proposal',
+      chapterIndex,
+    })
     return parseProposal(response)
   } catch (err) {
     logger.debug(

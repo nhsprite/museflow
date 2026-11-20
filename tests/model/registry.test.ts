@@ -3,6 +3,7 @@ import { AnthropicCompatibleProvider, createProvider } from '../../src/model/reg
 import type { AppConfig } from '../../src/types/config.js'
 import * as configStore from '../../src/config/store.js'
 import * as loggerModule from '../../src/utils/logger.js'
+import { ModelTelemetry } from '../../src/model/telemetry.js'
 
 vi.mock('../../src/config/store.js', () => ({
   loadConfig: vi.fn(),
@@ -258,6 +259,158 @@ describe('createProvider / OpenAICompatibleProvider', () => {
       },
     })
   })
+
+  it('falls back to prompt-based structured output when json_schema is rejected', async () => {
+    setConfig()
+    const fetchMock = vi.mocked(globalThis.fetch)
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({}),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: '{"ok": true}' } }] }),
+      } as Response)
+
+    const provider = createProvider()
+    const result = await provider.chatStructured([{ role: 'user', content: 'hi' }], {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const fallbackBody = JSON.parse(fetchMock.mock.calls[1][1].body as string)
+    expect(fallbackBody.response_format).toBeUndefined()
+    expect(fallbackBody.messages.at(-1).content).toContain('JSON Schema')
+  })
+
+  it('does not hide authentication errors behind the structured fallback', async () => {
+    setConfig()
+    vi.mocked(globalThis.fetch).mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    } as Response)
+
+    const provider = createProvider()
+    await expect(
+      provider.chatStructured([{ role: 'user', content: 'hi' }], {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+      })
+    ).rejects.toThrow('API error: 401')
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('records token usage, metadata and structured fallback calls', async () => {
+    setConfig()
+    const fetchMock = vi.mocked(globalThis.fetch)
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({}),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok": true}' } }],
+          usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+        }),
+      } as Response)
+    const telemetry = new ModelTelemetry()
+    const provider = createProvider(
+      {
+        model: {
+          provider: 'openai',
+          model: 'test-model',
+          apiKey: 'test-key',
+          baseUrl: 'https://test.example.com',
+        },
+      },
+      telemetry
+    )
+
+    await provider.chatStructured(
+      [{ role: 'user', content: 'hi' }],
+      {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+      },
+      0.2,
+      { chapterIndex: 3, purpose: 'test-structured' }
+    )
+
+    expect(telemetry.summarizeChapter(3)).toMatchObject({
+      calls: 2,
+      failures: 1,
+      structuredCalls: 1,
+      fallbackCalls: 1,
+      inputTokens: 12,
+      outputTokens: 3,
+      totalTokens: 15,
+      usageReportedCalls: 1,
+      callsByPurpose: { 'test-structured': 2 },
+    })
+  })
+
+  it.each(['openai', 'anthropic'] as const)(
+    'preserves %s usage when structured content cannot be parsed',
+    async (providerName) => {
+      setConfig()
+      const telemetry = new ModelTelemetry()
+      const provider = createProvider(
+        {
+          model: {
+            provider: providerName,
+            model: 'test-model',
+            apiKey: 'test-key',
+            baseUrl: 'https://test.example.com',
+          },
+        },
+        telemetry
+      )
+      const response =
+        providerName === 'openai'
+          ? {
+              choices: [{ message: { content: '{"truncated":' } }],
+              usage: { prompt_tokens: 120, completion_tokens: 80, total_tokens: 200 },
+            }
+          : {
+              content: [{ type: 'text', text: 'unparseable response' }],
+              usage: { input_tokens: 120, output_tokens: 80 },
+            }
+      vi.mocked(globalThis.fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => response,
+      } as Response)
+
+      await expect(
+        provider.chatStructured!([{ role: 'user', content: 'hi' }], { type: 'object' }, 0, {
+          chapterIndex: 3,
+          purpose: 'test-structured',
+        })
+      ).rejects.toThrow()
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+      expect(telemetry.summarizeChapter(3)).toMatchObject({
+        calls: 1,
+        failures: 1,
+        structuredCalls: 1,
+        inputTokens: 120,
+        outputTokens: 80,
+        totalTokens: 200,
+        usageReportedCalls: 1,
+        callsByPurpose: { 'test-structured': 1 },
+      })
+    }
+  )
 
   it('lets config temperature override call-site values', async () => {
     setConfig({ model: { temperature: 1.3 } })

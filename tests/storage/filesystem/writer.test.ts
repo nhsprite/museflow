@@ -5,10 +5,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  deleteChapterCommitJournal,
   listChapterFiles,
   promoteStagedChapterContent,
+  readChapterCommitJournal,
   readChapterContent,
   readChapterContentForRun,
+  writeChapterCommitJournal,
   writeChapterContent,
   writeOutlineContent,
   writeStagedChapterContent,
@@ -62,6 +65,32 @@ describe('filesystem writer', () => {
     expect(await readChapterContent(outputDir, 3)).toBeNull()
     expect(await readChapterContentForRun(outputDir, 3)).toBe('# Draft Chapter 3')
     expect(await listChapterFiles(outputDir)).toEqual([])
+  })
+
+  it('persists and clears an inspectable chapter commit journal', async () => {
+    const baseDir = await mkdtemp(join(tmpdir(), 'museflow-commit-journal-'))
+    const outputDir = join(baseDir, 'story')
+    createdDirs.push(baseDir)
+
+    await writeChapterCommitJournal(outputDir, {
+      version: 1,
+      chapterNumber: 2,
+      phase: 'content_promoted',
+      checkpointId: 'cp-2',
+      updatedAt: 123,
+    })
+
+    expect(await readChapterCommitJournal(outputDir)).toEqual({
+      version: 1,
+      chapterNumber: 2,
+      phase: 'content_promoted',
+      checkpointId: 'cp-2',
+      updatedAt: 123,
+    })
+    expect(existsSync(join(outputDir, '.staging', 'chapter-commit.json'))).toBe(true)
+
+    await deleteChapterCommitJournal(outputDir)
+    expect(await readChapterCommitJournal(outputDir)).toBeNull()
   })
 
   it('writes outline as markdown to outline.md', async () => {

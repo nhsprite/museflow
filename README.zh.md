@@ -205,6 +205,7 @@ MuseFlow 使用 10 类专业 Agent 协同工作：
 | `./books/{story-dir}/chapters/chapter_{n}.md`         | 各章正文 `.md` 文件                          |
 | `./books/{story-dir}/reports/chapter_{n}.report.json` | 每章生成报告                                 |
 | `./books/{story-dir}/reports/blocking_*.json`         | 重写收敛失败时的人工处理报告                 |
+| `./books/{story-dir}/.staging/chapter-commit.json`    | 用于恢复中断章节提交的临时日志               |
 | `./output/*.txt`                                      | `museflow export` 生成的导出稿               |
 
 > **注意**：MuseFlow 使用 JSON + 文件系统存储，不依赖 SQLite。
@@ -214,11 +215,12 @@ MuseFlow 使用 10 类专业 Agent 协同工作：
 
 - `src/graph/novel.graph.ts` 负责 LangGraph 状态机。
 - `src/core/runner.ts` 构建初始/工作状态并调用 graph。
-- `src/core/chapter-commit.ts` 是 graph 运行后的章节提交边界：在 LangGraph 持久化最终 checkpoint 后保存章节 marker，并导出 `meta.json`。
-- `src/core/outline-expander.ts` 在动笔前即时生成当前章大纲和 `ChapterPlan`，使用故事弧线进度、前文摘要、故事状态和下一章边界提示。
+- `src/core/chapter-commit.ts` 是 graph 运行后的章节提交边界：记录正文/marker 提交阶段以支持崩溃恢复，在 LangGraph 持久化最终 checkpoint 后保存章节 marker，并导出 `meta.json`。
+- `src/core/outline-expander.ts` 负责动笔前的即时规划编排；`src/core/outline/` 下的独立模块处理伏笔调度与认领、幕边界和节拍认领。
 - `src/graph/services/chapter-orchestration/` 负责准备章节状态和收敛感知路由。
 - `src/core/chapter-generation/routing/` 决定当前章应草稿、局部修复、finalize，还是停止等待人工 rewrite。
-- `src/graph/services/finalization/` 提取摘要/状态/权威事实，验证 mandatory beats，更新幕进度并写入报告。
+- `src/graph/services/finalization/` 提取摘要/状态/权威事实，验证 mandatory beats，更新幕进度并写入报告。运行时统计可用时，报告包含 `modelUsage`：调用、失败、重试、结构化降级、Token、耗时和用途分布。
+- `src/model/registry.ts` 在原生 JSON Schema 输出被拒绝（HTTP 400/422）时降级为提示词 JSON 输出；鉴权等其他请求错误仍正常失败。
 - `verifiedConstraints` 在运行时是结构化对象，只在传入 agent prompt 时渲染为文本。
 - `meta.json`、`outline.md` 和报告是投影/产物；checkpoint state 才是运行时权威记录。
 

@@ -155,7 +155,8 @@ export async function authorizeOutlineFacts(
         raw = await provider.chatStructured<{ facts: OutlineAuthorizedFact[] }>(
           messages,
           OUTLINE_AUTHORIZATION_SCHEMA,
-          0.3
+          0.3,
+          { purpose: 'outline.authorize-facts' }
         )
       } catch (structuredErr) {
         // 部分兼容端通过 Anthropic 协议返回时，可能将 JSON 包裹在 markdown 中或截断输出
@@ -163,11 +164,11 @@ export async function authorizeOutlineFacts(
           '结构化输出失败，回退到普通 chat 解析:',
           structuredErr instanceof Error ? structuredErr.message : String(structuredErr)
         )
-        const text = await provider.chat(messages, 0.3)
+        const text = await provider.chat(messages, 0.3, { purpose: 'outline.state-reconciliation' })
         raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
       }
     } else {
-      const text = await provider.chat(messages, 0.3)
+      const text = await provider.chat(messages, 0.3, { purpose: 'outline.state-reconciliation' })
       raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
     }
 
@@ -390,18 +391,19 @@ async function detectCanonicalFactOutlineConflicts(
         raw = await provider.chatStructured<OutlineStateConflictResult>(
           messages,
           DETECTION_SCHEMA,
-          0.3
+          0.3,
+          { purpose: 'outline.state-conflict-detection', chapterIndex }
         )
       } catch (structuredErr) {
         logger.debug(
           '结构化大纲-状态冲突检测失败，回退到普通 chat 解析:',
           structuredErr instanceof Error ? structuredErr.message : String(structuredErr)
         )
-        const text = await provider.chat(messages, 0.3)
+        const text = await provider.chat(messages, 0.3, { purpose: 'outline.state-reconciliation' })
         raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
       }
     } else {
-      const text = await provider.chat(messages, 0.3)
+      const text = await provider.chat(messages, 0.3, { purpose: 'outline.state-reconciliation' })
       raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
     }
 
