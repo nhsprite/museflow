@@ -17,6 +17,7 @@ export type ChapterStep =
       regenerateOutline?: boolean
     }
   | { kind: 'fix_chapter'; patchableIssues: Issue[] }
+  | { kind: 'validate_chapter' }
   | { kind: 'finalize_chapter' }
   | { kind: 'repair_state' }
   | { kind: 'request_rewrite'; reason: BlockingReason; blockingIssues: Issue[] }
@@ -26,6 +27,8 @@ export type RoutingDecision = ChapterStep['kind']
 
 export interface ChapterSession {
   chapterIndex: number
+  /** 综合检查完整执行的正文版本；只表示检查已完成，不表示没有小说问题。 */
+  validatedContentHash?: string
   rewriteAttempts: number
   errorRewriteAttempts: number
   autoFixAttempts: number

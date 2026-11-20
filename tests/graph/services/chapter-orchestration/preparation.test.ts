@@ -94,12 +94,18 @@ describe('prepareChapter', () => {
   })
 
   it('preserves session on same-chapter rerun, including rewriteApproved and fingerprint history', async () => {
-    const session = makeSession({ chapterIndex: 2, rewriteApproved: true })
+    const session = makeSession({
+      chapterIndex: 2,
+      rewriteApproved: true,
+      validatedContentHash: 'old-check',
+    })
     const state = makeState({ currentChapterIndex: 2, session })
 
     const result = await prepareChapter(state, createProvider())
 
-    expect(result.session).toBeUndefined()
+    expect(result.session).toEqual({ ...session, validatedContentHash: undefined })
+    expect(result.session?.validatedContentHash).toBeUndefined()
+    expect(session.validatedContentHash).toBe('old-check')
     expect(result.pendingIssues).toBeUndefined()
   })
 

@@ -21,6 +21,7 @@ import type { StoryEvent } from '../../src/types/story-memory.js'
 const mockChat = vi.fn(async (_messages: Message[], _temperature?: number): Promise<string> => '')
 const mockChatStructured = vi.fn(
   async <T>(_messages: Message[], _schema: JsonSchema, _temperature?: number): Promise<T> => {
+    if (Object.hasOwn(_schema.properties, 'isContinuous')) return { isContinuous: true } as T
     if (Object.hasOwn(_schema.properties, 'judgments')) {
       const judgmentSchema = _schema.properties['judgments'] as {
         items?: { properties?: Record<string, unknown> }

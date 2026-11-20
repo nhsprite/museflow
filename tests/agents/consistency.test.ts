@@ -341,7 +341,7 @@ describe('ConsistencyAgent outline detail tolerance', () => {
     expect(userMessage).toContain('大纲执行细节差异')
   })
 
-  it('downgrades outline execution-detail errors to quality warnings', async () => {
+  it('rejects an error without its required authority reference', async () => {
     const agent = new TestableConsistencyAgent(createMockProvider())
     const output = {
       success: true,
@@ -361,12 +361,7 @@ describe('ConsistencyAgent outline detail tolerance', () => {
       },
     }
 
-    const issues = await agent.processOutput(output)
-
-    expect(issues).toHaveLength(1)
-    expect(issues[0].severity).toBe('warning')
-    expect(issues[0].dimension).toBe('quality')
-    expect(issues[0].ruleId).toBe('consistency.outline_deviation.outline.consistency')
+    await expect(agent.processOutput(output)).rejects.toThrow('error 必须提供涉及实体和权威来源')
   })
 
   it('keeps outline core deviation as error when source_reference is provided', async () => {
@@ -497,5 +492,49 @@ describe('ConsistencyAgent prose repetition lane (C.2.4)', () => {
     const userMessage = messages[1]?.content ?? ''
     expect(userMessage).toContain('prose_repetition')
     expect(userMessage).toContain('反复重列')
+  })
+})
+
+describe('ConsistencyAgent validation completeness', () => {
+  it.each([
+    undefined,
+    null,
+    {},
+    [],
+    { is_consistent: true },
+    { issues: [] },
+    { is_consistent: 'true', issues: [] },
+    { is_consistent: false, issues: [] },
+    { is_consistent: true, issues: [{ severity: 'warning', description: '问题' }] },
+    { is_consistent: false, issues: [{ severity: 'unknown', description: '问题' }] },
+    {
+      is_consistent: false,
+      issues: [{ severity: 'error', description: '问题', source_reference: 'chapter:1' }],
+    },
+    { is_consistent: false, issues: [{ severity: 'warning', description: '' }] },
+  ])('rejects incomplete or contradictory output: %j', async (data) => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    await expect(agent.processOutput({ success: true, data })).rejects.toThrow()
+  })
+
+  it('rejects a response that cannot be parsed as JSON', async () => {
+    const agent = new TestableConsistencyAgent(createMockProvider('invalid response'))
+    const output = await agent.run({ idea: 'test', genre: 'default', totalChapters: 1 })
+    expect(output.success).toBe(false)
+    await expect(agent.processOutput(output)).rejects.toThrow()
+  })
+
+  it('does not turn a failed call into an empty issue list', async () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    await expect(agent.processOutput({ success: false, error: 'timeout' })).rejects.toThrow(
+      'timeout'
+    )
+  })
+
+  it('accepts an explicit clean verdict', async () => {
+    const agent = new TestableConsistencyAgent(createMockProvider())
+    await expect(
+      agent.processOutput({ success: true, data: { is_consistent: true, issues: [] } })
+    ).resolves.toEqual([])
   })
 })

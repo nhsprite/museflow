@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import {
   prepare_chapter,
   converge_and_decide,
@@ -18,6 +18,7 @@ import type { RuntimeContext } from '../../../src/core/context.js'
 import { JsonCheckpointer } from '../../../src/graph/checkpointer.js'
 import { generateIssueFingerprint } from '../../../src/utils/context-judge.js'
 import { applyEvents, createEmptyStoryMemory } from '../../../src/story-memory/projector.js'
+import { createChapterMeta } from '../../../src/utils/agent-output.js'
 import type { StoryEvent } from '../../../src/types/story-memory.js'
 
 const testTempDir = join(tmpdir(), `museflow-chapter-orchestration-${randomUUID().slice(0, 8)}`)
@@ -65,6 +66,7 @@ function createMockContext(): RuntimeContext {
 function buildBaseSession(overrides: Partial<ChapterSession> = {}): ChapterSession {
   return {
     chapterIndex: 1,
+    validatedContentHash: createHash('sha256').update('existing chapter content').digest('hex'),
     rewriteAttempts: 0,
     errorRewriteAttempts: 0,
     autoFixAttempts: 0,
@@ -94,7 +96,7 @@ function buildBaseState(
       { number: 2, title: '遇敌', description: '主角遭遇敌人。' },
       { number: 3, title: '脱困', description: '主角脱困。' },
     ],
-    chapters: [null, null, null],
+    chapters: [null, createChapterMeta('story-1', 2), null],
     currentChapterIndex: 1,
     foreshadowStack: [],
     chapterSummaries: [],
@@ -192,7 +194,36 @@ describe('converge_and_decide', () => {
     vi.mocked(isInterpretiveIssue).mockReturnValue(false)
   })
 
-  it('finalizes when there are no errors and a chapter file already exists', async () => {
+  it('validates an existing draft without a completed check before making a routing decision', async () => {
+    const state = buildBaseState()
+    delete state.session!.validatedContentHash
+    const result = await converge_and_decide(createMockContext(), state)
+    expect(result.session?.routingDecision).toBe('validate_chapter')
+    expect(result.session?.rewriteAttempts).toBe(0)
+    expect(result.session?.autoFixAttempts).toBe(0)
+  })
+
+  it('invalidates a previous check when prose changes', async () => {
+    const state = buildBaseState()
+    vi.mocked(readChapterContentForRun).mockResolvedValue('new chapter content')
+    const result = await converge_and_decide(createMockContext(), state)
+    expect(result.session?.routingDecision).toBe('validate_chapter')
+    expect(result.session?.rewriteAttempts).toBe(0)
+  })
+
+  it.each([false, true])(
+    'does not finalize orphan content without chapter metadata (rewrite approved: %s)',
+    async (rewriteApproved) => {
+      const state = buildBaseState({
+        chapters: [null, null, null],
+        session: { rewriteApproved, rewriteAttempts: 3 },
+      })
+      const result = await converge_and_decide(createMockContext(), state)
+      expect(result.session?.routingDecision).toBe('draft_chapter')
+    }
+  )
+
+  it('finalizes when there are no errors and the existing chapter has completed validation', async () => {
     const state = buildBaseState({ session: { rewriteApproved: false }, pendingIssues: [] })
 
     const result = await converge_and_decide(createMockContext(), state)
@@ -570,9 +601,9 @@ describe('route_by_decision', () => {
     expect(route_by_decision(state)).toBe('request_rewrite')
   })
 
-  it('falls back to finalize_chapter when routingDecision is missing', () => {
+  it('falls back to validation when routingDecision is missing', () => {
     const state = buildBaseState({ session: { routingDecision: undefined } })
-    expect(route_by_decision(state)).toBe('finalize_chapter')
+    expect(route_by_decision(state)).toBe('validate_chapter')
   })
 })
 

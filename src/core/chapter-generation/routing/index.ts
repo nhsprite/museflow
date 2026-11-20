@@ -325,7 +325,7 @@ export async function decideNextStep(
       }
     }
 
-    if (session.rewriteAttempts === 0) {
+    if (session.rewriteAttempts === 0 || !ctx.chapterFileExists) {
       return {
         step: { kind: 'draft_chapter', discardPlan: false, feedbackIssues: [] },
         sessionUpdate: {

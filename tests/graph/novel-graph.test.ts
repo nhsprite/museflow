@@ -74,6 +74,7 @@ describe('novel graph', () => {
       draft_chapter: 'draft_chapter',
       fix_chapter: 'fix_chapter',
       repair_state: 'repair_state',
+      validate_chapter: 'validate_chapter_structured',
       finalize_chapter: 'finalize_chapter',
       request_rewrite: 'request_rewrite',
     })

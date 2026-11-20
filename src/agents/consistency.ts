@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { ModelProvider } from '../model/provider.js'
 import { BaseAgent, type AgentOutput } from './base.js'
 import type { ConsistencyAgentInput } from './types.js'
@@ -9,8 +10,44 @@ import {
   buildConsistencyUserPrompt,
 } from './prompts/consistency-prompt.js'
 import { parseJsonFromLLM } from '../utils/json.js'
-import { normalizeIssues } from '../utils/agent-output.js'
+import { normalizeIssues, type RawIssue } from '../utils/agent-output.js'
 import { classifyForeshadows } from '../story-memory/foreshadow-policy.js'
+
+const consistencyResultSchema = z
+  .object({
+    is_consistent: z.boolean(),
+    issues: z.array(
+      z
+        .object({
+          type: z.string().optional(),
+          severity: z.enum(['error', 'warning', 'info']),
+          description: z.string().trim().min(1),
+          aspect: z.string().optional(),
+          location: z.string().optional(),
+          subject: z.string().optional(),
+          source_reference: z.string().optional(),
+          suggestion: z.string().optional(),
+        })
+        .passthrough()
+    ),
+  })
+  .superRefine((result, ctx) => {
+    if (result.is_consistent !== (result.issues.length === 0)) {
+      ctx.addIssue({ code: 'custom', message: 'is_consistent 必须与 issues 是否为空一致' })
+    }
+    result.issues.forEach((issue, index) => {
+      if (issue.severity !== 'error') return
+      for (const field of ['subject', 'source_reference'] as const) {
+        if (!issue[field]?.trim()) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['issues', index, field],
+            message: 'error 必须提供涉及实体和权威来源，不能因字段缺失降级放行',
+          })
+        }
+      }
+    })
+  })
 
 export class ConsistencyAgent extends BaseAgent<ConsistencyAgentInput> {
   constructor(provider: ModelProvider) {
@@ -110,34 +147,18 @@ ${state.chapterContract}
   }
 
   async processOutput(output: AgentOutput, canonicalFacts?: CanonicalFact[]): Promise<Issue[]> {
-    if (!output.success || !output.data) return []
-    const data = output.data as {
-      is_consistent?: boolean
-      issues?: Array<{
-        type?: string
-        severity?: string
-        description?: string
-        aspect?: string
-        location?: string
-        locationRef?: unknown
-        location_ref?: unknown
-        paragraphIndex?: unknown
-        sentenceIndex?: unknown
-        paragraphNumber?: unknown
-        sentenceNumber?: unknown
-        subject?: string
-        source_reference?: string
-        reader_confusion?: string
-        suggestion?: string
-      }>
-    }
-
-    if (data.is_consistent === true) {
-      return []
-    }
+    if (!output.success) throw new Error(output.error || '一致性检查调用或解析失败')
+    const data = consistencyResultSchema.parse(output.data)
 
     void canonicalFacts
-    const issues = await normalizeIssues(data.issues, 'consistency', this.provider, {
+    // 去掉可选字段的 undefined，保持 exactOptionalPropertyTypes 约定。
+    const rawIssues = data.issues.map(
+      (issue) =>
+        Object.fromEntries(
+          Object.entries(issue).filter(([, value]) => value !== undefined)
+        ) as RawIssue
+    )
+    const issues = await normalizeIssues(rawIssues, 'consistency', this.provider, {
       ruleId: (issue, mappedType) => {
         if (issue.aspect === 'prose_artifact') return 'consistency.prose-artifact'
         if (issue.aspect === 'prose_repetition') return 'consistency.prose-repetition'
@@ -151,26 +172,6 @@ ${state.chapterContract}
       },
     })
 
-    // 强制实施 prompt 约定：
-    // 1. severity=error 的 consistency issue 必须携带 subject；未携带 subject 的 error 降级为 warning。
-    // 2. aspect='outline' 的 error 必须同时携带 subject 和 source_reference，否则视为执行细节差异，降级为 warning 并改 dimension='quality'。
-    //    这样可以避免 LLM 把“旋出”vs“提出”等操作细节差异误判为 structural full rewrite 触发器。
-    return issues.map((issue) => {
-      if (issue.severity === 'error' && !issue.subject) {
-        return { ...issue, severity: 'warning' as const }
-      }
-      if (
-        issue.severity === 'error' &&
-        issue.dimension === 'outline' &&
-        (!issue.sourceReference || issue.sourceReference.trim().length === 0)
-      ) {
-        return {
-          ...issue,
-          severity: 'warning' as const,
-          dimension: 'quality',
-        }
-      }
-      return issue
-    })
+    return issues
   }
 }

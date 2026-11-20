@@ -128,16 +128,16 @@ describe('ForeshadowingAgent processOutput', () => {
     expect(stack[0]?.expectedFulfillChapter).toBeGreaterThanOrEqual(3)
   })
 
-  it('returns existing stack on failed output', () => {
+  it('rejects failed or incomplete output instead of returning the old stack', () => {
     const agent = new TestableForeshadowingAgent(createMockProvider())
-    const existing = [{ id: 'existing', text: 'existing' }]
-    const stack = agent.exposeProcessOutput(
+    for (const output of [
       { success: false, error: 'parse failed' },
-      0,
-      existing as never,
-      ''
-    )
-    expect(stack).toBe(existing)
+      { success: true, data: {} },
+      { success: true, data: { new_foreshadows: [] } },
+      { success: true, data: { new_foreshadows: [], fulfilled_foreshadows: 'invalid' } },
+    ]) {
+      expect(() => agent.exposeProcessOutput(output, 0, [], '')).toThrow()
+    }
   })
 
   it('does not automatically fulfill overdue foreshadows without model evidence', () => {

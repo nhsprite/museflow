@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { ModelProvider } from '../model/provider.js'
 import { BaseAgent, type AgentOutput } from './base.js'
 import type { ForeshadowingAgentInput } from './types.js'
@@ -8,6 +9,19 @@ import {
   buildForeshadowingSystemPrompt,
   buildForeshadowingUserPrompt,
 } from './prompts/foreshadowing-prompt.js'
+
+const foreshadowResultSchema = z.object({
+  new_foreshadows: z.array(
+    z.object({
+      text: z.string().trim().min(1),
+      foreshadow_type: z.string().optional(),
+      expected_fulfill_chapter: z.number().int().positive().optional(),
+      confidence: z.string().optional(),
+    })
+  ),
+  fulfilled_foreshadows: z.array(z.union([z.string().min(1), z.number().int().positive()])),
+  overdue_foreshadows: z.array(z.union([z.string(), z.number()])).optional(),
+})
 
 export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
   private lastTotalChapters: number | undefined
@@ -49,18 +63,8 @@ export class ForeshadowingAgent extends BaseAgent<ForeshadowingAgentInput> {
     genre?: string
   ): ForeshadowItem[] {
     void chapterContent
-    if (!output.success || !output.data) return existingStack
-
-    const data = output.data as {
-      new_foreshadows?: Array<{
-        text?: string
-        foreshadow_type?: string
-        expected_fulfill_chapter?: number
-        confidence?: string
-      }>
-      fulfilled_foreshadows?: Array<string | number>
-      overdue_foreshadows?: Array<string | number>
-    }
+    if (!output.success) throw new Error(output.error || '伏笔检查调用或解析失败')
+    const data = foreshadowResultSchema.parse(output.data)
 
     const currentChapter = chapterIndex + 1
     const planningConfig = getChapterPlanningConfig(genre ?? 'default')

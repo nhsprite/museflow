@@ -206,6 +206,147 @@ describe('detect_consistency validation context', () => {
     )
   })
 
+  it('retries a failed consistency call without drafting and accepts a later valid result', async () => {
+    const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
+    const { getConsistencyAgent } = await import('../../src/graph/agent-factory.js')
+    const context = createMockContext()
+    const run = vi
+      .spyOn(getConsistencyAgent(context.provider), 'run')
+      .mockResolvedValueOnce({ success: false, error: 'timeout' })
+    await expect(detect_consistency(context, buildBaseState())).resolves.toEqual({})
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+
+  it('aborts the graph before finalization when a required check keeps failing', async () => {
+    const { StateGraph, START, END } = await import('@langchain/langgraph')
+    const { GraphState } = await import('../../src/graph/state.js')
+    const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
+    const { getConsistencyAgent } = await import('../../src/graph/agent-factory.js')
+    const { ChapterValidationError } = await import('../../src/utils/chapter-validation-error.js')
+    const context = createMockContext()
+    const run = vi
+      .spyOn(getConsistencyAgent(context.provider), 'run')
+      .mockResolvedValue({ success: false, error: 'timeout' })
+    const finalize = vi.fn(async () => ({}))
+    const graph = new StateGraph(GraphState)
+      .addNode('review', (state) => validate_chapter_comprehensive(context, state))
+      .addNode('commit_test', finalize)
+      .addEdge(START, 'review')
+      .addEdge('review', 'commit_test')
+      .addEdge('commit_test', END)
+      .compile()
+    const state = buildBaseState()
+    const oldIssue = {
+      id: 'old',
+      ruleId: 'consistency.test',
+      type: 'consistency',
+      severity: 'error',
+      description: '旧问题',
+      source: 'consistency',
+    }
+    state.pendingIssues = [oldIssue]
+    await expect(graph.invoke(state)).rejects.toThrow(ChapterValidationError)
+    expect(run).toHaveBeenCalledTimes(3)
+    expect(finalize).not.toHaveBeenCalled()
+    expect(state.pendingIssues).toEqual([oldIssue])
+    expect(state.session?.validatedContentHash).toBeUndefined()
+  })
+
+  it.each([{}, { isContinuous: 'true' }, { isContinuous: true, severity: 'invalid' }])(
+    'rejects malformed opening continuity results: %j',
+    async (response) => {
+      const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+      continuityCheckResponse = response
+      const state = buildBaseState()
+      state.currentChapterIndex = 1
+      state.chapters[1] = { ...state.chapters[0], number: 2 }
+      const context = createMockContext()
+      await expect(detect_continuity(context, state)).rejects.toMatchObject({
+        check: 'continuity.opening',
+        chapterIndex: 1,
+      })
+      expect(context.provider.chatStructured).toHaveBeenCalledTimes(3)
+    }
+  )
+
+  it('retries opening continuity transport failures and reports sustained failure', async () => {
+    const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+    const state = buildBaseState()
+    state.currentChapterIndex = 1
+    state.chapters[1] = { ...state.chapters[0], number: 2 }
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!).mockRejectedValue(new Error('network error'))
+    await expect(detect_continuity(context, state)).rejects.toMatchObject({
+      check: 'continuity.opening',
+    })
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(3)
+  })
+
+  it('retries malformed continuity output and accepts a valid replacement', async () => {
+    const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+    const state = buildBaseState()
+    state.currentChapterIndex = 1
+    state.chapters[1] = { ...state.chapters[0], number: 2 }
+    const context = createMockContext()
+    vi.mocked(context.provider.chatStructured!)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ isContinuous: true })
+    await expect(detect_continuity(context, state)).resolves.toEqual({})
+    expect(context.provider.chatStructured).toHaveBeenCalledTimes(2)
+  })
+
+  it('enforces the continuity contract for providers without chatStructured', async () => {
+    const { detect_continuity } = await import('../../src/graph/nodes/validation.js')
+    const state = buildBaseState()
+    state.currentChapterIndex = 1
+    state.chapters[1] = { ...state.chapters[0], number: 2 }
+    const context = createMockContext()
+    delete context.provider.chatStructured
+    vi.mocked(context.provider.chat).mockResolvedValue('{}')
+    await expect(detect_continuity(context, state)).rejects.toMatchObject({
+      check: 'continuity.opening',
+    })
+    expect(context.provider.chat).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not treat missing chapter text as a skipped check', async () => {
+    const { detect_consistency, detect_continuity } =
+      await import('../../src/graph/nodes/validation.js')
+    readChapterContentMock.mockResolvedValue(null)
+    await expect(detect_consistency(createMockContext(), buildBaseState())).rejects.toThrow(
+      '缺少待检查正文'
+    )
+    const state = buildBaseState()
+    state.currentChapterIndex = 1
+    state.chapters[1] = { ...state.chapters[0], number: 2 }
+    await expect(detect_continuity(createMockContext(), state)).rejects.toThrow(
+      '缺少上一章或当前章正文'
+    )
+  })
+
+  it('retries and blocks failed legacy foreshadow checks', async () => {
+    const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
+    foreshadowRunMock.mockResolvedValue({ success: false, error: 'parse failed' })
+    await expect(
+      validate_chapter_comprehensive(createMockContext(), buildBaseState())
+    ).rejects.toMatchObject({ check: 'foreshadowing' })
+    expect(foreshadowRunMock).toHaveBeenCalledTimes(3)
+    expect(foreshadowProcessOutputMock).not.toHaveBeenCalled()
+  })
+
+  it('does not certify prose changed while checks were running', async () => {
+    const { validate_chapter_comprehensive } = await import('../../src/graph/nodes/validation.js')
+    const { getConsistencyAgent } = await import('../../src/graph/agent-factory.js')
+    const context = createMockContext()
+    vi.spyOn(getConsistencyAgent(context.provider), 'run').mockImplementation(async () => {
+      readChapterContentMock.mockResolvedValue('检查期间改变后的正文')
+      return consistencyOutput
+    })
+    await expect(validate_chapter_comprehensive(context, buildBaseState())).rejects.toThrow(
+      '检查期间正文发生变化'
+    )
+  })
+
   it('passes canonical facts to consistency agent', async () => {
     const { detect_consistency } = await import('../../src/graph/nodes/validation.js')
 

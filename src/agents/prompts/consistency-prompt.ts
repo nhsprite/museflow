@@ -282,7 +282,7 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
 <output_format>
   请输出 JSON 格式的检测结果。注意：每个 issue 的 type 字段必须固定为字符串 "consistency"，不要写成 "quality" 或其他类型：
   {
-    "is_consistent": true,
+    "is_consistent": false,
     "issues": [
       {
         "type": "consistency",
@@ -299,6 +299,7 @@ const CONSISTENCY_USER_PROMPT_TEMPLATE = `<instruction>
     ]
   }
   如果问题可以精确定位到当前章节正文的段落或句子，必须用 locationRef 输出正整数编号；paragraphNumber 和 sentenceNumber 均从 1 开始计数。不要把"第三段"、"结尾处"等自然语言位置写入 locationRef；不能精确定位时省略 locationRef 或设为 null。
+  is_consistent 必须与 issues 是否为空一致；报告任何问题时为 false，只有 issues 为空时才为 true。
   如果没有任何问题，请返回 {"is_consistent": true, "issues": []}。
 </output_format>`
 

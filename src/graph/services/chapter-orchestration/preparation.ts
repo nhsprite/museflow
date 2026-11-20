@@ -23,10 +23,17 @@ export async function prepareChapter(
   state: ReducedGraphState,
   provider: ModelProvider
 ): Promise<Partial<ReducedGraphState>> {
+  // 每次进入章节流程重新验证；checkpoint 中的旧检查结果不能替代本次检查。
   const existingSession = state.session
+  const validationReset: Partial<ReducedGraphState> = {}
+  if (existingSession?.validatedContentHash !== undefined) {
+    const session = { ...existingSession }
+    delete session.validatedContentHash
+    validationReset.session = session
+  }
   if (!state.storyMemory) {
     if (existingSession && existingSession.chapterIndex === state.currentChapterIndex) {
-      return {}
+      return validationReset
     }
 
     return {
@@ -70,7 +77,7 @@ export async function prepareChapter(
   // 同章重跑（rewrite 循环或 checkpoint 恢复）时保留 session，
   // 尤其是 rewriteApproved 与 issueFingerprintHistory，供停滞检测与收敛升级使用。
   if (existingSession && existingSession.chapterIndex === state.currentChapterIndex) {
-    return reconciliationUpdate
+    return { ...reconciliationUpdate, ...validationReset }
   }
 
   const freshSession = createChapterSession(state.currentChapterIndex)

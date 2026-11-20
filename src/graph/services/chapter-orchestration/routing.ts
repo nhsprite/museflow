@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { logger } from '../../../utils/logger.js'
 import type { ReducedGraphState } from '../../state.js'
 import type { Issue } from '../../../types/agent.js'
@@ -267,7 +268,19 @@ export async function convergeAndDecide(
   const session = buildChapterSession(state)
   const chapterNumber = state.currentChapterIndex + 1
   const existingContent = await readChapterContentForRun(state.story.outputDir, chapterNumber)
-  const chapterFileExists = existingContent !== null && existingContent.trim().length > 0
+  const chapterFileExists =
+    existingContent !== null &&
+    existingContent.trim().length > 0 &&
+    state.chapters[state.currentChapterIndex] != null
+  // 无完整检查记录的旧草稿、正文变更后的草稿，必须先重新检查。
+  // 在问题降级/重写次数计算之前执行，避免把检查次数算成重写次数。
+  if (
+    chapterFileExists &&
+    (session.chapterIndex !== state.currentChapterIndex ||
+      session.validatedContentHash !== createHash('sha256').update(existingContent!).digest('hex'))
+  ) {
+    return mergeSessionUpdate(session, { routingDecision: 'validate_chapter' })
+  }
   const planningConfig = getChapterPlanningConfig(state.genre)
 
   const routingDeps: RoutingDeps = {
@@ -384,7 +397,7 @@ export async function convergeAndDecide(
 }
 
 export function routeByDecision(state: ReducedGraphState): string {
-  return state.session?.routingDecision ?? 'finalize_chapter'
+  return state.session?.routingDecision ?? 'validate_chapter'
 }
 
 export function routeAfterValidation(_state: ReducedGraphState): string {

@@ -242,6 +242,19 @@ describe('runner revalidation', () => {
     mockGraph.invoke.mockResolvedValue(createBaseGraphState({ currentChapterIndex: 1 }))
   })
 
+  it('never promotes content or saves a final marker after a required check fails', async () => {
+    const { continueStory } = await import('../../src/core/runner.js')
+    const { ChapterValidationError } = await import('../../src/utils/chapter-validation-error.js')
+    mockGraph.invoke.mockRejectedValueOnce(new ChapterValidationError('consistency', 0, 'timeout'))
+
+    await expect(
+      continueStory('story-1', undefined, undefined, {}, createMockContext())
+    ).rejects.toThrow(ChapterValidationError)
+    expect(promoteStagedChapterContent).not.toHaveBeenCalled()
+    expect(saveChapterMarker).not.toHaveBeenCalled()
+    expect(saveChapterReport).not.toHaveBeenCalled()
+  })
+
   it('invokes the chapter-writing graph and returns its final state', async () => {
     const { continueStory } = await import('../../src/core/runner.js')
 

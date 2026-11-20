@@ -1,3 +1,10 @@
+import { createHash } from 'node:crypto'
+import { z } from 'zod'
+import { createChapterSession } from '../../core/chapter-generation/routing/session.js'
+import {
+  ChapterValidationError,
+  runRequiredChapterCheck,
+} from '../../utils/chapter-validation-error.js'
 import { logger } from '../../utils/logger.js'
 import type { ReducedGraphState } from '../state.js'
 import type { ForeshadowingAgentInput, ConsistencyAgentInput } from '../../agents/types.js'
@@ -45,12 +52,13 @@ const CONTINUITY_CHECK_SCHEMA: JsonSchema = {
   required: ['isContinuous'],
 }
 
-interface ContinuityCheckResult {
-  isContinuous?: boolean
-  severity?: string
-  reason?: string
-  suggestion?: string
-}
+const continuityResultSchema = z.object({
+  isContinuous: z.boolean(),
+  severity: z.enum(['error', 'warning', 'info']).optional(),
+  reason: z.string().optional(),
+  suggestion: z.string().optional(),
+})
+type ContinuityCheckResult = z.infer<typeof continuityResultSchema>
 
 function normalizeContinuitySeverity(severity: string | undefined): Issue['severity'] {
   if (severity === 'warning' || severity === 'info') return severity
@@ -171,7 +179,9 @@ async function judgeChapterOpeningContinuity(
   chapterNumber: number,
   continuityContext = ''
 ): Promise<Issue[]> {
-  if (!previousEnding || !currentOpening) return []
+  if (!previousEnding.trim() || !currentOpening.trim()) {
+    throw new ChapterValidationError('continuity.opening', chapterNumber - 1, '缺少章节承接片段')
+  }
 
   const messages: Message[] = [
     {
@@ -191,7 +201,7 @@ async function judgeChapterOpeningContinuity(
     },
   ]
 
-  try {
+  return runRequiredChapterCheck('continuity.opening', chapterNumber - 1, async () => {
     const result = provider.chatStructured
       ? await provider.chatStructured<ContinuityCheckResult>(
           messages,
@@ -207,7 +217,8 @@ async function judgeChapterOpeningContinuity(
           { purpose: 'continuity.opening', chapterIndex: chapterNumber - 1 }
         )
 
-    if (result.isContinuous !== false) return []
+    continuityResultSchema.parse(result)
+    if (result.isContinuous) return []
 
     const reason =
       typeof result.reason === 'string' && result.reason.trim().length > 0
@@ -225,10 +236,7 @@ async function judgeChapterOpeningContinuity(
       issue.suggestion = result.suggestion.trim()
     }
     return [issue]
-  } catch (err) {
-    logger.warn(`[MuseFlow] 第 ${chapterNumber} 章开头承接校验失败，跳过该专项检查:`, err)
-    return []
-  }
+  })
 }
 
 /**
@@ -405,9 +413,11 @@ export async function detect_foreshadowing(
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
-  if (!chapter) return {}
+  if (!chapter) throw new ChapterValidationError('foreshadowing', chapterIndex, '缺少章节元数据')
 
   const content = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
+  if (!content?.trim())
+    throw new ChapterValidationError('foreshadowing', chapterIndex, '缺少待检查正文')
   const worldContent = state.world?.content
 
   const currentChapter = chapterIndex + 1
@@ -427,14 +437,11 @@ export async function detect_foreshadowing(
     foreshadowStack: cleanedForeshadowStack,
   }
 
-  const output = await agent.run(agentState)
-  const foreshadowStack = await agent.processOutput(
-    output,
-    chapterIndex,
-    cleanedForeshadowStack,
-    content || undefined,
-    state.genre
-  )
+  const foreshadowStack = await runRequiredChapterCheck('foreshadowing', chapterIndex, async () => {
+    const output = await agent.run(agentState)
+    if (!output.success) throw new Error(output.error || '伏笔检查调用或解析失败')
+    return agent.processOutput(output, chapterIndex, cleanedForeshadowStack, content, state.genre)
+  })
 
   return { foreshadowStack }
 }
@@ -446,13 +453,17 @@ export async function detect_continuity(
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
-  if (!chapter || chapterIndex <= 0) return {}
+  if (chapterIndex <= 0) return {}
+  if (!chapter)
+    throw new ChapterValidationError('continuity.opening', chapterIndex, '缺少章节元数据')
 
   const [previousContent, currentContent] = await Promise.all([
     readChapterContent(state.story.outputDir, chapterIndex),
     readChapterContentForRun(state.story.outputDir, chapterIndex + 1),
   ])
-  if (!previousContent || !currentContent) return {}
+  if (!previousContent?.trim() || !currentContent?.trim()) {
+    throw new ChapterValidationError('continuity.opening', chapterIndex, '缺少上一章或当前章正文')
+  }
 
   const previousEnding = extractChapterEndingSnippet(previousContent)
   const currentOpening = extractChapterOpeningSnippet(currentContent)
@@ -484,9 +495,11 @@ export async function detect_consistency(
   const chapterIndex = state.currentChapterIndex
   const chapter = state.chapters[chapterIndex]
 
-  if (!chapter) return {}
+  if (!chapter) throw new ChapterValidationError('consistency', chapterIndex, '缺少章节元数据')
 
   const content = await readChapterContentForRun(state.story.outputDir, chapterIndex + 1)
+  if (!content?.trim())
+    throw new ChapterValidationError('consistency', chapterIndex, '缺少待检查正文')
   const baseContext = await buildChapterAgentContext(state, chapterIndex, context)
 
   const agentState: ConsistencyAgentInput = mergeAgentState(baseContext, {
@@ -497,8 +510,11 @@ export async function detect_consistency(
     ...(state.pendingIssues.length > 0 ? { issues: state.pendingIssues } : {}),
   }) as ConsistencyAgentInput
 
-  const output = await agent.run(agentState)
-  const issues = await agent.processOutput(output, baseContext.canonicalFacts)
+  const issues = await runRequiredChapterCheck('consistency', chapterIndex, async () => {
+    const output = await agent.run(agentState)
+    if (!output.success) throw new Error(output.error || '一致性检查调用或解析失败')
+    return agent.processOutput(output, baseContext.canonicalFacts)
+  })
 
   const taggedIssues = issues.map((issue) =>
     tagIssueSource(issue, 'consistency', inferRetryStrategy(issue))
@@ -512,6 +528,13 @@ export async function validate_chapter_comprehensive(
   context: RuntimeContext,
   state: ReducedGraphState
 ): Promise<Partial<ReducedGraphState>> {
+  const checkedContent = await readChapterContentForRun(
+    state.story.outputDir,
+    state.currentChapterIndex + 1
+  )
+  if (!checkedContent?.trim()) {
+    throw new ChapterValidationError('consistency', state.currentChapterIndex, '缺少待检查正文')
+  }
   // 将字数、伏笔、一致性（含质量/幻觉/大纲合规）校验串行聚合为单个图节点，
   // 避免每个 agent 占用一个 LangGraph 步骤，从而防止重写循环时 recursionLimit 被快速耗尽。
   let workingState: ReducedGraphState = { ...state }
@@ -595,6 +618,22 @@ export async function validate_chapter_comprehensive(
   }
 
   const result: Partial<ReducedGraphState> = {}
+
+  const currentContent = await readChapterContentForRun(
+    state.story.outputDir,
+    state.currentChapterIndex + 1
+  )
+  if (currentContent !== checkedContent) {
+    throw new ChapterValidationError(
+      'consistency',
+      state.currentChapterIndex,
+      '检查期间正文发生变化，需重新检查'
+    )
+  }
+  result.session = {
+    ...(state.session ?? createChapterSession(state.currentChapterIndex)),
+    validatedContentHash: createHash('sha256').update(checkedContent).digest('hex'),
+  }
 
   // 始终回写 pendingIssues（包括空列表）：重跑检测器的旧 issue 已被移除，
   // 只有写回空列表才能清除上一轮已修复的问题，避免残留 error 阻断定稿。

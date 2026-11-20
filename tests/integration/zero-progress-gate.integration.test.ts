@@ -23,7 +23,10 @@ let tmpDir: string
 let storyId: string
 
 const mockChat = vi.fn(async (): Promise<string> => '')
-const mockChatStructured = vi.fn().mockResolvedValue({})
+const mockChatStructured = vi.fn().mockImplementation(async (_messages, schema) => {
+  if (Object.hasOwn(schema.properties, 'isContinuous')) return { isContinuous: true }
+  return {}
+})
 
 function createMockProvider(): ModelProvider {
   return { chat: mockChat, chatStructured: mockChatStructured }

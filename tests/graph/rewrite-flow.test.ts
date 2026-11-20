@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -259,6 +260,7 @@ describe('rewrite flow regression', () => {
         createdTaskIds: [],
       },
       session: {
+        validatedContentHash: createHash('sha256').update('old chapter content').digest('hex'),
         chapterIndex: 0,
         rewriteAttempts: 0,
         errorRewriteAttempts: 0,
