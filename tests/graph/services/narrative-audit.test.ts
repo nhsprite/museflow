@@ -16,6 +16,7 @@ import type { ReducedGraphState } from '../../../src/graph/state.js'
 import type { ModelProvider } from '../../../src/model/provider.js'
 import { checkProseHygiene } from '../../../src/graph/services/prose-hygiene/index.js'
 
+import { confirmingContradictionResponse } from '../../utils/narrative-audit.js'
 import { deduplicateByRule } from '../../../src/utils/issue-deduplication.js'
 
 const config = { ...DEFAULT_CHAPTER_PLANNING_CONFIG }
@@ -99,7 +100,9 @@ beforeEach(() => {
   provider = {
     chat: vi.fn(),
     chatStructured: vi.fn(async (_messages, _schema, _temperature, metadata) =>
-      structuredClone(metadata?.purpose === 'narrative.extract' ? extraction : review)
+      metadata?.purpose === 'narrative.contradiction'
+        ? confirmingContradictionResponse(_messages)
+        : structuredClone(metadata?.purpose === 'narrative.extract' ? extraction : review)
     ),
   } as ModelProvider
 })
@@ -144,6 +147,7 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
       {
         ...omission(),
         kind: 'contradiction',
+        confidence: 'medium',
         factIndexes: [],
         evidence: [
           { chapterIndex: 0, paragraphIndex: 0 },
@@ -153,6 +157,16 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
     ]
     const report = (await auditChapterNarrative(provider, state, content))!
     expect(narrativeAuditIssues(report)[0]?.severity).toBe('error')
+    expect(report.findings[0]?.contradictionReview).toMatchObject({
+      initialConfidence: 'medium',
+      verdict: 'confirmed',
+    })
+    report.findings[0]!.confidence = 'medium'
+    expect(narrativeAuditIssues(report)[0]?.severity).toBe('error')
+    state.session.narrativeAudit = report
+    delete report.findings[0]!.contradictionReview
+    expect(await isNarrativeAuditCurrent(state, content)).toBe(false)
+    expect(narrativeAuditIssues(report)[0]?.severity).toBe('warning')
     review.findings[0].evidence = [{ chapterIndex: 1, paragraphIndex: 0 }]
     await expect(auditChapterNarrative(provider, state, content)).rejects.toThrow(
       '缺少既有事实依据'
@@ -168,6 +182,61 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
       expect(narrativeAuditIssues(report)[0]?.ruleId).toBe('narrative.prose_artifact')
     }
   )
+
+  it('drops a rejected contradiction from runtime issues while preserving its audit trace', async () => {
+    const { state, content } = stateFor('unexplained-return')
+    review.findings = [
+      {
+        ...omission(),
+        kind: 'contradiction',
+        factIndexes: [],
+        evidence: [
+          { chapterIndex: 0, paragraphIndex: 0 },
+          { chapterIndex: 1, paragraphIndex: 0 },
+        ],
+      },
+    ]
+    vi.mocked(provider.chatStructured!).mockImplementation(
+      async (messages, _schema, _temperature, metadata) => {
+        if (metadata?.purpose === 'narrative.extract') return extraction
+        if (metadata?.purpose === 'narrative.contradiction') {
+          const result = confirmingContradictionResponse(messages) as any
+          result.assessments[0].checks.sameSubject = 'no'
+          return result
+        }
+        return review
+      }
+    )
+    const report = (await auditChapterNarrative(provider, state, content))!
+    expect(report.findings[0]?.contradictionReview?.initialConfidence).toBe('high')
+    expect(report.findings[0]?.contradictionReview?.verdict).toBe('rejected')
+    expect(narrativeAuditIssues(report)).toEqual([])
+  })
+
+  it('does not certify a completed audit if independent contradiction review fails', async () => {
+    const { state, content } = stateFor('unexplained-return')
+    review.findings = [
+      {
+        ...omission(),
+        kind: 'contradiction',
+        factIndexes: [],
+        evidence: [
+          { chapterIndex: 0, paragraphIndex: 0 },
+          { chapterIndex: 1, paragraphIndex: 0 },
+        ],
+      },
+    ]
+    vi.mocked(provider.chatStructured!).mockImplementation(
+      async (_messages, _schema, _temperature, metadata) => {
+        if (metadata?.purpose === 'narrative.contradiction') throw new Error('adjudication offline')
+        return metadata?.purpose === 'narrative.extract' ? extraction : review
+      }
+    )
+    await expect(auditChapterNarrative(provider, state, content)).rejects.toThrow(
+      'adjudication offline'
+    )
+    expect(state.session.narrativeAudit).toBeUndefined()
+  })
 
   it('accepts temporal contradictions grounded in both excerpts without guessing calendar fields', async () => {
     const { state, content } = stateFor('calendar-regression')
@@ -433,7 +502,7 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
   it('revalidates protocol upgrades and clears old audit issues when the mode is disabled', async () => {
     const { state, content } = stateFor('death-omitted')
     state.session.narrativeAudit = await auditChapterNarrative(provider, state, content)
-    ;(state.session.narrativeAudit as any).protocolVersion = 1
+    ;(state.session.narrativeAudit as any).protocolVersion = 2
     expect(await isNarrativeAuditCurrent(state, content)).toBe(false)
     config.narrativeAuditMode = 'off'
     expect(await isNarrativeAuditCurrent(state, content)).toBe(false)

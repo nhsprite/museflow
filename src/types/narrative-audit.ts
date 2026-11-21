@@ -26,6 +26,7 @@ export interface NarrativeFinding {
   explanation: string
   repairTarget: 'current_prose' | 'current_records' | 'manual_review'
   suggestion: string
+  contradictionReview?: ContradictionReview
 }
 
 export interface FactCoverage {
@@ -53,7 +54,7 @@ export interface NarrativeAuditRecord {
 
 /** 模型审计的证据快照，不直接作为 StoryMemory 事件或 canonical facts 写入。 */
 export interface NarrativeAuditReport {
-  protocolVersion: 2
+  protocolVersion: 3
   mode: Exclude<NarrativeAuditMode, 'off'>
   chapterIndex: number
   contentHash: string
@@ -64,4 +65,22 @@ export interface NarrativeAuditReport {
   coverage: FactCoverage[]
   findings: NarrativeFinding[]
   progress: NarrativeChapterAssessment[]
+}
+
+export const CONTRADICTION_CHECKS = [
+  'sameSubject',
+  'sameAttribute',
+  'comparableTime',
+  'establishedPremise',
+  'incompatibleClaims',
+  'resolutionAbsent',
+] as const
+
+export interface ContradictionReview {
+  initialConfidence: NarrativeFinding['confidence']
+  checks: Record<(typeof CONTRADICTION_CHECKS)[number], 'yes' | 'no' | 'uncertain'>
+  verdict: 'confirmed' | 'rejected' | 'uncertain'
+  evidence: NarrativeEvidence[]
+  recordIndexes: number[]
+  explanation: string
 }

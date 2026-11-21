@@ -23,7 +23,7 @@ function setup() {
     fixPolicy: {},
   }
   const report: NarrativeAuditReport = {
-    protocolVersion: 2,
+    protocolVersion: 3,
     mode: 'enforce',
     chapterIndex: 2,
     contentHash: 'current',

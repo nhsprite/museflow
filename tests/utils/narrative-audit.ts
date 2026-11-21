@@ -17,3 +17,24 @@ export function passingNarrativeAuditResponse(messages: Message[], schema: JsonS
     })),
   }
 }
+
+/** 固定复核结论仅测试管线；真实语义准确性由 live eval 度量。 */
+export function confirmingContradictionResponse(messages: Message[]): unknown {
+  const input = JSON.parse(messages[1]!.content)
+  return {
+    assessments: input.candidates.map((candidate: any) => ({
+      findingIndex: candidate.findingIndex,
+      checks: {
+        sameSubject: 'yes',
+        sameAttribute: 'yes',
+        comparableTime: 'yes',
+        establishedPremise: 'yes',
+        incompatibleClaims: 'yes',
+        resolutionAbsent: 'yes',
+      },
+      evidence: candidate.evidence,
+      recordIndexes: candidate.recordIndexes,
+      explanation: '固定复核结论：证据互斥。',
+    })),
+  }
+}

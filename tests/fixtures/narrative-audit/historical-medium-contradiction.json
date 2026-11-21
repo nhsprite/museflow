@@ -1,0 +1,25 @@
+{
+  "fixtureId": "unexplained-return",
+  "model": "MiniMax-M3.1-Flash",
+  "runStartedAt": "2026-11-21T15:19:03.301Z",
+  "iteration": 1,
+  "finding": {
+    "kind": "contradiction",
+    "factIndexes": [0],
+    "recordIndexes": [],
+    "evidence": [
+      {
+        "chapterIndex": 0,
+        "paragraphIndex": 0
+      },
+      {
+        "chapterIndex": 1,
+        "paragraphIndex": 0
+      }
+    ],
+    "confidence": "medium",
+    "explanation": "前文明确写“剑无名已彻底消散，连一缕残魂都未能留下”，本章却写同一剑无名以“剑灵之躯”的虚幻身影现身并长期守在苏寒月身侧；主体、属性（存在状态）与叙事层级一致而互斥，本章只给出“剑灵之躯”的形态说法，未出现复生或魂魄留存等明确解释来弥合。",
+    "repairTarget": "current_prose",
+    "suggestion": "仅修正当前未定稿正文，保持已定稿前文的事实和因果约束；不得改写前文来迁就当前草稿。若必须改动既有事实，停止自动修复并交由作者裁决。"
+  }
+}

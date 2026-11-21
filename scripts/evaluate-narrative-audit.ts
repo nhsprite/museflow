@@ -14,6 +14,9 @@ import {
   auditChapterNarrative,
   narrativeAuditIssues,
 } from '../src/graph/services/narrative-audit/index.js'
+import { adjudicateContradictions } from '../src/graph/services/narrative-audit/contradictions.js'
+import { splitContentParagraphs } from '../src/utils/text.js'
+import type { NarrativeFinding } from '../src/types/narrative-audit.js'
 import { checkProseHygiene } from '../src/graph/services/prose-hygiene/index.js'
 import type { ReducedGraphState } from '../src/graph/state.js'
 import type { NarrativeAuditReport } from '../src/types/narrative-audit.js'
@@ -51,6 +54,7 @@ interface Fixture {
 const { values } = parseArgs({
   options: {
     live: { type: 'boolean' },
+    'adjudication-only': { type: 'boolean' },
     case: { type: 'string' },
     concurrency: { type: 'string', default: '1' },
     repeat: { type: 'string', default: '1' },
@@ -59,7 +63,14 @@ const { values } = parseArgs({
 const allFixtures: Fixture[] = JSON.parse(
   readFileSync(new URL('../tests/fixtures/narrative-audit/cases.json', import.meta.url), 'utf8')
 )
-const fixtures = values.case ? allFixtures.filter((item) => item.id === values.case) : allFixtures
+const selected = values.case ? allFixtures.filter((item) => item.id === values.case) : allFixtures
+const fixtures = values['adjudication-only']
+  ? selected.filter(
+      (item) =>
+        item.chapters.length > 1 &&
+        (item.expected.finding === 'contradiction' || item.expected.noHighFindings)
+    )
+  : selected
 if (fixtures.length === 0) throw new Error('Unknown fixture id')
 if (!values.live) {
   console.log(fixtures.map((item) => `${item.id} (${item.kind})`).join('\n'))
@@ -72,6 +83,7 @@ if (!values.live) {
     kind: string
     passed: boolean
     iteration: number
+    adjudicatedFindings?: NarrativeFinding[]
     report?: NarrativeAuditReport
     routing?: unknown
     durationMs?: number
@@ -84,6 +96,8 @@ if (!values.live) {
     '../src/graph/services/narrative-audit/index.ts',
     '../src/graph/services/narrative-audit/coverage.ts',
     '../src/graph/services/narrative-audit/schema.ts',
+    '../src/graph/services/narrative-audit/contradictions.ts',
+    '../src/graph/services/narrative-audit/model-call.ts',
     '../src/utils/chapter-planning.ts',
     '../src/core/chapter-generation/routing/index.ts',
     '../tests/fixtures/narrative-audit/cases.json',
@@ -106,6 +120,7 @@ if (!values.live) {
       JSON.stringify(
         {
           sourceHashes,
+          mode: values['adjudication-only'] ? 'adjudication-only' : 'pipeline',
           startedAt,
           model: config.model.model,
           temperature: config.model.temperature,
@@ -169,7 +184,40 @@ if (!values.live) {
         draftChapterEvents: fixture.draftEvents ?? [],
         chapterFinalStateDeclarations: [],
       } as unknown as ReducedGraphState
-      if (fixture.expected.hygieneCode) {
+      if (values['adjudication-only']) {
+        const chapters = fixture.chapters.map((chapter, chapterIndex) => ({
+          chapterIndex,
+          paragraphs: splitContentParagraphs(chapter.content).map((text, paragraphIndex) => ({
+            text,
+            paragraphIndex,
+          })),
+        }))
+        const shouldConfirm = fixture.expected.finding === 'contradiction'
+        const candidates: NarrativeFinding[] = [
+          {
+            kind: 'contradiction',
+            confidence: shouldConfirm ? 'medium' : 'high',
+            factIndexes: [],
+            recordIndexes: [],
+            evidence: [
+              { chapterIndex: 0, paragraphIndex: 0 },
+              { chapterIndex, paragraphIndex: 0 },
+            ],
+            explanation: '固定候选，用于验证复核能提升真矛盾并否决错误初判。',
+            repairTarget: 'current_prose',
+            suggestion: '固定测试建议',
+          },
+        ]
+        const adjudicatedFindings = await adjudicateContradictions(
+          provider,
+          chapterIndex,
+          chapters,
+          [],
+          candidates
+        )
+        const confirmed = adjudicatedFindings[0]?.contradictionReview?.verdict === 'confirmed'
+        result = { ...result, passed: confirmed === shouldConfirm, adjudicatedFindings }
+      } else if (fixture.expected.hygieneCode) {
         const passed = checkProseHygiene(content, {}).some(
           (issue) => issue.code === fixture.expected.hygieneCode
         )
@@ -203,6 +251,7 @@ if (!values.live) {
         const regenerated =
           routing.step.kind === 'draft_chapter' && routing.step.regenerateOutline === true
         const expected = fixture.expected
+        const errors = narrativeAuditIssues(report).filter((issue) => issue.severity === 'error')
         const high = report.findings.filter((finding) => finding.confidence === 'high')
         const passed =
           (expected.outlineRegeneration === undefined ||
@@ -211,7 +260,9 @@ if (!values.live) {
             report.findings
               .filter((f) => f.kind === expected.finding)
               .every((f) => f.repairTarget === expected.repairTarget)) &&
-          (!expected.finding || high.some((finding) => finding.kind === expected.finding)) &&
+          (!expected.finding ||
+            (errors.some((issue) => issue.ruleId === `narrative.${expected.finding}`) &&
+              routing.step.kind !== 'finalize_chapter')) &&
           (!expected.currentProgress ||
             report.progress.at(-1)?.verdict === expected.currentProgress) &&
           (!expected.noHighFindings || high.length === 0) &&

@@ -402,5 +402,206 @@
       "currentProgress": "advancing",
       "outlineRegeneration": false
     }
+  },
+  {
+    "id": "same-name-different-people",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "林舟老人昨日去世，村里为他举行了葬礼。"
+      },
+      {
+        "content": "与老人同名的年轻邮差林舟把讣告送来。他从未见过那位老人，向家属确认了收件地址。"
+      }
+    ],
+    "entities": [
+      {
+        "id": "c-old",
+        "name": "老人林舟"
+      },
+      {
+        "id": "c-young",
+        "name": "邮差林舟"
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "noContradiction": true,
+      "outlineRegeneration": false
+    },
+    "memoryEvents": [
+      {
+        "id": "reg-c-old",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-old",
+        "displayName": "老人林舟",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "life-c-old",
+        "type": "character-status",
+        "characterId": "c-old",
+        "attribute": "alive",
+        "value": false,
+        "lifecycle": {
+          "attribute": "alive",
+          "value": false
+        },
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "reg-c-young",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-young",
+        "displayName": "邮差林舟",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "life-c-young",
+        "type": "character-status",
+        "characterId": "c-young",
+        "attribute": "alive",
+        "value": true,
+        "lifecycle": {
+          "attribute": "alive",
+          "value": true
+        },
+        "chapterIndex": 0,
+        "source": "chapter"
+      }
+    ]
+  },
+  {
+    "id": "dream-not-return",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "导师已去世，葬礼结束后她把遗物收好。"
+      },
+      {
+        "content": "梦里，导师站在门口向她招手。她醒来，发现遗物还在枕边，明白那只是自己的梦。"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "noHighFindings": true,
+      "noContradiction": true,
+      "outlineRegeneration": false
+    }
+  },
+  {
+    "id": "corrected-rumor",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "有人传言船长已经遇难。消息来自一封无法核实的信，岸上没人亲眼看见。"
+      },
+      {
+        "content": "船长随救援队回到港口，出示了失联期间的救援记录。那封信的作者承认消息未经查证。"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "noHighFindings": true,
+      "noContradiction": true,
+      "outlineRegeneration": false
+    }
+  },
+  {
+    "id": "later-explanation",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "林舟的心跳停止，医生宣布死亡，遗体被送入实验室。"
+      },
+      {
+        "content": "林舟出现在门口，向同伴说起新的计划。\n\n值班医生随后展示记录：实验装置在清晨恢复了林舟的心脏功能，他已经完成复苏，并非此前的死亡宣告有误。"
+      }
+    ],
+    "entities": [
+      {
+        "id": "c-patient",
+        "name": "林舟"
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "noContradiction": true,
+      "outlineRegeneration": false
+    },
+    "memoryEvents": [
+      {
+        "id": "reg-c-patient",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-patient",
+        "displayName": "林舟",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "life-c-patient",
+        "type": "character-status",
+        "characterId": "c-patient",
+        "attribute": "alive",
+        "value": false,
+        "lifecycle": {
+          "attribute": "alive",
+          "value": false
+        },
+        "chapterIndex": 0,
+        "source": "chapter"
+      }
+    ],
+    "draftEvents": [
+      {
+        "id": "revival",
+        "type": "character-revival",
+        "characterId": "c-patient",
+        "chapterIndex": 1,
+        "source": "chapter",
+        "evidenceParagraphIndex": 1
+      }
+    ]
+  },
+  {
+    "id": "destroyed-unique-original",
+    "kind": "synthetic-error",
+    "entities": [],
+    "chapters": [
+      {
+        "content": "委员会当场焚毁了唯一的原件。所有人核查确认，世上已没有任何副本、扫描件或备份，原件也无法恢复。"
+      },
+      {
+        "content": "一个月后，她从柜子里取出那份完好无损的唯一原件，指着页上的签章请众人鉴定。"
+      }
+    ],
+    "expected": {
+      "finding": "contradiction",
+      "repairTarget": "current_prose"
+    }
+  },
+  {
+    "id": "surviving-backup",
+    "kind": "synthetic-control",
+    "entities": [],
+    "chapters": [
+      {
+        "content": "档案原件在火灾中烧毁。馆长此前制作的数字备份保存在异地服务器，已经核实完整可读。"
+      },
+      {
+        "content": "一个月后，她从异地服务器下载数字备份，核对扫描件上的签章，认出了此前被忽略的笔迹。"
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "noContradiction": true,
+      "outlineRegeneration": false
+    }
   }
 ]

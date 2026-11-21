@@ -1,6 +1,7 @@
+import { callAudit } from './model-call.js'
+import { adjudicateContradictions } from './contradictions.js'
 import { createHash } from 'node:crypto'
-import type { ModelProvider, JsonSchema, Message } from '../../../model/provider.js'
-import { chatStructuredFallback } from '../../../model/provider.js'
+import type { ModelProvider } from '../../../model/provider.js'
 import type { ReducedGraphState } from '../../state.js'
 import type { Issue } from '../../../types/agent.js'
 import type { NarrativeAuditRecord, NarrativeAuditReport } from '../../../types/narrative-audit.js'
@@ -86,34 +87,7 @@ function requireParagraph(chapter: AuditChapter | undefined, paragraphIndex: num
   }
 }
 
-async function callAudit(
-  provider: ModelProvider,
-  chapterIndex: number,
-  purpose: string,
-  messages: Message[],
-  schema: JsonSchema,
-  validationFailure?: string
-): Promise<unknown> {
-  const metadata = { purpose, chapterIndex }
-  const request = validationFailure
-    ? [
-        ...messages,
-        {
-          role: 'user' as const,
-          content: JSON.stringify({
-            validationFailure,
-            instruction:
-              '上次结果未通过结构校验。按输入中的显式编号和字段定义重新输出完整 JSON，修正上述问题。',
-          }),
-        },
-      ]
-    : messages
-  return provider.chatStructured
-    ? provider.chatStructured(request, schema, 0.1, metadata)
-    : chatStructuredFallback(provider, request, schema, 0.1, metadata)
-}
-
-/** 两阶段审计：提取器看不到草稿事件；审计只返回问题，不直接变更权威状态。 */
+/** 独立提取并比对记录；矛盾候选追加盲复核，不直接变更权威状态。 */
 export async function auditChapterNarrative(
   provider: ModelProvider,
   state: ReducedGraphState,
@@ -280,6 +254,13 @@ export async function auditChapterNarrative(
       throw error
     }
   })
+  const findings = await adjudicateContradictions(
+    provider,
+    chapterIndex,
+    indexedChapters,
+    records,
+    review.findings
+  )
   // 历史正文也参与判断；检查期间的变动不能得到有效审计凭证。
   for (const chapter of chapters.slice(0, -1)) {
     const latest = await readChapterContent(state.story.outputDir, chapter.chapterIndex + 1)
@@ -287,7 +268,7 @@ export async function auditChapterNarrative(
       throw new ChapterValidationError('narrative.audit', chapterIndex, '审计期间前文发生变化')
   }
   return {
-    protocolVersion: 2,
+    protocolVersion: 3,
     mode: config.narrativeAuditMode,
     chapterIndex,
     contentHash: current.contentHash,
@@ -296,33 +277,39 @@ export async function auditChapterNarrative(
     window,
     facts,
     coverage: review.coverage,
-    findings: review.findings,
+    findings,
     progress: review.progress.sort((a, b) => a.chapterIndex - b.chapterIndex),
   }
 }
 
 export function narrativeAuditIssues(report: NarrativeAuditReport): Issue[] {
-  const issues: Issue[] = report.findings.map((finding, index) => {
-    const evidence = finding.evidence.find((item) => item.chapterIndex === report.chapterIndex)!
-    const fact = report.facts[finding.factIndexes[0] ?? -1]
-    return {
-      id: `narrative-${report.chapterIndex}-${index}`,
-      ruleId: `narrative.${finding.kind}`,
-      type: 'consistency',
-      severity: report.mode === 'enforce' && finding.confidence === 'high' ? 'error' : 'warning',
-      source: 'narrative_audit',
-      retryStrategy: finding.repairTarget === 'manual_review' ? 'manual' : 'draft',
-      dimension: 'narrative_facts',
-      subject:
-        fact?.entityId ??
-        fact?.entityName ??
-        `chapter-${report.chapterIndex + 1}:p${evidence.paragraphIndex}`,
-      ...(fact ? { conflictAttribute: fact.attribute } : {}),
-      locationRef: { paragraphIndex: evidence.paragraphIndex },
-      description: finding.explanation,
-      suggestion: finding.suggestion,
-    }
-  })
+  const issues: Issue[] = report.findings
+    .filter((finding) => finding.contradictionReview?.verdict !== 'rejected')
+    .map((finding, index) => {
+      const evidence = finding.evidence.find((item) => item.chapterIndex === report.chapterIndex)!
+      const fact = report.facts[finding.factIndexes[0] ?? -1]
+      const blocking =
+        finding.kind === 'contradiction'
+          ? finding.contradictionReview?.verdict === 'confirmed'
+          : finding.confidence === 'high'
+      return {
+        id: `narrative-${report.chapterIndex}-${index}`,
+        ruleId: `narrative.${finding.kind}`,
+        type: 'consistency',
+        severity: report.mode === 'enforce' && blocking ? 'error' : 'warning',
+        source: 'narrative_audit',
+        retryStrategy: finding.repairTarget === 'manual_review' ? 'manual' : 'draft',
+        dimension: 'narrative_facts',
+        subject:
+          fact?.entityId ??
+          fact?.entityName ??
+          `chapter-${report.chapterIndex + 1}:p${evidence.paragraphIndex}`,
+        ...(fact ? { conflictAttribute: fact.attribute } : {}),
+        locationRef: { paragraphIndex: evidence.paragraphIndex },
+        description: finding.explanation,
+        suggestion: finding.suggestion,
+      }
+    })
   const current = report.progress.find((item) => item.chapterIndex === report.chapterIndex)
   if (current?.verdict === 'stalled')
     issues.push({
@@ -363,8 +350,11 @@ export async function isNarrativeAuditCurrent(
   const report = state.session?.narrativeAudit
   if (
     !report ||
-    report.protocolVersion !== 2 ||
+    report.protocolVersion !== 3 ||
     report.mode !== config.narrativeAuditMode ||
+    report.findings.some(
+      (finding) => finding.kind === 'contradiction' && !finding.contradictionReview
+    ) ||
     report.chapterIndex !== state.currentChapterIndex ||
     report.contentHash !== narrativeContentHash(content) ||
     report.recordsHash !== narrativeContentHash(JSON.stringify(buildNarrativeAuditRecords(state)))
