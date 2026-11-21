@@ -10,7 +10,7 @@ import { applyIssuePolicy } from './issue-policy.js'
 import { applyRewritePolicy } from './rewrite-policy.js'
 import { classifyIssues, decideRepairApproach } from './fix-policy.js'
 import { generateIssueFingerprint } from '../../../utils/context-judge.js'
-import { hasPatchableIssues } from '../../../graph/services/fix/decision.js'
+import { hasPatchableIssues, isPatchableIssue } from '../../../graph/services/fix/decision.js'
 import {
   buildStructuredIssues,
   replaceStructuredIssues,
@@ -24,6 +24,7 @@ import {
 } from './outline-regeneration.js'
 import { calculateFingerprintSetSimilarity, isFingerprintSubset } from './fingerprint.js'
 import { generateId } from '../../../utils/id.js'
+import { narrativeStalledChapters } from '../../../graph/services/narrative-audit/index.js'
 
 export * from './types.js'
 export * from './outline-regeneration.js'
@@ -135,6 +136,74 @@ export async function decideNextStep(
   const currentErrorFingerprints = await Promise.all(remainingErrors.map(fingerprintIssue))
 
   const nextFingerprintHistory = [...session.issueFingerprintHistory, currentErrorFingerprints]
+
+  const narrativeAudit = session.narrativeAudit
+  if (
+    remainingErrors.every(
+      (issue) => issue.source === 'narrative_audit' && issue.retryStrategy === 'draft'
+    ) &&
+    (remainingErrors.length === 0 ||
+      session.errorRewriteAttempts < config.maxErrorRewriteAttempts) &&
+    ctx.chapterFileExists &&
+    config.narrativeAuditMode === 'enforce' &&
+    narrativeAudit?.mode === 'enforce' &&
+    narrativeAudit.chapterIndex === session.chapterIndex &&
+    narrativeAudit.contentHash === session.validatedContentHash &&
+    narrativeStalledChapters(narrativeAudit) >= config.narrativeStallThreshold
+  ) {
+    const attempts = session.outlineRegenAttempts ?? 0
+    const issue: Issue = {
+      id: `narrative-stall-${session.chapterIndex}`,
+      ruleId: 'narrative.window-stalled',
+      type: 'outline_density',
+      severity: 'error',
+      source: 'narrative_audit',
+      retryStrategy: 'draft',
+      description: `连续 ${narrativeStalledChapters(narrativeAudit)} 章未产生新的叙事进展，需重新组织当前章的目标、选择及后果。`,
+    }
+    if (attempts < MAX_OUTLINE_REGEN_ATTEMPTS) {
+      const currentOutline = ctx.outline?.[session.chapterIndex]
+      return {
+        step: {
+          kind: 'draft_chapter',
+          discardPlan: true,
+          regenerateOutline: true,
+          feedbackIssues: [...remainingErrors, issue],
+        },
+        sessionUpdate: {
+          outlineRegenAttempts: attempts + 1,
+          errorRewriteAttempts: session.errorRewriteAttempts + 1,
+          forceStructuralRewrite: true,
+          issueFingerprintHistory: [],
+          zeroProgressOutlineRejection: {
+            consecutiveZeroIncrementChapters: 0,
+            recentChapterEventCounts: [],
+            narrativeProgress: narrativeAudit.progress,
+            ...(currentOutline
+              ? {
+                  currentOutline: {
+                    title: currentOutline.title,
+                    description: currentOutline.description,
+                  },
+                }
+              : {}),
+          },
+        },
+        processedIssues: [...policyResult.issues, issue],
+        newConstraints: policyResult.newConstraints,
+      }
+    }
+    return {
+      step: {
+        kind: 'request_rewrite',
+        reason: 'zero_progress_stall',
+        blockingIssues: [...remainingErrors, issue],
+      },
+      sessionUpdate: { rewriteApproved: false, issueFingerprintHistory: nextFingerprintHistory },
+      processedIssues: [...policyResult.issues, issue],
+      newConstraints: policyResult.newConstraints,
+    }
+  }
 
   // 跨章零增量闸（C.2.2）：本章校验后无任何故事状态/情节增量（角色位置/状态、
   // 物品、伏笔、任务、节拍均无变化）时，第一次记 warning 随章节报告落地；连续达到
@@ -301,7 +370,10 @@ export async function decideNextStep(
 
     if (patchable && session.autoFixAttempts < config.maxAutoFixAttempts) {
       return {
-        step: { kind: 'fix_chapter', patchableIssues: policyResult.issues },
+        step: {
+          kind: 'fix_chapter',
+          patchableIssues: policyResult.issues.filter(isPatchableIssue),
+        },
         sessionUpdate: {
           autoFixAttempts: session.autoFixAttempts + 1,
           issueFingerprintHistory: nextFingerprintHistory,
@@ -397,6 +469,20 @@ export async function decideNextStep(
       },
       sessionUpdate: {
         rewriteApproved: false,
+        issueFingerprintHistory: nextFingerprintHistory,
+      },
+      processedIssues: policyResult.issues,
+      newConstraints: policyResult.newConstraints,
+    }
+  }
+
+  // 审计不直接补写事件或覆盖记忆。让规划/正文重新对齐，再走全部验证；次数仍受上方总预算限制。
+  if (remainingErrors.some((issue) => issue.source === 'narrative_audit')) {
+    return {
+      step: { kind: 'draft_chapter', discardPlan: true, feedbackIssues: remainingErrors },
+      sessionUpdate: {
+        errorRewriteAttempts: session.errorRewriteAttempts + 1,
+        forceStructuralRewrite: true,
         issueFingerprintHistory: nextFingerprintHistory,
       },
       processedIssues: policyResult.issues,

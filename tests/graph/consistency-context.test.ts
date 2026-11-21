@@ -1,3 +1,4 @@
+import { passingNarrativeAuditResponse } from '../utils/narrative-audit.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,7 +12,9 @@ const testTempDir = join(tmpdir(), `museflow-consistency-context-${randomUUID().
 function createMockProvider(): ModelProvider {
   return {
     chat: vi.fn().mockResolvedValue(''),
-    chatStructured: vi.fn().mockImplementation(async (messages: Array<{ content?: string }>) => {
+    chatStructured: vi.fn().mockImplementation(async (messages, schema) => {
+      const audit = passingNarrativeAuditResponse(messages, schema)
+      if (audit !== undefined) return audit
       capturedContinuityPrompt = messages.map((m) => m.content ?? '').join('\n')
       return continuityCheckResponse
     }),

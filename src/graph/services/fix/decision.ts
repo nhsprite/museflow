@@ -5,18 +5,22 @@ export interface FixModeDecision {
   reason: string
 }
 
+export function isPatchableIssue(issue: Issue): boolean {
+  // 审计观察模式与不确定发现只报告，不因携带段落位置而自动改正文。
+  if (issue.source === 'narrative_audit' && issue.severity !== 'error') return false
+  if (issue.severity !== 'warning') return true
+  if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
+  if (issue.type === 'consistency' && issue.dimension === 'quality') {
+    return (
+      issue.locationRef?.paragraphIndex !== undefined ||
+      issue.locationRef?.sentenceIndex !== undefined
+    )
+  }
+  return false
+}
+
 export function hasPatchableIssues(issues: Issue[]): boolean {
-  return issues.some((issue) => {
-    if (issue.severity !== 'warning') return true
-    if (issue.type === 'consistency' && issue.dimension !== 'quality') return true
-    if (issue.type === 'consistency' && issue.dimension === 'quality') {
-      return (
-        issue.locationRef?.paragraphIndex !== undefined ||
-        issue.locationRef?.sentenceIndex !== undefined
-      )
-    }
-    return false
-  })
+  return issues.some(isPatchableIssue)
 }
 
 export function determineFixMode(

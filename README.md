@@ -227,6 +227,26 @@ Story data is saved locally in the `./books/` directory. The concrete story dire
 - `verifiedConstraints` are structured runtime state and are rendered to plain text only when passed into agent prompts.
 - `meta.json`, `outline.md`, and reports are projections/artifacts; checkpoint state remains the authoritative runtime record.
 
+### Narrative audit
+
+Comprehensive validation now runs two additional model tasks: independent extraction of critical prose facts (without draft event records), then comparison against current records and established facts, together with a recent-chapter prose review. Findings carry validated paragraph references. Every extracted fact requires a coverage verdict; controlled lifecycle records are checked by entity ID and typed boolean value. Repair targets are restricted to the current draft, its records, or manual review, with fixed repair instructions that preserve finalized prose. High-confidence omissions, unsupported records, contradictions, and editorial residue enter bounded replanning/draft retries; the auditor never directly overwrites StoryMemory or canonical facts. Lifecycle, identity registration, and custody omissions are checked before finalization; time/history facts are checked for contradictions, but their absence from the event protocol alone is not an omission because summary extraction runs later.
+
+The default three-chapter window assesses goals, information, decisions, relationships and consequences independently of structural event counts. The first chapter supplies comparison context; two subsequent consecutive `stalled` assessments trigger outline regeneration using the existing shared limit of two attempts. Meaningful quiet scenes and necessary transitions do not count as narrative stalls. Existing structural validation and zero-increment checks remain in force.
+
+Custom genre JSON can override these `chapterPlanning` fields:
+
+```json
+{
+  "narrativeAuditMode": "enforce",
+  "narrativeProgressWindow": 3,
+  "narrativeStallThreshold": 2
+}
+```
+
+Modes: `enforce` (default) participates in routing, `report` records warnings without driving automatic repairs, and `off` disables the new model tasks. Window size is 3–6; the stall threshold must be between 2 and the window size minus one. Both enabled modes require valid responses: transport/schema/evidence failures retry up to three times per task and then stop the chapter instead of treating an incomplete check as success. A normal validation round adds two model calls and includes full prose for the configured window.
+
+Reports include `narrativeAudit` with findings, extracted facts, coverage verdicts, record snapshots, progress assessments and content hashes. Changed prose/records require revalidation; old checkpoints acquire an audit on their next chapter run. This does not retroactively repair books or constitute a full-book ending review. Fixed historical excerpts and opt-in live model evaluation are documented in [the regression corpus](tests/fixtures/narrative-audit/README.md).
+
 ## Project Structure
 
 ```

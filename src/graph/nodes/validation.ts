@@ -40,6 +40,7 @@ import { applyEvents } from '../../story-memory/projector.js'
 import type { StoryMemory } from '../../types/story-memory.js'
 import { getActiveForeshadows } from '../../story-memory/queries.js'
 import { generateIssueFingerprint } from '../../utils/context-judge.js'
+import { auditChapterNarrative, narrativeAuditIssues } from '../services/narrative-audit/index.js'
 
 const CONTINUITY_CHECK_SCHEMA: JsonSchema = {
   type: 'object',
@@ -292,7 +293,11 @@ export function tagIssueSource(
  * 这些来源的 issue 每轮由检测器基于最新草稿重新生成（id 也是新生成的），
  * 旧结果必须由本轮结果整体替换，否则已修复的问题会永久残留。
  */
-const RERUN_ISSUE_SOURCES: ReadonlySet<IssueSource> = new Set(['word_count', 'consistency'])
+const RERUN_ISSUE_SOURCES: ReadonlySet<IssueSource> = new Set([
+  'word_count',
+  'consistency',
+  'narrative_audit',
+])
 
 /** 相邻章节字数健全检查的方差阈值：较短章字数不足较长章的该比例时给出警告。 */
 const CHAPTER_WORDCOUNT_VARIANCE_THRESHOLD = 0.5
@@ -608,6 +613,9 @@ export async function validate_chapter_comprehensive(
   const consistencyUpdates = await detect_consistency(context, consistencyBaseState)
   mergePendingIssues(consistencyUpdates)
 
+  const narrativeAudit = await auditChapterNarrative(context.provider, workingState, checkedContent)
+  if (narrativeAudit) mergePendingIssues({ pendingIssues: narrativeAuditIssues(narrativeAudit) })
+
   const hasBlockingErrors = workingState.pendingIssues.some((issue) => issue.severity === 'error')
   const canApplySemanticForeshadowStack = !workingState.storyMemory
   if (detectedForeshadowStack && !hasBlockingErrors && canApplySemanticForeshadowStack) {
@@ -634,6 +642,8 @@ export async function validate_chapter_comprehensive(
     ...(state.session ?? createChapterSession(state.currentChapterIndex)),
     validatedContentHash: createHash('sha256').update(checkedContent).digest('hex'),
   }
+  if (narrativeAudit) result.session.narrativeAudit = narrativeAudit
+  else delete result.session.narrativeAudit
 
   // 始终回写 pendingIssues（包括空列表）：重跑检测器的旧 issue 已被移除，
   // 只有写回空列表才能清除上一轮已修复的问题，避免残留 error 阻断定稿。

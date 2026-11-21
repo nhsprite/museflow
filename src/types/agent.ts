@@ -31,6 +31,7 @@ export type IssueType =
   | 'outline_beat_claim'
 
 export type IssueSource =
+  | 'narrative_audit'
   | 'word_count'
   | 'foreshadowing'
   | 'consistency'

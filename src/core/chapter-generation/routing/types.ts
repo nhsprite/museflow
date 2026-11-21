@@ -5,6 +5,7 @@ import type { ChapterPlanningConfig } from '../../../types/genre.js'
 import type { ChapterOutline, StoryArc } from '../../../types/outline.js'
 import type { StoryMemory } from '../../../types/story-memory.js'
 import type { StructuredValidationResult } from '../../../story-memory/validator.js'
+import type { NarrativeAuditReport } from '../../../types/narrative-audit.js'
 
 export type ChapterStep =
   | {
@@ -29,6 +30,7 @@ export interface ChapterSession {
   chapterIndex: number
   /** 综合检查完整执行的正文版本；只表示检查已完成，不表示没有小说问题。 */
   validatedContentHash?: string
+  narrativeAudit?: NarrativeAuditReport
   rewriteAttempts: number
   errorRewriteAttempts: number
   autoFixAttempts: number

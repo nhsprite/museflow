@@ -23,6 +23,14 @@ import type { StoryEvent } from '../../../src/types/story-memory.js'
 
 const testTempDir = join(tmpdir(), `museflow-chapter-orchestration-${randomUUID().slice(0, 8)}`)
 
+// These cases isolate routing policies; audit binding/invalidation is exercised by narrative-audit tests.
+vi.mock('../../../src/graph/services/narrative-audit/index.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../src/graph/services/narrative-audit/index.js')
+  >()),
+  isNarrativeAuditCurrent: vi.fn().mockResolvedValue(true),
+}))
+
 vi.mock('../../../src/storage/filesystem/writer.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/storage/filesystem/writer.js')>()
   return {

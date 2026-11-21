@@ -79,6 +79,8 @@ export interface BeatClaimPlanningRejection {
  * 携带最近若干章（零增量连击窗口内，含本章）的已接受结构化事件计数。
  */
 export interface ZeroProgressRejection {
+  /** 语义停滞与结构零增量分开反馈，不把事件数量当作叙事价值。 */
+  narrativeProgress?: import('../types/narrative-audit.js').NarrativeChapterAssessment[]
   /** 含本章在内的连续零增量章数。 */
   consecutiveZeroIncrementChapters: number
   recentChapterEventCounts: Array<{ chapterIndex: number; acceptedEventCount: number }>

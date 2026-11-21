@@ -15,7 +15,11 @@ import { logger } from '../../../utils/logger.js'
 function pruneStaleChapterWarnings(issues: Issue[]): Issue[] {
   return issues.filter((issue) => {
     if (issue.severity === 'error') return true
-    return issue.source !== 'consistency' && issue.source !== 'quality'
+    return (
+      issue.source !== 'consistency' &&
+      issue.source !== 'quality' &&
+      issue.source !== 'narrative_audit'
+    )
   })
 }
 

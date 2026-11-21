@@ -55,6 +55,9 @@ export const DEFAULT_CHAPTER_PLANNING_CONFIG: Required<ChapterPlanningConfig> = 
   zeroIncrementWarnThreshold: 1,
   zeroIncrementErrorThreshold: 2,
   zeroClaimEscalationThreshold: 2,
+  narrativeAuditMode: 'enforce',
+  narrativeProgressWindow: 3,
+  narrativeStallThreshold: 2,
 }
 
 export function getChapterPlanningConfig(genreName: string): Required<ChapterPlanningConfig> {
@@ -63,10 +66,23 @@ export function getChapterPlanningConfig(genreName: string): Required<ChapterPla
 }
 
 function mergeChapterPlanningConfig(skill: GenreSkill | null): Required<ChapterPlanningConfig> {
-  return {
+  const config = {
     ...DEFAULT_CHAPTER_PLANNING_CONFIG,
     ...(skill?.chapterPlanning ?? {}),
   }
+  if (
+    !['off', 'report', 'enforce'].includes(config.narrativeAuditMode) ||
+    !Number.isInteger(config.narrativeProgressWindow) ||
+    config.narrativeProgressWindow < 3 ||
+    config.narrativeProgressWindow > 6 ||
+    !Number.isInteger(config.narrativeStallThreshold) ||
+    config.narrativeStallThreshold < 2 ||
+    config.narrativeStallThreshold >= config.narrativeProgressWindow
+  )
+    throw new Error(
+      '叙事审计配置无效：窗口须为 3–6 章（含一章背景），停滞阈值须为 2–窗口大小减一，模式须为 off/report/enforce'
+    )
+  return config
 }
 
 export interface ChapterPlanBudgetValidation {

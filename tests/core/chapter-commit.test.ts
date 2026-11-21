@@ -146,6 +146,33 @@ describe('chapter commit boundary', () => {
     expect(exportMetaFromCheckpointMock).toHaveBeenCalledWith(outputDir)
   })
 
+  it('does not promote content changed after narrative audit and finalization', async () => {
+    const { commitChapterRun } = await import('../../src/core/chapter-commit.js')
+    readChapterContentForRunMock.mockResolvedValue('changed prose')
+    await expect(
+      commitChapterRun({
+        result: {
+          rewriteRequested: false,
+          isWriting: true,
+          currentChapterIndex: 1,
+          chapterReport: {
+            narrativeAudit: {
+              chapterIndex: 0,
+              contentHash: createHash('sha256').update('checked prose').digest('hex'),
+            },
+          },
+        } as ReducedGraphState,
+        graph: { getState: vi.fn() },
+        config: {},
+        checkpointService,
+        outputDir: '/tmp/museflow-commit-test',
+      })
+    ).rejects.toThrow('待提交正文与叙事审计版本不一致')
+    expect(promoteStagedChapterContentMock).not.toHaveBeenCalled()
+    expect(writeChapterCommitJournalMock).not.toHaveBeenCalled()
+    expect(checkpointService.saveChapterMarker).not.toHaveBeenCalled()
+  })
+
   it('writes chapter report and outline projections after the graph has persisted final state', async () => {
     const { commitChapterRun } = await import('../../src/core/chapter-commit.js')
     const outputDir = '/tmp/museflow-commit-test'

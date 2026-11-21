@@ -1,5 +1,6 @@
 import type { Issue, IssueType } from './agent.js'
 import type { ForeshadowResolutionPolicy } from './story-memory.js'
+import type { NarrativeAuditReport } from './narrative-audit.js'
 
 export type DraftStrategy = 'draft' | 'fix' | 'replan' | 'finalize-only'
 
@@ -73,6 +74,7 @@ export interface ChapterReport {
   wordCount: number
   summary: string | null
   modelUsage?: ChapterModelUsage
+  narrativeAudit?: NarrativeAuditReport
 
   actProgress?: {
     actIndex: number

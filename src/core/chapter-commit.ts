@@ -254,6 +254,14 @@ export async function commitChapterRun({
     await assertStagedChapterHygiene(result, outputDir, checkpointService)
     const contentToCommit = await readChapterContentForRun(outputDir, result.currentChapterIndex)
     const contentHash = contentToCommit === null ? undefined : hashChapterContent(contentToCommit)
+    const narrativeAudit = result.chapterReport?.narrativeAudit
+    if (
+      narrativeAudit &&
+      (narrativeAudit.chapterIndex !== result.currentChapterIndex - 1 ||
+        narrativeAudit.contentHash !== contentHash)
+    ) {
+      throw new Error('待提交正文与叙事审计版本不一致，已阻止提交，请重新检查本章。')
+    }
     const stateAfter = await graph.getState(config)
     const checkpointId = stateAfter.config?.configurable?.checkpoint_id as string | undefined
     await writeChapterCommitJournal(outputDir, {

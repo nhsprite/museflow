@@ -1,3 +1,4 @@
+import { passingNarrativeAuditResponse } from '../utils/narrative-audit.js'
 import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -28,7 +29,8 @@ const foreshadowProcessOutput = vi.fn(
 function createMockProvider(): ModelProvider {
   return {
     chat: mockChat,
-    chatStructured: mockChatStructured,
+    chatStructured: async (...args) =>
+      passingNarrativeAuditResponse(args[0], args[1]) ?? mockChatStructured(...args),
   }
 }
 
@@ -628,3 +630,9 @@ describe('validate_chapter_comprehensive foreshadow authority', () => {
     expect(result.foreshadowStack).toBeUndefined()
   })
 })
+
+// These finalization cases isolate report/state behavior; audit binding is covered separately.
+vi.mock('../../src/graph/services/narrative-audit/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/graph/services/narrative-audit/index.js')>()),
+  isNarrativeAuditCurrent: vi.fn().mockResolvedValue(true),
+}))

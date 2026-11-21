@@ -1,6 +1,7 @@
 import { logger } from './logger.js'
 
-export type ChapterCheck = 'consistency' | 'continuity.opening' | 'foreshadowing'
+export type ChapterCheck =
+  'consistency' | 'continuity.opening' | 'foreshadowing' | 'narrative.audit'
 
 /** 检查未完成是执行失败，不能进入会降级/豁免小说问题的收敛路由。 */
 export class ChapterValidationError extends Error {

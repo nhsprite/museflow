@@ -1,4 +1,5 @@
 import type { FactAttribute } from './story-state.js'
+import type { NarrativeAuditMode } from './narrative-audit.js'
 
 export interface ChapterPlanningConfig {
   /** 全书幕数下限 */
@@ -87,6 +88,12 @@ export interface ChapterPlanningConfig {
   zeroIncrementErrorThreshold: number
   /** 大纲层收紧：连续零认领章数达到该值后强制 mandatory beat 认领（关闭零认领逃逸口） */
   zeroClaimEscalationThreshold: number
+  /** 正文遗漏与跨章推进审计：off 关闭，report 仅报告，enforce 参与修复路由。 */
+  narrativeAuditMode: NarrativeAuditMode
+  /** 每轮审计读取的最近正文窗口（包含当前章）。 */
+  narrativeProgressWindow: number
+  /** 窗口中连续停滞章数达到该值时重生成大纲。 */
+  narrativeStallThreshold: number
 }
 
 export interface GenreSkill {

@@ -1,3 +1,4 @@
+import { passingNarrativeAuditResponse } from '../utils/narrative-audit.js'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { rmSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -29,7 +30,11 @@ const mockChatStructured = vi.fn().mockImplementation(async (_messages, schema) 
 })
 
 function createMockProvider(): ModelProvider {
-  return { chat: mockChat, chatStructured: mockChatStructured }
+  return {
+    chat: mockChat,
+    chatStructured: async (...args) =>
+      passingNarrativeAuditResponse(args[0], args[1]) ?? mockChatStructured(...args),
+  }
 }
 
 function createMockContext(): RuntimeContext {

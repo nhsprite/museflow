@@ -1,0 +1,406 @@
+[
+  {
+    "id": "death-omitted",
+    "kind": "historical",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/剑心照月-双姝问道-moxtjmjn8e88/chapters/chapter_29.md",
+          "startLine": 223,
+          "endLine": 223
+        },
+        "content": "剑无名已彻底消散，连一缕残魂都未能留下。"
+      }
+    ],
+    "entities": [
+      {
+        "id": "c-sword",
+        "name": "剑无名"
+      }
+    ],
+    "expected": {
+      "finding": "omission"
+    }
+  },
+  {
+    "id": "unexplained-return",
+    "kind": "historical",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/剑心照月-双姝问道-moxtjmjn8e88/chapters/chapter_29.md",
+          "startLine": 223,
+          "endLine": 223
+        },
+        "content": "剑无名已彻底消散，连一缕残魂都未能留下。"
+      },
+      {
+        "source": {
+          "file": "books/剑心照月-双姝问道-moxtjmjn8e88/chapters/chapter_30.md",
+          "startLine": 19,
+          "endLine": 19
+        },
+        "content": "剑无名虚幻的身影浮现在苏寒月身侧，轮廓朦胧如水中倒影，隐约可见那苍老而深邃的面容。这一个月来，他始终以剑灵之躯守护在苏寒月身旁，见证着她的每一分蜕变。"
+      }
+    ],
+    "entities": [
+      {
+        "id": "c-sword",
+        "name": "剑无名"
+      }
+    ],
+    "expected": {
+      "finding": "contradiction"
+    }
+  },
+  {
+    "id": "editorial-analysis",
+    "kind": "historical",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/新手村里住着满级仙帝-mpb4p0v205d5/chapters/chapter_16.md",
+          "startLine": 1,
+          "endLine": 12
+        },
+        "content": "用户要求我对第16章的指定段落进行精准修复。让我仔细分析需要修复的问题：\n\n1. **问题1: 周德福身份交代模糊**\n   - 首次出场（段落10）时，萧尘在茶馆，周德福让秦家小厮传话\n   - 但前文摘要显示：周德福是\"青云镇老村长\"，最初是萧尘的\"引荐人\"，后来\"被萧尘收为仆从\"\n   - 问题：段落10中秦家小厮来传话，周德福此时身份不明；段落26中周德福领林伯庸来访，需要交代其与萧尘的隶属关系\n   - 修复建议：在周德福领路时补充身份说明\n\n2. **问题2: 萧尘选择与林家合作而非秦家的深层原因揭示仓促**\n   - 段落52提到\"自然有他的考量\"，但只是简单带过\n   - 需要增加内心独白或回忆片段，详细阐述他选择林家的多重考量\n   - 但注意：只能在指定段落内修改，不能扩展到其他段落"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "finding": "prose_artifact"
+    }
+  },
+  {
+    "id": "editorial-deletion",
+    "kind": "historical",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/黄泉渡-morb9hiz7a9c/chapters/chapter_23.md",
+          "startLine": 23,
+          "endLine": 27
+        },
+        "content": "众人顿时僵在原地。\n\n（已删除，此段与段落9重复）\n\n\"陈伯年那老贼，\"张道士咬着牙一字一顿道，\"他的气息仍在老宅深处缓缓恢复。这封印至多压制他三五日，等他缓过劲来，便是变本加厉的反扑！\""
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "finding": "prose_artifact"
+    }
+  },
+  {
+    "id": "calendar-regression",
+    "kind": "historical",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/黄泉渡-morb9hiz7a9c/chapters/chapter_17.md",
+          "startLine": 143,
+          "endLine": 143
+        },
+        "content": "\"你们知道今夜是什么日子吗？\"他的声音突然变得低沉，\"再过两个时辰，就是中元节。七月十五，鬼门大开。今夜子时，阴气最盛。那些被镇压了数十年的亡魂，在这一夜都会苏醒过来。\""
+      },
+      {
+        "source": {
+          "file": "books/黄泉渡-morb9hiz7a9c/chapters/chapter_23.md",
+          "startLine": 113,
+          "endLine": 119
+        },
+        "content": "\"不，\"张道士摇了摇头，\"封印虽不能彻底消灭他，却能为我们争取时间。若没有这道封印，他此刻恐怕已经恢复全盛修为，届时整个县城都将化为他的炼狱。\"\n\n沈墨白低头沉思片刻，开口问道：\"道长方才说，唯一的生路是在七日内完成一项近乎不可能的任务。敢问道长，是什么任务？\"\n\n张道士看了她一眼，眼中闪过一丝赞许，随即又变得沉重起来。\n\n\"这个任务，说起来简单，做起来却是千难万难。\"他顿了顿，目光扫过众人，一字一顿道，\"老夫的计算不会有错——封印至多维持七日。七日之后，中元节之夜，月圆阴盛，封印必定失效。届时那老贼会倾巢而出，释放他积攒了数十年的怨气，与我们做最后的了断。\""
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "finding": "contradiction",
+      "repairTarget": "current_prose"
+    }
+  },
+  {
+    "id": "repeated-inventory",
+    "kind": "historical",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/状元弑天-mrnhkdj8434c/chapters/chapter_43.md",
+          "startLine": 9,
+          "endLine": 15
+        },
+        "content": "陈光蕊据条案西侧原位。殷温娇据条案东侧原位。五物各据原处——朝笏板面朝下归在左袖原位、短剑贴身藏于左袖、素笺裹覆残鳞贴于肋侧贴肘处、告身副本与刘洪口供笔录合件副本裹于左袖内侧夹层、豆油灯盏灯芯稳燃于条案东南角。五物无一移位，二人据条案两侧原位不动不移不摇。\n\n陈光蕊的目光自条案沿上那一小片指节移至殷温娇目光所落之处。殷温娇的目光亦自条案沿上那一小片指节移至陈光蕊目光所落之处。二人的目光在条案面上空对位，对位之上共叠四字——\n\n入亥。\n\n入亥者，三通鼓已过、三变之机将至。入亥者，五物各据原处、听风不动之策不改。入亥者，仇殁而封存、疑未消而封存、五路截断而封存。入亥者，二人据条案两侧原位不动、不出声、不开门、不以术法探查。入亥者，俟。"
+      },
+      {
+        "source": {
+          "file": "books/状元弑天-mrnhkdj8434c/chapters/chapter_44.md",
+          "startLine": 13,
+          "endLine": 13
+        },
+        "content": "陈光蕊的目光自条案沿上那一小片指节移至殷温娇目光所落之处。殷温娇的目光亦自条案沿上那一小片指节移至陈光蕊目光所落之处。二人的目光在条案面上空对位，对位之上共叠四字——"
+      },
+      {
+        "source": {
+          "file": "books/状元弑天-mrnhkdj8434c/chapters/chapter_45.md",
+          "startLine": 13,
+          "endLine": 13
+        },
+        "content": "陈光蕊的目光自条案沿上那一小片指节移至殷温娇目光所落之处。殷温娇的目光亦自条案沿上那一小片指节移至陈光蕊目光所落之处。二人的目光在条案面上空对位，对位之上共叠四字——"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "currentProgress": "stalled",
+      "outlineRegeneration": true
+    }
+  },
+  {
+    "id": "protocol-leak",
+    "kind": "historical",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/状元弑天-mrnhkdj8434c/chapters/chapter_1.md",
+          "startLine": 1,
+          "endLine": 10
+        },
+        "content": "=== STORY_EVENTS ===\n- character-location: c-1 -> l-1 @p1\n- character-location: c-2 -> l-1 @p2\n- character-location: c-3 -> l-1 @p3\n- character-location: c-5 -> l-1 @p4\n- character-status: c-1 / 生死状态 -> 沉江溺死→魂归阴司 @p5\n- character-location: c-2 -> l-2 @p6\n- character-location: c-1 -> l-3 @p7\n- character-status: c-1 / 生死状态 -> 重生苏醒 @p8\n=== CHAPTER_CONTENT ==="
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "hygieneCode": "prose.protocol-block"
+    }
+  },
+  {
+    "id": "recollection-not-revival",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "老人昨日已经去世，众人亲手将他安葬。"
+      },
+      {
+        "content": "她想起十年前，老人坐在门边教她认字。回忆散去，她独自把花放在新坟前。"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "noHighFindings": true,
+      "outlineRegeneration": false
+    }
+  },
+  {
+    "id": "explicit-revival",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "他的呼吸和心跳都停止了，医生宣布死亡。"
+      },
+      {
+        "content": "实验装置重建了他的身体机能，监测仪重新显示心跳。他恢复意识，第一次睁开眼。"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "noContradiction": true,
+      "currentProgress": "advancing",
+      "noHighFindings": true,
+      "outlineRegeneration": false
+    }
+  },
+  {
+    "id": "quiet-relationship-change",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "她拒绝回应他的道歉，两人都坐在桌边，信封无人触碰。"
+      },
+      {
+        "content": "他仍坐在桌边。她没有去拿信封，却第一次说出了多年来隐瞒的真相。他听完决定不再追问旧账，答应陪她去见母亲。"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "currentProgress": "advancing",
+      "noHighFindings": true,
+      "outlineRegeneration": false
+    }
+  },
+  {
+    "id": "in-story-editing",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "编辑把退稿信递给他，说：“这段重复了，删掉吧。”他翻到那一页，发现父亲的名字被人改过，立即放下笔追问来稿的来源。"
+      }
+    ],
+    "entities": [],
+    "expected": {
+      "noArtifact": true,
+      "currentProgress": "advancing",
+      "noHighFindings": true,
+      "outlineRegeneration": false
+    }
+  },
+  {
+    "id": "recorded-death",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "source": {
+          "file": "books/剑心照月-双姝问道-moxtjmjn8e88/chapters/chapter_29.md",
+          "startLine": 223,
+          "endLine": 223
+        },
+        "content": "剑无名已彻底消散，连一缕残魂都未能留下。"
+      }
+    ],
+    "entities": [
+      {
+        "id": "c-sword",
+        "name": "剑无名"
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "outlineRegeneration": false
+    },
+    "draftEvents": [
+      {
+        "id": "death-now",
+        "type": "character-status",
+        "characterId": "c-sword",
+        "attribute": "alive",
+        "value": "false",
+        "lifecycle": {
+          "attribute": "alive",
+          "value": false
+        },
+        "chapterIndex": 0,
+        "source": "chapter"
+      }
+    ]
+  },
+  {
+    "id": "known-death-restated",
+    "kind": "synthetic-control",
+    "chapters": [
+      {
+        "content": "剑无名彻底消散，众人已经为他立碑。"
+      },
+      {
+        "content": "剑无名已经彻底消散，她在碑前放下花，终于决定独自出发。"
+      }
+    ],
+    "entities": [
+      {
+        "id": "c-sword",
+        "name": "剑无名"
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "outlineRegeneration": false
+    },
+    "draftEvents": [],
+    "memoryEvents": [
+      {
+        "id": "register",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-sword",
+        "displayName": "剑无名",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "death-now",
+        "type": "character-status",
+        "characterId": "c-sword",
+        "attribute": "alive",
+        "value": "false",
+        "lifecycle": {
+          "attribute": "alive",
+          "value": false
+        },
+        "chapterIndex": 0,
+        "source": "chapter"
+      }
+    ]
+  },
+  {
+    "id": "quiet-progress-window",
+    "kind": "synthetic-control",
+    "entities": [],
+    "chapters": [
+      {
+        "content": "她拒绝回应他的道歉，两人都坐在桌边，信封无人触碰。"
+      },
+      {
+        "content": "她告诉他信里的秘密：当年离开是为了保护他。他第一次明白那场误会的原因，放下了责问。"
+      },
+      {
+        "content": "两人仍坐在桌边。她终于把信递给他。他接受了她的信任，决定明早陪她去见母亲，把当年未说完的话说清楚。"
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "currentProgress": "advancing",
+      "outlineRegeneration": false
+    }
+  },
+  {
+    "id": "registered-revival",
+    "kind": "synthetic-control",
+    "entities": [
+      {
+        "id": "c-patient",
+        "name": "林舟"
+      }
+    ],
+    "chapters": [
+      {
+        "content": "林舟的呼吸和心跳都停止了，医生宣布死亡。"
+      },
+      {
+        "content": "实验装置重建了林舟的身体机能，监测仪重新显示心跳。林舟恢复意识，第一次睁开眼。"
+      }
+    ],
+    "memoryEvents": [
+      {
+        "id": "register-patient",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-patient",
+        "displayName": "林舟",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "patient-died",
+        "type": "character-status",
+        "characterId": "c-patient",
+        "attribute": "alive",
+        "value": false,
+        "lifecycle": {
+          "attribute": "alive",
+          "value": false
+        },
+        "chapterIndex": 0,
+        "source": "chapter"
+      }
+    ],
+    "draftEvents": [
+      {
+        "id": "patient-revived",
+        "type": "character-revival",
+        "characterId": "c-patient",
+        "chapterIndex": 1,
+        "source": "chapter",
+        "evidenceParagraphIndex": 0
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "currentProgress": "advancing",
+      "outlineRegeneration": false
+    }
+  }
+]

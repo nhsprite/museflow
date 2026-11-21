@@ -35,6 +35,7 @@
     "dev": "tsx watch src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval:narrative": "tsx scripts/evaluate-narrative-audit.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "format": "prettier --write .",

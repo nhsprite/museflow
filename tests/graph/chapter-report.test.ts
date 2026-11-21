@@ -851,3 +851,9 @@ describe('chapter report generation', () => {
     expect(result.chapters).toHaveLength(2)
   })
 })
+
+// These finalization cases isolate report/state behavior; audit binding is covered separately.
+vi.mock('../../src/graph/services/narrative-audit/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/graph/services/narrative-audit/index.js')>()),
+  isNarrativeAuditCurrent: vi.fn().mockResolvedValue(true),
+}))

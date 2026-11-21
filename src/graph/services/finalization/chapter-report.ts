@@ -29,6 +29,12 @@ export function buildChapterReport(
   report.summary = chapter?.summary ?? null
 
   const session = state.session
+  if (
+    session?.narrativeAudit?.chapterIndex === chapterIndex &&
+    session.narrativeAudit.mode === getChapterPlanningConfig(state.genre).narrativeAuditMode
+  ) {
+    report.narrativeAudit = session.narrativeAudit
+  }
   report.draftStrategy = inferDraftStrategy(state)
   report.rewriteAttempts = session?.rewriteAttempts ?? 0
   report.errorRewriteAttempts = session?.errorRewriteAttempts ?? 0

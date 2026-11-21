@@ -20,6 +20,15 @@ export function buildZeroProgressRejectionSection(input: {
     ? `- currentOutline.title: ${rejection.currentOutline.title}\n- currentOutline.description: ${rejection.currentOutline.description}`
     : ''
 
+  if (rejection.narrativeProgress) {
+    return `<narrative_progress_rejection>
+【跨章叙事停滞 - 大纲重生成】最近正文持续重复既有局面，结构事件数量不能替代情节推进。
+${rejection.narrativeProgress.map((chapter) => `- 第 ${chapter.chapterIndex + 1} 章：${chapter.explanation}（正文段落索引 ${chapter.evidenceParagraphs.join(', ')}）`).join('\n')}
+重新组织当前章的目标、阻碍、选择及其后果，承接前文形成新的处境。有效的新信息、关系变化和内在决定也可推进叙事；不强求动作场面。不要仅移动物品、添加名字、延期或换措辞来满足计数，不得篡改已定稿事实。
+${currentOutline}
+</narrative_progress_rejection>`
+  }
+
   return `<zero_progress_rejection>
 【连续零增量章节 - 大纲重生成】截至上一版大纲，已连续 ${rejection.consecutiveZeroIncrementChapters} 章没有产生任何故事状态或情节增量（角色位置/状态、物品持有人/状态、伏笔埋设/兑现/延期、任务开启/关闭、mandatory beat 推进全部为零）：
 ${renderEventCounts(rejection.recentChapterEventCounts)}

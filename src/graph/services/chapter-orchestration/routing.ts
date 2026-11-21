@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { isNarrativeAuditCurrent } from '../narrative-audit/index.js'
 import { logger } from '../../../utils/logger.js'
 import type { ReducedGraphState } from '../../state.js'
 import type { Issue } from '../../../types/agent.js'
@@ -277,7 +278,9 @@ export async function convergeAndDecide(
   if (
     chapterFileExists &&
     (session.chapterIndex !== state.currentChapterIndex ||
-      session.validatedContentHash !== createHash('sha256').update(existingContent!).digest('hex'))
+      session.validatedContentHash !==
+        createHash('sha256').update(existingContent!).digest('hex') ||
+      !(await isNarrativeAuditCurrent(state, existingContent!)))
   ) {
     return mergeSessionUpdate(session, { routingDecision: 'validate_chapter' })
   }

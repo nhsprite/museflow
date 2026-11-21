@@ -80,6 +80,19 @@ describe('chapter planning config', () => {
     })
   })
 
+  it.each([
+    { narrativeProgressWindow: 2 },
+    { narrativeProgressWindow: 7 },
+    { narrativeStallThreshold: 3 },
+    { narrativeStallThreshold: 1 },
+  ])('rejects an unusable narrative window/threshold: %j', async (overrides) => {
+    vi.doMock('../../src/genres/registry.js', () => ({
+      getGenreSkill: () => createSkill(overrides),
+    }))
+    const { getChapterPlanningConfig } = await import('../../src/utils/chapter-planning.js')
+    expect(() => getChapterPlanningConfig('custom')).toThrow('叙事审计配置无效')
+  })
+
   it('allows genre skills to override the density gate thresholds (C.3)', async () => {
     const skill = createSkill({
       zeroIncrementWarnThreshold: 2,
