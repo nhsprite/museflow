@@ -31,6 +31,8 @@ import {
 import { calculateIssueSetSimilarity } from '../src/core/chapter-generation/routing/issue-policy.js'
 import type { StoryEvent } from '../src/types/story-memory.js'
 import type { ModelProvider } from '../src/model/provider.js'
+import { validateChapterStructured } from '../src/graph/nodes/structured-validation.js'
+import type { RuntimeContext } from '../src/core/context.js'
 
 interface Fixture {
   id: string
@@ -39,6 +41,7 @@ interface Fixture {
   entities: Array<{ id: string; name: string }>
   memoryEvents?: StoryEvent[]
   draftEvents?: StoryEvent[]
+  consecutiveZeroIncrementChapters?: number
   expected: {
     outlineRegeneration?: boolean
     repairTarget?: string
@@ -48,6 +51,8 @@ interface Fixture {
     noHighFindings?: boolean
     noContradiction?: boolean
     noArtifact?: boolean
+    finalize?: boolean
+    recording?: string
   }
 }
 
@@ -86,6 +91,8 @@ if (!values.live) {
     adjudicatedFindings?: NarrativeFinding[]
     report?: NarrativeAuditReport
     routing?: unknown
+    structuredValidation?: unknown
+    priorZeroIncrementChapters?: number
     durationMs?: number
     responses?: unknown[]
     usage?: unknown
@@ -93,13 +100,20 @@ if (!values.live) {
   }> = []
   const sourceFiles = [
     '../src/agents/prompts/narrative-audit-prompt.ts',
+    '../src/agents/prompts/fragments/zero-progress-rejection.ts',
+    '../src/types/narrative-audit.ts',
     '../src/graph/services/narrative-audit/index.ts',
     '../src/graph/services/narrative-audit/coverage.ts',
     '../src/graph/services/narrative-audit/schema.ts',
     '../src/graph/services/narrative-audit/contradictions.ts',
     '../src/graph/services/narrative-audit/model-call.ts',
+    '../src/graph/services/narrative-audit/progress.ts',
+    '../src/graph/nodes/structured-validation.ts',
+    '../src/story-memory/validator.ts',
+    '../src/story-memory/increment.ts',
     '../src/utils/chapter-planning.ts',
     '../src/core/chapter-generation/routing/index.ts',
+    '../src/graph/services/finalization/chapter.ts',
     '../tests/fixtures/narrative-audit/cases.json',
     './evaluate-narrative-audit.ts',
   ]
@@ -120,7 +134,7 @@ if (!values.live) {
       JSON.stringify(
         {
           sourceHashes,
-          mode: values['adjudication-only'] ? 'adjudication-only' : 'pipeline',
+          mode: values['adjudication-only'] ? 'adjudication-only' : 'structured-audit-routing',
           startedAt,
           model: config.model.model,
           temperature: config.model.temperature,
@@ -174,7 +188,7 @@ if (!values.live) {
       )
       const chapterIndex = fixture.chapters.length - 1
       const content = fixture.chapters[chapterIndex]!.content
-      const state = {
+      let state = {
         story: { id: fixture.id, outputDir: workDir },
         currentChapterIndex: chapterIndex,
         genre: 'default',
@@ -183,6 +197,19 @@ if (!values.live) {
         storyState: createEmptyStoryState(),
         draftChapterEvents: fixture.draftEvents ?? [],
         chapterFinalStateDeclarations: [],
+        chapterPlan: {
+          chapterIndex,
+          sections: [],
+          timeline: [],
+          outlineCheck: [],
+          expectedEvents: fixture.draftEvents ?? [],
+          claimedBeatIds: [],
+          fulfilledForeshadowIds: [],
+          introducedForeshadowIds: [],
+          createdTaskIds: [],
+          resolvedTaskIds: [],
+        },
+        consecutiveZeroIncrementChapters: fixture.consecutiveZeroIncrementChapters ?? 0,
       } as unknown as ReducedGraphState
       if (values['adjudication-only']) {
         const chapters = fixture.chapters.map((chapter, chapterIndex) => ({
@@ -223,6 +250,12 @@ if (!values.live) {
         )
         result = { ...result, passed }
       } else {
+        // 与运行时顺序相同：结构验证/事件过滤 -> 正文审计 -> 路由。
+        // 固定片段仍不覆盖起草、摘要、定稿或所有 comprehensive checks。
+        state = {
+          ...state,
+          ...(await validateChapterStructured({ provider } as RuntimeContext, state)),
+        }
         const report = await auditChapterNarrative(provider, state, content)
         if (!report) throw new Error('Narrative audit is disabled in the default genre')
         const planningConfig = getChapterPlanningConfig('default')
@@ -235,7 +268,9 @@ if (!values.live) {
             pendingIssues: narrativeAuditIssues(report),
             genre: 'default',
             chapterFileExists: true,
-            structuredValidationResult: undefined,
+            structuredValidationResult: state.structuredValidationResult,
+            consecutiveZeroIncrementChapters: state.consecutiveZeroIncrementChapters ?? 0,
+            storyMemory: state.storyMemory,
           },
           {
             issuePolicy: { planningConfig, isInterpretiveIssue },
@@ -265,11 +300,21 @@ if (!values.live) {
               routing.step.kind !== 'finalize_chapter')) &&
           (!expected.currentProgress ||
             report.progress.at(-1)?.verdict === expected.currentProgress) &&
+          (expected.finalize === undefined ||
+            (routing.step.kind === 'finalize_chapter') === expected.finalize) &&
+          (!expected.recording || report.progress.at(-1)?.recording === expected.recording) &&
           (!expected.noHighFindings || high.length === 0) &&
           (!expected.noContradiction ||
             !high.some((finding) => finding.kind === 'contradiction')) &&
           (!expected.noArtifact || !high.some((finding) => finding.kind === 'prose_artifact'))
-        result = { ...result, passed, report, routing: routing.step }
+        result = {
+          ...result,
+          passed,
+          report,
+          routing: routing.step,
+          structuredValidation: state.structuredValidationResult,
+          priorZeroIncrementChapters: state.consecutiveZeroIncrementChapters ?? 0,
+        }
       }
     } catch (error) {
       result = {

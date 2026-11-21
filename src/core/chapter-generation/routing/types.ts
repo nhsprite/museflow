@@ -66,7 +66,7 @@ export interface RoutingContext {
   storyArc?: StoryArc | null
   /** 当前大纲：合成驳回反馈时提供 currentOutline 上下文。 */
   outline?: readonly ChapterOutline[]
-  /** 截至上一章的连续零增量章数（定稿时更新，随 checkpoint 持久化）。 */
+  /** 截至上一章，既无结构增量也无经审计非状态推进的连续章数。 */
   consecutiveZeroIncrementChapters?: number
   /** StoryMemory：合成零增量驳回反馈时统计最近章节的事件计数。 */
   storyMemory?: StoryMemory | null

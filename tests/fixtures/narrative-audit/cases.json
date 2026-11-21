@@ -183,7 +183,8 @@
     "entities": [],
     "expected": {
       "noHighFindings": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -202,7 +203,8 @@
       "noContradiction": true,
       "currentProgress": "advancing",
       "noHighFindings": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -220,7 +222,8 @@
     "expected": {
       "currentProgress": "advancing",
       "noHighFindings": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -236,7 +239,8 @@
       "noArtifact": true,
       "currentProgress": "advancing",
       "noHighFindings": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -260,7 +264,8 @@
     ],
     "expected": {
       "noHighFindings": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     },
     "draftEvents": [
       {
@@ -274,7 +279,10 @@
           "value": false
         },
         "chapterIndex": 0,
-        "source": "chapter"
+        "source": "chapter",
+        "evidence": {
+          "paragraphIndex": 1
+        }
       }
     ]
   },
@@ -297,7 +305,8 @@
     ],
     "expected": {
       "noHighFindings": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     },
     "draftEvents": [],
     "memoryEvents": [
@@ -343,7 +352,8 @@
     "expected": {
       "noHighFindings": true,
       "currentProgress": "advancing",
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -394,13 +404,16 @@
         "characterId": "c-patient",
         "chapterIndex": 1,
         "source": "chapter",
-        "evidenceParagraphIndex": 0
+        "evidence": {
+          "paragraphIndex": 1
+        }
       }
     ],
     "expected": {
       "noHighFindings": true,
       "currentProgress": "advancing",
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -427,7 +440,8 @@
     "expected": {
       "noHighFindings": true,
       "noContradiction": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     },
     "memoryEvents": [
       {
@@ -491,7 +505,8 @@
     "expected": {
       "noHighFindings": true,
       "noContradiction": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -509,7 +524,8 @@
     "expected": {
       "noHighFindings": true,
       "noContradiction": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     }
   },
   {
@@ -532,7 +548,8 @@
     "expected": {
       "noHighFindings": true,
       "noContradiction": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
     },
     "memoryEvents": [
       {
@@ -565,7 +582,9 @@
         "characterId": "c-patient",
         "chapterIndex": 1,
         "source": "chapter",
-        "evidenceParagraphIndex": 1
+        "evidence": {
+          "paragraphIndex": 2
+        }
       }
     ]
   },
@@ -601,7 +620,190 @@
     "expected": {
       "noHighFindings": true,
       "noContradiction": true,
-      "outlineRegeneration": false
+      "outlineRegeneration": false,
+      "finalize": true
+    }
+  },
+  {
+    "id": "quiet-decision-zero-increment",
+    "kind": "synthetic-control",
+    "entities": [],
+    "consecutiveZeroIncrementChapters": 1,
+    "chapters": [
+      {
+        "content": "她一直认定那次离别是背叛，默默想着将来一定要问个明白。"
+      },
+      {
+        "content": "她想起对方当时颤抖的声音，第一次承认，自己的判断也许并不公允。"
+      },
+      {
+        "content": "她终于明白，自己追问的并非真相，而是希望有人承认她曾受伤。她决定放下证明谁对谁错的执念，允许那段往事暂时没有答案。她仍独坐原处，没有说话，也没有开始任何行动。"
+      }
+    ],
+    "expected": {
+      "noHighFindings": true,
+      "currentProgress": "advancing",
+      "recording": "not_required",
+      "outlineRegeneration": false,
+      "finalize": true
+    }
+  },
+  {
+    "id": "quiet-progress-with-missing-death",
+    "kind": "synthetic-error",
+    "entities": [
+      {
+        "id": "c-elder",
+        "name": "沈岳"
+      }
+    ],
+    "consecutiveZeroIncrementChapters": 1,
+    "memoryEvents": [
+      {
+        "id": "register-elder",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-elder",
+        "displayName": "沈岳",
+        "chapterIndex": 0,
+        "source": "chapter"
+      }
+    ],
+    "chapters": [
+      {
+        "content": "沈岳还活着，她却始终无法原谅他的隐瞒。"
+      },
+      {
+        "content": "沈岳在她面前停止了呼吸。医生确认了他的死亡。她终于理解了他当年的隐瞒，决定不再用怨恨记住他。"
+      }
+    ],
+    "expected": {
+      "finding": "omission",
+      "currentProgress": "advancing",
+      "recording": "required",
+      "finalize": false
+    }
+  },
+  {
+    "id": "repeated-wait-with-location-increment",
+    "kind": "synthetic-error",
+    "entities": [
+      {
+        "id": "c-wait",
+        "name": "周宁"
+      }
+    ],
+    "memoryEvents": [
+      {
+        "id": "register-wait",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-wait",
+        "displayName": "周宁",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "wait-location",
+        "type": "character-location",
+        "characterId": "c-wait",
+        "locationId": "l-table",
+        "chapterIndex": 1,
+        "source": "chapter"
+      }
+    ],
+    "draftEvents": [
+      {
+        "id": "wait-move",
+        "type": "character-location",
+        "characterId": "c-wait",
+        "locationId": "l-window",
+        "chapterIndex": 2,
+        "source": "chapter",
+        "evidence": {
+          "paragraphIndex": 1
+        }
+      }
+    ],
+    "chapters": [
+      {
+        "content": "周宁站在窗边，想着还没有消息，必须继续等待。他已反复想过这句话，没有作出任何新的决定。"
+      },
+      {
+        "content": "周宁走到桌旁，想着还没有消息，必须继续等待。他已反复想过这句话，没有作出任何新的决定。"
+      },
+      {
+        "content": "周宁走回窗边，想着还没有消息，必须继续等待。他已反复想过这句话，没有作出任何新的决定。"
+      }
+    ],
+    "expected": {
+      "currentProgress": "stalled",
+      "outlineRegeneration": true,
+      "finalize": false
+    }
+  },
+  {
+    "id": "important-custody-omitted",
+    "kind": "synthetic-error",
+    "entities": [
+      {
+        "id": "c-keeper",
+        "name": "许衡"
+      },
+      {
+        "id": "c-heir",
+        "name": "陆青"
+      }
+    ],
+    "memoryEvents": [
+      {
+        "id": "reg-keeper",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-keeper",
+        "displayName": "许衡",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "reg-heir",
+        "type": "entity-register",
+        "entityKind": "character",
+        "entityId": "c-heir",
+        "displayName": "陆青",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "reg-key",
+        "type": "entity-register",
+        "entityKind": "item",
+        "entityId": "i-key",
+        "displayName": "库门钥匙",
+        "chapterIndex": 0,
+        "source": "chapter"
+      },
+      {
+        "id": "key-holder",
+        "type": "item-location",
+        "itemId": "i-key",
+        "holderId": "c-keeper",
+        "locationId": null,
+        "chapterIndex": 0,
+        "source": "chapter"
+      }
+    ],
+    "chapters": [
+      {
+        "content": "库门钥匙只有一把，一直由许衡保管。陆青每次入库，都必须请他开门。"
+      },
+      {
+        "content": "许衡把唯一的库门钥匙交给陆青，正式将保管权转交给她。他空手离开后，陆青用钥匙打开库门，再把它收入自己贴身的钥匙袋。从此不必再请许衡开门。"
+      }
+    ],
+    "expected": {
+      "finding": "omission",
+      "finalize": false
     }
   }
 ]

@@ -13,7 +13,7 @@ export interface ProseFact {
 
 export interface NarrativeEvidence {
   chapterIndex: number
-  /** 与 STORY_EVENTS 相同的零基段落索引。 */
+  /** 审计输入的零基段落索引；STORY_EVENTS 的 @pN 为一基，不能混用。 */
   paragraphIndex: number
 }
 
@@ -41,6 +41,8 @@ export interface NarrativeChapterAssessment {
   chapterIndex: number
   verdict: 'advancing' | 'transition' | 'stalled' | 'uncertain'
   dimensions: Array<'goal' | 'information' | 'decision' | 'relationship' | 'consequence'>
+  /** 推进是否依赖本章必须记录的状态变化；非 advancing 时为 uncertain。 */
+  recording: 'required' | 'not_required' | 'uncertain'
   evidenceParagraphs: number[]
   explanation: string
 }
@@ -54,7 +56,7 @@ export interface NarrativeAuditRecord {
 
 /** 模型审计的证据快照，不直接作为 StoryMemory 事件或 canonical facts 写入。 */
 export interface NarrativeAuditReport {
-  protocolVersion: 3
+  protocolVersion: 4
   mode: Exclude<NarrativeAuditMode, 'off'>
   chapterIndex: number
   contentHash: string

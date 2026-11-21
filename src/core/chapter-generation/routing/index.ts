@@ -25,6 +25,7 @@ import {
 import { calculateFingerprintSetSimilarity, isFingerprintSubset } from './fingerprint.js'
 import { generateId } from '../../../utils/id.js'
 import { narrativeStalledChapters } from '../../../graph/services/narrative-audit/index.js'
+import { hasAuditedNonStateProgress } from '../../../graph/services/narrative-audit/progress.js'
 
 export * from './types.js'
 export * from './outline-regeneration.js'
@@ -205,17 +206,22 @@ export async function decideNextStep(
     }
   }
 
-  // 跨章零增量闸（C.2.2）：本章校验后无任何故事状态/情节增量（角色位置/状态、
-  // 物品、伏笔、任务、节拍均无变化）时，第一次记 warning 随章节报告落地；连续达到
+  // 跨章零增量闸：既无结构增量，也无通过审计的非状态推进时，第一次记 warning；连续达到
   // error 阈值则禁止定稿，携带 ZeroProgressRejection 重生成大纲（复用高压大纲重生成
-  // 管线与次数上限），重生成耗尽后转人工。有增量即由定稿环节清零连击计数。
+  // 管线与次数上限），重生成耗尽后转人工。定稿环节使用相同语义清零连击计数。
   const chapterIncrement = ctx.structuredValidationResult?.increment
   const zeroIncrementActive =
     remainingErrors.length === 0 &&
     ctx.chapterFileExists &&
     chapterIncrement !== undefined &&
     chapterIncrement.chapterIndex === session.chapterIndex &&
-    chapterIncrement.zeroIncrement
+    chapterIncrement.zeroIncrement &&
+    !hasAuditedNonStateProgress(
+      narrativeAudit,
+      session.chapterIndex,
+      session.validatedContentHash,
+      config.narrativeAuditMode
+    )
   let issuesWithDensitySignals = policyResult.issues
   if (zeroIncrementActive && chapterIncrement) {
     const zeroIncrementStreak = (ctx.consecutiveZeroIncrementChapters ?? 0) + 1
@@ -229,9 +235,22 @@ export async function decideNextStep(
           outline: ctx.outline,
           currentAcceptedEventCount: chapterIncrement.acceptedEventCount,
         })
+        if (
+          config.narrativeAuditMode === 'enforce' &&
+          narrativeAudit?.protocolVersion === 4 &&
+          narrativeAudit.mode === 'enforce' &&
+          narrativeAudit.chapterIndex === session.chapterIndex &&
+          narrativeAudit.contentHash === session.validatedContentHash
+        ) {
+          const currentAssessment = narrativeAudit.progress.find(
+            (chapter) => chapter.chapterIndex === session.chapterIndex
+          )
+          if (currentAssessment)
+            zeroProgressOutlineRejection.currentNarrativeAssessment = currentAssessment
+        }
         deps.rewritePolicy.log?.(
           'warn',
-          `[MuseFlow] 连续 ${zeroIncrementStreak} 章无任何故事增量（含第 ${session.chapterIndex + 1} 章），将携带零增量驳回反馈重生成第 ${session.chapterIndex + 1} 章大纲（第 ${outlineRegenAttempts + 1}/${MAX_OUTLINE_REGEN_ATTEMPTS} 次）`
+          `[MuseFlow] 连续 ${zeroIncrementStreak} 章无结构增量且无经审计的非状态推进（含第 ${session.chapterIndex + 1} 章），将携带驳回反馈重生成大纲（第 ${outlineRegenAttempts + 1}/${MAX_OUTLINE_REGEN_ATTEMPTS} 次）`
         )
         return {
           step: {
@@ -258,7 +277,7 @@ export async function decideNextStep(
         type: 'event_missing',
         severity: 'error',
         subject: `chapter-${session.chapterIndex + 1}`,
-        description: `截至第 ${session.chapterIndex + 1} 章已连续 ${zeroIncrementStreak} 章无任何故事状态或情节增量，大纲重生成 ${MAX_OUTLINE_REGEN_ATTEMPTS} 次后仍无增量：本章写作失败。请重新运行本章生成，或人工修订大纲后再继续。`,
+        description: `截至第 ${session.chapterIndex + 1} 章已连续 ${zeroIncrementStreak} 章无结构增量且未取得非状态推进凭证，大纲重生成 ${MAX_OUTLINE_REGEN_ATTEMPTS} 次后仍未通过推进检查。请核对正文与事件记录，或人工修订大纲后再继续。`,
         source: 'outline_compliance',
         location: `第 ${session.chapterIndex + 1} 章`,
         retryStrategy: 'manual',
@@ -285,7 +304,7 @@ export async function decideNextStep(
           ruleId: 'structured.zero-increment-chapter',
           type: 'event_missing' as const,
           severity: 'warning' as const,
-          description: `本章未产生任何故事状态或情节增量（角色位置/状态、物品、伏笔、任务、节拍推进均无变化）。若连续 ${config.zeroIncrementErrorThreshold} 章无增量，将触发大纲重生成。`,
+          description: `本章未产生结构化状态增量，且未取得无需状态记录的叙事推进凭证。若连续 ${config.zeroIncrementErrorThreshold} 章如此，将触发大纲重生成。`,
           source: 'outline_compliance' as const,
           location: `第 ${session.chapterIndex + 1} 章`,
         },

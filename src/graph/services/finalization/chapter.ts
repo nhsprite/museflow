@@ -55,6 +55,8 @@ import {
   getUnprovenRequiredKeyBeatIdsThroughAct,
 } from '../../../core/story-completion.js'
 import { evaluateChapterIncrement } from '../../../story-memory/increment.js'
+import { hasAuditedNonStateProgress } from '../narrative-audit/progress.js'
+import { narrativeContentHash } from '../narrative-audit/index.js'
 import { auditChapterBeatCorroboration } from '../../../story-memory/beat-corroboration.js'
 import {
   buildActBoundaryPendingIssue,
@@ -741,7 +743,7 @@ export async function finalizeChapter(
   }
 
   // 章节密度计数器（C.2.2/C.2.3）：随定稿提交并随 checkpoint 持久化。
-  // 零增量连击：本章定稿后 memory 无任何增量 +1，有增量清零；
+  // 零增量连击：memory 无增量且无通过审计的非状态推进 +1，否则清零；
   // 零认领连击：本章大纲零认领且当前幕仍有待消费 mandatory beat +1，否则清零。
   let nextConsecutiveZeroIncrementChapters = state.consecutiveZeroIncrementChapters ?? 0
   if (hasInputStoryMemory && state.storyMemory) {
@@ -755,7 +757,15 @@ export async function finalizeChapter(
       updatedStoryMemory,
       chapterDeltaEvents
     )
-    if (incrementVerdict.zeroIncrement) {
+    if (
+      incrementVerdict.zeroIncrement &&
+      !hasAuditedNonStateProgress(
+        state.session?.narrativeAudit,
+        chapterIndex,
+        narrativeContentHash(chapterContent),
+        planningConfig.narrativeAuditMode
+      )
+    ) {
       nextConsecutiveZeroIncrementChapters += 1
       logger.warn(
         `[MuseFlow] 第 ${chapterIndex + 1} 章为连续第 ${nextConsecutiveZeroIncrementChapters} 个零增量章（角色位置/状态、物品、伏笔、任务、节拍推进均无变化）`

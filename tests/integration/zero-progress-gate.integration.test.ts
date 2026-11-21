@@ -1,6 +1,7 @@
 import { passingNarrativeAuditResponse } from '../utils/narrative-audit.js'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { rmSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { rmSync, mkdirSync, mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { runOneChapter } from '../../src/core/runner.js'
@@ -21,7 +22,14 @@ import { JsonCheckpointer } from '../../src/graph/checkpointer.js'
  */
 
 let tmpDir: string
+let testRoot: string
 let storyId: string
+let recording: 'not_required' | 'uncertain' = 'uncertain'
+
+vi.mock('../../src/utils/paths.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/paths.js')>()),
+  getOutputsDir: () => testRoot,
+}))
 
 const mockChat = vi.fn(async (): Promise<string> => '')
 const mockChatStructured = vi.fn().mockImplementation(async (_messages, schema) => {
@@ -32,8 +40,12 @@ const mockChatStructured = vi.fn().mockImplementation(async (_messages, schema) 
 function createMockProvider(): ModelProvider {
   return {
     chat: mockChat,
-    chatStructured: async (...args) =>
-      passingNarrativeAuditResponse(args[0], args[1]) ?? mockChatStructured(...args),
+    chatStructured: async (...args) => {
+      const response = passingNarrativeAuditResponse(args[0], args[1]) as any
+      if (response?.progress)
+        response.progress = response.progress.map((chapter: object) => ({ ...chapter, recording }))
+      return response ?? mockChatStructured(...args)
+    },
   }
 }
 
@@ -255,14 +267,66 @@ describe('zero-progress density gate integration (C.2.2)', () => {
   beforeEach(() => {
     storyId = `story_test_zero_progress_${randomUUID().slice(0, 8)}`
     const shortId = storyId.split('_').pop()?.slice(0, 12).toLowerCase() ?? storyId
-    tmpDir = join(process.cwd(), 'books', `zero-progress-${shortId}-${Date.now()}`)
+    testRoot = mkdtempSync(join(tmpdir(), 'museflow-progress-gate-'))
+    tmpDir = join(testRoot, `zero-progress-${shortId}-${Date.now()}`)
     mkdirSync(tmpDir, { recursive: true })
+    recording = 'uncertain'
+    draftCounter = 0
     vi.clearAllMocks()
   })
 
   afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(testRoot, { recursive: true, force: true })
   })
+
+  it(
+    'commits quiet progress across checkpoints, then starts a new zero-increment streak',
+    { timeout: 60000 },
+    async () => {
+      recording = 'not_required'
+      const state = createInitialState(storyId, tmpDir, 5)
+      writeFileSync(join(tmpDir, 'meta.json'), JSON.stringify({ story: state.story }))
+      writeInitialCheckpoint(tmpDir, state)
+      for (const targetChapterIndex of [0, 1]) {
+        const result = await runOneChapter(
+          storyId,
+          { mode: 'draft', targetChapterIndex },
+          createMockContext()
+        )
+        expect(result.currentChapterIndex).toBe(targetChapterIndex + 1)
+        expect(result.consecutiveZeroIncrementChapters).toBe(0)
+        expect(result.storyMemory?.events).toEqual([])
+        expect(result.chapterReport?.narrativeAudit?.progress.at(-1)?.recording).toBe(
+          'not_required'
+        )
+        expect(
+          result.chapterReport?.issues.some(
+            (issue) => issue.ruleId === 'structured.zero-increment-chapter'
+          )
+        ).toBe(false)
+        expect(existsSync(join(tmpDir, 'chapters', `chapter_${targetChapterIndex + 1}.md`))).toBe(
+          true
+        )
+      }
+      // 未取得非状态推进凭证的下一章，不能继承之前的放行资格，也不能继承旧连击。
+      recording = 'uncertain'
+      const third = await runOneChapter(
+        storyId,
+        { mode: 'draft', targetChapterIndex: 2 },
+        createMockContext()
+      )
+      expect(third.currentChapterIndex).toBe(3)
+      expect(third.consecutiveZeroIncrementChapters).toBe(1)
+      expect(third.chapterReport?.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            ruleId: 'structured.zero-increment-chapter',
+            severity: 'warning',
+          }),
+        ])
+      )
+    }
+  )
 
   it(
     'finalizes the first zero-event chapter with warnings, then escalates the second to outline regeneration instead of finalize',

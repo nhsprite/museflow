@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { StateGraph, START, END } from '@langchain/langgraph'
 import { GraphState, type ReducedGraphState } from '../../src/graph/state.js'
 import { validate_chapter_comprehensive } from '../../src/graph/nodes/validation.js'
+import { validateChapterStructured } from '../../src/graph/nodes/structured-validation.js'
 import { convergeAndDecide } from '../../src/graph/services/chapter-orchestration/routing.js'
 import { createEmptyStoryMemory } from '../../src/story-memory/projector.js'
 import { createEmptyStoryState } from '../../src/storage/meta/stores/story-state.js'
@@ -96,6 +97,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 async function review() {
+  state = { ...state, ...(await validateChapterStructured(context, state)) }
   const updates = await validate_chapter_comprehensive(context, state)
   return { ...state, ...updates }
 }

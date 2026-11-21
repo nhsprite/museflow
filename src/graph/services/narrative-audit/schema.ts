@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { JsonSchema } from '../../../model/provider.js'
+import { isLifecycleAttribute } from '../../../story-memory/lifecycle.js'
 
 const index = z.number().int().nonnegative()
 const indexes = z.array(index)
@@ -19,6 +20,7 @@ const repairTargets = ['current_prose', 'current_records', 'manual_review'] as c
 const confidences = ['high', 'medium', 'low'] as const
 const verdicts = ['advancing', 'transition', 'stalled', 'uncertain'] as const
 const dimensions = ['goal', 'information', 'decision', 'relationship', 'consequence'] as const
+const recording = ['required', 'not_required', 'uncertain'] as const
 
 export const factExtractionSchema = z
   .object({
@@ -42,6 +44,11 @@ export const factExtractionSchema = z
             ? { ...fact, value: fact.value === 'true' }
             : fact
         )
+        .refine((fact) => fact.kind !== 'lifecycle' || isLifecycleAttribute(fact.attribute), {
+          message:
+            'lifecycle 的 attribute 必须来自输入 lifecycleAttributes；其他历史描述不能创建生命周期属性',
+          path: ['attribute'],
+        })
         .refine(
           (fact) =>
             fact.kind !== 'lifecycle' ||
@@ -91,6 +98,7 @@ export const narrativeReviewSchema = z
             chapterIndex: index,
             verdict: z.enum(verdicts),
             dimensions: z.array(z.enum(dimensions)),
+            recording: z.enum(recording),
             evidenceParagraphs: evidenceIndexes,
             explanation: text,
           })
@@ -153,6 +161,7 @@ export const NARRATIVE_REVIEW_SCHEMA = objectOf({
       chapterIndex: numberSchema,
       verdict: enumOf(verdicts),
       dimensions: arrayOf(enumOf(dimensions)),
+      recording: enumOf(recording),
       evidenceParagraphs: arrayOf(numberSchema, 1),
       explanation: textSchema,
     }),

@@ -1,0 +1,86 @@
+{
+  "model": "MiniMax-M3.1-Flash",
+  "startedAt": "2026-11-21T16:02:14.191Z",
+  "sourceHashes": {
+    "../src/agents/prompts/narrative-audit-prompt.ts": "a3d86c4303b9da4d78f2a4dee31b47519c2a71eed32d106cffa10fbaf6ac8ffc"
+  },
+  "cases": [
+    {
+      "id": "recorded-death",
+      "response": {
+        "facts": [
+          {
+            "attribute": "alive",
+            "entityId": "c-sword",
+            "entityName": "剑无名",
+            "evidenceParagraphs": [0],
+            "kind": "lifecycle",
+            "scope": "current",
+            "value": "false"
+          },
+          {
+            "attribute": "残魂留存",
+            "entityId": "c-sword",
+            "entityName": "剑无名",
+            "evidenceParagraphs": [0],
+            "kind": "lifecycle",
+            "scope": "current",
+            "value": "无残魂遗留，已彻底消散"
+          }
+        ]
+      }
+    },
+    {
+      "id": "same-name-different-people",
+      "response": {
+        "facts": [
+          {
+            "attribute": "alive",
+            "entityId": "c-old",
+            "entityName": "老人林舟",
+            "evidenceParagraphs": [0],
+            "kind": "lifecycle",
+            "scope": "current",
+            "value": false
+          },
+          {
+            "attribute": "职业",
+            "entityId": "c-young",
+            "entityName": "邮差林舟",
+            "evidenceParagraphs": [0],
+            "kind": "identity",
+            "scope": "current",
+            "value": "邮差"
+          },
+          {
+            "attribute": "与老人林舟同名",
+            "entityId": "c-young",
+            "entityName": "邮差林舟",
+            "evidenceParagraphs": [0],
+            "kind": "identity",
+            "scope": "current",
+            "value": "与老人林舟同名，二人为不同的两个人"
+          },
+          {
+            "attribute": "与老人林舟的接触经历",
+            "entityId": "c-young",
+            "entityName": "邮差林舟",
+            "evidenceParagraphs": [0],
+            "kind": "history",
+            "scope": "current",
+            "value": "从未见过老人林舟"
+          },
+          {
+            "attribute": "讣告的收件与地址确认",
+            "entityId": "c-old",
+            "entityName": "老人林舟",
+            "evidenceParagraphs": [0],
+            "kind": "custody",
+            "scope": "current",
+            "value": "讣告由邮差林舟送至其家属，收件地址向家属确认"
+          }
+        ]
+      }
+    }
+  ]
+}

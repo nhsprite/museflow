@@ -28,6 +28,12 @@ vi.mock('../../../src/utils/chapter-planning.js', async (importOriginal) => ({
 const fixtures = JSON.parse(
   readFileSync(new URL('../../fixtures/narrative-audit/cases.json', import.meta.url), 'utf8')
 )
+const extractionErrors = JSON.parse(
+  readFileSync(
+    new URL('../../fixtures/narrative-audit/extraction-errors.json', import.meta.url),
+    'utf8'
+  )
+)
 let dir: string
 let extraction: { facts: any[] }
 let review: { coverage: any[]; findings: any[]; progress: any[] }
@@ -54,6 +60,7 @@ function stateFor(id: string): { state: ReducedGraphState; content: string } {
     chapterIndex: index,
     verdict: 'transition',
     dimensions: [],
+    recording: 'uncertain',
     evidenceParagraphs: [0],
     explanation: '有效过渡。',
   }))
@@ -109,6 +116,17 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('evidence-bound narrative audit (fixed judgments test plumbing, not model accuracy)', () => {
+  it.each(extractionErrors.cases)(
+    'rejects the frozen real-model extraction error $id before review',
+    async (fixture: any) => {
+      const { state, content } = stateFor(fixture.id)
+      extraction = structuredClone(fixture.response)
+      await expect(auditChapterNarrative(provider, state, content)).rejects.toThrow('检查未完成')
+      expect(
+        vi.mocked(provider.chatStructured!).mock.calls.map((call) => call[3]?.purpose)
+      ).toEqual(['narrative.extract', 'narrative.extract', 'narrative.extract'])
+    }
+  )
   it('routes a historical omitted death without mutating memory; extractor cannot see records or future outline', async () => {
     const { state, content } = stateFor('death-omitted')
     state.outline = [{ description: 'FUTURE_SECRET' }] as any
@@ -267,6 +285,7 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
       chapterIndex: state.currentChapterIndex,
       verdict: 'advancing',
       dimensions: ['relationship'],
+      recording: 'not_required',
       evidenceParagraphs: [0],
       explanation: '人物关系或处境有明确变化。',
     }
@@ -274,6 +293,17 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
     expect(narrativeAuditIssues(report)).toEqual([])
     expect(narrativeStalledChapters(report)).toBe(0)
   })
+
+  it.each(['missing', 'non-advancing'] as const)(
+    'rejects %s recording classification',
+    async (scenario) => {
+      const { state, content } = stateFor('quiet-decision-zero-increment')
+      if (scenario === 'missing') delete review.progress.at(-1)!.recording
+      else review.progress.at(-1)!.recording = 'not_required'
+      await expect(auditChapterNarrative(provider, state, content)).rejects.toThrow('检查未完成')
+      expect(provider.chatStructured).toHaveBeenCalledTimes(4)
+    }
+  )
 
   it('records cross-chapter stagnation independently of state event counts', async () => {
     const { state, content } = stateFor('repeated-inventory')
@@ -287,6 +317,57 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
     expect(narrativeAuditIssues(report)[0]?.severity).toBe('warning')
     report.progress[1]!.verdict = 'transition'
     expect(narrativeStalledChapters(report)).toBe(1)
+  })
+
+  it.each(['lifecycle-attribute', 'custody-subject'] as const)(
+    'retries an invalid %s instead of manufacturing a missing record',
+    async (kind) => {
+      const { state, content } = stateFor('recorded-death')
+      extraction.facts = [
+        {
+          ...deathFact(),
+          ...(kind === 'lifecycle-attribute'
+            ? { attribute: 'terminal_detail' }
+            : { kind: 'custody', attribute: 'holder', value: 'c-sword' }),
+        },
+      ]
+      await expect(auditChapterNarrative(provider, state, content)).rejects.toThrow('检查未完成')
+      expect(provider.chatStructured).toHaveBeenCalledTimes(3)
+    }
+  )
+
+  it('still detects custody omissions for a known item', async () => {
+    const { state, content } = stateFor('death-omitted')
+    state.storyMemory!.entities.items['i-key'] = {
+      id: 'i-key',
+      name: '钥匙',
+      holderId: null,
+      locationId: null,
+      state: {},
+    }
+    extraction.facts = [
+      {
+        kind: 'custody',
+        entityId: 'i-key',
+        entityName: '钥匙',
+        attribute: 'holder',
+        value: 'c-sword',
+        scope: 'current',
+        evidenceParagraphs: [0],
+      },
+    ]
+    review.coverage = [missingCoverage()]
+    const report = (await auditChapterNarrative(provider, state, content))!
+    expect(narrativeAuditIssues(report)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ruleId: 'narrative.omission', severity: 'error' }),
+      ])
+    )
+    const input = JSON.parse(vi.mocked(provider.chatStructured!).mock.calls[0]![0][1]!.content)
+    expect(input.entities).toEqual(
+      expect.arrayContaining([{ id: 'i-key', name: '钥匙', kind: 'item' }])
+    )
+    expect(input.lifecycleAttributes).toEqual(['alive'])
   })
 
   it('report mode downgrades findings; off mode performs no I/O or calls', async () => {
@@ -502,8 +583,10 @@ describe('evidence-bound narrative audit (fixed judgments test plumbing, not mod
   it('revalidates protocol upgrades and clears old audit issues when the mode is disabled', async () => {
     const { state, content } = stateFor('death-omitted')
     state.session.narrativeAudit = await auditChapterNarrative(provider, state, content)
-    ;(state.session.narrativeAudit as any).protocolVersion = 2
-    expect(await isNarrativeAuditCurrent(state, content)).toBe(false)
+    for (const version of [2, 3]) {
+      ;(state.session.narrativeAudit as any).protocolVersion = version
+      expect(await isNarrativeAuditCurrent(state, content)).toBe(false)
+    }
     config.narrativeAuditMode = 'off'
     expect(await isNarrativeAuditCurrent(state, content)).toBe(false)
     delete state.session.narrativeAudit

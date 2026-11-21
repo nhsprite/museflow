@@ -12,6 +12,7 @@ export function passingNarrativeAuditResponse(messages: Message[], schema: JsonS
       chapterIndex: chapter.chapterIndex,
       verdict: 'advancing',
       dimensions: ['information'],
+      recording: 'uncertain',
       evidenceParagraphs: [0],
       explanation: '固定模型回答：本场景不测试叙事停滞。',
     })),

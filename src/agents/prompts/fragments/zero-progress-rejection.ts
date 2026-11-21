@@ -30,9 +30,10 @@ ${currentOutline}
   }
 
   return `<zero_progress_rejection>
-【连续零增量章节 - 大纲重生成】截至上一版大纲，已连续 ${rejection.consecutiveZeroIncrementChapters} 章没有产生任何故事状态或情节增量（角色位置/状态、物品持有人/状态、伏笔埋设/兑现/延期、任务开启/关闭、mandatory beat 推进全部为零）：
+【连续零增量章节 - 大纲重生成】截至上一版大纲，已连续 ${rejection.consecutiveZeroIncrementChapters} 章没有结构化状态增量，且未取得审计认可的非状态推进凭证。这可能是已发生的变化漏记，也可能是正文未推进，不能仅凭事件计数断言原因。
 ${renderEventCounts(rejection.recentChapterEventCounts)}
-上一版大纲把本章组织成了无事件章节。本轮必须围绕一个可观察的变化重新组织本章：让角色或物品的位置/状态发生转移、埋下或兑现伏笔、开启或关闭任务、或实质推进当前幕的 mandatory beat，使本章至少产生一条成立的结构化事件；仅描写氛围、等待、既有信息复述或心理活动而不改变任何状态，同样会被判为零增量并再次打回。情节处于等待期时用时间跳跃压缩等待，让下一个实质事件在本章发生。
+${rejection.currentNarrativeAssessment ? `本章审计：verdict=${rejection.currentNarrativeAssessment.verdict}，recording=${rejection.currentNarrativeAssessment.recording}；${rejection.currentNarrativeAssessment.explanation}` : ''}
+先核对正文已发生的变化：若推进依赖事件协议可记录的事实，应在规划中准确登记并由正文证据支撑，不得为了达到计数而虚构事件。若正文确实停滞，再围绕新的目标、阻碍、信息、选择及其后果组织当前章，压缩重复等待。新的内在决定和关系理解也可构成有效推进，但须由正文相对前文的变化证明，并通过非状态推进审计；不能只重复心理活动或声称有成长。不得用心理描写绕过应记事实、必需情节节点或已定稿前文约束。
 ${currentOutline}
 </zero_progress_rejection>`
 }

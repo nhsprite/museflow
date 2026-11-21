@@ -8,6 +8,7 @@ import type { NarrativeAuditRecord, NarrativeAuditReport } from '../../../types/
 import { readChapterContent } from '../../../storage/filesystem/writer.js'
 import { splitContentParagraphs } from '../../../utils/text.js'
 import { isEmptyStoryTime } from '../../../utils/story-time.js'
+import { LIFECYCLE_ATTRIBUTES } from '../../../types/story-memory.js'
 import { isRecordableFact, repairSuggestion, validateFactCoverage } from './coverage.js'
 import { getChapterPlanningConfig } from '../../../utils/chapter-planning.js'
 import {
@@ -117,14 +118,23 @@ export async function auditChapterNarrative(
   const recordsHash = narrativeContentHash(JSON.stringify(records))
   const window = chapters.map(({ chapterIndex, contentHash }) => ({ chapterIndex, contentHash }))
   const entities = [
-    ...Object.values(state.storyMemory?.entities.characters ?? {}),
-    ...Object.values(state.storyMemory?.entities.items ?? {}),
-    ...(state.characters ?? []),
+    ...Object.values(state.storyMemory?.entities.characters ?? {}).map((entity) => ({
+      ...entity,
+      kind: 'character' as const,
+    })),
+    ...Object.values(state.storyMemory?.entities.items ?? {}).map((entity) => ({
+      ...entity,
+      kind: 'item' as const,
+    })),
+    ...(state.characters ?? []).map((entity) => ({ ...entity, kind: 'character' as const })),
     ...(state.draftChapterEvents ?? []).flatMap((event) =>
-      event.type === 'entity-register' ? [{ id: event.entityId, name: event.displayName }] : []
+      event.type === 'entity-register'
+        ? [{ id: event.entityId, name: event.displayName, kind: event.entityKind }]
+        : []
     ),
-  ].map(({ id, name }) => ({ id, name }))
+  ].map(({ id, name, kind }) => ({ id, name, kind }))
   const knownIds = new Set(entities.map((entity) => entity.id))
+  const entityKinds = new Map(entities.map((entity) => [entity.id, entity.kind]))
   // 不复用跨调用缓存：每轮重新审计，避免模型/配置变化或重写后沿用旧语义判断。
   const indexedChapters = chapters.map((chapter) => ({
     chapterIndex: chapter.chapterIndex,
@@ -146,6 +156,7 @@ export async function auditChapterNarrative(
               content: JSON.stringify({
                 chapterIndex,
                 entities,
+                lifecycleAttributes: LIFECYCLE_ATTRIBUTES,
                 paragraphs: indexedChapters.at(-1)!.paragraphs,
               }),
             },
@@ -157,6 +168,13 @@ export async function auditChapterNarrative(
       for (const fact of extracted.facts) {
         if (fact.entityId !== null && !knownIds.has(fact.entityId))
           throw new Error('事实提取引用了未知实体 ID')
+        if (fact.entityId !== null && (fact.kind === 'lifecycle' || fact.kind === 'custody')) {
+          const expectedKind = fact.kind === 'lifecycle' ? 'character' : 'item'
+          if (entityKinds.get(fact.entityId) !== expectedKind)
+            throw new Error(
+              `${fact.kind} 的 entityId 必须指向 ${expectedKind}，不能将持有人或叙述者当成物品主体；无已知物品 ID 时填 null`
+            )
+        }
         for (const paragraph of fact.evidenceParagraphs) requireParagraph(current, paragraph)
       }
       return extracted.facts
@@ -203,6 +221,8 @@ export async function auditChapterNarrative(
           requireParagraph(byChapter.get(progress.chapterIndex), paragraph)
         if ((progress.verdict === 'advancing') !== progress.dimensions.length > 0)
           throw new Error('推进结论与维度不一致')
+        if (progress.verdict !== 'advancing' && progress.recording !== 'uncertain')
+          throw new Error('非 advancing 章节的 recording 必须为 uncertain')
       }
       if (reviewed.size !== chapters.length) throw new Error('推进评估未覆盖完整窗口')
       for (const finding of result.findings) {
@@ -268,7 +288,7 @@ export async function auditChapterNarrative(
       throw new ChapterValidationError('narrative.audit', chapterIndex, '审计期间前文发生变化')
   }
   return {
-    protocolVersion: 3,
+    protocolVersion: 4,
     mode: config.narrativeAuditMode,
     chapterIndex,
     contentHash: current.contentHash,
@@ -350,7 +370,7 @@ export async function isNarrativeAuditCurrent(
   const report = state.session?.narrativeAudit
   if (
     !report ||
-    report.protocolVersion !== 3 ||
+    report.protocolVersion !== 4 ||
     report.mode !== config.narrativeAuditMode ||
     report.findings.some(
       (finding) => finding.kind === 'contradiction' && !finding.contradictionReview
